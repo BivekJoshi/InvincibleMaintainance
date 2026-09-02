@@ -1,0 +1,59 @@
+{
+  "name": "maintainance-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Maintenance System API — CMS, Lead CRM with SLA, quotations, work orders, materials, finance, warranty & AMC",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon --watch src --watch prisma/schema.prisma src/server.js",
+    "start": "node src/server.js",
+    "worker": "node src/queues/worker.js",
+    "worker:dev": "nodemon --watch src src/queues/worker.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "prisma studio",
+    "setup": "npm install && prisma generate && prisma migrate dev --name init && npm run db:seed",
+    "lint": "eslint src prisma",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "argon2": "^0.41.1",
+    "bullmq": "^5.34.6",
+    "compression": "^1.7.5",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.4.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "nanoid": "^5.0.9",
+    "nodemailer": "^6.9.16",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0",
+    "sharp": "^0.33.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "eslint": "^9.17.0",
+    "nodemon": "^3.1.9",
+    "pino-pretty": "^13.0.0",
+    "prisma": "^6.2.1",
+    "supertest": "^7.0.0",
+    "vitest": "^2.1.8"
+  },
+  "engines": { "node": ">=20" }
+}
