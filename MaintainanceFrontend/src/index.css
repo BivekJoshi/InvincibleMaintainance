@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * The palette. Two families and nothing else:
+ *   ink    — a deep desaturated petrol used for every dark surface
+ *   brass  — a warm metallic accent that carries emphasis without shouting
+ * Everything else is warm paper and hairline greys. No component hardcodes a hex.
+ */
+@layer base {
+  :root {
+    --background: 40 30% 98%;
+    --foreground: 200 24% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 200 24% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 24% 12%;
+    --primary: 193 62% 21%;
+    --primary-foreground: 40 40% 98%;
+    --secondary: 40 22% 94%;
+    --secondary-foreground: 200 24% 12%;
+    --muted: 40 20% 95%;
+    --muted-foreground: 200 5% 38%;
+    --accent: 40 22% 93%;
+    --accent-foreground: 200 24% 12%;
+    --destructive: 4 66% 45%;
+    --destructive-foreground: 40 40% 98%;
+    --border: 40 14% 88%;
+    --input: 40 14% 85%;
+    --ring: 193 62% 21%;
+    --radius: 0.5rem;
+
+    /* Brand accents — used by the marketing site, available everywhere. */
+    --gold: 34 58% 45%;
+    --gold-foreground: 40 40% 98%;
+    --ink: 199 34% 9%;
+    --ink-foreground: 40 26% 95%;
+    --ink-muted: 199 12% 66%;
+
+    --sla-ok: 152 55% 36%;
+    --sla-warn: 34 84% 46%;
+    --sla-breach: 4 66% 48%;
+  }
+
+  .dark {
+    /* In dark mode the ink panels have to sit *below* the page surface, or the
+       section rhythm collapses into one continuous dark field. */
+    --background: 199 27% 9%;
+    --foreground: 40 25% 94%;
+    --card: 199 24% 12%;
+    --card-foreground: 40 25% 94%;
+    --popover: 199 26% 11%;
+    --popover-foreground: 40 25% 94%;
+    --primary: 186 48% 60%;
+    --primary-foreground: 199 40% 9%;
+    --secondary: 199 20% 17%;
+    --secondary-foreground: 40 25% 94%;
+    --muted: 199 20% 15%;
+    --muted-foreground: 200 7% 66%;
+    --accent: 199 20% 18%;
+    --accent-foreground: 40 25% 94%;
+    --destructive: 4 60% 48%;
+    --destructive-foreground: 40 40% 98%;
+    --border: 199 16% 21%;
+    --input: 199 16% 25%;
+    --ring: 186 48% 60%;
+
+    --gold: 36 62% 60%;
+    --gold-foreground: 199 40% 9%;
+    --ink: 199 42% 4%;
+    --ink-foreground: 40 25% 94%;
+    --ink-muted: 199 10% 62%;
+
+    --sla-ok: 152 48% 46%;
+    --sla-warn: 36 84% 56%;
+    --sla-breach: 4 66% 58%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'rlig' 1, 'calt' 1, 'ss01' 1;
+  }
+
+  /* Display type is optically sized; at hero scale it wants tight tracking. */
+  h1, h2 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+
+  /* Devanagari copy is mixed into English pages; give it a face that renders it.
+     Declared directly rather than via @apply, which would be self-referential. */
+  :lang(ne) {
+    font-family: theme('fontFamily.deva');
+  }
+
+  ::selection { background: hsl(var(--gold) / 0.25); }
+
+  /* Motion is decoration. It must never be the only way something is communicated,
+     and it must switch off for anyone who asks. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply rounded-full bg-border; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/40; }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Small caps label used above every section heading. */
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.18em];
+  }
+
+  /* Engineering-drawing grid. Stands in for photography on dark panels and
+     keeps the hero from looking empty before any media is uploaded. */
+  .blueprint {
+    background-image:
+      linear-gradient(hsl(var(--ink-foreground) / 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--ink-foreground) / 0.05) 1px, transparent 1px);
+    background-size: 64px 64px;
+    background-position: center;
+  }
+  .blueprint-fine {
+    background-image:
+      linear-gradient(hsl(var(--foreground) / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--foreground) / 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* Fades a decorative layer out toward an edge so it never fights the copy. */
+  .mask-b { mask-image: linear-gradient(to bottom, #000 55%, transparent); }
+  .mask-x { mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent); }
+
+  /* A hairline that reads as drawn rather than as a border. */
+  .rule { @apply h-px w-full bg-border; }
+
+  .ink-panel {
+    @apply bg-ink text-ink-foreground;
+  }
+}
