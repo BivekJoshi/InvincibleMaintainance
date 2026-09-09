@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import * as D from './seed-data.js';
+import { nextNumber } from '../src/utils/numbering.js';
 
 const prisma = new PrismaClient();
 
@@ -43,6 +44,7 @@ async function main() {
     { name: 'Bimal Accountant', email: 'accounts@gharjatan.com.np', role: 'ACCOUNTANT', phone: '9841000004' },
     { name: 'Hari Technician', email: 'hari@gharjatan.com.np', role: 'TECHNICIAN', phone: '9841000005' },
     { name: 'Suresh Technician', email: 'suresh@gharjatan.com.np', role: 'TECHNICIAN', phone: '9841000006' },
+    { name: 'Anita Surveyor', email: 'survey@gharjatan.com.np', role: 'SURVEYOR', phone: '9841000007' },
   ];
   const users = {};
   for (const u of USERS) {
@@ -54,7 +56,8 @@ async function main() {
   }
   console.log(`  users: ${USERS.length} (password: Password123)`);
 
-  // ── technicians
+  // ── technicians. A surveyor is a Technician too — that is what keeps them
+  //    assignable on the dispatch board and reachable through the /tech app.
   const techs = [];
   for (const [i, email] of ['hari@gharjatan.com.np', 'suresh@gharjatan.com.np'].entries()) {
     techs.push(await prisma.technician.upsert({
@@ -71,7 +74,19 @@ async function main() {
       update: {},
     }));
   }
-  console.log(`  technicians: ${techs.length}`);
+  const surveyor = await prisma.technician.upsert({
+    where: { userId: users.SURVEYOR.id },
+    create: {
+      userId: users.SURVEYOR.id,
+      employeeCode: 'SURV-001',
+      skills: ['site-survey', 'waterproofing', 'structural-assessment'],
+      certifications: ['Civil Engineer (NEC)', 'Moisture metering'],
+      serviceAreas: ['Lalitpur', 'Kathmandu', 'Bhaktapur'],
+      dailyCapacity: 6,
+    },
+    update: {},
+  });
+  console.log(`  technicians: ${techs.length} + 1 surveyor (${surveyor.employeeCode})`);
 
   // ── home sections
   for (const [i, [key, title]] of HOME_SECTIONS.entries()) {
@@ -212,7 +227,7 @@ async function main() {
   // ═══ demo pipeline: leads → customer → quotation → job → invoice → warranty → AMC
 
   if ((await prisma.lead.count()) === 0) {
-    const seepage = services['seepage-damp-treatment'];
+    const seepage = services['seepage-and-damp-treatment'];
     const terrace = services['roof-and-terrace-waterproofing'] ?? services['roof-terrace-waterproofing'];
 
     // One breached, one at risk, one healthy — so the SLA board has something to show.
@@ -251,7 +266,12 @@ async function main() {
 
     const fy = 2083;
     await prisma.counter.createMany({
-      data: [{ scope: 'QT', year: fy, value: 1 }, { scope: 'JOB', year: fy, value: 1 }, { scope: 'INV', year: fy, value: 1 }, { scope: 'AMC', year: fy, value: 1 }],
+      // Values match the highest number this seed hands out, so the next real
+      // document carries on from here rather than colliding.
+      data: [
+        { scope: 'QT', year: fy, value: 1 }, { scope: 'JOB', year: fy, value: 1 },
+        { scope: 'INV', year: fy, value: 1 }, { scope: 'AMC', year: fy, value: 1 },
+      ],
       skipDuplicates: true,
     });
 
@@ -341,9 +361,119 @@ async function main() {
     console.log(`  demo pipeline: 3 leads, 1 customer, ${quotation.number}, ${job.number}, ${invoice.number}, warranty until ${warranty.endsAt.toISOString().slice(0, 10)}, 1 AMC contract`);
   }
 
+  // ═══ survey demo. Guarded on its own count rather than nested in the leads block,
+  //     so `npm run db:seed` tops up a database that already has the demo pipeline.
+
+  if ((await prisma.siteSurvey.count()) === 0) {
+    const fy = 2083;
+    const days = (n) => new Date(Date.now() + n * 86400000);
+    const seepage = services['seepage-and-damp-treatment'];
+    const seepChem = await prisma.rateCardItem.findUnique({ where: { code: 'SEEP-CHEM' } });
+    const labourSkill = await prisma.rateCardItem.findUnique({ where: { code: 'LABOUR-SKILL' } });
+    const wpCryst = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+    const completed = await prisma.job.findFirst({
+      where: { status: { in: ['COMPLETED', 'VERIFIED'] }, type: { not: 'INSPECTION' } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    await prisma.counter.upsert({
+      where: { scope_year: { scope: 'SRV', year: fy } },
+      create: { scope: 'SRV', year: fy, value: 1 },
+      update: { value: { set: 1 } },
+    });
+
+    // The customer booked online, so the lead carries preferredAt/preferredSlot.
+    const bookedLead = await prisma.lead.create({
+      data: {
+        name: 'Prakash Maharjan', phone: '9851122334', email: 'prakash.mhj@example.com',
+        address: 'Kupondole, Lalitpur', area: 'Kupondole', serviceId: seepage?.id,
+        message: 'भुइँतलाको भित्तामा चिस्यान बढ्दै गएको छ।',
+        source: 'booking', status: 'INSPECTION_SCHEDULED', assignedToId: users.SALES.id,
+        preferredAt: days(1), preferredSlot: 'morning',
+        createdAt: days(-2), slaDueAt: days(-2), firstResponseAt: days(-2),
+      },
+    });
+    const bookedCustomer = await prisma.customer.create({
+      data: {
+        name: 'Prakash Maharjan', phone: '9851122334', email: 'prakash.mhj@example.com',
+        sites: { create: { label: 'Home — Kupondole', address: 'Kupondole, Lalitpur', area: 'Kupondole', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    await prisma.lead.update({ where: { id: bookedLead.id }, data: { customerId: bookedCustomer.id } });
+    const bookedSite = bookedCustomer.sites[0];
+
+    const visitNumber = await prisma.$transaction((tx) => nextNumber(tx, 'JOB'));
+    const visit = await prisma.job.create({
+      data: {
+        number: visitNumber, type: 'INSPECTION', customerId: bookedCustomer.id, siteId: bookedSite.id,
+        leadId: bookedLead.id, title: 'Free inspection — Seepage & Damp Treatment',
+        description: 'Rising damp on the ground-floor wall.', status: 'COMPLETED', isBillable: false,
+        priority: 'HIGH', scheduledStart: days(-1), actualStart: days(-1), actualEnd: days(-1),
+        completionNote: 'Site survey submitted',
+        assignments: { create: { technicianId: surveyor.id, isLead: true } },
+      },
+    });
+
+    // Submitted and waiting in the admin inbox — quantities only, no price anywhere.
+    const survey = await prisma.siteSurvey.create({
+      data: {
+        number: `SRV-${fy}-0001`, jobId: visit.id, leadId: bookedLead.id,
+        customerId: bookedCustomer.id, siteId: bookedSite.id, serviceId: seepage?.id,
+        surveyorId: surveyor.id, status: 'SUBMITTED',
+        problemSummary: 'भुइँतलाको भित्तामा चिस्यान बढ्दै गएको छ।',
+        diagnosis: 'Rising damp from a failed DPC on the north wall; no external plinth protection.',
+        recommendation: 'Crystalline treatment on the internal face, then replaster with a waterproof admixture.',
+        accessNotes: 'Narrow stair, no lift. Water point available in the courtyard.',
+        riskNotes: 'Old wiring runs along the affected skirting — isolate before chipping.',
+        areaValue: 240, areaUnit: 'sq.ft', estimatedDays: 3, urgency: 'HIGH',
+        submittedAt: days(-1), submittedById: users.SURVEYOR.id,
+        readings: {
+          create: [
+            { label: 'North wall, 300mm above floor', metric: 'moisture', value: 22.4, unit: '%', sortOrder: 0 },
+            { label: 'North wall, 1200mm above floor', metric: 'moisture', value: 9.1, unit: '%', sortOrder: 1 },
+            { label: 'Damp band height', metric: 'depth', value: 900, unit: 'mm', sortOrder: 2 },
+            { label: 'DPC present?', metric: 'observation', textValue: 'None visible at plinth level', sortOrder: 3 },
+          ],
+        },
+        items: {
+          create: [
+            { kind: 'SERVICE', rateCardItemId: seepChem?.id, description: 'Crystalline seepage treatment — internal face', unit: 'sq.ft', qty: 240, sortOrder: 0 },
+            { kind: 'MATERIAL', materialId: wpCryst?.id, description: 'Crystalline waterproofing compound', unit: 'kg', qty: 30, wastagePct: 10, sortOrder: 1 },
+            { kind: 'LABOUR', rateCardItemId: labourSkill?.id, description: 'Skilled applicator — chipping, treatment, plaster', unit: 'hour', qty: 36, sortOrder: 2 },
+            { kind: 'OTHER', description: 'Temporary furniture shifting and covering', unit: 'lump', qty: 1, isOptional: true, note: 'Only if the customer cannot clear the room', sortOrder: 3 },
+          ],
+        },
+      },
+    });
+
+    // The finished job from the demo pipeline, published as public proof.
+    if (completed && !(await prisma.project.findUnique({ where: { jobId: completed.id } }))) {
+      await prisma.project.create({
+        data: {
+          title: 'Bedroom wall seepage — Jhamsikhel',
+          slug: 'bedroom-wall-seepage-jhamsikhel',
+          jobId: completed.id, serviceId: seepage?.id, categoryId: seepage?.categoryId ?? null,
+          location: 'Jhamsikhel', status: 'completed',
+          problem: 'Damp patch spreading across a bedroom wall after the monsoon, with paint blistering at skirting level.',
+          solution: 'Traced the source to a failed outlet on the adjoining terrace, applied crystalline treatment over 320 sq.ft and replastered.',
+          outcome: 'Ponding test passed on the adjoining terrace. Dry through the following monsoon.',
+          summary: 'Damp traced to a failed neighbouring terrace outlet.',
+          durationDays: 3,
+          // A band, not the customer's contract value.
+          costBandMin: toPaisa(88000), costBandMax: toPaisa(132000),
+          completedAt: days(-4), publishedAt: days(-3), isActive: true, isFeatured: true, sortOrder: 0,
+        },
+      });
+    }
+
+    console.log(`  survey demo: ${visit.number} surveyed by ${surveyor.employeeCode}, ${survey.number} waiting to be priced, 1 case study published`);
+  }
+
   console.log('\nSeed complete.');
   console.log('  Admin login:      admin@gharjatan.com.np / Password123');
   console.log('  Technician login: hari@gharjatan.com.np / Password123');
+  console.log('  Surveyor login:   survey@gharjatan.com.np / Password123');
 }
 
 main()

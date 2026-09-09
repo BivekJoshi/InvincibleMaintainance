@@ -361,6 +361,7 @@ export const MESSAGE_TEMPLATES = [
   { key: 'quotation_sent', channel: 'email', locale: 'en', subject: 'Your quotation {{number}} from {{appName}}',
     body: 'Dear {{customerName}},\n\nYour quotation {{number}} totalling {{total}} is ready.\n\nReview and approve it here:\n{{link}}\n\nValid until {{validUntil}}.\n\n{{appName}}' },
   { key: 'job_assigned', channel: 'sms', locale: 'en', body: 'Job {{number}}: {{title}}\nAt: {{address}}\nCustomer: {{customer}} {{phone}}\nWhen: {{when}}' },
+  { key: 'survey_returned', channel: 'sms', locale: 'en', body: 'Survey {{number}} was sent back: {{note}} - {{appName}}' },
   { key: 'job_en_route', channel: 'sms', locale: 'en', body: 'Hi {{customerName}}, our technician is on the way for job {{number}}. - {{appName}}' },
   { key: 'job_completed', channel: 'sms', locale: 'en', body: 'Job {{number}} is complete. Your work carries a {{warrantyDays}}-day warranty: {{warrantyLink}} - {{appName}}' },
   { key: 'invoice_sent', channel: 'sms', locale: 'en', body: 'Invoice {{number}}: {{total}}, due {{dueDate}}. {{link}} - {{appName}}' },
