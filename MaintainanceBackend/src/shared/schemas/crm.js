@@ -3,7 +3,12 @@ import {
   isActive, nepaliPhone, optionalEmail, optionalPhone, optionalRupees, optionalText,
   rupees, sortOrder, unit,
 } from './common.js';
-import { ACTIVITY_TYPES, LEAD_SOURCES, LEAD_STATUSES, PRIORITIES } from '../enums.js';
+import { ACTIVITY_TYPES, BOOKING_SLOT_KEYS, LEAD_SOURCES, LEAD_STATUSES, PRIORITIES } from '../enums.js';
+
+/** A booking may be made for today or up to 90 days out — never for the past. */
+const preferredDate = z.coerce.date()
+  .refine((d) => d.getTime() > Date.now() - 86_400_000, 'Choose a date from today onwards')
+  .refine((d) => d.getTime() < Date.now() + 90 * 86_400_000, 'Choose a date within the next 90 days');
 
 /** Public lead form — deliberately minimal, matching the site's "Free Consultation" block. */
 export const publicLeadSchema = z.object({
@@ -20,6 +25,9 @@ export const publicLeadSchema = z.object({
   utmCampaign: z.string().trim().max(120).optional(),
   estimatedAmount: optionalRupees,
   estimatePayload: z.record(z.any()).optional(),
+  // Set by the online booking flow; a plain enquiry leaves both empty.
+  preferredAt: preferredDate.optional(),
+  preferredSlot: z.enum(BOOKING_SLOT_KEYS).optional(),
   turnstileToken: z.string().max(4000).optional(),
   // Honeypot — must stay empty. Bots fill every field they find.
   website: z.string().max(0, 'Rejected').optional(),

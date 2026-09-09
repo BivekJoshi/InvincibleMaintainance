@@ -23,6 +23,27 @@ describe('public lead form validation', () => {
   it('requires a name of at least two characters', () => {
     expect(publicLeadSchema.safeParse({ ...valid, name: 'X' }).success).toBe(false);
   });
+
+  it('accepts an online booking with a slot', () => {
+    const r = publicLeadSchema.safeParse({
+      ...valid,
+      preferredAt: new Date(Date.now() + 2 * 86400000).toISOString(),
+      preferredSlot: 'morning',
+    });
+    expect(r.success).toBe(true);
+    expect(r.data.preferredAt).toBeInstanceOf(Date);
+  });
+
+  it('refuses a booking in the past or too far out', () => {
+    expect(publicLeadSchema.safeParse({ ...valid, preferredAt: '2020-01-01' }).success).toBe(false);
+    expect(publicLeadSchema.safeParse({
+      ...valid, preferredAt: new Date(Date.now() + 200 * 86400000).toISOString(),
+    }).success).toBe(false);
+  });
+
+  it('refuses a slot it does not run', () => {
+    expect(publicLeadSchema.safeParse({ ...valid, preferredSlot: 'midnight' }).success).toBe(false);
+  });
 });
 
 describe('service copy quality gate', () => {

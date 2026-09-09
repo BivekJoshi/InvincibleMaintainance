@@ -507,6 +507,8 @@ model Lead {
   message         String?
   estimatedAmount Int?
   estimatePayload Json?
+  preferredAt     DateTime?
+  preferredSlot   String?
   source          String     @default("web_form")
   sourcePage      String?
   utmSource       String?

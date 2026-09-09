@@ -36,13 +36,13 @@ async function main() {
   // ── users
   const hash = await argon2.hash('Password123', { type: argon2.argon2id });
   const USERS = [
-    { name: 'Admin', email: 'admin@homeplexnepal.com', role: 'ADMIN', phone: '9808338255' },
-    { name: 'Sabina Editor', email: 'editor@homeplexnepal.com', role: 'EDITOR', phone: '9841000001' },
-    { name: 'Rajesh Sales', email: 'sales@homeplexnepal.com', role: 'SALES', phone: '9841000002' },
-    { name: 'Kiran Dispatcher', email: 'dispatch@homeplexnepal.com', role: 'DISPATCHER', phone: '9841000003' },
-    { name: 'Bimal Accountant', email: 'accounts@homeplexnepal.com', role: 'ACCOUNTANT', phone: '9841000004' },
-    { name: 'Hari Technician', email: 'hari@homeplexnepal.com', role: 'TECHNICIAN', phone: '9841000005' },
-    { name: 'Suresh Technician', email: 'suresh@homeplexnepal.com', role: 'TECHNICIAN', phone: '9841000006' },
+    { name: 'Admin', email: 'admin@gharjatan.com.np', role: 'ADMIN', phone: '9808338255' },
+    { name: 'Sabina Editor', email: 'editor@gharjatan.com.np', role: 'EDITOR', phone: '9841000001' },
+    { name: 'Rajesh Sales', email: 'sales@gharjatan.com.np', role: 'SALES', phone: '9841000002' },
+    { name: 'Kiran Dispatcher', email: 'dispatch@gharjatan.com.np', role: 'DISPATCHER', phone: '9841000003' },
+    { name: 'Bimal Accountant', email: 'accounts@gharjatan.com.np', role: 'ACCOUNTANT', phone: '9841000004' },
+    { name: 'Hari Technician', email: 'hari@gharjatan.com.np', role: 'TECHNICIAN', phone: '9841000005' },
+    { name: 'Suresh Technician', email: 'suresh@gharjatan.com.np', role: 'TECHNICIAN', phone: '9841000006' },
   ];
   const users = {};
   for (const u of USERS) {
@@ -56,7 +56,7 @@ async function main() {
 
   // ── technicians
   const techs = [];
-  for (const [i, email] of ['hari@homeplexnepal.com', 'suresh@homeplexnepal.com'].entries()) {
+  for (const [i, email] of ['hari@gharjatan.com.np', 'suresh@gharjatan.com.np'].entries()) {
     techs.push(await prisma.technician.upsert({
       where: { userId: users[email].id },
       create: {
@@ -334,7 +334,7 @@ async function main() {
     await prisma.serviceReminder.create({
       data: {
         customerId: customer.id, jobId: job.id, dueAt: days(325), channel: 'sms',
-        message: 'Hello Sunita Shrestha, it has been almost a year since we treated your bedroom wall. Would you like a free pre-monsoon check-up? - Homeplex Nepal',
+        message: 'Hello Sunita Shrestha, it has been almost a year since we treated your bedroom wall. Would you like a free pre-monsoon check-up? - Ghar Jatan',
       },
     });
 
@@ -342,8 +342,8 @@ async function main() {
   }
 
   console.log('\nSeed complete.');
-  console.log('  Admin login:      admin@homeplexnepal.com / Password123');
-  console.log('  Technician login: hari@homeplexnepal.com / Password123');
+  console.log('  Admin login:      admin@gharjatan.com.np / Password123');
+  console.log('  Technician login: hari@gharjatan.com.np / Password123');
 }
 
 main()

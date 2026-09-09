@@ -30,12 +30,12 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 
 | Email | Role | Sees |
 |---|---|---|
-| `admin@homeplexnepal.com` | ADMIN | everything |
-| `editor@homeplexnepal.com` | EDITOR | CMS + media only |
-| `sales@homeplexnepal.com` | SALES | leads, customers, quotations |
-| `dispatch@homeplexnepal.com` | DISPATCHER | jobs, technicians, materials |
-| `accounts@homeplexnepal.com` | ACCOUNTANT | invoices, payments, reports |
-| `hari@homeplexnepal.com` | TECHNICIAN | only jobs assigned to them |
+| `admin@gharjatan.com.np` | ADMIN | everything |
+| `editor@gharjatan.com.np` | EDITOR | CMS + media only |
+| `sales@gharjatan.com.np` | SALES | leads, customers, quotations |
+| `dispatch@gharjatan.com.np` | DISPATCHER | jobs, technicians, materials |
+| `accounts@gharjatan.com.np` | ACCOUNTANT | invoices, payments, reports |
+| `hari@gharjatan.com.np` | TECHNICIAN | only jobs assigned to them |
 
 The seed builds a browsable demo: 18 services, 3 projects, a rate card, 10 materials with
 opening stock, and a complete pipeline — leads (one already SLA-breached, one at risk) →

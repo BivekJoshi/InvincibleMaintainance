@@ -1,12 +1,12 @@
 /** Content lifted from the studied site, restructured as editable data. */
 
 export const SETTINGS = [
-  { group: 'contact', key: 'contact.companyName', label: 'Company name', type: 'string', value: 'Homeplex Nepal', sortOrder: 0 },
+  { group: 'contact', key: 'contact.companyName', label: 'Company name', type: 'string', value: 'Ghar Jatan', sortOrder: 0 },
   { group: 'contact', key: 'contact.phonePrimary', label: 'Primary phone', type: 'string', value: '01-5407720', sortOrder: 1 },
   { group: 'contact', key: 'contact.phoneSecondary', label: 'Mobile', type: 'string', value: '9808338255', sortOrder: 2 },
   { group: 'contact', key: 'contact.onCallPhone', label: 'On-call number (new lead SMS)', type: 'string', value: '9808338255', sortOrder: 3 },
-  { group: 'contact', key: 'contact.email', label: 'Email', type: 'string', value: 'support@homeplexnepal.com', sortOrder: 4 },
-  { group: 'contact', key: 'contact.salesEmail', label: 'Sales inbox (new lead email)', type: 'string', value: 'support@homeplexnepal.com', sortOrder: 5 },
+  { group: 'contact', key: 'contact.email', label: 'Email', type: 'string', value: 'support@gharjatan.com.np', sortOrder: 4 },
+  { group: 'contact', key: 'contact.salesEmail', label: 'Sales inbox (new lead email)', type: 'string', value: 'support@gharjatan.com.np', sortOrder: 5 },
   { group: 'contact', key: 'contact.address', label: 'Address', type: 'string', value: 'Bhanimandal, Ekantakuna, Lalitpur', sortOrder: 6 },
   { group: 'contact', key: 'contact.city', label: 'City', type: 'string', value: 'Lalitpur', sortOrder: 7 },
   { group: 'contact', key: 'contact.mapEmbed', label: 'Google Maps embed URL', type: 'string', value: '', sortOrder: 8 },
@@ -54,6 +54,9 @@ export const SETTINGS = [
     value: '1. Prices are valid for 15 days from the date of this quotation.\n2. 50% advance is required before work begins.\n3. Rates exclude VAT unless stated.\n4. Workmanship carries a 1-month warranty.' },
   { group: 'finance', key: 'finance.invoiceTerms', label: 'Default invoice terms', type: 'richtext', sortOrder: 4,
     value: 'Payment is due within 15 days. Please quote the invoice number with your transfer.' },
+
+  { group: 'booking', key: 'booking.closedWeekdays', label: 'Closed weekdays (0 = Sunday … 6 = Saturday)', type: 'json', value: [6], hint: 'Days the online booking calendar will not offer.', sortOrder: 0 },
+  { group: 'booking', key: 'booking.maxDaysAhead', label: 'Book up to this many days ahead', type: 'number', value: 30, sortOrder: 1 },
 
   { group: 'warranty', key: 'warranty.defaultDays', label: 'Default warranty (days)', type: 'number', value: 30, hint: 'The site promises a 1-month warranty on technical solutions.', sortOrder: 0 },
 ];
@@ -282,7 +285,7 @@ export const MATERIALS = [
 ];
 
 export const TESTIMONIALS = [
-  { quote: 'Our bedroom wall was damp for three monsoons and two painters could not fix it. Homeplex found the leak was coming from the neighbour\'s terrace outlet, not our wall at all. Fixed in two days and it stayed dry all season.', author: 'Sunita Shrestha', location: 'Jhamsikhel, Lalitpur', rating: 5, locale: 'en', sortOrder: 0 },
+  { quote: 'Our bedroom wall was damp for three monsoons and two painters could not fix it. Ghar Jatan found the leak was coming from the neighbour\'s terrace outlet, not our wall at all. Fixed in two days and it stayed dry all season.', author: 'Sunita Shrestha', location: 'Jhamsikhel, Lalitpur', rating: 5, locale: 'en', sortOrder: 0 },
   { quote: 'हामीले घर मर्मत गर्नु परेको थियो। इन्जिनियर आएर राम्रोसँग हेरेर मात्र रेट भन्नुभयो। काम सकिएपछि पनि फोन गरेर सोध्नुभयो। धेरै राम्रो सेवा।', author: 'राजु महर्जन', location: 'कीर्तिपुर', rating: 5, locale: 'ne', sortOrder: 1 },
   { quote: 'The quotation arrived as a link I could open on my phone and approve. Every line item was priced. No hidden charges at the end, which is rare here.', author: 'Bibek Adhikari', location: 'Baluwatar, Kathmandu', rating: 5, locale: 'en', sortOrder: 2 },
   { quote: 'Terrace waterproofing done before monsoon. They did a ponding test in front of me before leaving. That confidence is worth paying for.', author: 'Anita Gurung', location: 'Bhaisepati, Lalitpur', rating: 5, locale: 'en', sortOrder: 3 },

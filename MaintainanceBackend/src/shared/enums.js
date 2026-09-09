@@ -1,7 +1,15 @@
 export const ROLES = ['ADMIN', 'EDITOR', 'SALES', 'DISPATCHER', 'TECHNICIAN', 'ACCOUNTANT'];
 
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON', 'LOST'];
-export const LEAD_SOURCES = ['web_form', 'estimator', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
+export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
+
+/** Visit windows a customer can pick when booking online. Times are Asia/Kathmandu. */
+export const BOOKING_SLOTS = [
+  { key: 'morning', label: 'Morning', window: '8:00 – 12:00', startHour: 8 },
+  { key: 'afternoon', label: 'Afternoon', window: '12:00 – 16:00', startHour: 12 },
+  { key: 'evening', label: 'Evening', window: '16:00 – 19:00', startHour: 16 },
+];
+export const BOOKING_SLOT_KEYS = BOOKING_SLOTS.map((s) => s.key);
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 export const ACTIVITY_TYPES = ['call', 'sms', 'email', 'whatsapp', 'visit', 'note', 'status_change', 'assignment'];
 

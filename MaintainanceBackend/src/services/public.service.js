@@ -3,6 +3,7 @@ import { notFound } from '../utils/AppError.js';
 import { allSettings } from './settings.service.js';
 import { resolveMediaMap } from './media.service.js';
 import { withLocale, listHomeSections } from './cms.service.js';
+import { BOOKING_SLOTS } from '../shared/enums.js';
 
 const ACTIVE = { isActive: true, deletedAt: null };
 const BY_SORT = [{ sortOrder: 'asc' }, { createdAt: 'desc' }];
@@ -37,6 +38,11 @@ export async function bootstrap(locale = 'en') {
     locale,
     nav: { categories: await withLocale('serviceCategory', categories, locale) },
     sections: sections.filter((s) => s.isVisible).map((s) => ({ key: s.key, sortOrder: s.sortOrder, settings: s.settings })),
+    booking: {
+      slots: BOOKING_SLOTS,
+      closedWeekdays: settings['booking.closedWeekdays'] ?? [6],
+      maxDaysAhead: settings['booking.maxDaysAhead'] ?? 30,
+    },
   });
 }
 

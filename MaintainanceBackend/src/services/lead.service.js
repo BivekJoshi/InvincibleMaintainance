@@ -5,6 +5,8 @@ import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.j
 import { toPaisa } from '../utils/money.js';
 import { normalizePhone } from '../utils/phone.js';
 import { LEAD_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
+import { BOOKING_SLOTS } from '../shared/enums.js';
+import { local } from '../utils/dates.js';
 import { computeSlaDueAt, decorateSla, slaWhere } from './sla.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { getSetting } from './settings.service.js';
@@ -58,16 +60,45 @@ export async function createPublicLead(input, { ip, userAgent }) {
 
   const phone = normalizePhone(input.phone);
 
+  if (input.preferredAt) {
+    const closed = await getSetting('booking.closedWeekdays', [6]);
+    const weekday = Number(local(input.preferredAt, 'd'));
+    if (Array.isArray(closed) && closed.includes(weekday)) {
+      throw badRequest('We are closed that day. Please choose another date.');
+    }
+  }
+
   // Re-submissions within an hour update the existing lead instead of duplicating it.
   const recent = await prisma.lead.findFirst({
     where: { phone, deletedAt: null, createdAt: { gte: new Date(Date.now() - 3600_000) } },
     orderBy: { createdAt: 'desc' },
   });
   if (recent) {
+    // A second submission inside the hour is the same customer, not a new lead.
+    // A booking still carries new intent, so fold the slot onto the open lead
+    // rather than dropping it on the floor.
+    const booking = input.preferredAt
+      ? {
+        preferredAt: input.preferredAt,
+        preferredSlot: input.preferredSlot ?? null,
+        serviceId: input.serviceId ?? recent.serviceId,
+        source: 'booking',
+        ...(input.estimatedAmount != null ? { estimatedAmount: toPaisa(input.estimatedAmount) } : {}),
+      }
+      : null;
+    const lead = booking
+      ? await prisma.lead.update({ where: { id: recent.id }, data: booking, include: LEAD_INCLUDE })
+      : recent;
+
     await prisma.leadActivity.create({
-      data: { leadId: recent.id, type: 'note', summary: 'Customer submitted the form again', meta: { message: input.message } },
+      data: {
+        leadId: recent.id,
+        type: 'note',
+        summary: booking ? 'Customer booked a visit slot' : 'Customer submitted the form again',
+        meta: { message: input.message ?? null, preferredAt: input.preferredAt ?? null, preferredSlot: input.preferredSlot ?? null },
+      },
     });
-    return decorateSla(recent);
+    return decorateSla(lead);
   }
 
   const { website, turnstileToken, elapsedMs, estimatedAmount, ...rest } = input;
@@ -76,7 +107,7 @@ export async function createPublicLead(input, { ip, userAgent }) {
       ...rest,
       phone,
       estimatedAmount: estimatedAmount != null ? toPaisa(estimatedAmount) : null,
-      source: input.estimatePayload ? 'estimator' : 'web_form',
+      source: input.preferredAt ? 'booking' : input.estimatePayload ? 'estimator' : 'web_form',
       slaDueAt: await computeSlaDueAt(),
       assignedToId: await pickAssignee(),
       ip: ip ?? null,
@@ -89,19 +120,29 @@ export async function createPublicLead(input, { ip, userAgent }) {
   return decorateSla(lead);
 }
 
+/** "Sun 07 Sep, morning (8:00 – 12:00)" — what dispatch needs to see first. */
+function describeRequestedVisit(lead) {
+  if (!lead.preferredAt) return '-';
+  const slot = BOOKING_SLOTS.find((s) => s.key === lead.preferredSlot);
+  const day = local(lead.preferredAt, 'ddd DD MMM');
+  return slot ? `${day}, ${slot.label.toLowerCase()} (${slot.window})` : day;
+}
+
 async function announceNewLead(lead) {
   const onCall = await getSetting('contact.onCallPhone', null);
   const salesEmail = await getSetting('contact.salesEmail', null);
   const vars = {
     leadName: lead.name, phone: lead.phone, address: lead.address ?? '-',
     service: lead.service?.name ?? 'General enquiry', message: lead.message ?? '-',
+    requested: describeRequestedVisit(lead),
     link: `${env.appUrl}/leads/${lead.id}`, appName: env.appName,
   };
 
   await notifyRoles(['ADMIN', 'SALES'], {
     type: 'lead_new',
-    title: `New lead — ${lead.name}`,
-    body: `${lead.phone} · ${lead.service?.name ?? 'General enquiry'}`,
+    title: lead.preferredAt ? `New booking — ${lead.name}` : `New lead — ${lead.name}`,
+    body: [lead.phone, lead.service?.name ?? 'General enquiry', lead.preferredAt ? vars.requested : null]
+      .filter(Boolean).join(' · '),
     link: `/leads/${lead.id}`,
   });
 
@@ -109,7 +150,7 @@ async function announceNewLead(lead) {
     await notify({
       templateKey: 'lead_new', channel: 'sms', to: String(onCall), vars,
       related: { model: 'Lead', id: lead.id },
-      fallbackBody: 'New lead: {{leadName}}, {{phone}}. {{service}}. Respond within the promised window.',
+      fallbackBody: 'New lead: {{leadName}}, {{phone}}. {{service}}. Requested: {{requested}}. Respond within the promised window.',
     });
   }
   if (salesEmail) {
@@ -118,7 +159,7 @@ async function announceNewLead(lead) {
       related: { model: 'Lead', id: lead.id },
       fallbackSubject: 'New lead: {{leadName}} ({{phone}})',
       fallbackBody:
-        'Name: {{leadName}}\nPhone: {{phone}}\nAddress: {{address}}\nService: {{service}}\n\n{{message}}\n\nOpen: {{link}}',
+        'Name: {{leadName}}\nPhone: {{phone}}\nAddress: {{address}}\nService: {{service}}\nRequested visit: {{requested}}\n\n{{message}}\n\nOpen: {{link}}',
     });
   }
 
