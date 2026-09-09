@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { Card, CardContent } from '@/components/ui/card';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, Stagger, CountUp } from '@/three/motion';
+import { PageTransition, Stagger, CountUp } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 

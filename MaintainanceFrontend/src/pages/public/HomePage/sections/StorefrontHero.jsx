@@ -9,8 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { CategoryTile, Eyebrow } from '@/components/site';
-import { CountUp, StaggerOnView, WordReveal, motion, useReducedMotion } from '@/three/motion';
+import { CategoryTile, Eyebrow } from '@/components/site/siteBlocks';
+import { CountUp, StaggerOnView, WordReveal, motion, useReducedMotion } from '@/three/motion/motionKit';
 import { Cta } from '../shared';
 
 // The hero's anchor. Deliberately not the login page's timber frame: this one
@@ -18,7 +18,7 @@ import { Cta } from '../shared';
 // solid colour. WebGL is a big dependency for a marketing page, so it is split
 // out of the main bundle and arrives after the copy has already painted.
 const SectionCutScene = lazy(() =>
-  import('@/three/scenes/SectionCutScene').then((m) => ({ default: m.SectionCutScene })));
+  import('@/three/scenes/SectionCutScene/SectionCutScene').then((m) => ({ default: m.SectionCutScene })));
 
 const POPULAR_SEARCHES = ['Seepage', 'Waterproofing', 'Modular kitchen', 'Rewiring', 'Renovation'];
 

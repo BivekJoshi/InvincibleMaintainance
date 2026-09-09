@@ -19,7 +19,7 @@ import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition } from '@/three/motion';
+import { PageTransition } from '@/three/motion/motionKit';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDate, formatNpr, paisaToRupees } from '@/helpers/format';

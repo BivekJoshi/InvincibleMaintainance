@@ -1,4 +1,4 @@
-import { CountUp, DriftField, Spotlight, Stagger, StaggerOnView } from '@/three/motion';
+import { CountUp, DriftField, Spotlight, Stagger, StaggerOnView } from '@/three/motion/motionKit';
 import { cn } from '@/helpers/utils';
 
 /** The numbers, on the dark band — the page's one full-bleed interruption. */

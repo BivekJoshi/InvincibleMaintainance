@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Eyebrow, Media, SectionShell } from '@/components/site';
-import { HeadlineReveal, Reveal, Stagger, StaggerOnView } from '@/three/motion';
+import { Eyebrow, Media, SectionShell } from '@/components/site/siteBlocks';
+import { HeadlineReveal, Reveal, Stagger, StaggerOnView } from '@/three/motion/motionKit';
 
 /** Interiors: copy and bullets on one side, the picture on the other. */
 export function ContentBlock({ section, media }) {

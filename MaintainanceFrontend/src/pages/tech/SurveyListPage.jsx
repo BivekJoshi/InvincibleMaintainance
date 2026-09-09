@@ -5,7 +5,7 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
 import { StatusBadge } from '@/components/ui/badge';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, Stagger } from '@/three/motion';
+import { PageTransition, Stagger } from '@/three/motion/motionKit';
 import { formatDate } from '@/helpers/format';
 
 /** Anything still in the surveyor's hands sorts above what the office has. */

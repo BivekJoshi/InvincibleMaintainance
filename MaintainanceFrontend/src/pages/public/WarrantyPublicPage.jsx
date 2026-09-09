@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition, motion } from '@/three/motion';
+import { PageTransition, motion } from '@/three/motion/motionKit';
 import { formatDate } from '@/helpers/format';
 
 /**

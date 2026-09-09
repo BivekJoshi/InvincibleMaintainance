@@ -1,7 +1,7 @@
 import { ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Eyebrow, Media, SectionShell } from '@/components/site';
-import { HeadlineReveal, Reveal } from '@/three/motion';
+import { Eyebrow, Media, SectionShell } from '@/components/site/siteBlocks';
+import { HeadlineReveal, Reveal } from '@/three/motion/motionKit';
 import { Cta } from '../shared';
 
 /** Seepage: the symptom list beside the explanation of what causes it. */

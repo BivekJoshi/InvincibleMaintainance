@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/input';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, Stagger } from '@/three/motion';
+import { PageTransition, Stagger } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { formatDate, formatDateTime, formatNpr, titleCase } from '@/helpers/format';

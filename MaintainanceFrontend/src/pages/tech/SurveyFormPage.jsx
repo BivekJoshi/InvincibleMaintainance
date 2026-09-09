@@ -17,7 +17,7 @@ import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition } from '@/three/motion';
+import { PageTransition } from '@/three/motion/motionKit';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { SURVEY_ITEM_KINDS, SURVEY_METRICS, PRIORITIES, UNITS } from '@/config/constants';
 import { enqueue } from '@/helpers/offlineQueue';

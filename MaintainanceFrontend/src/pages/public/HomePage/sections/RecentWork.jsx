@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ProjectCard, SectionHeading, SectionShell } from '@/components/site';
-import { Stagger, StaggerOnView } from '@/three/motion';
+import { ProjectCard, SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
 import { RISE } from '../shared';
 
 /** Recent work — the same <ProjectCard> the /projects catalogue renders. */

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Reveal, RevealImage, motion } from '@/three/motion';
+import { Reveal, RevealImage, motion } from '@/three/motion/motionKit';
 import { formatNpr, imageUrl } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 

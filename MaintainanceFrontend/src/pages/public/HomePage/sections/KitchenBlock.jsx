@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DataIcon, Media, SectionHeading, SectionShell } from '@/components/site';
-import { Reveal } from '@/three/motion';
+import { DataIcon, Media, SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { Reveal } from '@/three/motion/motionKit';
 
 /** Kitchens: the selling points in one column, the running order in the other. */
 export function KitchenBlock({ section, media }) {

@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SectionHeading, SectionShell } from '@/components/site';
-import { DrawLine, ScrollStage, motion, useStageStep } from '@/three/motion';
+import { SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { DrawLine, ScrollStage, motion, useStageStep } from '@/three/motion/motionKit';
 import { cn } from '@/helpers/utils';
 
 /**

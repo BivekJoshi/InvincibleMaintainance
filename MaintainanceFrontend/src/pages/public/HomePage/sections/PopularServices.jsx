@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SectionHeading, SectionShell, ServiceCard } from '@/components/site';
-import { Stagger, StaggerOnView } from '@/three/motion';
+import { SectionHeading, SectionShell, ServiceCard } from '@/components/site/siteBlocks';
+import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
 import { RISE } from '../shared';
 
 export function PopularServices({ section, media }) {

@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable } from '@/components/common/DataTable';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PageTransition } from '@/three/motion';
+import { PageTransition } from '@/three/motion/motionKit';
 import { SURVEY_STATUSES } from '@/config/constants';
 import { formatDate, formatDateTime, titleCase } from '@/helpers/format';
 

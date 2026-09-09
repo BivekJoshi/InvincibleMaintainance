@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { StatusBadge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition, motion } from '@/three/motion';
+import { PageTransition, motion } from '@/three/motion/motionKit';
 import { formatNpr, formatDate } from '@/helpers/format';
 
 /**

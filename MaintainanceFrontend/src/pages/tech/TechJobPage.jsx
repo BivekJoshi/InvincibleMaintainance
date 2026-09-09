@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/input';
 import { StatusBadge, PriorityBadge } from '@/components/ui/badge';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition } from '@/three/motion';
+import { PageTransition } from '@/three/motion/motionKit';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { formatDateTime, formatTime } from '@/helpers/format';
 

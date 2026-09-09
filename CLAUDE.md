@@ -60,10 +60,13 @@ split by route group: `(site)` public, `(admin)` staff, `(tech)` technician PWA.
 - Server state = **RTK Query** (`src/api/`), one API slice that every domain file
   injects into, with tag-based invalidation. UI state = **Redux Toolkit slices**
   (`src/redux/slices/`). No react-query, no Context for server data.
-- `src/api/index.js` exports core pieces only — import domain endpoints directly, or
+- `src/api/apiCore.js` exports core pieces only — import domain endpoints directly, or
   the back office lands in the marketing bundle.
-- Animation lives in `src/three/`: `motion/` for Framer Motion primitives, `scenes/`
-  for WebGL. Scenes are always `lazy()`-imported and never re-exported from a barrel.
+- **No file is named `index`.** Every module is named for what it holds; a folder's
+  entry file repeats the folder name (`HomePage/HomePage.jsx`). Import the file, not
+  the folder — `@/redux/store`, never `@/redux`.
+- Animation lives in `src/three/`: `motion/motionKit.jsx` for Framer Motion primitives,
+  `scenes/` for WebGL. Scenes are always `lazy()`-imported and never re-exported from a barrel.
 - Pages are grouped by audience: `pages/public/` (marketing **and** login),
   `pages/admin/`, `pages/tech/`. All lazy-loaded from `src/routes/`.
 - zod schemas live in `src/form/schemas/`; `useZodForm` is the only importer of

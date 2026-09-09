@@ -6,12 +6,12 @@ import {
 } from 'lucide-react';
 import {
   motion, AnimatePresence, useReducedMotion, useMotionVariants, EASE, Spotlight, Magnetic, CountUp,
-} from '@/three/motion';
+} from '@/three/motion/motionKit';
 import { useLoginMutation } from '@/api/authApi';
 import { useGetBootstrapQuery } from '@/api/publicApi';
 import { selectTheme, setTheme } from '@/redux/slices/uiSlice';
 import { useAuth } from '@/hooks/useAuth';
-import { useZodForm, loginSchema, loginDefaults } from '@/form';
+import { useZodForm, loginSchema, loginDefaults } from '@/form/formKit';
 import { IS_DEV } from '@/config/env';
 import { FIELD_ROLES } from '@/config/constants';
 import { Button, buttonVariants } from '@/components/ui/button';

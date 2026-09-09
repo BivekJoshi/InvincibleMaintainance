@@ -1,5 +1,5 @@
 import { Card } from '@/components/ui/card';
-import { Media, SectionHeading, SectionShell } from '@/components/site';
+import { Media, SectionHeading, SectionShell } from '@/components/site/siteBlocks';
 import { cn } from '@/helpers/utils';
 
 /**

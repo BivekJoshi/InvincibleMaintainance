@@ -9,7 +9,7 @@ import { SlaChip } from '@/components/common/SlaChip';
 import { StatusBadge, PriorityBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PageTransition } from '@/three/motion';
+import { PageTransition } from '@/three/motion/motionKit';
 import { LEAD_STATUSES, LEAD_SOURCES } from '@/config/constants';
 import { formatDate, formatDateTime, titleCase } from '@/helpers/format';
 

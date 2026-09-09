@@ -4,8 +4,8 @@ import { useGetBootstrapQuery, useGetPublicServicesQuery } from '@/api/publicApi
 import { selectLocale } from '@/redux/slices/uiSlice';
 import { LeadForm } from '@/components/public/LeadForm';
 import { Card } from '@/components/ui/card';
-import { PageHero, SectionShell, Eyebrow } from '@/components/site';
-import { PageTransition, Reveal, StaggerOnView, Stagger } from '@/three/motion';
+import { PageHero, SectionShell, Eyebrow } from '@/components/site/siteBlocks';
+import { PageTransition, Reveal, StaggerOnView, Stagger } from '@/three/motion/motionKit';
 
 export default function ContactPage() {
   const locale = useSelector(selectLocale);

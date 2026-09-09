@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SectionHeading, SectionShell } from '@/components/site';
-import { Stagger, StaggerOnView } from '@/three/motion';
+import { SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
 
 /** The trades that need a line each rather than a card each. */
 export function ChipList({ section }) {

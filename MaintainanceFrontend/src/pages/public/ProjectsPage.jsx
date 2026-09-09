@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useGetPublicProjectsQuery, useGetPublicServicesQuery } from '@/api/publicApi';
-import { PageHero, ProjectCard, SectionShell } from '@/components/site';
+import { PageHero, ProjectCard, SectionShell } from '@/components/site/siteBlocks';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, StaggerOnView } from '@/three/motion';
+import { PageTransition, StaggerOnView } from '@/three/motion/motionKit';
 import { useSeo } from '@/hooks/useSeo';
 import { useSelector } from 'react-redux';
 import { selectLocale } from '@/redux/slices/uiSlice';

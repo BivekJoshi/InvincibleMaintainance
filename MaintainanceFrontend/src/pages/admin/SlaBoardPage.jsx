@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
-import { PageTransition, Stagger, AnimatePresence } from '@/three/motion';
+import { PageTransition, Stagger, AnimatePresence } from '@/three/motion/motionKit';
 import { toastSuccess, toastError } from '@/redux/slices/uiSlice';
 import { formatDateTime } from '@/helpers/format';
 import { cn } from '@/helpers/utils';

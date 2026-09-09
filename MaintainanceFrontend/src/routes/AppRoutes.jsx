@@ -9,7 +9,7 @@ import { TechLayout } from '@/components/layout/TechLayout';
 import { FIELD_ROLES, OFFICE_ROLES } from '@/config/constants';
 
 // Route-level splitting: the marketing site never downloads the back office.
-const HomePage = lazy(() => import('@/pages/public/HomePage'));
+const HomePage = lazy(() => import('@/pages/public/HomePage/HomePage'));
 const ServicesPage = lazy(() => import('@/pages/public/ServicesPage'));
 const ServiceDetailPage = lazy(() => import('@/pages/public/ServiceDetailPage'));
 const PricingPage = lazy(() => import('@/pages/public/PricingPage'));

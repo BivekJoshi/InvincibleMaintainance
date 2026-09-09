@@ -8,8 +8,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
-import { PageHero, ServiceCard, SectionShell } from '@/components/site';
-import { PageTransition, StaggerOnView, Stagger } from '@/three/motion';
+import { PageHero, ServiceCard, SectionShell } from '@/components/site/siteBlocks';
+import { PageTransition, StaggerOnView, Stagger } from '@/three/motion/motionKit';
 import { cn } from '@/helpers/utils';
 
 const SORTS = {

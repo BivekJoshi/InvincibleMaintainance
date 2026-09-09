@@ -5,13 +5,13 @@ import {
   Phone, Menu, X, MessageCircle, Moon, Sun, Search, CalendarCheck, Mail, MapPin, ChevronRight,
   LogIn, LayoutDashboard,
 } from 'lucide-react';
-import { AnimatePresence, motion, ScrollProgress, BackToTop } from '@/three/motion';
+import { AnimatePresence, motion, ScrollProgress, BackToTop } from '@/three/motion/motionKit';
 import { useGetBootstrapQuery } from '@/api/publicApi';
 import { useAuth } from '@/hooks/useAuth';
 import { FIELD_ROLES } from '@/config/constants';
 import { selectLocale, setLocale, selectTheme, setTheme } from '@/redux/slices/uiSlice';
 import { Button } from '@/components/ui/button';
-import { DataIcon } from '@/components/site';
+import { DataIcon } from '@/components/site/siteBlocks';
 import { cn } from '@/helpers/utils';
 
 const NAV = [

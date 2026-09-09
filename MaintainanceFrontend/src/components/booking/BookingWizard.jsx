@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { useZodForm, bookingDetailsSchema, bookingDetailsDefaults } from '@/form';
+import { useZodForm, bookingDetailsSchema, bookingDetailsDefaults } from '@/form/formKit';
 import {
   AlertCircle, ArrowLeft, ArrowRight, CalendarCheck, Check, CheckCircle2, Clock, Phone, Search,
 } from 'lucide-react';
@@ -13,8 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DataIcon } from '@/components/site';
-import { motion, AnimatePresence } from '@/three/motion';
+import { DataIcon } from '@/components/site/siteBlocks';
+import { motion, AnimatePresence } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 

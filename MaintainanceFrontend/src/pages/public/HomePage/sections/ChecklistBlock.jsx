@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { SectionHeading, SectionShell } from '@/components/site';
-import { Stagger, StaggerOnView } from '@/three/motion';
+import { SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
 
 /** Renovation: a numbered checklist the reader scores their own house against. */
 export function ChecklistBlock({ section }) {

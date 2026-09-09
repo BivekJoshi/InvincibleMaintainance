@@ -1,8 +1,8 @@
 import { ArrowRight, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Media, SectionHeading, SectionShell } from '@/components/site';
-import { Reveal } from '@/three/motion';
+import { Media, SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { Reveal } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { Cta } from '../shared';
 

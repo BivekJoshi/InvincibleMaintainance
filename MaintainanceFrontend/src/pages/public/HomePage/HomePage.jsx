@@ -2,7 +2,7 @@ import { useSelector } from 'react-redux';
 import { useGetHomeQuery } from '@/api/publicApi';
 import { selectLocale } from '@/redux/slices/uiSlice';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition } from '@/three/motion';
+import { PageTransition } from '@/three/motion/motionKit';
 import { HomeSkeleton } from './HomeSkeleton';
 import { StorefrontHero } from './sections/StorefrontHero';
 import { PromiseStrip } from './sections/PromiseStrip';

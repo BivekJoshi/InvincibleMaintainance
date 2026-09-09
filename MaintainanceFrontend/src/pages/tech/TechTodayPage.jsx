@@ -8,7 +8,7 @@ import { StatusBadge, PriorityBadge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition, Stagger } from '@/three/motion';
+import { PageTransition, Stagger } from '@/three/motion/motionKit';
 import { toastSuccess, toastError } from '@/redux/slices/uiSlice';
 import { formatTime } from '@/helpers/format';
 

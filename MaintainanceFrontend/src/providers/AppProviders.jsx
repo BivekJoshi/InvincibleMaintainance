@@ -2,7 +2,7 @@ import { Provider } from 'react-redux';
 import { BrowserRouter } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/common/Toaster';
-import { store } from '@/redux';
+import { store } from '@/redux/store';
 import { AuthGate } from './AuthGate';
 import { ThemeEffect } from './ThemeEffect';
 import { ScrollToTop } from './ScrollToTop';

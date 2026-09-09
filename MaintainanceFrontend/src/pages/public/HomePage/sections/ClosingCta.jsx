@@ -3,8 +3,8 @@ import { CalendarCheck, Clock, Phone, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LeadForm } from '@/components/public/LeadForm';
-import { Eyebrow, SectionShell } from '@/components/site';
-import { DriftField, Reveal, Spotlight } from '@/three/motion';
+import { Eyebrow, SectionShell } from '@/components/site/siteBlocks';
+import { DriftField, Reveal, Spotlight } from '@/three/motion/motionKit';
 
 /** The last thing on the page: book a slot, ring us, or hand over the details here. */
 export function ClosingCta({ section, settings }) {

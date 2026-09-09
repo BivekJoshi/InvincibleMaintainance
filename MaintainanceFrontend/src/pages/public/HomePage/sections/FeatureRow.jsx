@@ -1,6 +1,6 @@
 import { Card, CardContent, CardTitle } from '@/components/ui/card';
-import { DataIcon, Media, SectionHeading, SectionShell } from '@/components/site';
-import { Stagger, StaggerOnView } from '@/three/motion';
+import { DataIcon, Media, SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
 import { titleCase } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 import { CARD_HOVER, RISE } from '../shared';

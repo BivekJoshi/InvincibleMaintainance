@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom';
-import { PageHero } from '@/components/site';
-import { PageTransition } from '@/three/motion';
+import { PageHero } from '@/components/site/siteBlocks';
+import { PageTransition } from '@/three/motion/motionKit';
 import { BookingWizard } from '@/components/booking/BookingWizard';
 import { useSeo } from '@/hooks/useSeo';
 

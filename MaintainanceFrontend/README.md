@@ -66,7 +66,7 @@ and rotate the token out from under themselves.
 `useListParams` keeps those filters in the URL so a filtered view is shareable and survives the
 back button. Every list screen is built from it.
 
-**4. Motion is decoration.** `components/motion/index.jsx` holds the entire vocabulary:
+**4. Motion is decoration.** `three/motion/motionKit.jsx` holds the entire vocabulary:
 `PageTransition`, `Stagger`, `Reveal`, `HoverLift`, `CountUp`. Three rules — nothing animates
 past 400ms, nothing blocks input, and every variant collapses to an instant state under
 `prefers-reduced-motion` (handled in `useMotionVariants` *and* a global CSS media query).

@@ -9,8 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageHero, SectionShell, Eyebrow } from '@/components/site';
-import { PageTransition, Reveal, StaggerOnView, Stagger, Tilt } from '@/three/motion';
+import { PageHero, SectionShell, Eyebrow } from '@/components/site/siteBlocks';
+import { PageTransition, Reveal, StaggerOnView, Stagger, Tilt } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 

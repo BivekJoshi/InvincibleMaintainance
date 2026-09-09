@@ -1,5 +1,5 @@
-import { DataIcon } from '@/components/site';
-import { Marquee } from '@/three/motion';
+import { DataIcon } from '@/components/site/siteBlocks';
+import { Marquee } from '@/three/motion/motionKit';
 
 /** The promises the company makes, scrolling on a phone and split in three above it. */
 export function PromiseStrip({ section }) {
