@@ -30,7 +30,13 @@ async function withMedia(payload) {
 export async function bootstrap(locale = 'en') {
   const [settings, categories, sections] = await Promise.all([
     allSettings(),
-    prisma.serviceCategory.findMany({ where: ACTIVE, orderBy: BY_SORT, select: { id: true, name: true, slug: true, icon: true } }),
+    prisma.serviceCategory.findMany({
+      where: ACTIVE,
+      orderBy: BY_SORT,
+      // imageId so the storefront's category rail can show the trade itself; it
+      // resolves through `withMedia` below like every other picture.
+      select: { id: true, name: true, slug: true, icon: true, imageId: true },
+    }),
     listHomeSections(),
   ]);
   return withMedia({
