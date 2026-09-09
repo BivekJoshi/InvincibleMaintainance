@@ -1,14 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import { Ruler } from 'lucide-react';
-import { useGetSurveysQuery } from '@/features/surveys/surveysApi';
+import { useGetSurveysQuery } from '@/api/surveysApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable } from '@/components/common/DataTable';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PageTransition } from '@/components/motion';
-import { SURVEY_STATUSES } from '@/lib/constants';
-import { formatDate, formatDateTime, titleCase } from '@/lib/format';
+import { PageTransition } from '@/three/motion';
+import { SURVEY_STATUSES } from '@/config/constants';
+import { formatDate, formatDateTime, titleCase } from '@/helpers/format';
 
 const columns = [
   {

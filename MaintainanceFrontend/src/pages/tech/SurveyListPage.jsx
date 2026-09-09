@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom';
 import { ClipboardCheck, MapPin, ChevronRight } from 'lucide-react';
-import { useGetMySurveysQuery } from '@/features/technician/techApi';
+import { useGetMySurveysQuery } from '@/api/techApi';
 import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
 import { StatusBadge } from '@/components/ui/badge';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, Stagger } from '@/components/motion';
-import { formatDate } from '@/lib/format';
+import { PageTransition, Stagger } from '@/three/motion';
+import { formatDate } from '@/helpers/format';
 
 /** Anything still in the surveyor's hands sorts above what the office has. */
 const OPEN = ['DRAFT', 'RETURNED'];

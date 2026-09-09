@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 /** Wide tables scroll inside their own container; the page body never scrolls sideways. */
 const Table = React.forwardRef(({ className, ...props }, ref) => (

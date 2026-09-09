@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { selectToasts, dismissToast } from '@/features/ui/uiSlice';
-import { cn } from '@/lib/utils';
+import { selectToasts, dismissToast } from '@/redux/slices/uiSlice';
+import { cn } from '@/helpers/utils';
 
 const ICONS = {
   success: CheckCircle2,

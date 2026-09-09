@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from './EmptyState';
 import { ErrorState } from './ErrorState';
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 /**
  * The one table in this app. Server-side pagination, sorting and search — the API

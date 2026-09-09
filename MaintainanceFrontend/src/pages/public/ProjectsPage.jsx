@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useGetPublicProjectsQuery, useGetPublicServicesQuery } from '@/features/public/publicApi';
+import { useGetPublicProjectsQuery, useGetPublicServicesQuery } from '@/api/publicApi';
 import { PageHero, ProjectCard, SectionShell } from '@/components/site';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, StaggerOnView } from '@/components/motion';
+import { PageTransition, StaggerOnView } from '@/three/motion';
 import { useSeo } from '@/hooks/useSeo';
 import { useSelector } from 'react-redux';
-import { selectLocale } from '@/features/ui/uiSlice';
+import { selectLocale } from '@/redux/slices/uiSlice';
 
 export default function ProjectsPage() {
   const locale = useSelector(selectLocale);

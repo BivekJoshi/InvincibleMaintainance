@@ -3,9 +3,9 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { ClipboardList, ClipboardCheck, LogOut, CloudOff, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
-import { useLogoutMutation } from '@/features/auth/authApi';
+import { useLogoutMutation } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 const TABS = [
   { to: '/tech', label: 'Today', icon: ClipboardList, end: true },

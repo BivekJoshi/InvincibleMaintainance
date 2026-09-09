@@ -1,11 +1,11 @@
 import { useSelector } from 'react-redux';
 import { Phone, Mail, MapPin, Clock, ArrowUpRight } from 'lucide-react';
-import { useGetBootstrapQuery, useGetPublicServicesQuery } from '@/features/public/publicApi';
-import { selectLocale } from '@/features/ui/uiSlice';
-import { LeadForm } from '@/features/public/LeadForm';
+import { useGetBootstrapQuery, useGetPublicServicesQuery } from '@/api/publicApi';
+import { selectLocale } from '@/redux/slices/uiSlice';
+import { LeadForm } from '@/components/public/LeadForm';
 import { Card } from '@/components/ui/card';
 import { PageHero, SectionShell, Eyebrow } from '@/components/site';
-import { PageTransition, Reveal, StaggerOnView, Stagger } from '@/components/motion';
+import { PageTransition, Reveal, StaggerOnView, Stagger } from '@/three/motion';
 
 export default function ContactPage() {
   const locale = useSelector(selectLocale);

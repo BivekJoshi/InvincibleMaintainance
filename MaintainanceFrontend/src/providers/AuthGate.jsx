@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Loader2 } from 'lucide-react';
-import { bootstrapping, setCredentials, anonymous, selectAuthStatus } from '@/features/auth/authSlice';
+import { bootstrapping, setCredentials, anonymous, selectAuthStatus } from '@/redux/slices/authSlice';
+import { API_URL } from '@/config/env';
 
 /**
  * On a cold load there is no access token in memory — only the httpOnly refresh
@@ -15,7 +16,7 @@ export function AuthGate({ children }) {
   useEffect(() => {
     if (status !== 'idle') return;
     dispatch(bootstrapping());
-    fetch(`${import.meta.env.VITE_API_URL || '/api/v1'}/auth/refresh`, {
+    fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
     })

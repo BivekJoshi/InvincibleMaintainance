@@ -1,7 +1,7 @@
 import { Inbox } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 /** Says what is missing and what to do about it — never just "No data". */
 export function EmptyState({ icon: Icon = Inbox, title, description, action, className }) {

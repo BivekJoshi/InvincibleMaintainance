@@ -9,7 +9,7 @@ import {
   useGetMyJobQuery, useSetMyJobStatusMutation, useToggleMyTaskMutation,
   useStartMyTimerMutation, useStopMyTimerMutation, useCompleteMyJobMutation,
   useStartJobSurveyMutation,
-} from '@/features/technician/techApi';
+} from '@/api/techApi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,9 +17,9 @@ import { Textarea } from '@/components/ui/input';
 import { StatusBadge, PriorityBadge } from '@/components/ui/badge';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition } from '@/components/motion';
-import { toastError, toastSuccess } from '@/features/ui/uiSlice';
-import { formatDateTime, formatTime } from '@/lib/format';
+import { PageTransition } from '@/three/motion';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { formatDateTime, formatTime } from '@/helpers/format';
 
 const NEXT_ACTION = {
   SCHEDULED: { status: 'EN_ROUTE', label: 'On my way', icon: Navigation },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSyncOfflineMutation } from '@/features/technician/techApi';
-import { flush, pending } from '@/lib/offlineQueue';
+import { useSyncOfflineMutation } from '@/api/techApi';
+import { flush, pending } from '@/helpers/offlineQueue';
 
 /**
  * Watches the field queue and drains it whenever the device is back online.

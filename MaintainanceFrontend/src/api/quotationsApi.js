@@ -1,4 +1,4 @@
-import { apiSlice, listAndItem, tagList } from '@/app/api/apiSlice';
+import { apiSlice, listAndItem, tagList } from '@/api/apiSlice';
 
 /**
  * Every endpoint here maps to a route that already existed — the quotation

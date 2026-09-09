@@ -6,9 +6,9 @@ import {
   useGetSurveyPricingQuery,
   useReviewSurveyMutation,
   useBuildQuotationFromSurveyMutation,
-} from '@/features/surveys/surveysApi';
-import { SurveyFindings } from '@/features/surveys/components/SurveyFindings';
-import { SurveyPricingTable, toQuotationItems } from '@/features/surveys/components/SurveyPricingTable';
+} from '@/api/surveysApi';
+import { SurveyFindings } from '@/components/surveys/SurveyFindings';
+import { SurveyPricingTable, toQuotationItems } from '@/components/surveys/SurveyPricingTable';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { StatusBadge } from '@/components/ui/badge';
@@ -17,11 +17,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/input';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { PageTransition } from '@/components/motion';
+import { PageTransition } from '@/three/motion';
 import { useAuth } from '@/hooks/useAuth';
 import { useDispatch } from 'react-redux';
-import { toastError, toastSuccess } from '@/features/ui/uiSlice';
-import { formatDate, formatNpr } from '@/lib/format';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { formatDate, formatNpr } from '@/helpers/format';
 
 const QUOTABLE = ['SUBMITTED', 'IN_REVIEW'];
 

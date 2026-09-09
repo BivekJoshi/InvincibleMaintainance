@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { SLA_STYLES } from '@/lib/constants';
-import { formatCountdown } from '@/lib/format';
+import { cn } from '@/helpers/utils';
+import { SLA_STYLES } from '@/config/constants';
+import { formatCountdown } from '@/helpers/format';
 
 const ICONS = { ok: Clock, at_risk: Clock, breached: AlertTriangle, met: CheckCircle2, none: Clock };
 const LABELS = { met: 'Responded', none: 'No SLA' };

@@ -1,26 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { useZodForm, leadSchema, leadDefaults } from '@/form';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSubmitLeadMutation } from './publicApi';
+import { useSubmitLeadMutation } from '@/api/publicApi';
 import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-const NEPAL_PHONE = /^(?:9[678]\d{8}|0\d{1,2}-?\d{6,7})$/;
-
-const schema = z.object({
-  name: z.string().trim().min(2, 'Please enter your name'),
-  phone: z.string().trim()
-    .transform((v) => v.replace(/[\s()]/g, '').replace(/^\+?977-?/, ''))
-    .refine((v) => NEPAL_PHONE.test(v), 'Enter a valid Nepali number, e.g. 9808338255'),
-  address: z.string().trim().max(400).optional(),
-  serviceId: z.string().optional(),
-  message: z.string().trim().max(4000).optional(),
-});
 
 /**
  * The public enquiry form. Three spam defences run before the API is touched:
@@ -33,9 +19,8 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
   const mountedAt = useRef(Date.now());
   const honeypot = useRef(null);
 
-  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm({
-    resolver: zodResolver(schema),
-    defaultValues: { name: '', phone: '', address: '', serviceId: defaultServiceId ?? '', message: '' },
+  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useZodForm(leadSchema, {
+    defaultValues: { ...leadDefaults, serviceId: defaultServiceId ?? '' },
   });
 
   useEffect(() => {

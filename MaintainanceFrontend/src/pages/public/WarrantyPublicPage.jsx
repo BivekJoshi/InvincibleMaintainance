@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ShieldCheck, ShieldX, CheckCircle2 } from 'lucide-react';
-import { useGetWarrantyByTokenQuery, useClaimWarrantyMutation } from '@/features/public/publicApi';
+import { useGetWarrantyByTokenQuery, useClaimWarrantyMutation } from '@/api/publicApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition, motion } from '@/components/motion';
-import { formatDate } from '@/lib/format';
+import { PageTransition, motion } from '@/three/motion';
+import { formatDate } from '@/helpers/format';
 
 /**
  * The warranty certificate, and the button that makes the one-month promise real:

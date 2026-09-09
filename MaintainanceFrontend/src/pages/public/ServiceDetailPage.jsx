@@ -1,16 +1,16 @@
 import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { ChevronRight, Check, CalendarCheck, ShieldCheck, Clock, Wallet } from 'lucide-react';
-import { useGetPublicServiceQuery } from '@/features/public/publicApi';
-import { selectLocale } from '@/features/ui/uiSlice';
-import { LeadForm } from '@/features/public/LeadForm';
+import { useGetPublicServiceQuery } from '@/api/publicApi';
+import { selectLocale } from '@/redux/slices/uiSlice';
+import { LeadForm } from '@/components/public/LeadForm';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
 import { Eyebrow, SectionShell } from '@/components/site';
 import { Button } from '@/components/ui/button';
-import { PageTransition, Reveal, StaggerOnView, Stagger } from '@/components/motion';
-import { cn } from '@/lib/utils';
-import { formatNpr, imageUrl } from '@/lib/format';
+import { PageTransition, Reveal, StaggerOnView, Stagger } from '@/three/motion';
+import { cn } from '@/helpers/utils';
+import { formatNpr, imageUrl } from '@/helpers/format';
 import { useSeo } from '@/hooks/useSeo';
 
 /**

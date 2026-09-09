@@ -4,12 +4,12 @@ import { useDispatch, useSelector } from 'react-redux';
 import {
   Phone, Menu, X, MessageCircle, Moon, Sun, Search, CalendarCheck, Mail, MapPin, ChevronRight,
 } from 'lucide-react';
-import { AnimatePresence, motion, ScrollProgress, BackToTop } from '@/components/motion';
-import { useGetBootstrapQuery } from '@/features/public/publicApi';
-import { selectLocale, setLocale, selectTheme, setTheme } from '@/features/ui/uiSlice';
+import { AnimatePresence, motion, ScrollProgress, BackToTop } from '@/three/motion';
+import { useGetBootstrapQuery } from '@/api/publicApi';
+import { selectLocale, setLocale, selectTheme, setTheme } from '@/redux/slices/uiSlice';
 import { Button } from '@/components/ui/button';
 import { DataIcon } from '@/components/site';
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 const NAV = [
   { to: '/services', label: 'All services' },

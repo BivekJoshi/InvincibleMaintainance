@@ -1,6 +1,6 @@
 import { useSelector } from 'react-redux';
-import { selectUser, selectRole, selectIsAuthenticated, selectAuthStatus } from '@/features/auth/authSlice';
-import { can } from '@/lib/permissions';
+import { selectUser, selectRole, selectIsAuthenticated, selectAuthStatus } from '@/redux/slices/authSlice';
+import { can } from '@/helpers/permissions';
 
 export function useAuth() {
   const user = useSelector(selectUser);

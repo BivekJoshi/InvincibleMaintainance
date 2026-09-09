@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { CalendarCheck, Loader2 } from 'lucide-react';
-import { useConvertLeadMutation, useGetTechniciansQuery } from '@/features/leads/leadsApi';
-import { useGetBootstrapQuery, useGetAvailabilityQuery } from '@/features/public/publicApi';
+import { useConvertLeadMutation, useGetTechniciansQuery } from '@/api/leadsApi';
+import { useGetBootstrapQuery, useGetAvailabilityQuery } from '@/api/publicApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { toastError, toastSuccess } from '@/features/ui/uiSlice';
-import { cn } from '@/lib/utils';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { cn } from '@/helpers/utils';
 
 const KTM_OFFSET = '+05:45';
 const dayKey = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kathmandu' }).format(d);

@@ -1,6 +1,6 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 /** Surfaces the API's real message; falls back only when there isn't one. */
 export function ErrorState({ error, onRetry, className }) {

@@ -1,16 +1,17 @@
 import { useNavigate } from 'react-router-dom';
 import { Download, Plus, Phone, CalendarCheck } from 'lucide-react';
-import { useGetLeadsQuery } from '@/features/leads/leadsApi';
+import { useGetLeadsQuery } from '@/api/leadsApi';
 import { useListParams } from '@/hooks/useListParams';
+import { API_URL } from '@/config/env';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable } from '@/components/common/DataTable';
 import { SlaChip } from '@/components/common/SlaChip';
 import { StatusBadge, PriorityBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PageTransition } from '@/components/motion';
-import { LEAD_STATUSES, LEAD_SOURCES } from '@/lib/constants';
-import { formatDate, formatDateTime, titleCase } from '@/lib/format';
+import { PageTransition } from '@/three/motion';
+import { LEAD_STATUSES, LEAD_SOURCES } from '@/config/constants';
+import { formatDate, formatDateTime, titleCase } from '@/helpers/format';
 
 const columns = [
   {
@@ -62,7 +63,7 @@ export default function LeadsPage() {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]),
     );
-    window.open(`${import.meta.env.VITE_API_URL || '/api/v1'}/admin/leads/export.csv?${qs}`, '_blank');
+    window.open(`${API_URL}/admin/leads/export.csv?${qs}`, '_blank');
   };
 
   return (

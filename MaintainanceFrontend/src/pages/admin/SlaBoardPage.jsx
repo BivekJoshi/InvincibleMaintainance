@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Phone, AlertTriangle, Timer, CheckCircle2 } from 'lucide-react';
-import { useGetSlaBoardQuery, useAddLeadActivityMutation } from '@/features/leads/leadsApi';
+import { useGetSlaBoardQuery, useAddLeadActivityMutation } from '@/api/leadsApi';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -10,10 +10,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
-import { PageTransition, Stagger, AnimatePresence } from '@/components/motion';
-import { toastSuccess, toastError } from '@/features/ui/uiSlice';
-import { formatDateTime } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { PageTransition, Stagger, AnimatePresence } from '@/three/motion';
+import { toastSuccess, toastError } from '@/redux/slices/uiSlice';
+import { formatDateTime } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 function LeadCard({ lead, tone }) {
   // The board is route-guarded on leads:read, but logging a response writes.

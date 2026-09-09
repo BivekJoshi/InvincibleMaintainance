@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 const Avatar = React.forwardRef(({ className, ...props }, ref) => (
   <AvatarPrimitive.Root ref={ref} className={cn('relative flex h-9 w-9 shrink-0 overflow-hidden rounded-full', className)} {...props} />

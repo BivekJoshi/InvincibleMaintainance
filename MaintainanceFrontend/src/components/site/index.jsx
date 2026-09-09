@@ -5,10 +5,14 @@ import {
   FileText, Flame, Gift, Hammer, HardHat, Home, LayoutGrid, Phone, Plug, Receipt, Recycle,
   Ruler, Search, Shield, Sofa, TestTube, Timer, Umbrella, Wrench, Zap,
 } from 'lucide-react';
+import { AspectRatio } from '@/components/ui/aspect-ratio';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Reveal, motion } from '@/components/motion';
-import { formatNpr } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Reveal, RevealImage, motion } from '@/three/motion';
+import { formatNpr, imageUrl } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 /**
  * Shared vocabulary for the storefront. Every public page is assembled from
@@ -34,6 +38,80 @@ const ICONS = {
 export function DataIcon({ name, className }) {
   const Icon = ICONS[name] ?? Compass;
   return <Icon className={cn('h-5 w-5', className)} aria-hidden />;
+}
+
+/**
+ * A reserved space for a picture.
+ *
+ * Every image on the public site goes through this. The point is the *space*:
+ * the box is laid out from its ratio before anything loads, so a section looks
+ * the same whether or not an editor has uploaded the picture yet, and uploading
+ * one never reflows the page around it. With no media it draws the engineering
+ * grid and the section's own icon, which is a deliberate placeholder rather
+ * than a gap.
+ *
+ * @param {object} props
+ * @param {object|string} [props.media] resolved media row, or a URL
+ * @param {number} [props.ratio] width / height — 16/10 by default
+ * @param {number} [props.width] variant to request from the media row
+ * @param {string} [props.icon] lucide name drawn when there is no picture
+ * @param {boolean} [props.reveal] wipe the picture open as it scrolls in
+ * @param {'none'|'soft'|'ink'} [props.scrim] gradient for text laid over it
+ * @param {boolean} [props.fill] take the parent's height instead of a ratio,
+ *   for a slot whose box the layout already decides — a column beside copy that
+ *   has to end level with it, rather than at whatever height a ratio lands on
+ */
+export function Media({
+  media, alt = '', ratio = 16 / 10, width = 800, icon = 'hammer', className, imgClassName,
+  reveal = false, scrim = 'none', zoom = false, priority = false, fill = false, children,
+}) {
+  const src = imageUrl(media, width);
+
+  const picture = src ? (
+    <img
+      src={src}
+      alt={alt}
+      loading={priority ? 'eager' : 'lazy'}
+      decoding="async"
+      className={cn(
+        'h-full w-full object-cover',
+        zoom && 'transition-transform duration-700 ease-out group-hover:scale-[1.05]',
+        imgClassName,
+      )}
+    />
+  ) : (
+    <div className="blueprint-fine grid h-full w-full place-items-center bg-muted/40">
+      <DataIcon name={icon} className="h-7 w-7 text-muted-foreground/35" />
+    </div>
+  );
+
+  const body = (
+    <>
+      {reveal && src ? <RevealImage className="h-full w-full">{picture}</RevealImage> : picture}
+      {scrim !== 'none' && (
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute inset-0',
+            scrim === 'ink'
+              ? 'bg-gradient-to-t from-ink/85 via-ink/25 to-transparent'
+              : 'bg-gradient-to-t from-background/70 to-transparent',
+          )}
+        />
+      )}
+      {children}
+    </>
+  );
+
+  if (fill) {
+    return <div className={cn('relative h-full w-full overflow-hidden bg-muted', className)}>{body}</div>;
+  }
+
+  return (
+    <AspectRatio ratio={ratio} className={cn('relative overflow-hidden bg-muted', className)}>
+      {body}
+    </AspectRatio>
+  );
 }
 
 /** A small caps label above a heading. */
@@ -144,30 +222,26 @@ export function PriceTag({ service, className }) {
  * way somewhere else.
  */
 export function ServiceCard({ service, media, compact = false }) {
-  const asset = service.imageId ? media?.[service.imageId] : null;
-  const img = asset ? (asset.variants?.['800'] ?? asset.url) : null;
-
   return (
-    <article className="sheen group flex h-full flex-col overflow-hidden rounded-xl border bg-card transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-card">
-      <Link to={`/services/${service.slug}`} className="relative block overflow-hidden bg-muted" aria-label={service.name}>
-        {img ? (
-          <img
-            src={img} alt="" loading="lazy"
-            className={cn('w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]', compact ? 'h-32' : 'aspect-[16/10]')}
-          />
-        ) : (
-          <div className={cn('blueprint-fine grid w-full place-items-center', compact ? 'h-28' : 'h-36')}>
-            <DataIcon name={service.icon} className="h-7 w-7 text-muted-foreground/40 transition-colors duration-300 group-hover:text-primary" />
-          </div>
-        )}
+    <Card className="sheen group flex h-full flex-col overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-card">
+      <Link to={`/services/${service.slug}`} className="relative block" aria-label={service.name}>
+        <Media
+          media={media?.[service.imageId]}
+          ratio={compact ? 16 / 9 : 16 / 10}
+          icon={service.icon}
+          zoom
+        />
         {service.category ? (
-          <span className="absolute left-3 top-3 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
+          <Badge
+            variant="secondary"
+            className="absolute left-3 top-3 bg-background/90 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur"
+          >
             {service.category.name}
-          </span>
+          </Badge>
         ) : null}
       </Link>
 
-      <div className="flex flex-1 flex-col p-4">
+      <CardContent className="flex flex-1 flex-col p-4">
         <h3 className="text-[15px] font-semibold leading-snug tracking-tight">
           <Link to={`/services/${service.slug}`} className="transition-colors hover:text-primary">{service.name}</Link>
         </h3>
@@ -177,8 +251,11 @@ export function ServiceCard({ service, media, compact = false }) {
           <ShieldCheck className="h-3.5 w-3.5 text-gold" aria-hidden />
           Free inspection · 1-month warranty
         </p>
+      </CardContent>
 
-        <div className="mt-4 flex items-end justify-between gap-3 border-t pt-3.5">
+      <CardFooter className="mt-auto flex-col items-stretch p-4 pt-0">
+        <Separator className="mb-3.5" />
+        <div className="flex items-end justify-between gap-3">
           <PriceTag service={service} />
           <Button asChild size="sm" className="shrink-0">
             <Link to={`/book/${service.slug}`}>
@@ -187,32 +264,42 @@ export function ServiceCard({ service, media, compact = false }) {
             </Link>
           </Button>
         </div>
-      </div>
-    </article>
+      </CardFooter>
+    </Card>
   );
 }
 
 /** A category tile for the storefront's front door. */
-export function CategoryTile({ category, count, index = 0 }) {
+export function CategoryTile({ category, count, media, index = 0 }) {
+  const picture = media?.[category.imageId];
   return (
     <motion.div
       variants={{
         hidden: { opacity: 0, y: 16 },
         show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1], delay: index * 0.04 } },
       }}
+      className="h-full"
     >
-      <Link
-        to={`/services?category=${category.slug}`}
-        className="sheen group flex h-full flex-col items-center gap-3 rounded-xl border bg-card p-5 text-center transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-card"
-      >
-        <span className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary transition-all duration-300 group-hover:scale-105 group-hover:bg-primary group-hover:text-primary-foreground">
-          <DataIcon name={category.icon} />
-        </span>
-        <span className="text-sm font-semibold leading-tight tracking-tight">{category.name}</span>
-        {count != null ? (
-          <span className="text-[11px] text-muted-foreground">{count} service{count === 1 ? '' : 's'}</span>
-        ) : null}
-      </Link>
+      <Card className="sheen group h-full overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-card">
+        <Link to={`/services?category=${category.slug}`} className="flex h-full flex-col">
+          {/* The trade photograph if there is one; the icon plate if there is not.
+              Both occupy the same box, so the rail never changes height. */}
+          {picture ? (
+            <Media media={picture} ratio={16 / 9} icon={category.icon} scrim="soft" zoom />
+          ) : null}
+          <span className={cn('flex flex-1 flex-col items-center gap-3 p-5 text-center', picture && 'gap-2 py-4')}>
+            {picture ? null : (
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary transition-all duration-300 group-hover:scale-105 group-hover:bg-primary group-hover:text-primary-foreground">
+                <DataIcon name={category.icon} />
+              </span>
+            )}
+            <span className="text-sm font-semibold leading-tight tracking-tight">{category.name}</span>
+            {count != null ? (
+              <span className="text-[11px] text-muted-foreground">{count} service{count === 1 ? '' : 's'}</span>
+            ) : null}
+          </span>
+        </Link>
+      </Card>
     </motion.div>
   );
 }
@@ -222,35 +309,34 @@ export function CategoryTile({ category, count, index = 0 }) {
  * named customer's job never reaches the public site.
  */
 export function ProjectCard({ project, media }) {
-  const asset = project.coverId ? media?.[project.coverId] : media?.[project.images?.[0]?.mediaId];
-  const img = asset ? (asset.variants?.['800'] ?? asset.url) : null;
+  const cover = media?.[project.coverId] ?? media?.[project.images?.[0]?.mediaId];
 
   return (
-    <article className="sheen group flex h-full flex-col overflow-hidden rounded-xl border bg-card transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-card">
-      <Link to={`/projects/${project.slug}`} className="relative block overflow-hidden bg-muted" aria-label={project.title}>
-        {img ? (
-          <img src={img} alt="" loading="lazy" className="aspect-[16/10] w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]" />
-        ) : (
-          <div className="blueprint-fine grid aspect-[16/10] w-full place-items-center">
-            <DataIcon name="hammer" className="h-7 w-7 text-muted-foreground/40" />
-          </div>
-        )}
+    <Card className="sheen group flex h-full flex-col overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-card">
+      <Link to={`/projects/${project.slug}`} className="relative block" aria-label={project.title}>
+        <Media media={cover} icon="hammer" zoom />
         {project.service ? (
-          <span className="absolute left-3 top-3 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
+          <Badge
+            variant="secondary"
+            className="absolute left-3 top-3 bg-background/90 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur"
+          >
             {project.service.name}
-          </span>
+          </Badge>
         ) : null}
       </Link>
 
-      <div className="flex flex-1 flex-col p-4">
+      <CardContent className="flex flex-1 flex-col p-4">
         <h3 className="text-[15px] font-semibold leading-snug tracking-tight">
           <Link to={`/projects/${project.slug}`} className="transition-colors hover:text-primary">{project.title}</Link>
         </h3>
         {project.problem ? (
           <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{project.problem}</p>
         ) : null}
+      </CardContent>
 
-        <div className="mt-4 flex items-end justify-between gap-3 border-t pt-3.5 text-[11px] text-muted-foreground">
+      <CardFooter className="mt-auto flex-col items-stretch p-4 pt-0">
+        <Separator className="mb-3.5" />
+        <div className="flex items-end justify-between gap-3 text-[11px] text-muted-foreground">
           <span>
             {project.location ? <span className="block">{project.location}</span> : null}
             {project.durationDays ? <span>{project.durationDays} day{project.durationDays === 1 ? '' : 's'}</span> : null}
@@ -261,7 +347,7 @@ export function ProjectCard({ project, media }) {
             </span>
           ) : null}
         </div>
-      </div>
-    </article>
+      </CardFooter>
+    </Card>
   );
 }

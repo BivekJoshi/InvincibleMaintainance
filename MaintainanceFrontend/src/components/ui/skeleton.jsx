@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 function Skeleton({ className, ...props }) {
   return <div className={cn('animate-pulse rounded-md bg-muted', className)} {...props} />;

@@ -1,4 +1,4 @@
-import { apiSlice, listAndItem, tagList } from '@/app/api/apiSlice';
+import { apiSlice, listAndItem, tagList } from '@/api/apiSlice';
 
 /**
  * The office side of a site survey: read what the surveyor reported, price it,

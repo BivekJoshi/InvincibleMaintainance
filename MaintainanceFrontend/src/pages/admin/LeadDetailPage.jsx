@@ -6,8 +6,8 @@ import {
   useGetLeadQuery,
   useAddLeadActivityMutation,
   useAddLeadNoteMutation,
-} from '@/features/leads/leadsApi';
-import { ScheduleVisitDialog } from '@/features/leads/components/ScheduleVisitDialog';
+} from '@/api/leadsApi';
+import { ScheduleVisitDialog } from '@/components/leads/ScheduleVisitDialog';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { SlaChip } from '@/components/common/SlaChip';
@@ -16,10 +16,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/input';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, Stagger } from '@/components/motion';
+import { PageTransition, Stagger } from '@/three/motion';
 import { useAuth } from '@/hooks/useAuth';
-import { toastError, toastSuccess } from '@/features/ui/uiSlice';
-import { formatDate, formatDateTime, formatNpr, titleCase } from '@/lib/format';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { formatDate, formatDateTime, formatNpr, titleCase } from '@/helpers/format';
 
 export default function LeadDetailPage() {
   const { id } = useParams();

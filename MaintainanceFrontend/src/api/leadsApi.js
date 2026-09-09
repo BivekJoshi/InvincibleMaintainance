@@ -1,4 +1,4 @@
-import { apiSlice, tagList } from '@/app/api/apiSlice';
+import { apiSlice, tagList } from '@/api/apiSlice';
 
 export const leadsApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({

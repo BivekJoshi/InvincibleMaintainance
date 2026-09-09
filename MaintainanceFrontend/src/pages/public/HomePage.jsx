@@ -1,30 +1,48 @@
+import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
-  ArrowRight, CalendarCheck, Check, ChevronRight, Clock, FileCheck, Phone, Quote, ShieldCheck,
-  Search,
+  ArrowRight, CalendarCheck, Check, ChevronRight, Clock, Phone, Quote, ShieldCheck, Search,
 } from 'lucide-react';
-import { useGetHomeQuery, useGetBootstrapQuery, useGetPublicServicesQuery } from '@/features/public/publicApi';
-import { selectLocale } from '@/features/ui/uiSlice';
-import { LeadForm } from '@/features/public/LeadForm';
+import { useGetHomeQuery, useGetBootstrapQuery, useGetPublicServicesQuery } from '@/api/publicApi';
+import { selectLocale } from '@/redux/slices/uiSlice';
+import { LeadForm } from '@/components/public/LeadForm';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
 import {
-  SectionShell, SectionHeading, Eyebrow, DataIcon, Stars, ServiceCard, CategoryTile, PriceTag,
+  SectionShell, SectionHeading, Eyebrow, DataIcon, Stars, ServiceCard, ProjectCard, CategoryTile,
+  Media,
 } from '@/components/site';
 import {
-  PageTransition, Reveal, StaggerOnView, Stagger, CountUp, Marquee, WordReveal, Tilt,
-  Spotlight, DriftField, DrawLine, motion,
-} from '@/components/motion';
-import { formatNpr, imageUrl, titleCase } from '@/lib/format';
-import { cn } from '@/lib/utils';
+  PageTransition, Reveal, StaggerOnView, Stagger, CountUp, Marquee, WordReveal, HeadlineReveal,
+  Spotlight, DriftField, DrawLine, ScrollStage, useStageStep, useReducedMotion, motion,
+} from '@/three/motion';
+import { formatNpr, imageUrl, titleCase } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
+
+// The hero's anchor. Deliberately not the login page's timber frame: this one
+// is the trades themselves — screed, waterproofing, tile, conduit, supply — in
+// solid colour. WebGL is a big dependency for a marketing page, so it is split
+// out of the main bundle and arrives after the copy has already painted.
+const SectionCutScene = lazy(() =>
+  import('@/three/scenes/SectionCutScene').then((m) => ({ default: m.SectionCutScene })));
 
 /**
  * The home page is the storefront front door: search, categories, then priced
  * services you can book. Everything below that is still whatever the admin has
  * made visible, in their order — adding, hiding or reordering a section stays a
  * content change, not a code edit.
+ *
+ * Two things every section obeys. Surfaces are shadcn primitives — <Card>,
+ * <Badge>, <Separator> — never a hand-rolled `rounded-xl border bg-card`. And
+ * every picture goes in a <Media> slot, so the layout is identical before and
+ * after an editor uploads one.
  */
 const SECTIONS = {
   hero: StorefrontHero,
@@ -81,6 +99,17 @@ function HomeSkeleton() {
   );
 }
 
+// ── shared bits ────────────────────────────────────────────────────────────────
+
+/** The rise-into-place a card uses when its grid scrolls in. */
+const RISE = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
+};
+
+/** Hover behaviour shared by every clickable card on the page. */
+const CARD_HOVER = 'transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-card';
+
 // ── link safety ────────────────────────────────────────────────────────────────
 // Editors type CTA URLs by hand. Anything that is not a route this app serves
 // goes to the booking page rather than to a 404.
@@ -109,6 +138,7 @@ const POPULAR_SEARCHES = ['Seepage', 'Waterproofing', 'Modular kitchen', 'Rewiri
 
 function StorefrontHero({ section, settings, media }) {
   const locale = useSelector(selectLocale);
+  const reduced = useReducedMotion();
   const { data: boot } = useGetBootstrapQuery(locale);
   const { data: catalogue } = useGetPublicServicesQuery({ locale });
 
@@ -117,28 +147,33 @@ function StorefrontHero({ section, settings, media }) {
   const items = catalogue?.items ?? [];
   const countFor = (slug) => items.filter((s) => s.category?.slug === slug).length || null;
   const mobile = settings?.['contact.phoneSecondary'];
-  const cover = slide?.imageId ? imageUrl(media?.[slide.imageId], 1200) : null;
   const stats = (settings?.['stats.items'] ?? []).slice(0, 3);
 
   return (
     <section className="relative isolate overflow-hidden border-b">
-      <div className="glow-paper absolute inset-0 -z-10" aria-hidden />
-      <div className="blueprint-fine mask-b absolute inset-0 -z-10 opacity-70" aria-hidden />
+      {/* The scene is confined to its own card in the right column now, so the
+          band behind the copy needs nothing but a colour wash. */}
+      <div className="glow-paper absolute inset-0 -z-20" aria-hidden />
+      <div
+        className="absolute inset-0 -z-10 bg-gradient-to-b from-transparent via-transparent to-background"
+        aria-hidden
+      />
 
       <div className="container relative py-12 md:py-16 lg:py-20">
         <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
           {/* ── the pitch ── */}
           <div className="mx-auto max-w-2xl text-center lg:mx-0 lg:text-left">
-            <motion.p
+            <motion.div
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-              className="inline-flex items-center gap-2 rounded-full border bg-card/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur"
             >
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-gold" aria-hidden />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />
-              </span>
-              Booking now · we call back within 2 hours
-            </motion.p>
+              <Badge variant="outline" className="gap-2 border-border bg-card/80 py-1 font-medium text-muted-foreground shadow-sm backdrop-blur">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-gold" aria-hidden />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />
+                </span>
+                Booking now · we call back within 2 hours
+              </Badge>
+            </motion.div>
 
             <WordReveal
               as="h1"
@@ -161,12 +196,12 @@ function StorefrontHero({ section, settings, media }) {
               action="/services"
               className="group relative mx-auto mt-7 max-w-xl lg:mx-0"
             >
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" aria-hidden />
-              <input
+              <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" aria-hidden />
+              <Input
                 type="search" name="q"
                 placeholder="What needs fixing? seepage, kitchen, wiring…"
                 aria-label="Search services"
-                className="h-[3.25rem] w-full rounded-full border bg-card pl-11 pr-[7.5rem] text-sm shadow-card outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-4 focus:ring-primary/10"
+                className="h-[3.25rem] rounded-full bg-card pl-11 pr-[7.5rem] shadow-card transition-all focus-visible:ring-4 focus-visible:ring-primary/10"
               />
               <Button type="submit" className="absolute right-2 top-2 h-9 rounded-full px-5">Search</Button>
             </motion.form>
@@ -174,12 +209,10 @@ function StorefrontHero({ section, settings, media }) {
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground lg:justify-start">
               <span>Popular:</span>
               {POPULAR_SEARCHES.map((term) => (
-                <Link
-                  key={term}
-                  to={`/services?q=${encodeURIComponent(term)}`}
-                  className="rounded-full border bg-card/60 px-2.5 py-1 transition-colors hover:border-primary/40 hover:text-foreground"
-                >
-                  {term}
+                <Link key={term} to={`/services?q=${encodeURIComponent(term)}`}>
+                  <Badge variant="outline" className="bg-card/60 font-normal transition-colors hover:border-primary/40 hover:text-foreground">
+                    {term}
+                  </Badge>
                 </Link>
               ))}
             </div>
@@ -197,45 +230,51 @@ function StorefrontHero({ section, settings, media }) {
             </div>
 
             {stats.length ? (
-              <dl className="mt-9 flex flex-wrap items-center justify-center gap-x-8 gap-y-4 border-t pt-6 lg:justify-start">
-                {stats.map((stat) => (
-                  <div key={stat.label} className="text-center lg:text-left">
-                    <dt className="sr-only">{stat.label}</dt>
-                    <dd>
-                      <span className="block text-xl font-bold tracking-tight text-primary">
-                        <CountUp value={stat.value} />
-                      </span>
-                      <span className="mt-0.5 block text-[11px] uppercase tracking-wide text-muted-foreground">
-                        {stat.label}
-                      </span>
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+              <>
+                <Separator className="mt-9" />
+                <dl className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4 pt-6 lg:justify-start">
+                  {stats.map((stat) => (
+                    <div key={stat.label} className="text-center lg:text-left">
+                      <dt className="sr-only">{stat.label}</dt>
+                      <dd>
+                        <span className="block text-xl font-bold tracking-tight text-primary">
+                          <CountUp value={stat.value} />
+                        </span>
+                        <span className="mt-0.5 block text-[11px] uppercase tracking-wide text-muted-foreground">
+                          {stat.label}
+                        </span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </>
             ) : null}
           </div>
 
           {/* ── the proof ── */}
-          <HeroProofPanel cover={cover} />
+          <HeroShowcase reduced={Boolean(reduced)} />
         </div>
 
         {categories.length ? (
-          <div className="mt-14 border-t pt-10">
-            <div className="mb-5 flex items-end justify-between gap-4">
-              <div>
-                <Eyebrow>Browse by trade</Eyebrow>
-                <h2 className="mt-1.5 text-lg font-bold tracking-tight">Pick the work you need doing</h2>
+          <>
+            <Separator className="mt-14" />
+            <div className="pt-10">
+              <div className="mb-5 flex items-end justify-between gap-4">
+                <div>
+                  <Eyebrow>Browse by trade</Eyebrow>
+                  <h2 className="mt-1.5 text-lg font-bold tracking-tight">Pick the work you need doing</h2>
+                </div>
+                <Button asChild variant="link" className="h-auto shrink-0 p-0">
+                  <Link to="/services">All services <ArrowRight className="h-3.5 w-3.5" /></Link>
+                </Button>
               </div>
-              <Link to="/services" className="shrink-0 text-sm font-medium text-primary hover:underline">
-                All services <ArrowRight className="inline h-3.5 w-3.5" />
-              </Link>
+              <StaggerOnView className="grid grid-cols-2 gap-3 sm:grid-cols-4" stagger={0.05}>
+                {categories.map((c, i) => (
+                  <CategoryTile key={c.id} category={c} count={countFor(c.slug)} media={media} index={i} />
+                ))}
+              </StaggerOnView>
             </div>
-            <StaggerOnView className="grid grid-cols-2 gap-3 sm:grid-cols-4" stagger={0.05}>
-              {categories.map((c, i) => (
-                <CategoryTile key={c.id} category={c} count={countFor(c.slug)} index={i} />
-              ))}
-            </StaggerOnView>
-          </div>
+          </>
         ) : null}
       </div>
     </section>
@@ -243,92 +282,41 @@ function StorefrontHero({ section, settings, media }) {
 }
 
 /**
- * What the hero shows instead of a stock photograph: the promise itself, drawn
- * as the document a customer actually receives. It degrades to a real image the
- * moment an editor uploads one against the hero slide.
+ * The right half of the hero.
+ *
+ * It used to be a card listing what a customer gets in writing; those promises
+ * are the band immediately below this one, so the space is better spent on the
+ * work itself. The scene is a bathroom corner that builds and then opens — the
+ * trades the company actually sells, in the colours those materials actually
+ * are — and it carries a caption that says what is being shown.
  */
-const HERO_PROMISES = [
-  'Free site inspection — no visiting charge',
-  'Written estimate before anything starts',
-  'Billed against the published rate card',
-  'One-month warranty certificate at handover',
-];
-
-function HeroProofPanel({ cover }) {
+function HeroShowcase({ reduced }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
       className="relative mx-auto w-full max-w-md lg:max-w-none"
     >
-      <Tilt max={5} scale={1.008} className="group relative">
-        <div className="sheen overflow-hidden rounded-2xl border bg-card shadow-lift">
-          {cover ? (
-            <img src={cover} alt="" className="h-44 w-full object-cover" />
-          ) : null}
+      {/* No <Tilt> here: a CSS 3D transform on a live canvas resamples it blurry,
+          and the scene already leans to the pointer on its own. */}
+      <Card className="sheen overflow-hidden shadow-lift">
+        <Suspense fallback={<div className="aspect-[7/6] w-full animate-pulse bg-muted/40" />}>
+          <SectionCutScene reduced={reduced} />
+        </Suspense>
+      </Card>
 
-          <div className="flex items-center justify-between gap-3 border-b bg-muted/50 px-5 py-3">
-            <span className="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
-              <FileCheck className="h-4 w-4 text-primary" aria-hidden /> What you get, in writing
-            </span>
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary ring-1 ring-inset ring-primary/15">
-              Every job
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4 border-b px-5 py-5">
-            <SlaRing />
-            <div>
-              <p className="text-[13px] font-semibold leading-snug">We call you back within two hours</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Every enquiry is timed from the minute it arrives. Miss the window and it escalates.
-              </p>
-            </div>
-          </div>
-
-          <ul className="divide-y">
-            {HERO_PROMISES.map((promise) => (
-              <li key={promise} className="flex items-center gap-3 px-5 py-3 text-[13px] leading-snug">
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-gold/15 text-gold">
-                  <Check className="h-3 w-3" aria-hidden />
-                </span>
-                {promise}
-              </li>
-            ))}
-          </ul>
-
-        </div>
-      </Tilt>
-
-      <motion.p
+      {/* Over the canvas, not hanging off the card: the caption owns the bottom
+          edge and the two would sit on top of each other. */}
+      <motion.div
         initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.45, delay: 0.75, ease: [0.16, 1, 0.3, 1] }}
-        className="absolute -bottom-5 left-6 hidden items-center gap-2 rounded-full border border-gold/40 bg-card px-3.5 py-2 text-xs font-semibold shadow-card sm:flex"
+        className="pointer-events-none absolute left-4 top-4"
       >
-        <ShieldCheck className="h-4 w-4 text-gold" aria-hidden /> Certified engineers only
-      </motion.p>
+        <Badge variant="outline" className="gap-2 border-gold/40 bg-card/90 px-3 py-1.5 text-[11px] font-semibold shadow-card backdrop-blur">
+          <ShieldCheck className="h-3.5 w-3.5 text-gold" aria-hidden /> Certified engineers only
+        </Badge>
+      </motion.div>
     </motion.div>
-  );
-}
-
-/** The two-hour promise, drawn as a dial rather than written out again. */
-function SlaRing() {
-  return (
-    <div className="relative grid h-16 w-16 shrink-0 place-items-center">
-      <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden>
-        <circle cx="24" cy="24" r="20" fill="none" stroke="hsl(var(--border))" strokeWidth="3" />
-        <motion.circle
-          cx="24" cy="24" r="20" fill="none" stroke="hsl(var(--gold))" strokeWidth="3" strokeLinecap="round"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 0.72 }}
-          transition={{ duration: 1.5, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        />
-      </svg>
-      <span className="text-center leading-none">
-        <span className="block text-base font-bold tabular-nums">2</span>
-        <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">hrs</span>
-      </span>
-    </div>
   );
 }
 
@@ -378,13 +366,7 @@ function PopularServices({ section, media }) {
       />
       <StaggerOnView className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.06}>
         {services.map((service) => (
-          <Stagger.Item
-            key={service.id}
-            variants={{
-              hidden: { opacity: 0, y: 20 },
-              show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
-            }}
-          >
+          <Stagger.Item key={service.id} variants={RISE} className="h-full">
             <ServiceCard service={service} media={media} />
           </Stagger.Item>
         ))}
@@ -408,52 +390,44 @@ function PackageGrid({ section }) {
         {plans.map((plan) => {
           const featured = plan.badge === 'Popular';
           return (
-            <Stagger.Item
-              key={plan.id}
-              variants={{
-                hidden: { opacity: 0, y: 20 },
-                show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
-              }}
-            >
-              <div className={cn(
-                'flex h-full flex-col rounded-xl border bg-card p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card',
-                featured && 'border-primary ring-1 ring-primary/20',
-              )}>
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{plan.title}</h3>
-                  {plan.badge ? (
-                    <span className={cn(
-                      'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-                      featured ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-                    )}>
-                      {plan.badge}
+            <Stagger.Item key={plan.id} variants={RISE} className="h-full">
+              <Card className={cn('flex h-full flex-col', CARD_HOVER, featured && 'border-primary ring-1 ring-primary/20')}>
+                <CardHeader className="space-y-0 p-5 pb-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-[15px] font-semibold leading-snug tracking-tight">{plan.title}</CardTitle>
+                    {plan.badge ? (
+                      <Badge variant={featured ? 'default' : 'secondary'} className="shrink-0 text-[10px] font-bold uppercase tracking-wide">
+                        {plan.badge}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="pt-3">
+                    <span className="text-lg font-bold tabular-nums">{formatNpr(plan.priceMin, { compact: true })}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false })} {plan.unit}
                     </span>
-                  ) : null}
-                </div>
-
-                <p className="mt-3">
-                  <span className="text-lg font-bold tabular-nums">{formatNpr(plan.priceMin, { compact: true })}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false })} {plan.unit}
-                  </span>
-                </p>
+                  </p>
+                </CardHeader>
 
                 {plan.inclusions?.length ? (
-                  <ul className="mt-4 space-y-1.5 border-t pt-4 text-[13px]">
-                    {plan.inclusions.slice(0, 5).map((inc, k) => (
-                      <li key={k} className="flex gap-2 text-muted-foreground">
-                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden /> {inc}
-                      </li>
-                    ))}
-                  </ul>
+                  <CardContent className="p-5 pb-0 pt-4">
+                    <Separator className="mb-4" />
+                    <ul className="space-y-1.5 text-[13px]">
+                      {plan.inclusions.slice(0, 5).map((inc, k) => (
+                        <li key={k} className="flex gap-2 text-muted-foreground">
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden /> {inc}
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
                 ) : null}
 
-                <div className="mt-auto pt-5">
+                <CardFooter className="mt-auto p-5">
                   <Button asChild size="sm" variant={featured ? 'default' : 'outline'} className="w-full">
                     <Link to="/book">Book this package</Link>
                   </Button>
-                </div>
-              </div>
+                </CardFooter>
+              </Card>
             </Stagger.Item>
           );
         })}
@@ -462,7 +436,8 @@ function PackageGrid({ section }) {
   );
 }
 
-function Offers({ section }) {
+/** An offer, with room for the picture that sells it. */
+function Offers({ section, media }) {
   const offers = Array.isArray(section.data) ? section.data : [];
   if (!offers.length) return null;
   return (
@@ -471,34 +446,45 @@ function Offers({ section }) {
       <div className="grid gap-4 lg:grid-cols-2">
         {offers.map((offer, i) => (
           <Reveal key={offer.id} delay={i * 0.06} className="h-full">
-            <div className="flex h-full flex-col overflow-hidden rounded-xl border bg-card">
-              <div className="flex items-center justify-between gap-3 border-b bg-gold/10 px-5 py-3">
-                <span className="rounded-full bg-gold px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-gold-foreground">
-                  {offer.badge ?? 'Offer'}
-                </span>
-                {offer.priceMin ? (
-                  <span className="text-sm font-semibold tabular-nums">
-                    {formatNpr(offer.priceMin, { compact: true })} – {formatNpr(offer.priceMax, { compact: true, symbol: false })}
-                  </span>
-                ) : null}
+            <Card className="group flex h-full flex-col overflow-hidden sm:flex-row">
+              {/* A third of the card is picture. With none uploaded the slot
+                  keeps its width and shows the grid, so the row stays even. */}
+              {/* A ratio on a phone, where the card stacks and nothing else sets
+                  the height; the full column height once it sits beside the copy. */}
+              <div className="relative aspect-[4/3] sm:aspect-auto sm:w-2/5 sm:shrink-0">
+                <Media media={media?.[offer.imageId]} alt={offer.title} icon="gift" zoom fill />
               </div>
-              <div className="flex flex-1 flex-col p-5">
-                <h3 className="font-deva text-lg font-semibold leading-snug tracking-tight">{offer.title}</h3>
-                {offer.description ? <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{offer.description}</p> : null}
-                {offer.bullets?.length ? (
-                  <ul className="mt-4 grid gap-2 text-[13px] sm:grid-cols-2">
-                    {offer.bullets.map((b, k) => (
-                      <li key={k} className="flex gap-2 text-muted-foreground">
-                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden /> {b}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                <Cta href={offer.ctaUrl} className="mt-5 w-full sm:w-auto sm:self-start">
-                  {offer.ctaLabel ?? 'Book now'} <ArrowRight className="h-4 w-4" />
-                </Cta>
+
+              <div className="flex flex-1 flex-col">
+                <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 border-b bg-gold/10 px-5 py-3">
+                  <Badge variant="gold" className="text-[10px] font-bold uppercase tracking-wide">
+                    {offer.badge ?? 'Offer'}
+                  </Badge>
+                  {offer.priceMin ? (
+                    <span className="text-sm font-semibold tabular-nums">
+                      {formatNpr(offer.priceMin, { compact: true })} – {formatNpr(offer.priceMax, { compact: true, symbol: false })}
+                    </span>
+                  ) : null}
+                </CardHeader>
+
+                <CardContent className="flex flex-1 flex-col p-5">
+                  <CardTitle className="font-deva text-lg font-semibold leading-snug tracking-tight">{offer.title}</CardTitle>
+                  {offer.description ? <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{offer.description}</p> : null}
+                  {offer.bullets?.length ? (
+                    <ul className="mt-4 grid gap-2 text-[13px]">
+                      {offer.bullets.map((b, k) => (
+                        <li key={k} className="flex gap-2 text-muted-foreground">
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden /> {b}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <Cta href={offer.ctaUrl} className="mt-5 w-full sm:w-auto sm:self-start">
+                    {offer.ctaLabel ?? 'Book now'} <ArrowRight className="h-4 w-4" />
+                  </Cta>
+                </CardContent>
               </div>
-            </div>
+            </Card>
           </Reveal>
         ))}
       </div>
@@ -522,13 +508,12 @@ function ChipList({ section }) {
             key={item.id}
             variants={{ hidden: { opacity: 0, scale: 0.96 }, show: { opacity: 1, scale: 1, transition: { duration: 0.35 } } }}
           >
-            <Link
-              to={`/services/${item.slug}`}
-              className="group flex items-center gap-2 rounded-full border bg-card px-4 py-2 text-[13px] font-medium transition-colors hover:border-primary/40 hover:text-primary"
-            >
-              {item.name}
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-300 group-hover:translate-x-0.5" aria-hidden />
-            </Link>
+            <Button asChild variant="outline" size="sm" className="group h-auto rounded-full py-2 text-[13px] font-medium hover:border-primary/40 hover:text-primary">
+              <Link to={`/services/${item.slug}`}>
+                {item.name}
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-300 group-hover:translate-x-0.5" aria-hidden />
+              </Link>
+            </Button>
           </Stagger.Item>
         ))}
       </StaggerOnView>
@@ -538,46 +523,118 @@ function ChipList({ section }) {
 
 // ── proof and explanation ──────────────────────────────────────────────────────
 
+/**
+ * The five steps, pinned.
+ *
+ * This is the page's one theatrical moment: the section holds still while the
+ * reader scrolls two screens, and the steps hand over to each other one at a
+ * time — the current one lit, the finished ones ticked, the rail filling as it
+ * goes. Under `prefers-reduced-motion` <ScrollStage> drops the pin entirely and
+ * `progress` arrives as null, which renders the plain grid below instead.
+ */
 function HowItWorks({ section }) {
   const steps = Array.isArray(section.data) ? section.data : [];
   if (!steps.length) return null;
+
+  return (
+    <ScrollStage pages={1.6} className="bg-muted/50">
+      {(progress) => (progress ? <PinnedSteps steps={steps} progress={progress} /> : <PlainSteps steps={steps} />)}
+    </ScrollStage>
+  );
+}
+
+function PinnedSteps({ steps, progress }) {
+  const active = useStageStep(progress, steps.length);
+
+  return (
+    <div className="container py-12">
+      <SectionHeading eyebrow="How it works" title="Booking to warranty, in five steps" />
+
+      {/* The rail. Its fill is the scroll position itself, so the bar and the
+          cards can never disagree about where the reader is. */}
+      <div className="relative mb-8 h-px w-full bg-border" aria-hidden>
+        <motion.span className="absolute inset-y-0 left-0 block w-full origin-left bg-gold" style={{ scaleX: progress }} />
+      </div>
+
+      <ol className="grid gap-3 md:grid-cols-5">
+        {steps.map((step, i) => {
+          const state = i === active ? 'current' : i < active ? 'done' : 'todo';
+          return (
+            <motion.li
+              key={step.id}
+              animate={{
+                opacity: state === 'todo' ? 0.42 : 1,
+                y: state === 'current' ? -6 : 0,
+                scale: state === 'current' ? 1.015 : 1,
+              }}
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <Card className={cn(
+                'sheen h-full transition-colors duration-300',
+                state === 'current' && 'border-primary/40 shadow-card',
+              )}>
+                <CardHeader className="items-center space-y-0 pb-3 text-center">
+                  <span className={cn(
+                    'grid h-11 w-11 place-items-center rounded-full border-2 text-sm font-bold transition-colors duration-300',
+                    state === 'todo' && 'border-border bg-card text-muted-foreground',
+                    state === 'current' && 'border-primary bg-primary text-primary-foreground',
+                    state === 'done' && 'border-gold/40 bg-gold/15 text-gold',
+                  )}>
+                    {state === 'done' ? <Check className="h-4 w-4" aria-hidden /> : step.stepNo}
+                  </span>
+                </CardHeader>
+                <CardContent className="px-4 pb-5 text-center">
+                  <CardTitle className="text-[14px] font-semibold leading-snug tracking-tight">{step.title}</CardTitle>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{step.description}</p>
+                </CardContent>
+              </Card>
+            </motion.li>
+          );
+        })}
+      </ol>
+
+      <p className="mt-8 text-center text-xs text-muted-foreground">
+        Step {active + 1} of {steps.length} · keep scrolling
+      </p>
+    </div>
+  );
+}
+
+/** The same five steps with no pin — reduced motion, and the print view. */
+function PlainSteps({ steps }) {
   return (
     <SectionShell tone="muted">
       <SectionHeading eyebrow="How it works" title="Booking to warranty, in five steps" />
       <div className="relative">
-        {/* The rail the numbers sit on, drawn as the section scrolls through. */}
         <div className="absolute inset-x-0 top-[1.375rem] hidden md:block" aria-hidden>
-          <div className="mx-[10%] h-px bg-border">
-            <DrawLine className="h-px" />
-          </div>
+          <div className="mx-[10%] h-px bg-border"><DrawLine className="h-px" /></div>
         </div>
-        <StaggerOnView className="relative grid gap-4 md:grid-cols-5 md:gap-3" stagger={0.09}>
+        <ol className="relative grid gap-4 md:grid-cols-5 md:gap-3">
           {steps.map((step) => (
-            <Stagger.Item
-              key={step.id}
-              variants={{
-                hidden: { opacity: 0, y: 18 },
-                show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
-              }}
-            >
-              <div className="group flex h-full gap-4 md:flex-col md:items-center md:gap-0 md:text-center">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-primary/15 bg-card text-sm font-bold text-primary shadow-sm transition-colors duration-300 group-hover:border-primary group-hover:bg-primary group-hover:text-primary-foreground md:mb-4">
-                  {step.stepNo}
-                </span>
-                <div className="sheen h-full rounded-xl border bg-card p-4 md:w-full">
-                  <h3 className="text-[14px] font-semibold leading-snug tracking-tight">{step.title}</h3>
+            <li key={step.id} className="flex h-full gap-4 md:flex-col md:items-center md:gap-0 md:text-center">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-primary/15 bg-card text-sm font-bold text-primary shadow-sm md:mb-4">
+                {step.stepNo}
+              </span>
+              <Card className="sheen h-full md:w-full">
+                <CardContent className="p-4">
+                  <CardTitle className="text-[14px] font-semibold leading-snug tracking-tight">{step.title}</CardTitle>
                   <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{step.description}</p>
-                </div>
-              </div>
-            </Stagger.Item>
+                </CardContent>
+              </Card>
+            </li>
           ))}
-        </StaggerOnView>
+        </ol>
       </div>
     </SectionShell>
   );
 }
 
-function FeatureRow({ section }) {
+/**
+ * Feature cards. A feature with a picture gets one; a feature without keeps the
+ * icon plate. Both shapes are the same height, so a group can mix the two while
+ * an editor is still working through the uploads.
+ */
+function FeatureRow({ section, media }) {
   const items = Array.isArray(section.data) ? section.data : [];
   if (!items.length) return null;
   const COPY = {
@@ -585,27 +642,28 @@ function FeatureRow({ section }) {
     construction: { eyebrow: 'Construction', title: 'Built to a drawing, billed to a line item' },
     pre_engineered: { eyebrow: 'Steel buildings', title: 'Pre-engineered structures' },
   };
+  const illustrated = items.some((f) => f.imageId);
+
   return (
     <SectionShell tone={section.key === 'why_choose' ? 'paper' : 'muted'}>
       <SectionHeading {...(COPY[section.key] ?? { title: 'Highlights' })} />
       <StaggerOnView className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.05}>
         {items.map((f) => (
-          <Stagger.Item
-            key={f.id}
-            variants={{
-              hidden: { opacity: 0, y: 16 },
-              show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
-            }}
-          >
-            <div className="sheen group flex h-full flex-col rounded-xl border bg-card p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-card">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-gold/15 text-gold ring-1 ring-inset ring-gold/25 transition-transform duration-300 group-hover:scale-105">
-                <DataIcon name={f.icon} className="h-[18px] w-[18px]" />
-              </span>
-              <h3 className="mt-4 text-[14px] font-semibold tracking-tight">
-                {f.title === f.title?.toUpperCase() ? titleCase(f.title) : f.title}
-              </h3>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{f.description}</p>
-            </div>
+          <Stagger.Item key={f.id} variants={RISE} className="h-full">
+            <Card className={cn('sheen group flex h-full flex-col overflow-hidden', CARD_HOVER)}>
+              {illustrated ? <Media media={media?.[f.imageId]} ratio={16 / 9} icon={f.icon} zoom /> : null}
+              <CardContent className="flex flex-1 flex-col p-5">
+                {illustrated ? null : (
+                  <span className="grid h-11 w-11 place-items-center rounded-full bg-gold/15 text-gold ring-1 ring-inset ring-gold/25 transition-transform duration-300 group-hover:scale-105">
+                    <DataIcon name={f.icon} className="h-[18px] w-[18px]" />
+                  </span>
+                )}
+                <CardTitle className={cn('text-[14px] font-semibold tracking-tight', !illustrated && 'mt-4')}>
+                  {f.title === f.title?.toUpperCase() ? titleCase(f.title) : f.title}
+                </CardTitle>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{f.description}</p>
+              </CardContent>
+            </Card>
           </Stagger.Item>
         ))}
       </StaggerOnView>
@@ -622,10 +680,7 @@ function StatsBand({ section }) {
       <div className="blueprint absolute inset-0 -z-10 opacity-60" aria-hidden />
       <Spotlight />
       <DriftField count={10} />
-      <StaggerOnView
-        className="container relative grid grid-cols-2 gap-y-10 py-14 md:py-16 lg:grid-cols-4"
-        stagger={0.1}
-      >
+      <StaggerOnView className="container relative grid grid-cols-2 gap-y-10 py-14 md:py-16 lg:grid-cols-4" stagger={0.1}>
         {stats.map((s, i) => (
           <Stagger.Item
             key={i}
@@ -650,6 +705,7 @@ function StatsBand({ section }) {
   );
 }
 
+/** Recent work — the same <ProjectCard> the /projects catalogue renders. */
 function RecentWork({ section, media }) {
   const projects = Array.isArray(section.data) ? section.data : [];
   if (!projects.length) return null;
@@ -659,103 +715,16 @@ function RecentWork({ section, media }) {
         eyebrow="Our work"
         title="Recently completed"
         description="Measured, photographed at each stage, handed over against a signed snag list."
-        action={<Link to="/projects" className="text-sm font-medium text-primary hover:underline">See all work</Link>}
+        action={
+          <Button asChild variant="outline">
+            <Link to="/projects">See all work <ArrowRight className="h-4 w-4" /></Link>
+          </Button>
+        }
       />
       <StaggerOnView className="grid gap-4 md:grid-cols-3" stagger={0.06}>
-        {projects.map((p) => {
-          const cover = p.images?.[0]?.mediaId ?? p.coverId;
-          const img = cover ? imageUrl(media?.[cover], 800) : null;
-          return (
-            <Stagger.Item
-              key={p.id}
-              variants={{
-                hidden: { opacity: 0, y: 18 },
-                show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
-              }}
-            >
-              <Link
-                to={`/projects/${p.slug}`}
-                className="group block h-full overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-card"
-              >
-                <div className="relative h-40 overflow-hidden bg-muted">
-                  {img ? (
-                    <img src={img} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                  ) : (
-                    <div className="blueprint-fine h-full w-full" aria-hidden />
-                  )}
-                  <span className={cn(
-                    'absolute left-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide',
-                    p.status === 'ongoing' ? 'bg-gold text-gold-foreground' : 'bg-background/90 text-muted-foreground backdrop-blur',
-                  )}>
-                    {p.status}
-                  </span>
-                </div>
-                <div className="p-4">
-                  <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{p.title}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{p.location}</p>
-                  <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{p.summary}</p>
-                </div>
-              </Link>
-            </Stagger.Item>
-          );
-        })}
-      </StaggerOnView>
-    </SectionShell>
-  );
-}
-
-function Gallery({ section, media }) {
-  const images = (Array.isArray(section.data) ? section.data : [])
-    .map((g) => ({ ...g, src: imageUrl(media?.[g.imageId ?? g.mediaId], 800) }))
-    .filter((g) => g.src);
-  if (!images.length) return null;
-  return (
-    <SectionShell tone="muted">
-      <SectionHeading eyebrow="On site" title="From the field" />
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {images.map((g, i) => (
-          <Reveal key={g.id ?? i} delay={Math.min(i, 8) * 0.04}>
-            <figure className="group overflow-hidden rounded-xl border bg-card">
-              <img src={g.src} alt={g.caption ?? ''} loading="lazy" className="h-40 w-full object-cover transition-transform duration-700 group-hover:scale-105" />
-            </figure>
-          </Reveal>
-        ))}
-      </div>
-    </SectionShell>
-  );
-}
-
-function Reviews({ section }) {
-  const items = Array.isArray(section.data) ? section.data : [];
-  if (!items.length) return null;
-  return (
-    <SectionShell>
-      <SectionHeading eyebrow="Customers" title="What people say afterwards" />
-      <StaggerOnView className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" stagger={0.05}>
-        {items.map((t) => (
-          <Stagger.Item
-            key={t.id}
-            variants={{
-              hidden: { opacity: 0, y: 16 },
-              show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
-            }}
-          >
-            <figure className="relative flex h-full flex-col rounded-xl border bg-card p-5">
-              <Quote className="absolute right-4 top-4 h-7 w-7 text-primary/10" aria-hidden />
-              <Stars rating={t.rating} />
-              <blockquote className={cn('mt-3 flex-1 text-[13px] leading-relaxed', t.locale === 'ne' && 'font-deva')} lang={t.locale}>
-                “{t.quote}”
-              </blockquote>
-              <figcaption className="mt-4 flex items-center gap-3 border-t pt-3.5">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                  {t.author?.trim()[0] ?? '·'}
-                </span>
-                <span>
-                  <span className={cn('block text-[13px] font-semibold', t.locale === 'ne' && 'font-deva')}>{t.author}</span>
-                  <span className={cn('block text-[11px] text-muted-foreground', t.locale === 'ne' && 'font-deva')}>{t.location}</span>
-                </span>
-              </figcaption>
-            </figure>
+        {projects.map((p) => (
+          <Stagger.Item key={p.id} variants={RISE} className="h-full">
+            <ProjectCard project={p} media={media} />
           </Stagger.Item>
         ))}
       </StaggerOnView>
@@ -763,7 +732,87 @@ function Reviews({ section }) {
   );
 }
 
-function ExplainerBlock({ section }) {
+/**
+ * The field gallery, as a mosaic rather than a uniform strip: the first tile is
+ * twice the size, so the block reads as a wall of work instead of a grid of
+ * thumbnails. Each picture wipes open as it arrives.
+ */
+function Gallery({ section, media }) {
+  const images = (Array.isArray(section.data) ? section.data : []).slice(0, 7);
+  if (!images.length) return null;
+  return (
+    <SectionShell tone="muted">
+      <SectionHeading eyebrow="On site" title="From the field" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {images.map((g, i) => (
+          <figure key={g.id ?? i} className={cn('group relative', i === 0 && 'col-span-2 row-span-2')}>
+            <Card className="h-full overflow-hidden">
+              <Media
+                media={media?.[g.imageId ?? g.mediaId]}
+                alt={g.caption ?? ''}
+                ratio={1}
+                width={i === 0 ? 1200 : 800}
+                icon="hard-hat"
+                reveal
+                zoom
+                scrim={g.caption ? 'ink' : 'none'}
+              >
+                {g.caption ? (
+                  <figcaption className="absolute inset-x-0 bottom-0 p-3 text-[12px] font-medium leading-snug text-ink-foreground opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                    {g.caption}
+                  </figcaption>
+                ) : null}
+              </Media>
+            </Card>
+          </figure>
+        ))}
+      </div>
+    </SectionShell>
+  );
+}
+
+/** Testimonials, with the customer's photograph when there is one. */
+function Reviews({ section, media }) {
+  const items = Array.isArray(section.data) ? section.data : [];
+  if (!items.length) return null;
+  return (
+    <SectionShell>
+      <SectionHeading eyebrow="Customers" title="What people say afterwards" />
+      <StaggerOnView className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" stagger={0.05}>
+        {items.map((t) => (
+          <Stagger.Item key={t.id} variants={RISE} className="h-full">
+            <Card className="relative flex h-full flex-col">
+              <Quote className="absolute right-4 top-4 h-7 w-7 text-primary/10" aria-hidden />
+              <CardContent className="flex flex-1 flex-col p-5">
+                <Stars rating={t.rating} />
+                <blockquote className={cn('mt-3 flex-1 text-[13px] leading-relaxed', t.locale === 'ne' && 'font-deva')} lang={t.locale}>
+                  “{t.quote}”
+                </blockquote>
+              </CardContent>
+              <CardFooter className="flex-col items-stretch p-5 pt-0">
+                <Separator className="mb-3.5" />
+                <figcaption className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8 shrink-0">
+                    <AvatarImage src={imageUrl(media?.[t.photoId], 200) ?? undefined} alt="" />
+                    <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
+                      {t.author?.trim()[0] ?? '·'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span>
+                    <span className={cn('block text-[13px] font-semibold', t.locale === 'ne' && 'font-deva')}>{t.author}</span>
+                    <span className={cn('block text-[11px] text-muted-foreground', t.locale === 'ne' && 'font-deva')}>{t.location}</span>
+                  </span>
+                </figcaption>
+              </CardFooter>
+            </Card>
+          </Stagger.Item>
+        ))}
+      </StaggerOnView>
+    </SectionShell>
+  );
+}
+
+function ExplainerBlock({ section, media }) {
   const { block, checkpoints = [] } = section.data ?? {};
   if (!block) return null;
   return (
@@ -771,7 +820,11 @@ function ExplainerBlock({ section }) {
       <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
         <Reveal>
           <Eyebrow>Diagnosis</Eyebrow>
-          <h2 className="mt-2 text-2xl font-bold tracking-tight md:text-[1.75rem]">{block.heading}</h2>
+          <HeadlineReveal
+            as="h2"
+            text={block.heading}
+            className="mt-2 text-2xl font-bold tracking-tight md:text-[1.75rem]"
+          />
           {block.subheading ? (
             <p className="mt-3 border-l-2 border-gold pl-4 text-[15px] leading-relaxed">{block.subheading}</p>
           ) : null}
@@ -781,54 +834,77 @@ function ExplainerBlock({ section }) {
           ) : null}
         </Reveal>
 
-        {checkpoints.length ? (
-          <Reveal delay={0.08}>
-            <div className="overflow-hidden rounded-xl border bg-card">
-              <p className="border-b bg-muted/50 px-5 py-3 text-sm font-semibold">Signs you should book an inspection</p>
-              <ul className="divide-y">
-                {checkpoints.map((c) => (
-                  <li key={c.id} className="flex gap-3 px-5 py-3 text-[13px] leading-relaxed">
-                    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                      {c.position}
-                    </span>
-                    {c.text}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </Reveal>
-        ) : null}
+        <Reveal delay={0.08} className="grid gap-4">
+          {/* What the problem actually looks like — the picture belongs next to
+              the symptoms, not at the top of the section. */}
+          <Card className="overflow-hidden">
+            <Media media={media?.[block.imageId]} alt={block.heading} ratio={16 / 9} icon="droplets" reveal />
+          </Card>
+
+          {checkpoints.length ? (
+            <Card className="overflow-hidden">
+              <CardHeader className="border-b bg-muted/50 px-5 py-3">
+                <CardTitle className="text-sm font-semibold">Signs you should book an inspection</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ul className="divide-y">
+                  {checkpoints.map((c) => (
+                    <li key={c.id} className="flex gap-3 px-5 py-3 text-[13px] leading-relaxed">
+                      <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                        {c.position}
+                      </span>
+                      {c.text}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ) : null}
+        </Reveal>
       </div>
     </SectionShell>
   );
 }
 
-function ContentBlock({ section }) {
+function ContentBlock({ section, media }) {
   const block = section.data;
   if (!block) return null;
   return (
     <SectionShell>
-      <div className="grid gap-8 lg:grid-cols-[1fr_1.1fr] lg:gap-12">
+      <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
         <Reveal>
           <Eyebrow>Interiors</Eyebrow>
-          <h2 className="mt-2 text-2xl font-bold tracking-tight md:text-[1.75rem]">{block.heading}</h2>
+          <HeadlineReveal
+            as="h2"
+            text={block.heading}
+            className="mt-2 text-2xl font-bold tracking-tight md:text-[1.75rem]"
+          />
           {block.subheading ? <p className="mt-3 text-[15px] text-muted-foreground">{block.subheading}</p> : null}
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{block.body}</p>
+
+          {block.bullets?.length ? (
+            <StaggerOnView className="mt-6 grid gap-3 sm:grid-cols-2" stagger={0.05}>
+              {block.bullets.map((b, i) => (
+                <Stagger.Item
+                  key={i}
+                  variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4 } } }}
+                >
+                  <Card className="h-full">
+                    <CardContent className="flex gap-2.5 p-4 text-[13px] leading-relaxed">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden /> {b}
+                    </CardContent>
+                  </Card>
+                </Stagger.Item>
+              ))}
+            </StaggerOnView>
+          ) : null}
         </Reveal>
-        {block.bullets?.length ? (
-          <StaggerOnView className="grid gap-3 sm:grid-cols-2" stagger={0.05}>
-            {block.bullets.map((b, i) => (
-              <Stagger.Item
-                key={i}
-                variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4 } } }}
-              >
-                <p className="flex h-full gap-2.5 rounded-xl border bg-card p-4 text-[13px] leading-relaxed">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden /> {b}
-                </p>
-              </Stagger.Item>
-            ))}
-          </StaggerOnView>
-        ) : null}
+
+        <Reveal delay={0.08}>
+          <Card className="overflow-hidden shadow-card">
+            <Media media={media?.[block.imageId]} alt={block.heading} ratio={4 / 3} icon="sofa" reveal from="left" />
+          </Card>
+        </Reveal>
       </div>
     </SectionShell>
   );
@@ -850,13 +926,16 @@ function ChecklistBlock({ section }) {
           <Stagger.Item
             key={item.id}
             variants={{ hidden: { opacity: 0, x: -12 }, show: { opacity: 1, x: 0, transition: { duration: 0.45 } } }}
+            className="h-full"
           >
-            <p className="flex h-full items-start gap-3 rounded-xl border bg-card p-4 text-[13px] leading-relaxed">
-              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                {item.position}
-              </span>
-              {item.text}
-            </p>
+            <Card className="h-full">
+              <CardContent className="flex items-start gap-3 p-4 text-[13px] leading-relaxed">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                  {item.position}
+                </span>
+                {item.text}
+              </CardContent>
+            </Card>
           </Stagger.Item>
         ))}
       </StaggerOnView>
@@ -864,9 +943,11 @@ function ChecklistBlock({ section }) {
   );
 }
 
-function KitchenBlock({ section }) {
+function KitchenBlock({ section, media }) {
   const { cards = [], steps = [] } = section.data ?? {};
   if (!cards.length && !steps.length) return null;
+  const lead = cards.find((c) => c.imageId);
+
   return (
     <SectionShell>
       <SectionHeading
@@ -876,33 +957,47 @@ function KitchenBlock({ section }) {
       />
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <div className="grid content-start gap-3">
+          {/* One wide picture leads the column when a kitchen card carries one. */}
+          <Reveal>
+            <Card className="overflow-hidden">
+              <Media media={media?.[lead?.imageId]} alt={lead?.title ?? ''} ratio={16 / 7} icon="chef-hat" reveal />
+            </Card>
+          </Reveal>
+
           {cards.map((c, i) => (
-            <Reveal key={c.id} delay={i * 0.05}>
-              <div className="sheen flex gap-4 rounded-xl border bg-card p-4 transition-shadow duration-300 hover:shadow-card">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gold/15 text-gold ring-1 ring-inset ring-gold/25">
-                  <DataIcon name={c.icon} className="h-[18px] w-[18px]" />
-                </span>
-                <div>
-                  <h3 className="text-[14px] font-semibold tracking-tight">{c.title}</h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{c.description}</p>
-                </div>
-              </div>
+            <Reveal key={c.id} delay={0.05 + i * 0.05}>
+              <Card className="sheen transition-shadow duration-300 hover:shadow-card">
+                <CardContent className="flex gap-4 p-4">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gold/15 text-gold ring-1 ring-inset ring-gold/25">
+                    <DataIcon name={c.icon} className="h-[18px] w-[18px]" />
+                  </span>
+                  <div>
+                    <CardTitle className="text-[14px] font-semibold tracking-tight">{c.title}</CardTitle>
+                    <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{c.description}</p>
+                  </div>
+                </CardContent>
+              </Card>
             </Reveal>
           ))}
         </div>
+
         {steps.length ? (
           <Reveal delay={0.08}>
-            <div className="overflow-hidden rounded-xl border bg-card">
-              <p className="border-b bg-muted/50 px-5 py-3 text-sm font-semibold">How a kitchen runs</p>
-              <ol className="divide-y">
-                {steps.map((s) => (
-                  <li key={s.id} className="flex gap-3 px-5 py-3 text-[13px] leading-relaxed">
-                    <span className="text-xs font-bold tabular-nums text-primary">{String(s.position).padStart(2, '0')}</span>
-                    {s.text}
-                  </li>
-                ))}
-              </ol>
-            </div>
+            <Card className="overflow-hidden">
+              <CardHeader className="border-b bg-muted/50 px-5 py-3">
+                <CardTitle className="text-sm font-semibold">How a kitchen runs</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ol className="divide-y">
+                  {steps.map((s) => (
+                    <li key={s.id} className="flex gap-3 px-5 py-3 text-[13px] leading-relaxed">
+                      <span className="text-xs font-bold tabular-nums text-primary">{String(s.position).padStart(2, '0')}</span>
+                      {s.text}
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
           </Reveal>
         ) : null}
       </div>
@@ -951,15 +1046,15 @@ function ClosingCta({ section, settings }) {
         </Reveal>
 
         <Reveal delay={0.08}>
-          <div className="overflow-hidden rounded-xl bg-card text-card-foreground shadow-lift">
-            <div className="border-b bg-muted/50 px-6 py-4">
-              <h3 className="text-[15px] font-semibold tracking-tight">Or send the details now</h3>
+          <Card className="overflow-hidden shadow-lift">
+            <CardHeader className="space-y-0 border-b bg-muted/50 px-6 py-4">
+              <CardTitle className="text-[15px] font-semibold tracking-tight">Or send the details now</CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">We call back within two hours.</p>
-            </div>
-            <div className="p-6">
+            </CardHeader>
+            <CardContent className="p-6">
               <LeadForm services={section.data?.services ?? []} sourcePage="/#contact" />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </Reveal>
       </div>
     </SectionShell>

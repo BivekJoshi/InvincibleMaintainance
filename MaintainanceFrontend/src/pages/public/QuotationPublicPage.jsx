@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle2, XCircle, FileText } from 'lucide-react';
-import { useGetQuotationByTokenQuery, useDecideQuotationMutation } from '@/features/public/publicApi';
+import { useGetQuotationByTokenQuery, useDecideQuotationMutation } from '@/api/publicApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/input';
@@ -10,8 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { StatusBadge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition, motion } from '@/components/motion';
-import { formatNpr, formatDate } from '@/lib/format';
+import { PageTransition, motion } from '@/three/motion';
+import { formatNpr, formatDate } from '@/helpers/format';
 
 /**
  * The customer's view of a quotation, opened from an SMS link. No account, no

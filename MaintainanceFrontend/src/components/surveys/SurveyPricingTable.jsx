@@ -3,8 +3,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { formatNpr, paisaToRupees, titleCase } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { formatNpr, paisaToRupees, titleCase } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 /**
  * The reviewer's working surface: the surveyor's quantities on the left, today's

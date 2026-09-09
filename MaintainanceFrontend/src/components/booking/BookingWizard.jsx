@@ -1,37 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { useZodForm, bookingDetailsSchema, bookingDetailsDefaults } from '@/form';
 import {
   AlertCircle, ArrowLeft, ArrowRight, CalendarCheck, Check, CheckCircle2, Clock, Phone, Search,
 } from 'lucide-react';
 import {
   useGetBootstrapQuery, useGetPublicServicesQuery, useGetAvailabilityQuery, useEstimateMutation, useSubmitLeadMutation,
-} from '@/features/public/publicApi';
-import { selectLocale } from '@/features/ui/uiSlice';
+} from '@/api/publicApi';
+import { selectLocale } from '@/redux/slices/uiSlice';
 import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataIcon } from '@/components/site';
-import { motion, AnimatePresence } from '@/components/motion';
-import { formatNpr } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from '@/three/motion';
+import { formatNpr } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 const STEPS = ['Service', 'Size', 'Time', 'Details'];
-
-const NEPAL_PHONE = /^(?:9[678]\d{8}|0\d{1,2}-?\d{6,7})$/;
-
-const detailsSchema = z.object({
-  name: z.string().trim().min(2, 'Please enter your name'),
-  phone: z.string().trim()
-    .transform((v) => v.replace(/[\s()]/g, '').replace(/^\+?977-?/, ''))
-    .refine((v) => NEPAL_PHONE.test(v), 'Enter a valid Nepali number, e.g. 9808338255'),
-  address: z.string().trim().min(4, 'Where should the engineer come?').max(400),
-  message: z.string().trim().max(4000).optional(),
-});
 
 /** Kathmandu "today" as a YYYY-MM-DD key, so the calendar never offers yesterday. */
 const KTM = 'Asia/Kathmandu';
@@ -93,10 +80,7 @@ export function BookingWizard({ slug }) {
     return services.filter((s) => `${s.name} ${s.excerpt ?? ''} ${s.category?.name ?? ''}`.toLowerCase().includes(needle));
   }, [services, query]);
 
-  const form = useForm({
-    resolver: zodResolver(detailsSchema),
-    defaultValues: { name: '', phone: '', address: '', message: '' },
-  });
+  const form = useZodForm(bookingDetailsSchema, { defaultValues: bookingDetailsDefaults });
 
   const priceable = Boolean(service?.priceFrom);
   const canNext = [Boolean(serviceId), !priceable || Boolean(qty), Boolean(date && slot)][step] ?? true;

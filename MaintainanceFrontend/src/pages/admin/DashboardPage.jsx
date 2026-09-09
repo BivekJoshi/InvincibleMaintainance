@@ -2,15 +2,15 @@ import { Link } from 'react-router-dom';
 import {
   Users, Timer, AlertTriangle, Briefcase, Receipt, ShieldCheck, RefreshCw, TrendingUp,
 } from 'lucide-react';
-import { useGetDashboardQuery } from '@/features/dashboard/dashboardApi';
+import { useGetDashboardQuery } from '@/api/dashboardApi';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { Card, CardContent } from '@/components/ui/card';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, Stagger, CountUp } from '@/components/motion';
-import { formatNpr } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { PageTransition, Stagger, CountUp } from '@/three/motion';
+import { formatNpr } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 /** Card definitions keyed by the API's card names; the API decides which appear. */
 const CARDS = {

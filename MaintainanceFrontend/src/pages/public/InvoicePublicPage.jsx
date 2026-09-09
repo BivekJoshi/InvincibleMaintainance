@@ -1,16 +1,16 @@
 import { useParams } from 'react-router-dom';
 import { Receipt, Printer, Phone } from 'lucide-react';
 import { useSelector } from 'react-redux';
-import { useGetInvoiceByTokenQuery, useGetBootstrapQuery } from '@/features/public/publicApi';
+import { useGetInvoiceByTokenQuery, useGetBootstrapQuery } from '@/api/publicApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { StatusBadge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition } from '@/components/motion';
-import { selectLocale } from '@/features/ui/uiSlice';
-import { formatNpr, formatDate } from '@/lib/format';
+import { PageTransition } from '@/three/motion';
+import { selectLocale } from '@/redux/slices/uiSlice';
+import { formatNpr, formatDate } from '@/helpers/format';
 
 /**
  * The customer's view of an invoice, opened from the SMS or email link that

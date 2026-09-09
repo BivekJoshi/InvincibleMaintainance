@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { FIELD_ROLES } from '@/lib/constants';
+import { FIELD_ROLES } from '@/config/constants';
 
 /**
  * Route guard. Convenience only — every one of these routes is also enforced

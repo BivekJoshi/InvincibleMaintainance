@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { cva } from 'class-variance-authority';
-import { cn } from '@/lib/utils';
-import { STATUS_STYLES, PRIORITY_STYLES, SLA_STYLES } from '@/lib/constants';
-import { titleCase } from '@/lib/format';
+import { cn } from '@/helpers/utils';
+import { STATUS_STYLES, PRIORITY_STYLES, SLA_STYLES } from '@/config/constants';
+import { titleCase } from '@/helpers/format';
 
 const badgeVariants = cva(
   'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors',
@@ -13,6 +13,12 @@ const badgeVariants = cva(
         secondary: 'border-transparent bg-secondary text-secondary-foreground',
         destructive: 'border-transparent bg-destructive text-destructive-foreground',
         outline: 'text-foreground',
+        // Marketing accents, matching the button's — gold is the public
+        // site's single emphasis colour, ink is its dark counterpart.
+        gold: 'border-transparent bg-gold text-gold-foreground',
+        goldSoft: 'border-gold/25 bg-gold/12 text-gold',
+        ink: 'border-transparent bg-ink text-ink-foreground',
+        onInk: 'border-ink-foreground/20 bg-ink-foreground/10 text-ink-foreground',
       },
     },
     defaultVariants: { variant: 'default' },

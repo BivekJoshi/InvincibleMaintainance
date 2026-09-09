@@ -1,15 +1,15 @@
 import { Link, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { ArrowRight, Clock, MapPin, Wallet } from 'lucide-react';
-import { useGetPublicProjectQuery } from '@/features/public/publicApi';
+import { useGetPublicProjectQuery } from '@/api/publicApi';
 import { PageHero, SectionShell, Eyebrow } from '@/components/site';
 import { ErrorState } from '@/components/common/ErrorState';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition } from '@/components/motion';
+import { PageTransition } from '@/three/motion';
 import { useSeo } from '@/hooks/useSeo';
-import { selectLocale } from '@/features/ui/uiSlice';
-import { formatNpr, imageUrl } from '@/lib/format';
+import { selectLocale } from '@/redux/slices/uiSlice';
+import { formatNpr, imageUrl } from '@/helpers/format';
 
 /** One stage of the story, skipped when it was never filled in. */
 function Chapter({ eyebrow, title, children }) {

@@ -1,7 +1,7 @@
 import { Gauge, MapPin, ShieldAlert, DoorOpen, Camera } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatDate, imageUrl, titleCase } from '@/lib/format';
+import { formatDate, imageUrl, titleCase } from '@/helpers/format';
 
 /** One labelled block, rendered only when the surveyor filled it in. */
 function Finding({ icon: Icon, label, children }) {

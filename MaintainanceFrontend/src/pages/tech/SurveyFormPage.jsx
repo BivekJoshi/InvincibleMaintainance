@@ -8,7 +8,7 @@ import {
   useSubmitSurveyMutation,
   useGetTechRateCardQuery,
   useGetTechMaterialsQuery,
-} from '@/features/technician/techApi';
+} from '@/api/techApi';
 import { ErrorState } from '@/components/common/ErrorState';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,11 +17,11 @@ import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition } from '@/components/motion';
-import { toastError, toastSuccess } from '@/features/ui/uiSlice';
-import { SURVEY_ITEM_KINDS, SURVEY_METRICS, PRIORITIES, UNITS } from '@/lib/constants';
-import { enqueue } from '@/lib/offlineQueue';
-import { titleCase } from '@/lib/format';
+import { PageTransition } from '@/three/motion';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { SURVEY_ITEM_KINDS, SURVEY_METRICS, PRIORITIES, UNITS } from '@/config/constants';
+import { enqueue } from '@/helpers/offlineQueue';
+import { titleCase } from '@/helpers/format';
 
 const EDITABLE = ['DRAFT', 'RETURNED'];
 const blankReading = () => ({ label: '', metric: 'moisture', value: '', unit: '', textValue: '' });

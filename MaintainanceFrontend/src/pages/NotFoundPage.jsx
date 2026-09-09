@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { PageTransition } from '@/components/motion';
+import { PageTransition } from '@/three/motion';
 
 export default function NotFoundPage() {
   return (

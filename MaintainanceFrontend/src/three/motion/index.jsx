@@ -3,7 +3,7 @@ import {
   motion, AnimatePresence, useReducedMotion, useScroll, useTransform, useSpring,
   useMotionValue, useMotionValueEvent, useInView, animate as animateValue,
 } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn } from '@/helpers/utils';
 
 /**
  * Motion vocabulary for the whole app. Four rules:
@@ -555,4 +555,163 @@ export function BackToTop({ className }) {
   );
 }
 
-export { motion, AnimatePresence, useReducedMotion, useScroll, useTransform, useSpring, useInView };
+// ── composed sequences ─────────────────────────────────────────────────────────
+// The pieces above are single effects. These three compose several at once and
+// are what the marketing pages lean on; each one still collapses to a static
+// element under `prefers-reduced-motion`.
+
+/**
+ * Uncovers a picture the way a dust sheet comes off it: the frame wipes open
+ * while the image inside counter-scales, so the picture appears to hold still
+ * as the opening travels across it.
+ *
+ * `from` is the edge the wipe travels away from.
+ */
+export function RevealImage({ children, className, from = 'bottom', delay = 0, amount = 0.25, duration = 1 }) {
+  const reduced = useReducedMotion();
+  if (reduced) return <div className={className}>{children}</div>;
+
+  const closed = {
+    bottom: 'inset(100% 0% 0% 0%)', top: 'inset(0% 0% 100% 0%)',
+    left: 'inset(0% 100% 0% 0%)', right: 'inset(0% 0% 0% 100%)',
+  }[from] ?? 'inset(100% 0% 0% 0%)';
+
+  return (
+    <motion.div
+      className={cn('overflow-hidden', className)}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount }}
+      variants={{
+        hidden: { clipPath: closed },
+        show: { clipPath: 'inset(0% 0% 0% 0%)', transition: { duration, ease: EASE, delay } },
+      }}
+    >
+      <motion.div
+        className="h-full w-full"
+        variants={{
+          hidden: { scale: 1.18 },
+          show: { scale: 1, transition: { duration: duration * 1.25, ease: EASE, delay } },
+        }}
+      >
+        {children}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/**
+ * True while the viewport is at least `px` wide. Used to keep effects that need
+ * room — a pinned stage, say — off phones rather than squeezing them onto one.
+ */
+export function useMinWidth(px) {
+  const query = `(min-width: ${px}px)`;
+  const [matches, setMatches] = useState(() => (
+    typeof window === 'undefined' ? true : window.matchMedia(query).matches
+  ));
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = (e) => setMatches(e.matches);
+    setMatches(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, [query]);
+  return matches;
+}
+
+/**
+ * Pins a section while the reader scrolls a screen or two past it, and hands
+ * the progress of that scroll (0 → 1) to a render prop. The section owns as
+ * much scroll distance as `pages` screens, so a five-step sequence gets room
+ * to play without the reader feeling stuck.
+ *
+ * The pin is dropped — and `progress` arrives as null — under reduced motion,
+ * and on anything narrower than `pinFrom`, where a sequence tall enough to need
+ * a pin would not fit the screen it was being pinned to.
+ *
+ * The render prop is handed the progress value, or null when the stage is not
+ * pinned — which is the cue to render the plain, unanimated version.
+ *
+ *   <ScrollStage pages={2}>{(progress) => <Steps progress={progress} />}</ScrollStage>
+ */
+export function ScrollStage({ children, className, pages = 2, pinFrom = 768, id }) {
+  const ref = useRef(null);
+  const reduced = useReducedMotion();
+  const roomy = useMinWidth(pinFrom);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end end'] });
+  const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 30, restDelta: 0.001 });
+
+  if (reduced || !roomy) {
+    return <div id={id} className={className}>{children(null)}</div>;
+  }
+
+  return (
+    <div id={id} ref={ref} style={{ height: `${(pages + 1) * 100}vh` }} className={cn('relative', className)}>
+      <div className="sticky top-0 flex min-h-dvh flex-col justify-center overflow-hidden">
+        {children(progress)}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A number that only exists while a stage is at a given point. Reads a motion
+ * value produced by <ScrollStage> and reports which step is current, so a
+ * pinned sequence can drive plain React state without re-rendering per frame.
+ */
+export function useStageStep(progress, count) {
+  const [step, setStep] = useState(0);
+  // Created unconditionally — `progress` is null whenever the stage is not
+  // pinned, and a hook may not be called behind that test.
+  const idle = useMotionValue(1);
+  useMotionValueEvent(progress ?? idle, 'change', (v) => {
+    // Bands are equal, with the last one held slightly longer so the sequence
+    // finishes on the final step rather than flicking past it.
+    const next = Math.min(count - 1, Math.floor(v * count * 0.97));
+    setStep((prev) => (prev === next ? prev : next));
+  });
+  return progress ? step : count - 1;
+}
+
+/**
+ * A heading that assembles from its own words, each arriving out of the page
+ * rather than sliding along it. Heavier than <WordReveal> — one per screen.
+ */
+export function HeadlineReveal({ text, className, as: Tag = 'span', delay = 0, amount = 0.5 }) {
+  const reduced = useReducedMotion();
+  const words = String(text ?? '').split(' ');
+  const MotionTag = motion[Tag] ?? motion.span;
+
+  if (reduced) return <Tag className={className}>{text}</Tag>;
+
+  return (
+    <MotionTag
+      className={cn('inline-block [perspective:800px]', className)}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount }}
+      variants={staggerParent(0.055, delay)}
+      aria-label={text}
+    >
+      {words.map((word, i) => (
+        <span key={`${word}-${i}`} className="inline-block overflow-hidden pb-[0.08em] align-bottom" aria-hidden>
+          <motion.span
+            className="inline-block"
+            variants={{
+              hidden: { y: '105%', rotateX: -55, opacity: 0 },
+              show: { y: '0%', rotateX: 0, opacity: 1, transition: { duration: 0.75, ease: EASE } },
+            }}
+          >
+            {word}
+            {i < words.length - 1 ? '\u00a0' : null}
+          </motion.span>
+        </span>
+      ))}
+    </MotionTag>
+  );
+}
+
+export {
+  motion, AnimatePresence, useReducedMotion, useScroll, useTransform, useSpring, useInView,
+  useMotionValue, useMotionValueEvent,
+};

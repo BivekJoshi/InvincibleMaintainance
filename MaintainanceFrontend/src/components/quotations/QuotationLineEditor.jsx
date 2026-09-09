@@ -3,8 +3,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { formatNpr, paisaToRupees } from '@/lib/format';
-import { UNITS } from '@/lib/constants';
+import { formatNpr, paisaToRupees } from '@/helpers/format';
+import { UNITS } from '@/config/constants';
 
 const blankLine = () => ({ description: '', unit: 'lump', qty: 1, rate: '', rateCardItemId: null });
 

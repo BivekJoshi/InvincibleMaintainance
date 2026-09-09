@@ -7,17 +7,17 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
-import { useLogoutMutation } from '@/features/auth/authApi';
-import { useGetNotificationsQuery } from '@/features/dashboard/dashboardApi';
-import { selectTheme, setTheme } from '@/features/ui/uiSlice';
+import { useLogoutMutation } from '@/api/authApi';
+import { useGetNotificationsQuery } from '@/api/dashboardApi';
+import { selectTheme, setTheme } from '@/redux/slices/uiSlice';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { initials } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { initials } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 /**
  * Navigation is filtered by capability — the same map the API enforces.

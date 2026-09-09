@@ -1,4 +1,4 @@
-import { apiSlice } from '@/app/api/apiSlice';
+import { apiSlice } from '@/api/apiSlice';
 
 export const dashboardApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({

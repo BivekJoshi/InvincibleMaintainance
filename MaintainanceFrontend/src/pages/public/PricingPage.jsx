@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Check } from 'lucide-react';
-import { useGetPublicPricingQuery } from '@/features/public/publicApi';
-import { selectLocale } from '@/features/ui/uiSlice';
-import { Estimator } from '@/features/public/Estimator';
-import { LeadForm } from '@/features/public/LeadForm';
+import { useGetPublicPricingQuery } from '@/api/publicApi';
+import { selectLocale } from '@/redux/slices/uiSlice';
+import { Estimator } from '@/components/public/Estimator';
+import { LeadForm } from '@/components/public/LeadForm';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
 import { PageHero, SectionShell, Eyebrow } from '@/components/site';
-import { PageTransition, Reveal, StaggerOnView, Stagger, Tilt } from '@/components/motion';
-import { formatNpr } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { PageTransition, Reveal, StaggerOnView, Stagger, Tilt } from '@/three/motion';
+import { formatNpr } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 export default function PricingPage() {
   const locale = useSelector(selectLocale);

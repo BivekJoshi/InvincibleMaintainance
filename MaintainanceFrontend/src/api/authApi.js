@@ -1,5 +1,5 @@
-import { apiSlice } from '@/app/api/apiSlice';
-import { setCredentials, loggedOut } from './authSlice';
+import { apiSlice } from '@/api/apiSlice';
+import { setCredentials, loggedOut } from '@/redux/slices/authSlice';
 
 export const authApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({

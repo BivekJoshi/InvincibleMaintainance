@@ -1,13 +1,13 @@
 import { useNavigate } from 'react-router-dom';
-import { useGetQuotationsQuery } from '@/features/quotations/quotationsApi';
+import { useGetQuotationsQuery } from '@/api/quotationsApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable } from '@/components/common/DataTable';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PageTransition } from '@/components/motion';
-import { QUOTATION_STATUSES } from '@/lib/constants';
-import { formatDate, formatDateTime, formatNpr, titleCase } from '@/lib/format';
+import { PageTransition } from '@/three/motion';
+import { QUOTATION_STATUSES } from '@/config/constants';
+import { formatDate, formatDateTime, formatNpr, titleCase } from '@/helpers/format';
 
 const columns = [
   {

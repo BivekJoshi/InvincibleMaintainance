@@ -1,16 +1,16 @@
 import { Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { MapPin, Phone, Navigation, Clock, CheckCircle2, ClipboardList } from 'lucide-react';
-import { useGetMyJobsTodayQuery, useSetMyJobStatusMutation } from '@/features/technician/techApi';
+import { useGetMyJobsTodayQuery, useSetMyJobStatusMutation } from '@/api/techApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { StatusBadge, PriorityBadge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
-import { PageTransition, Stagger } from '@/components/motion';
-import { toastSuccess, toastError } from '@/features/ui/uiSlice';
-import { formatTime } from '@/lib/format';
+import { PageTransition, Stagger } from '@/three/motion';
+import { toastSuccess, toastError } from '@/redux/slices/uiSlice';
+import { formatTime } from '@/helpers/format';
 
 /** The next action available from each state, so the technician never has to think. */
 const NEXT_ACTION = {

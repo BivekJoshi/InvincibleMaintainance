@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { selectTheme } from '@/features/ui/uiSlice';
+import { selectTheme } from '@/redux/slices/uiSlice';
 
 /** Applies the theme class to <html>, following the OS when set to "system". */
 export function useTheme() {

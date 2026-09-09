@@ -8,8 +8,8 @@ import {
   useSendQuotationMutation,
   useReviseQuotationMutation,
   useGetRateCardQuery,
-} from '@/features/quotations/quotationsApi';
-import { QuotationLineEditor, blankLine } from '@/features/quotations/components/QuotationLineEditor';
+} from '@/api/quotationsApi';
+import { QuotationLineEditor, blankLine } from '@/components/quotations/QuotationLineEditor';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { StatusBadge } from '@/components/ui/badge';
@@ -19,10 +19,10 @@ import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition } from '@/components/motion';
-import { toastError, toastSuccess } from '@/features/ui/uiSlice';
+import { PageTransition } from '@/three/motion';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { useAuth } from '@/hooks/useAuth';
-import { formatDate, formatNpr, paisaToRupees } from '@/lib/format';
+import { formatDate, formatNpr, paisaToRupees } from '@/helpers/format';
 
 /** An approved or converted quotation is frozen — the API refuses edits and offers a revision. */
 const FROZEN = ['APPROVED', 'CONVERTED'];

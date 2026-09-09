@@ -2,15 +2,15 @@ import { useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Search, X } from 'lucide-react';
-import { useGetPublicServicesQuery, useGetBootstrapQuery } from '@/features/public/publicApi';
-import { selectLocale } from '@/features/ui/uiSlice';
+import { useGetPublicServicesQuery, useGetBootstrapQuery } from '@/api/publicApi';
+import { selectLocale } from '@/redux/slices/uiSlice';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHero, ServiceCard, SectionShell } from '@/components/site';
-import { PageTransition, StaggerOnView, Stagger } from '@/components/motion';
-import { cn } from '@/lib/utils';
+import { PageTransition, StaggerOnView, Stagger } from '@/three/motion';
+import { cn } from '@/helpers/utils';
 
 const SORTS = {
   recommended: { label: 'Recommended', compare: null },

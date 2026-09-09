@@ -1,4 +1,4 @@
-import { apiSlice } from '@/app/api/apiSlice';
+import { apiSlice } from '@/api/apiSlice';
 
 /** Endpoints for the marketing site. No auth, cached by the server for 60s. */
 export const publicApi = apiSlice.injectEndpoints({
