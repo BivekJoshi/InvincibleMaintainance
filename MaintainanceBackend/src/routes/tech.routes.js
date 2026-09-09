@@ -10,11 +10,12 @@ import * as jobs from '../services/job.service.js';
 import * as media from '../services/media.service.js';
 import * as surveys from '../services/survey.service.js';
 import { prisma } from '../lib/prisma.js';
-import { badRequest, notFound } from '../utils/AppError.js';
+import { badRequest, forbidden, notFound } from '../utils/AppError.js';
 import { logger } from '../lib/logger.js';
 import * as s from '../shared/schemas/ops.js';
 import * as sv from '../shared/schemas/survey.js';
 import { FIELD_ROLES } from '../shared/enums.js';
+import { can } from '../shared/permissions.js';
 
 const router = Router();
 
@@ -63,10 +64,30 @@ const own = asyncHandler(async (req, _res, next) => {
   next();
 });
 
-/** The survey equivalent of `own` — a field user only touches their own surveys. */
+/** The survey equivalent of `own` — a field user only reads their own surveys. */
 const ownSurvey = asyncHandler(async (req, _res, next) => {
   if (!FIELD_ROLES.includes(req.user.role)) return next();
   await surveys.assertOwnSurvey(req.params.id, req.technician.id);
+  next();
+});
+
+/**
+ * Writing a survey through the field app.
+ *
+ * `own` can wave ADMIN and DISPATCHER through because both hold jobs:write, so
+ * skipping the assignment check costs nothing. Surveys are different: DISPATCHER
+ * holds surveys:read but NOT surveys:write, so the same shape would have let them
+ * edit and submit any survey here — the exact wall /admin/surveys enforces.
+ * A non-field caller must therefore hold the write capability.
+ */
+const writeSurvey = asyncHandler(async (req, _res, next) => {
+  if (FIELD_ROLES.includes(req.user.role)) {
+    await surveys.assertOwnSurvey(req.params.id, req.technician.id);
+    return next();
+  }
+  if (!can(req.user.role, 'surveys:write')) {
+    return next(forbidden('You can read surveys but not change them'));
+  }
   next();
 });
 
@@ -128,18 +149,18 @@ router.post('/jobs/:id/survey', validate({ params: idParam, body: sv.surveyCreat
     return isNew ? created(res, full) : ok(res, full);
   }));
 
-router.put('/surveys/:id', validate({ params: idParam, body: sv.surveySaveSchema }), ownSurvey,
+router.put('/surveys/:id', validate({ params: idParam, body: sv.surveySaveSchema }), writeSurvey,
   asyncHandler(async (req, res) =>
     ok(res, await surveys.saveDraft(req.params.id, req.body, { userId: req.user.id }))));
 
-router.post('/surveys/:id/submit', validate({ params: idParam, body: sv.surveySubmitSchema }), ownSurvey,
+router.post('/surveys/:id/submit', validate({ params: idParam, body: sv.surveySubmitSchema }), writeSurvey,
   asyncHandler(async (req, res) => {
     await surveys.submitSurvey(req.params.id, req.body, { userId: req.user.id });
     ok(res, await surveys.getSurvey(req.params.id, { field: true }));
   }));
 
 /** Survey evidence is a JobPhoto of kind ISSUE on the parent inspection job. */
-router.post('/surveys/:id/photos', validate({ params: idParam }), ownSurvey, uploadImages.array('files', 10),
+router.post('/surveys/:id/photos', validate({ params: idParam }), writeSurvey, uploadImages.array('files', 10),
   asyncHandler(async (req, res) => {
     const survey = await surveys.getSurvey(req.params.id, { field: true });
     const uploaded = await media.uploadFiles(req.files, { uploadedBy: req.user.id });
@@ -206,6 +227,8 @@ router.post('/sync', requireTechnician, validate({ body: syncSchema }), asyncHan
       if (FIELD_ROLES.includes(req.user.role)) {
         if (m.surveyId) await surveys.assertOwnSurvey(m.surveyId, req.technician.id);
         else await jobs.assertAssigned(m.jobId, req.technician.id);
+      } else if (m.surveyId && !can(req.user.role, 'surveys:write')) {
+        throw forbidden('You can read surveys but not change them');
       }
 
       switch (m.kind) {

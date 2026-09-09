@@ -31,7 +31,11 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    const to = location.state?.from?.pathname ?? (FIELD_ROLES.includes(role) ? '/tech' : '/admin');
+    // Keep the query string: a deep link into a filtered list is worth returning to.
+    const from = location.state?.from;
+    const to = from
+      ? `${from.pathname}${from.search ?? ''}`
+      : (FIELD_ROLES.includes(role) ? '/tech' : '/admin');
     navigate(to, { replace: true });
   }, [isAuthenticated, role, navigate, location.state]);
 

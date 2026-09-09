@@ -40,7 +40,10 @@ describe('role capabilities', () => {
   it('lets sales review surveys but keeps dispatch read-only on them', () => {
     expect(can('SALES', 'surveys:write')).toBe(true);
     expect(can('DISPATCHER', 'surveys:read')).toBe(true);
+    // tech.routes.js#writeSurvey leans on this: DISPATCHER may be waved past the
+    // ownership check (they hold jobs:write) but must not reach a survey write.
     expect(can('DISPATCHER', 'surveys:write')).toBe(false);
+    expect(can('DISPATCHER', 'jobs:write')).toBe(true);
     expect(can('DISPATCHER', 'quotations:read')).toBe(false);
   });
 
