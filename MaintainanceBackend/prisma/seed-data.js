@@ -57,6 +57,8 @@ export const SETTINGS = [
 
   { group: 'booking', key: 'booking.closedWeekdays', label: 'Closed weekdays (0 = Sunday … 6 = Saturday)', type: 'json', value: [6], hint: 'Days the online booking calendar will not offer.', sortOrder: 0 },
   { group: 'booking', key: 'booking.maxDaysAhead', label: 'Book up to this many days ahead', type: 'number', value: 30, sortOrder: 1 },
+  { group: 'booking', key: 'booking.slotCapacity', label: 'Visits per slot', type: 'number', value: null, hint: 'Leave empty to derive it from the surveyors\' daily capacity.', sortOrder: 2 },
+  { group: 'booking', key: 'booking.leadTimeHours', label: 'Minimum notice before a visit (hours)', type: 'number', value: 4, sortOrder: 3 },
 
   { group: 'warranty', key: 'warranty.defaultDays', label: 'Default warranty (days)', type: 'number', value: 30, hint: 'The site promises a 1-month warranty on technical solutions.', sortOrder: 0 },
 ];

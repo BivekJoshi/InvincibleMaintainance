@@ -10,6 +10,7 @@ import * as quotations from '../services/quotation.service.js';
 import * as invoices from '../services/invoice.service.js';
 import * as warranty from '../services/warranty.service.js';
 import { estimate } from '../services/estimate.service.js';
+import { surveyAvailability } from '../services/availability.service.js';
 import { publicLeadSchema, estimateSchema, quotationDecisionSchema } from '../shared/schemas/crm.js';
 import { warrantyClaimSchema } from '../shared/schemas/ops.js';
 import { slugParam, tokenParam } from '../shared/schemas/common.js';
@@ -26,6 +27,11 @@ router.get('/services/:slug', cached(TTL, 'services'), validate({ params: slugPa
 router.get('/projects', cached(TTL, 'projects'), asyncHandler(async (req, res) => ok(res, await pub.listProjects(req.query, locale(req)))));
 router.get('/projects/:slug', cached(TTL, 'projects'), validate({ params: slugParam }), asyncHandler(async (req, res) => ok(res, await pub.getProject(req.params.slug, locale(req)))));
 router.get('/offers', cached(30, 'offers'), asyncHandler(async (req, res) => ok(res, await pub.listOffers(locale(req)))));
+// 30s rather than the usual 60: nothing busts this cache when a booking lands,
+// so the window in which two customers can be offered the last slot is the TTL.
+router.get('/availability', cached(30, 'availability'), asyncHandler(async (req, res) =>
+  ok(res, await surveyAvailability({ from: req.query.from, days: Number(req.query.days) || 14 }))));
+
 router.get('/pricing', cached(TTL, 'pricing'), asyncHandler(async (req, res) => ok(res, await pub.pricing(locale(req)))));
 router.get('/gallery', cached(TTL, 'gallery'), asyncHandler(async (_req, res) => ok(res, await pub.listGallery())));
 router.get('/testimonials', cached(TTL, 'testimonials'), asyncHandler(async (req, res) => ok(res, await pub.listTestimonials(locale(req)))));

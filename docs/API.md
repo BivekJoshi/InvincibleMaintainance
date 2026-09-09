@@ -20,6 +20,10 @@ GET  /public/faqs                   ⚡ ?group
 GET  /public/posts  /posts/:slug    ⚡
 GET  /public/pages/:slug            ⚡
 POST /public/estimate                 { serviceId, qty, unit } -> { min, max, breakdown }
+GET  /public/availability             ?from&days  free survey capacity per day and slot
+                                      demand = scheduled INSPECTION jobs + booking leads still
+                                      NEW/CONTACTED (past that they have a Job and would double-count)
+                                      cached 30s; a full slot is flagged, never rejected
 POST /public/leads                    honeypot + turnstile + rate limit -> creates Lead
                                       online booking adds { preferredAt, preferredSlot },
                                       which sets source=booking; a closed weekday is rejected

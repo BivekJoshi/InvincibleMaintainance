@@ -8,6 +8,7 @@ import { LEAD_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { BOOKING_SLOTS } from '../shared/enums.js';
 import { local } from '../utils/dates.js';
 import { computeSlaDueAt, decorateSla, slaWhere } from './sla.service.js';
+import { isSlotFull } from './availability.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { getSetting } from './settings.service.js';
 import { logger } from '../lib/logger.js';
@@ -102,12 +103,20 @@ export async function createPublicLead(input, { ip, userAgent }) {
   }
 
   const { website, turnstileToken, elapsedMs, estimatedAmount, ...rest } = input;
+
+  // A slot with no surveyor left is not a reason to refuse the customer. Take the
+  // booking, raise it so someone calls to reschedule, and say so on the timeline.
+  const oversubscribed = input.preferredAt
+    ? await isSlotFull(input.preferredAt, input.preferredSlot).catch(() => false)
+    : false;
+
   const lead = await prisma.lead.create({
     data: {
       ...rest,
       phone,
       estimatedAmount: estimatedAmount != null ? toPaisa(estimatedAmount) : null,
       source: input.preferredAt ? 'booking' : input.estimatePayload ? 'estimator' : 'web_form',
+      priority: oversubscribed ? 'HIGH' : undefined,
       slaDueAt: await computeSlaDueAt(),
       assignedToId: await pickAssignee(),
       ip: ip ?? null,
@@ -115,6 +124,17 @@ export async function createPublicLead(input, { ip, userAgent }) {
     },
     include: LEAD_INCLUDE,
   });
+
+  if (oversubscribed) {
+    await prisma.leadActivity.create({
+      data: {
+        leadId: lead.id,
+        type: 'note',
+        summary: 'Booked into a slot with no surveyor capacity — call to reschedule',
+        meta: { preferredAt: lead.preferredAt, preferredSlot: lead.preferredSlot },
+      },
+    });
+  }
 
   await announceNewLead(lead);
   return decorateSla(lead);
