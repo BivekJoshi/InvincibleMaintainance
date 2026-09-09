@@ -177,27 +177,33 @@ export function StorefrontHero({ section, settings, media }) {
  * are — and it carries a caption that says what is being shown.
  */
 function HeroShowcase({ reduced }) {
+  // The panel's own entrance has to answer prefers-reduced-motion too, not only
+  // the scene inside it: the global CSS rule reaches CSS transitions, and these
+  // are JS-driven transforms it cannot see.
+  const enter = reduced ? {} : {
+    initial: { opacity: 0, y: 24 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.7, delay: 0.2, ease: [0.16, 1, 0.3, 1] },
+  };
+  const badgeEnter = reduced ? {} : {
+    initial: { opacity: 0, scale: 0.9 },
+    animate: { opacity: 1, scale: 1 },
+    transition: { duration: 0.45, delay: 0.75, ease: [0.16, 1, 0.3, 1] },
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.7, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-      className="relative mx-auto w-full max-w-md lg:max-w-none"
-    >
+    <motion.div {...enter} className="relative mx-auto w-full max-w-md lg:max-w-none">
       {/* No <Tilt> here: a CSS 3D transform on a live canvas resamples it blurry,
           and the scene already leans to the pointer on its own. */}
-      <Card className="sheen overflow-hidden shadow-lift">
+      {/* <Card className="sheen overflow-hidden shadow-lift"> */}
         <Suspense fallback={<div className="aspect-[7/6] w-full animate-pulse bg-muted/40" />}>
           <SectionCutScene reduced={reduced} />
         </Suspense>
-      </Card>
+      {/* </Card> */}
 
       {/* Over the canvas, not hanging off the card: the caption owns the bottom
           edge and the two would sit on top of each other. */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.45, delay: 0.75, ease: [0.16, 1, 0.3, 1] }}
-        className="pointer-events-none absolute left-4 top-4"
-      >
+      <motion.div {...badgeEnter} className="pointer-events-none absolute left-4 top-4">
         <Badge variant="outline" className="gap-2 border-gold/40 bg-card/90 px-3 py-1.5 text-[11px] font-semibold shadow-card backdrop-blur">
           <ShieldCheck className="h-3.5 w-3.5 text-gold" aria-hidden /> Certified engineers only
         </Badge>

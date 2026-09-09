@@ -179,37 +179,39 @@ function buildKitchen(ctx) {
   const floor = new Group();
   const SINK_X = COL[1];
   const HOB_X = COL[3];
-  const TOP_Y = 1.10;
+  const TOP_Y = 1.12;   // 0.87 above the finished floor
 
   // Base run: plinth, carcass, worktop, then the doors that make it read as units.
   wall.add(instanced(ctx, m.timber, [
-    { p: [0.121, 0.42, FACE(0.53)], s: [1.958, 0.66, 0.58] },        // carcass
-    { p: [-0.7235, 0.44, FACE(0.822)], s: [0.255, 0.60, 0.016] },    // door 1
-    { p: [-0.269, 0.44, FACE(0.822)], s: [0.626, 0.60, 0.016] },     // sink bay door
-    { p: [0.2825, 0.44, FACE(0.822)], s: [0.449, 0.60, 0.016] },     // drawers
-    { p: [0.807, 0.44, FACE(0.822)], s: [0.572, 0.60, 0.016] },      // hob unit
+    // Everything sits on the FINISHED floor at y 0.25, not on the slab: drawn
+    // from zero the plinth is buried and the run floats over a 0.15 void.
+    { p: [0.121, 0.75, FACE(0.53)], s: [1.958, 0.70, 0.58] },        // carcass
+    { p: [-0.7235, 0.75, FACE(0.822)], s: [0.255, 0.62, 0.016] },    // door 1
+    { p: [-0.269, 0.75, FACE(0.822)], s: [0.626, 0.62, 0.016] },     // sink bay door
+    { p: [0.2825, 0.75, FACE(0.822)], s: [0.449, 0.62, 0.016] },     // drawers
+    { p: [0.807, 0.75, FACE(0.822)], s: [0.572, 0.62, 0.016] },      // hob unit
     { p: [0.121, 1.63, FACE(0.42)], s: [1.40, 0.62, 0.36] },         // wall units
     { p: [-0.229, 1.63, FACE(0.605)], s: [0.68, 0.58, 0.016] },
     { p: [0.471, 1.63, FACE(0.605)], s: [0.68, 0.58, 0.016] },
   ]));
 
   wall.add(instanced(ctx, m.substrate, [
-    { p: [0.121, 0.075, FACE(0.50)], s: [1.958, 0.15, 0.52] },       // plinth, set back
+    { p: [0.121, 0.325, FACE(0.50)], s: [1.958, 0.15, 0.52] },       // plinth, set back
     { p: [0.121, TOP_Y, FACE(0.54)], s: [2.00, 0.045, 0.62] },       // worktop
-    { p: [SINK_X, 1.085, FACE(0.545)], s: [0.50, 0.030, 0.40] },     // sink well
-    { p: [HOB_X, 1.128, FACE(0.545)], s: [0.52, 0.014, 0.40] },      // hob plate
+    { p: [HOB_X, 1.148, FACE(0.545)], s: [0.52, 0.014, 0.40] },      // hob plate
   ]));
 
   // Handles and tap: the small bright pieces that stop a run of boxes reading
   // as a wardrobe.
   wall.add(
-    pipe(m.brass, 0.014, 0.34, -0.269, 0.70, FACE(0.836), 'x'),
-    pipe(m.brass, 0.014, 0.28, 0.2825, 0.70, FACE(0.836), 'x'),
-    pipe(m.brass, 0.014, 0.30, 0.807, 0.70, FACE(0.836), 'x'),
-    pipe(m.brass, 0.028, 0.24, SINK_X, 1.22, FACE(0.34)),            // tap column
-    pipe(m.brass, 0.024, 0.16, SINK_X, 1.335, FACE(0.40), 'z'),      // spout
-    box(m.substrateShade, 0.10, 0.014, 0.10, HOB_X - 0.13, 1.137, FACE(0.50)),
-    box(m.substrateShade, 0.10, 0.014, 0.10, HOB_X + 0.13, 1.137, FACE(0.50)),
+    box(m.substrateShade, 0.50, 0.030, 0.40, SINK_X, 1.105, FACE(0.545)),   // sink well
+    pipe(m.brass, 0.014, 0.34, -0.269, 1.00, FACE(0.836), 'x'),
+    pipe(m.brass, 0.014, 0.28, 0.2825, 1.00, FACE(0.836), 'x'),
+    pipe(m.brass, 0.014, 0.30, 0.807, 1.00, FACE(0.836), 'x'),
+    pipe(m.brass, 0.028, 0.24, SINK_X, 1.24, FACE(0.34)),            // tap column
+    pipe(m.brass, 0.024, 0.16, SINK_X, 1.355, FACE(0.40), 'z'),      // spout
+    box(m.substrateShade, 0.10, 0.014, 0.10, HOB_X - 0.13, 1.157, FACE(0.50)),
+    box(m.substrateShade, 0.10, 0.014, 0.10, HOB_X + 0.13, 1.157, FACE(0.50)),
   );
   return { wall, floor };
 }
@@ -244,7 +246,9 @@ function buildLiving(ctx) {
     { p: [0.56, 0.135, -0.26], s: [0.06, 0.13, 0.06] },
   ]));
   sofa.rotation.y = Math.PI / 2;
-  sofa.position.set(-0.60, 0, 0.02);
+  // The return wall's tiled face is at x -0.858; any further left and the
+  // sofa's back is driven through it.
+  sofa.position.set(-0.44, 0, 0.02);
   floor.add(sofa);
 
   floor.add(instanced(ctx, m.timber, [
@@ -256,9 +260,9 @@ function buildLiving(ctx) {
   // A lamp in the far corner gives the room a vertical, and the planter breaks
   // the run of straight edges.
   floor.add(
-    pipe(m.substrate, 0.035, 0.03, -0.86, 0.05, -0.86),
-    pipe(m.substrate, 0.018, 1.28, -0.86, 0.69, -0.86),
-    pipe(m.porcelain, 0.14, 0.22, -0.86, 1.42, -0.86),
+    pipe(m.substrate, 0.035, 0.03, -0.66, 0.05, -0.64),
+    pipe(m.substrate, 0.018, 1.28, -0.66, 0.69, -0.64),
+    pipe(m.porcelain, 0.14, 0.22, -0.66, 1.42, -0.64),
     pipe(m.timber, 0.09, 0.30, 0.90, 0.19, 0.78),
     pipe(m.rug, 0.13, 0.26, 0.90, 0.46, 0.78),
   );

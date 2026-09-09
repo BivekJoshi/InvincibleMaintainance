@@ -169,12 +169,13 @@ export function buildModel() {
   adhesiveRibs.instanceMatrix.needsUpdate = true;
   gAdhesive.add(adhesiveRibs);
 
-  // The tile field, laid corner to corner rather than dropped on as a lid.
+  // The tile field, laid corner to corner rather than dropped on as a lid. Every
+  // cell is laid: leaving one out for the washroom's gully punched a hole in the
+  // floor of the four rooms that do not have one.
   const gFloorTiles = new Group();
   const floorCells = [];
   for (let cx = 0; cx < 4; cx += 1) {
     for (let cz = 0; cz < 4; cz += 1) {
-      if (cx === 0 && cz === 0) continue;  // the drain takes this one
       floorCells.push({ x: COL[cx], z: COL[cz], h: TILE, order: cx + cz });
     }
   }
@@ -258,7 +259,7 @@ export function buildModel() {
     pipe(wasteMat, 0.072, 0.72, BASIN_X, 0.36, CAV_Z + 0.005),
     joint(wasteMat, 0.078, BASIN_X, 0.72, CAV_Z + 0.005),
     // Through the board hole, protruding to where the basin's trap meets it.
-    pipe(wasteMat, 0.072, 0.40, BASIN_X, 0.72, 0.20, 'z'),
+    pipe(wasteMat, 0.072, 0.24, BASIN_X, 0.72, 0.13, 'z'),
   );
   wallBack.add(gServices);
 
@@ -279,11 +280,16 @@ export function buildModel() {
   gBoardBack.add(new Mesh(BOARD, boardMat), outline(ROOM, WALL_H, 0.015, 0, WALL_H / 2, 0.0075));
   panelBack.add(gBoardBack);
 
+  // Two midpoints, because the return wall's finishes and its section cap live
+  // in different frames. The wall is turned +90 degrees about Y, so a child's
+  // local +X runs to world -Z: the board and tiles have to be mirrored, while
+  // the cut caps are positioned in world space and must not be.
+  const RET_MID_LOCAL = HALF - RETURN_LEN / 2;
   const RET_MID = -HALF + RETURN_LEN / 2;
   const gBoardReturn = new Group();
   gBoardReturn.add(
-    box(boardMat, RETURN_LEN, WALL_H, 0.015, RET_MID, WALL_H / 2, 0.0075),
-    outline(RETURN_LEN, WALL_H, 0.015, RET_MID, WALL_H / 2, 0.0075),
+    box(boardMat, RETURN_LEN, WALL_H, 0.015, RET_MID_LOCAL, WALL_H / 2, 0.0075),
+    outline(RETURN_LEN, WALL_H, 0.015, RET_MID_LOCAL, WALL_H / 2, 0.0075),
   );
   wallReturn.add(gBoardReturn);
 
@@ -300,7 +306,7 @@ export function buildModel() {
     return out;
   };
   const backTileDefs = wallTileDefs(COL, [[1, 1], [2, 2]]);
-  const returnTileDefs = wallTileDefs([COL[0], COL[1]], []);
+  const returnTileDefs = wallTileDefs([-COL[0], -COL[1]], []);
 
   const gTileBack = new Group();
   const wallTilesBack = new InstancedMesh(UNIT_BOX, wallTileMat, backTileDefs.length);

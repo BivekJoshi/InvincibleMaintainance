@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Group, PerspectiveCamera, Vector3, WebGLRenderer } from 'three';
+import { Group, Matrix4, PerspectiveCamera, Vector3, WebGLRenderer } from 'three';
 import { ROOMS } from './rooms';
 import { buildModel } from './model';
 import { paint } from './palette';
@@ -100,9 +100,17 @@ export function SectionCutScene({ className, reduced = false, layerLabels }) {
     let baseDistance = 7.5;
     const bias = new Vector3();
 
+    // `Object3D.lookAt` takes a point in WORLD space, and the rig's origin is
+    // already the target — so passing `rig.worldToLocal(CENTRE)` handed it a
+    // constant (0,0,0) and aimed the camera at the world origin, most of a metre
+    // below the model. Aim in the rig's own space instead, which is also what
+    // lets the parallax rotate the rig without changing what is being looked at.
+    const aimLocal = new Matrix4();
+    const RIG_ORIGIN = new Vector3();
     const placeCamera = (dolly) => {
       camera.position.copy(VIEW).multiplyScalar(baseDistance * dolly).add(bias);
-      camera.lookAt(rig.worldToLocal(CENTRE.clone()));
+      aimLocal.lookAt(camera.position, RIG_ORIGIN, camera.up);
+      camera.quaternion.setFromRotationMatrix(aimLocal);
     };
 
     const resize = () => {
@@ -150,10 +158,12 @@ export function SectionCutScene({ className, reduced = false, layerLabels }) {
       aim.x = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2));
       aim.y = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height - 0.5) * 2));
     };
-    const onPointerLeave = () => { aim.x = 0; aim.y = 0; };
+    const onPointerLeave = (e) => { if (!e.relatedTarget) { aim.x = 0; aim.y = 0; } };
     if (fine && !reduced) {
       window.addEventListener('pointermove', onPointerMove, { passive: true });
-      host.addEventListener('pointerleave', onPointerLeave);
+      // On the document, not the host: the host carries pointer-events: none,
+      // so a listener there can never fire and the lean sticks where it was.
+      document.addEventListener('pointerout', onPointerLeave);
     }
 
     // ── the loop ──
@@ -221,12 +231,19 @@ export function SectionCutScene({ className, reduced = false, layerLabels }) {
       themeWatcher.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pointermove', onPointerMove);
-      host.removeEventListener('pointerleave', onPointerLeave);
+      document.removeEventListener('pointerout', onPointerLeave);
       // Nine geometries are shared across ~90 meshes, so a scene.traverse()
       // would dispose the same buffer dozens of times. Dispose the list once.
       model.geometries.forEach((g) => g.dispose());
       model.materials.forEach((m) => m.dispose());
       model.instances.forEach((im) => im.dispose());
+      // Each room kit allocates instanced meshes of its own, every one holding
+      // an instanceMatrix buffer the list above knows nothing about.
+      for (const kit of model.kits ?? []) {
+        for (const group of [kit.wall, kit.floor]) {
+          group.traverse((o) => { if (o.isInstancedMesh) o.dispose(); });
+        }
+      }
       renderer.dispose();
       renderer.domElement.remove();
     };

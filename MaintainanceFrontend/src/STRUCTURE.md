@@ -55,6 +55,29 @@ Both kinds of motion, in one place.
   are **always** `lazy()`-imported at the call site and never re-exported through a
   barrel — that is what keeps them out of the initial bundle.
 
+A scene becomes a folder on the same rule a page does. `SectionCutScene/` is split by
+the question each file answers, which is what keeps a 1,000-line procedural model
+readable:
+
+```
+SectionCutScene/
+├── SectionCutScene.jsx  the browser end: renderer, camera rig, observers, caption
+├── constants.js         the drawing, in metres
+├── profiles.js          the turned profiles and the drilled cement board
+├── model.js             builds it — geometry, materials, lights, the whole graph
+├── palette.js           CSS variables → materials and lights, re-read on theme change
+├── timeline.js          what the scene is doing at time t — pure, touches no graph
+├── pose.js              applies a pose to the graph — the only writer
+├── easing.js            the four curves the timeline is written with
+└── rooms.js             the five fit-outs the model cycles through
+```
+
+`timeline.js` and `pose.js` are the split that matters: because a pose is a plain
+object and only `applyPose` writes to three, the reduced-motion still frame is a
+composition no moment on the timeline produces, and a resize or a theme change
+re-applies the last pose instead of guessing a time. Everything but the entry file
+runs without a DOM, so the model can be built and driven in a plain node script.
+
 ## pages/
 
 `public/` (landing, services, pricing, projects, booking, the token-addressed

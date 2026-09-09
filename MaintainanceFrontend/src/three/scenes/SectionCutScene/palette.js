@@ -1,4 +1,4 @@
-import { AdditiveBlending, Color, NormalBlending } from 'three';
+import { AdditiveBlending, Color, NormalBlending, SRGBColorSpace } from 'three';
 import { ROOMS } from './rooms';
 
 /**
@@ -7,12 +7,21 @@ import { ROOMS } from './rooms';
  * palette or replaying the build.
  */
 
-/** `--gold: 34 58% 45%` → a Color. The tokens are bare triples, not functions. */
+/**
+ * `--gold: 34 58% 45%` → a Color. The tokens are bare triples, not functions.
+ *
+ * The colour space is not optional here: `setHSL` defaults to three's *working*
+ * space, which is linear-sRGB, while `new Color('#hex')` decodes from sRGB. Left
+ * unstated the two branches disagree and every token renders several stops too
+ * light — which is exactly what a CSS variable must not do.
+ */
 function cssColor(styles, name, fallback) {
   const raw = styles.getPropertyValue(name).trim();
   const [h, s, l] = raw.split(/[\s/]+/);
   if (!h || !s || !l) return new Color(fallback);
-  return new Color().setHSL(parseFloat(h) / 360, parseFloat(s) / 100, parseFloat(l) / 100);
+  return new Color().setHSL(
+    parseFloat(h) / 360, parseFloat(s) / 100, parseFloat(l) / 100, SRGBColorSpace,
+  );
 }
 
 const HSL = { h: 0, s: 0, l: 0 };
