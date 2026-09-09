@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   JOB_TRANSITIONS, LEAD_TRANSITIONS, INVOICE_TRANSITIONS, QUOTATION_TRANSITIONS,
-  canTransition, assertTransition,
+  SURVEY_TRANSITIONS, canTransition, assertTransition,
 } from '../src/shared/stateMachines.js';
 
 describe('state machines', () => {
@@ -41,5 +41,27 @@ describe('state machines', () => {
       expect(err.code).toBe('INVALID_TRANSITION');
       expect(err.message).toContain('VERIFIED');
     }
+  });
+});
+
+describe('survey transitions', () => {
+  it('lets a reviewer send a survey back to the field and take it forward again', () => {
+    expect(canTransition(SURVEY_TRANSITIONS, 'SUBMITTED', 'RETURNED')).toBe(true);
+    expect(canTransition(SURVEY_TRANSITIONS, 'RETURNED', 'DRAFT')).toBe(true);
+    expect(canTransition(SURVEY_TRANSITIONS, 'RETURNED', 'SUBMITTED')).toBe(true);
+  });
+
+  it('only quotes a survey that has actually been submitted', () => {
+    expect(canTransition(SURVEY_TRANSITIONS, 'SUBMITTED', 'QUOTED')).toBe(true);
+    expect(canTransition(SURVEY_TRANSITIONS, 'IN_REVIEW', 'QUOTED')).toBe(true);
+    expect(canTransition(SURVEY_TRANSITIONS, 'DRAFT', 'QUOTED')).toBe(false);
+  });
+
+  it('closes a quoted survey for good', () => {
+    expect(canTransition(SURVEY_TRANSITIONS, 'QUOTED', 'DRAFT')).toBe(false);
+    expect(canTransition(SURVEY_TRANSITIONS, 'QUOTED', 'RETURNED')).toBe(false);
+    // A replayed offline submit lands here — the client must treat it as terminal.
+    expect(() => assertTransition(SURVEY_TRANSITIONS, 'SUBMITTED', 'SUBMITTED')).not.toThrow();
+    expect(() => assertTransition(SURVEY_TRANSITIONS, 'QUOTED', 'SUBMITTED', 'survey')).toThrow(/Cannot move survey/);
   });
 });

@@ -470,15 +470,19 @@ export async function deleteJob(id) {
 
 // ── dispatch board
 
-export async function dispatchBoard({ date, view = 'day', technicianId }) {
+export async function dispatchBoard({ date, view = 'day', technicianId, role }) {
   const anchor = date ? new Date(date) : new Date();
   const from = startOfDay(anchor);
   const to = view === 'week' ? endOfDay(addDays(anchor, 6)) : endOfDay(anchor);
 
   const [technicians, jobs, unassigned] = await Promise.all([
     prisma.technician.findMany({
-      where: { deletedAt: null, ...(technicianId ? { id: technicianId } : {}) },
-      include: { user: { select: { id: true, name: true, phone: true, isActive: true } } },
+      where: {
+        deletedAt: null,
+        ...(technicianId ? { id: technicianId } : {}),
+        ...(role ? { user: { role } } : {}),
+      },
+      include: { user: { select: { id: true, name: true, phone: true, role: true, isActive: true } } },
       orderBy: { employeeCode: 'asc' },
     }),
     prisma.job.findMany({
@@ -499,7 +503,7 @@ export async function dispatchBoard({ date, view = 'day', technicianId }) {
     .map((t) => {
       const laneJobs = jobs.filter((j) => j.assignments.some((a) => a.technicianId === t.id));
       return {
-        technician: { id: t.id, name: t.user.name, phone: t.user.phone, skills: t.skills, rating: t.rating, dailyCapacity: t.dailyCapacity },
+        technician: { id: t.id, name: t.user.name, phone: t.user.phone, role: t.user.role, skills: t.skills, rating: t.rating, dailyCapacity: t.dailyCapacity },
         jobs: laneJobs,
         load: laneJobs.length,
         overCapacity: view === 'day' && laneJobs.length > t.dailyCapacity,

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { isActive, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
 import {
   INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES, PAYMENT_METHODS,
-  PRIORITIES, STOCK_MOVEMENT_TYPES,
+  PRIORITIES, ROLES, STOCK_MOVEMENT_TYPES,
 } from '../enums.js';
 
 export const technicianSchema = z.object({
@@ -117,6 +117,7 @@ export const dispatchQuery = z.object({
   date: z.string().optional(),
   view: z.enum(['day', 'week']).default('day'),
   technicianId: z.string().optional(),
+  role: z.enum(ROLES).optional(),
 });
 
 export const jobListQuery = z.object({

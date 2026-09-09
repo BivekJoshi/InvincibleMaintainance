@@ -12,22 +12,23 @@ import { prisma } from '../lib/prisma.js';
 import { badRequest, notFound } from '../utils/AppError.js';
 import { logger } from '../lib/logger.js';
 import * as s from '../shared/schemas/ops.js';
+import { FIELD_ROLES } from '../shared/enums.js';
 
 const router = Router();
 
 // Every route below is scoped to the caller's own technician profile.
-router.use(authorize('TECHNICIAN', 'ADMIN', 'DISPATCHER'));
+router.use(authorize(...FIELD_ROLES, 'ADMIN', 'DISPATCHER'));
 
 /**
  * Resolves the technician whose queue this request acts on.
  *
- * A TECHNICIAN always acts as themselves. An ADMIN or DISPATCHER has no
- * technician profile of their own, so they may inspect a technician's queue by
- * passing ?technicianId= — used by the dispatch board's "view as" preview.
- * Without one they simply have an empty queue rather than a 500.
+ * A field role (TECHNICIAN, SURVEYOR) always acts as themselves. An ADMIN or
+ * DISPATCHER has no technician profile of their own, so they may inspect a
+ * technician's queue by passing ?technicianId= — used by the dispatch board's
+ * "view as" preview. Without one they simply have an empty queue rather than a 500.
  */
 router.use(asyncHandler(async (req, _res, next) => {
-  if (req.user.role === 'TECHNICIAN') {
+  if (FIELD_ROLES.includes(req.user.role)) {
     req.technician = await jobs.technicianForUser(req.user.id);
     return next();
   }
@@ -49,9 +50,13 @@ const requireTechnician = (req, _res, next) => {
   next();
 };
 
-/** Guards a job route so a technician can only touch their own assignments. */
+/**
+ * Guards a job route so a field user can only touch their own assignments.
+ * Must test membership of FIELD_ROLES, not equality with one role — an exact
+ * match here silently exempts every other field role from the ownership check.
+ */
 const own = asyncHandler(async (req, _res, next) => {
-  if (req.user.role !== 'TECHNICIAN') return next();
+  if (!FIELD_ROLES.includes(req.user.role)) return next();
   await jobs.assertAssigned(req.params.id, req.technician.id);
   next();
 });
@@ -94,10 +99,17 @@ router.post('/jobs/:id/time/stop', requireTechnician, validate({ params: idParam
 router.post('/jobs/:id/complete', validate({ params: idParam, body: s.jobCompleteSchema }), own,
   asyncHandler(async (req, res) => ok(res, await jobs.completeJob(req.params.id, req.body, req.user.id))));
 
-/** Reference data the offline app caches on login. */
+/** Reference data the offline app caches on login. Deliberately no rates: the
+ *  field reports quantities, the office attaches price. */
 router.get('/materials', asyncHandler(async (_req, res) => ok(res, await prisma.material.findMany({
   where: { isActive: true, deletedAt: null },
-  select: { id: true, code: true, name: true, unit: true, sellRate: true },
+  select: { id: true, code: true, name: true, unit: true },
+  orderBy: { name: 'asc' },
+}))));
+
+router.get('/rate-card', asyncHandler(async (_req, res) => ok(res, await prisma.rateCardItem.findMany({
+  where: { isActive: true, deletedAt: null },
+  select: { id: true, code: true, name: true, unit: true, category: true },
   orderBy: { name: 'asc' },
 }))));
 
@@ -131,7 +143,7 @@ router.post('/sync', requireTechnician, validate({ body: syncSchema }), asyncHan
       continue;
     }
     try {
-      if (req.user.role === 'TECHNICIAN') await jobs.assertAssigned(m.jobId, req.technician.id);
+      if (FIELD_ROLES.includes(req.user.role)) await jobs.assertAssigned(m.jobId, req.technician.id);
 
       switch (m.kind) {
         case 'status':

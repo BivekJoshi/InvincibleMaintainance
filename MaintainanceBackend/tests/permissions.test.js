@@ -26,6 +26,24 @@ describe('role capabilities', () => {
     expect(can('TECHNICIAN', 'customers:read')).toBe(false);
   });
 
+  it('keeps SURVEYOR away from money', () => {
+    // The absence of quotations:read is the money wall — /admin/surveys/:id/pricing
+    // is guarded by it, so a surveyor can fill in a survey but never see its rates.
+    expect(can('SURVEYOR', 'surveys:own')).toBe(true);
+    expect(can('SURVEYOR', 'jobs:own')).toBe(true);
+    expect(can('SURVEYOR', 'quotations:read')).toBe(false);
+    expect(can('SURVEYOR', 'materials:read')).toBe(false);
+    expect(can('SURVEYOR', 'invoices:read')).toBe(false);
+    expect(can('SURVEYOR', 'surveys:write')).toBe(false);
+  });
+
+  it('lets sales review surveys but keeps dispatch read-only on them', () => {
+    expect(can('SALES', 'surveys:write')).toBe(true);
+    expect(can('DISPATCHER', 'surveys:read')).toBe(true);
+    expect(can('DISPATCHER', 'surveys:write')).toBe(false);
+    expect(can('DISPATCHER', 'quotations:read')).toBe(false);
+  });
+
   it('keeps ACCOUNTANT out of dispatch', () => {
     expect(can('ACCOUNTANT', 'invoices:write')).toBe(true);
     expect(can('ACCOUNTANT', 'jobs:write')).toBe(false);
