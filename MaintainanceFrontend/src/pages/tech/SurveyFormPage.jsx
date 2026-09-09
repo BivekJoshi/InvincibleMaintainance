@@ -68,8 +68,10 @@ export default function SurveyFormPage() {
     });
   }, [survey, form]);
 
-  if (isLoading || !form) return <PageTransition><CardSkeleton /></PageTransition>;
+  // Error first: `form` is only filled once the survey loads, so a failed load
+  // would otherwise sit on the skeleton for ever.
   if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
+  if (isLoading || !form) return <PageTransition><CardSkeleton /></PageTransition>;
 
   const editable = EDITABLE.includes(survey.status);
 

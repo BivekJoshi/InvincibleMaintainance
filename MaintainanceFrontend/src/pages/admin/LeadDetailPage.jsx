@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/input';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { PageTransition, Stagger } from '@/components/motion';
+import { useAuth } from '@/hooks/useAuth';
 import { toastError, toastSuccess } from '@/features/ui/uiSlice';
 import { formatDate, formatDateTime, formatNpr, titleCase } from '@/lib/format';
 
@@ -24,6 +25,9 @@ export default function LeadDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  // DISPATCHER holds leads:read but not leads:write — every action here writes.
+  const { can } = useAuth();
+  const canWrite = can('leads:write');
   const { data: lead, isLoading, error, refetch } = useGetLeadQuery(id);
   const [logActivity, { isLoading: logging }] = useAddLeadActivityMutation();
   const [addNote, { isLoading: notingSaving }] = useAddLeadNoteMutation();
@@ -64,13 +68,17 @@ export default function LeadDetailPage() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin/leads')}>
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
-            <Button variant="outline" size="sm" onClick={logCall} disabled={logging || Boolean(lead.firstResponseAt)}>
-              {logging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
-              {lead.firstResponseAt ? 'Responded' : 'Log call'}
-            </Button>
-            <Button size="sm" onClick={() => setScheduleOpen(true)}>
-              <CalendarCheck className="h-4 w-4" /> Book visit
-            </Button>
+            {canWrite ? (
+              <>
+                <Button variant="outline" size="sm" onClick={logCall} disabled={logging || Boolean(lead.firstResponseAt)}>
+                  {logging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
+                  {lead.firstResponseAt ? 'Responded' : 'Log call'}
+                </Button>
+                <Button size="sm" onClick={() => setScheduleOpen(true)}>
+                  <CalendarCheck className="h-4 w-4" /> Book visit
+                </Button>
+              </>
+            ) : null}
           </>
         }
       >
@@ -125,7 +133,7 @@ export default function LeadDetailPage() {
                     <StatusBadge status={survey.status} />
                   </Link>
                 ) : null}
-                {lead.quotations?.map((q) => (
+                {(can('quotations:read') ? lead.quotations ?? [] : []).map((q) => (
                   <Link key={q.id} to={`/admin/quotations/${q.id}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 hover:bg-muted">
                     <span className="inline-flex items-center gap-2">
                       <FileText className="h-4 w-4 text-primary" aria-hidden />
@@ -141,14 +149,16 @@ export default function LeadDetailPage() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Timeline</CardTitle></CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Add a note…" />
-                <div className="flex justify-end">
-                  <Button size="sm" variant="outline" onClick={saveNote} disabled={!note.trim() || notingSaving}>
-                    {notingSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Add note
-                  </Button>
+              {canWrite ? (
+                <div className="space-y-2">
+                  <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Add a note…" />
+                  <div className="flex justify-end">
+                    <Button size="sm" variant="outline" onClick={saveNote} disabled={!note.trim() || notingSaving}>
+                      {notingSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Add note
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              ) : null}
               <Stagger className="mt-4 space-y-3">
                 {(lead.activities ?? []).map((a) => (
                   <div key={a.id} className="flex gap-3 text-sm">
@@ -199,7 +209,7 @@ export default function LeadDetailPage() {
         </Card>
       </div>
 
-      <ScheduleVisitDialog lead={lead} open={scheduleOpen} onOpenChange={setScheduleOpen} />
+      {canWrite ? <ScheduleVisitDialog lead={lead} open={scheduleOpen} onOpenChange={setScheduleOpen} /> : null}
     </PageTransition>
   );
 }

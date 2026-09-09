@@ -13,7 +13,7 @@ export const PERMISSIONS = {
   SALES: [
     'leads:read', 'leads:write', 'customers:read', 'customers:write',
     'quotations:read', 'quotations:write', 'jobs:read', 'services:read',
-    'surveys:read', 'surveys:write',
+    'surveys:read', 'surveys:write', 'technicians:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
   DISPATCHER: [

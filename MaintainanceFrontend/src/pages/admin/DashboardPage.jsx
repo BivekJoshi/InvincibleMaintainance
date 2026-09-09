@@ -18,13 +18,13 @@ const CARDS = {
   leadsOpen: { label: 'Open leads', icon: Users, to: '/admin/leads' },
   slaBreached: { label: 'SLA breached', icon: AlertTriangle, to: '/admin/sla', tone: 'danger' },
   slaAtRisk: { label: 'Response due soon', icon: Timer, to: '/admin/sla', tone: 'warn' },
-  jobsToday: { label: 'Jobs today', icon: Briefcase, to: '/admin/jobs' },
-  jobsOpen: { label: 'Open jobs', icon: Briefcase, to: '/admin/jobs' },
-  jobsUnassigned: { label: 'Unassigned jobs', icon: AlertTriangle, to: '/admin/jobs', tone: 'warn' },
-  outstandingAmount: { label: 'Outstanding', icon: Receipt, to: '/admin/invoices', money: true },
-  outstandingInvoices: { label: 'Unpaid invoices', icon: Receipt, to: '/admin/invoices' },
-  warrantiesActive: { label: 'Active warranties', icon: ShieldCheck, to: '/admin/warranties' },
-  amcRenewals: { label: 'AMC renewals due', icon: RefreshCw, to: '/admin/warranties' },
+  jobsToday: { label: 'Jobs today', icon: Briefcase, to: '/admin/jobs', soon: true },
+  jobsOpen: { label: 'Open jobs', icon: Briefcase, to: '/admin/jobs', soon: true },
+  jobsUnassigned: { label: 'Unassigned jobs', icon: AlertTriangle, to: '/admin/jobs', tone: 'warn', soon: true },
+  outstandingAmount: { label: 'Outstanding', icon: Receipt, to: '/admin/invoices', money: true, soon: true },
+  outstandingInvoices: { label: 'Unpaid invoices', icon: Receipt, to: '/admin/invoices', soon: true },
+  warrantiesActive: { label: 'Active warranties', icon: ShieldCheck, to: '/admin/warranties', soon: true },
+  amcRenewals: { label: 'AMC renewals due', icon: RefreshCw, to: '/admin/warranties', soon: true },
 };
 
 const TONES = {
@@ -39,21 +39,29 @@ function StatCard({ name, value }) {
   const display = def.money ? formatNpr(value, { compact: true }) : value.toLocaleString();
   const highlight = def.tone && value > 0;
 
+  const card = (
+    <Card className={cn(
+      'transition-shadow',
+      def.soon ? 'opacity-80' : 'hover:shadow-md',
+      highlight && 'border-current/20', highlight && TONES[def.tone],
+    )}>
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{def.label}</p>
+          <Icon className={cn('h-4 w-4', highlight ? TONES[def.tone] : 'text-muted-foreground')} aria-hidden />
+        </div>
+        <p className={cn('mt-2 text-2xl font-bold tabular-nums', highlight && TONES[def.tone])}>
+          <CountUp value={display} />
+        </p>
+      </CardContent>
+    </Card>
+  );
+
+  // No link while the screen behind it is unbuilt — a card that navigates back to
+  // the page you are already on reads as broken.
   return (
     <Stagger.Item>
-      <Link to={def.to} className="block">
-        <Card className={cn('transition-shadow hover:shadow-md', highlight && 'border-current/20', highlight && TONES[def.tone])}>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{def.label}</p>
-              <Icon className={cn('h-4 w-4', highlight ? TONES[def.tone] : 'text-muted-foreground')} aria-hidden />
-            </div>
-            <p className={cn('mt-2 text-2xl font-bold tabular-nums', highlight && TONES[def.tone])}>
-              <CountUp value={display} />
-            </p>
-          </CardContent>
-        </Card>
-      </Link>
+      {def.soon ? card : <Link to={def.to} className="block">{card}</Link>}
     </Stagger.Item>
   );
 }

@@ -5,6 +5,12 @@ export const ROLES = ['ADMIN', 'EDITOR', 'SALES', 'DISPATCHER', 'TECHNICIAN', 'A
 /** Roles that work off a Technician profile and use the /tech app. */
 export const FIELD_ROLES = ['TECHNICIAN', 'SURVEYOR'];
 
+/**
+ * Roles that belong in the back office. ADMIN and DISPATCHER appear in both —
+ * they run dispatch from a desk and can also "view as" a technician in the field.
+ */
+export const OFFICE_ROLES = ['ADMIN', 'EDITOR', 'SALES', 'DISPATCHER', 'ACCOUNTANT'];
+
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON', 'LOST'];
 export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];

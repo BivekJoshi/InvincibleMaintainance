@@ -110,8 +110,8 @@ router.post('/jobs/:id/complete', validate({ params: idParam, body: s.jobComplet
 
 // ── site surveys
 
-router.get('/surveys', requireTechnician, asyncHandler(async (req, res) =>
-  ok(res, await surveys.mySurveys(req.technician.id, req.query))));
+router.get('/surveys', asyncHandler(async (req, res) =>
+  ok(res, req.technician ? await surveys.mySurveys(req.technician.id, req.query) : [])));
 
 router.get('/surveys/:id', validate({ params: idParam }), ownSurvey,
   asyncHandler(async (req, res) => ok(res, await surveys.getSurvey(req.params.id, { field: true }))));

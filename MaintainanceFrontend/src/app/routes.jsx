@@ -1,12 +1,12 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { RequireAuth } from './RequireAuth';
 import { SiteLayout } from '@/layouts/SiteLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import { TechLayout } from '@/layouts/TechLayout';
-import { FIELD_ROLES } from '@/lib/constants';
+import { FIELD_ROLES, OFFICE_ROLES } from '@/lib/constants';
 
 // Route-level splitting: the marketing site never downloads the back office.
 const HomePage = lazy(() => import('@/pages/site/HomePage'));
@@ -18,6 +18,7 @@ const BookingPage = lazy(() => import('@/pages/site/BookingPage'));
 const ProjectsPage = lazy(() => import('@/pages/site/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('@/pages/site/ProjectDetailPage'));
 const QuotationPublicPage = lazy(() => import('@/pages/site/QuotationPublicPage'));
+const InvoicePublicPage = lazy(() => import('@/pages/site/InvoicePublicPage'));
 const WarrantyPublicPage = lazy(() => import('@/pages/site/WarrantyPublicPage'));
 
 const LoginPage = lazy(() => import('@/pages/admin/LoginPage'));
@@ -33,6 +34,7 @@ const QuotationBuilderPage = lazy(() => import('@/pages/admin/QuotationBuilderPa
 const TechTodayPage = lazy(() => import('@/pages/tech/TechTodayPage'));
 const SurveyListPage = lazy(() => import('@/pages/tech/SurveyListPage'));
 const SurveyFormPage = lazy(() => import('@/pages/tech/SurveyFormPage'));
+const TechJobPage = lazy(() => import('@/pages/tech/TechJobPage'));
 
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
 
@@ -62,13 +64,14 @@ export function AppRoutes() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:slug" element={<ProjectDetailPage />} />
             <Route path="/quotation/:token" element={<QuotationPublicPage />} />
+            <Route path="/invoice/:token" element={<InvoicePublicPage />} />
             <Route path="/warranty/:token" element={<WarrantyPublicPage />} />
           </Route>
 
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Back office */}
-          <Route element={<RequireAuth />}>
+          {/* Back office — every role except the field app's */}
+          <Route element={<RequireAuth roles={OFFICE_ROLES} />}>
             <Route element={<AdminLayout />}>
               <Route path="/admin" element={<DashboardPage />} />
               <Route element={<RequireAuth capability="leads:read" />}>
@@ -88,15 +91,15 @@ export function AppRoutes() {
           </Route>
 
           {/* Field app — technicians and surveyors */}
-          <Route element={<RequireAuth roles={[...FIELD_ROLES, 'ADMIN', 'DISPATCHER']} fallbackTo="/tech" />}>
+          <Route element={<RequireAuth roles={[...FIELD_ROLES, 'ADMIN', 'DISPATCHER']} />}>
             <Route element={<TechLayout />}>
               <Route path="/tech" element={<TechTodayPage />} />
+              <Route path="/tech/jobs/:id" element={<TechJobPage />} />
               <Route path="/tech/surveys" element={<SurveyListPage />} />
               <Route path="/tech/surveys/:id" element={<SurveyFormPage />} />
             </Route>
           </Route>
 
-          <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AnimatePresence>

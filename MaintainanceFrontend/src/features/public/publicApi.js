@@ -68,6 +68,10 @@ export const publicApi = apiSlice.injectEndpoints({
       query: ({ token, ...body }) => ({ url: `/public/quotations/${token}/decide`, method: 'POST', body }),
       transformResponse: (r) => r.data,
     }),
+    getInvoiceByToken: build.query({
+      query: (token) => `/public/invoices/${token}`,
+      transformResponse: (r) => r.data,
+    }),
     getWarrantyByToken: build.query({
       query: (token) => `/public/warranties/${token}`,
       transformResponse: (r) => r.data,
@@ -86,5 +90,6 @@ export const {
   useGetAvailabilityQuery,
   useEstimateMutation, useSubmitLeadMutation,
   useGetQuotationByTokenQuery, useDecideQuotationMutation,
+  useGetInvoiceByTokenQuery,
   useGetWarrantyByTokenQuery, useClaimWarrantyMutation,
 } = publicApi;

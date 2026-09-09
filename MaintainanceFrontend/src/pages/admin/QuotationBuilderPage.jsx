@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { PageTransition } from '@/components/motion';
 import { toastError, toastSuccess } from '@/features/ui/uiSlice';
+import { useAuth } from '@/hooks/useAuth';
 import { formatDate, formatNpr, paisaToRupees } from '@/lib/format';
 
 /** An approved or converted quotation is frozen — the API refuses edits and offers a revision. */
@@ -30,6 +31,9 @@ export default function QuotationBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  // ACCOUNTANT and DISPATCHER can reach this page on quotations:read alone.
+  const { can } = useAuth();
+  const canWrite = can('quotations:write');
 
   const { data: quotation, isLoading, error, refetch } = useGetQuotationQuery(id);
   const { data: rateCard } = useGetRateCardQuery({ limit: 100 });
@@ -63,7 +67,7 @@ export default function QuotationBuilderPage() {
   if (isLoading) return <PageTransition><CardSkeleton /></PageTransition>;
   if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
 
-  const frozen = FROZEN.includes(quotation.status);
+  const frozen = FROZEN.includes(quotation.status) || !canWrite;
 
   const save = async () => {
     try {
@@ -113,11 +117,11 @@ export default function QuotationBuilderPage() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin/quotations')}>
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
-            {frozen ? (
+            {frozen && canWrite ? (
               <Button variant="outline" size="sm" onClick={makeRevision} disabled={revising}>
                 {revising ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Create revision
               </Button>
-            ) : (
+            ) : !canWrite ? null : (
               <>
                 <Button variant="outline" size="sm" onClick={save} disabled={saving}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
@@ -135,14 +139,18 @@ export default function QuotationBuilderPage() {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <StatusBadge status={quotation.status} />
           {quotation.version > 1 ? <span className="text-xs text-muted-foreground">Version {quotation.version}</span> : null}
-          {quotation.survey ? (
+          {quotation.survey && can('surveys:read') ? (
             <Link to={`/admin/surveys/${quotation.survey.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
               <ClipboardCheck className="h-3.5 w-3.5" aria-hidden /> Built from {quotation.survey.number}
             </Link>
           ) : null}
           {quotation.sentAt ? <span className="text-xs text-muted-foreground">Sent {formatDate(quotation.sentAt)}</span> : null}
         </div>
-        {frozen ? (
+        {!canWrite ? (
+          <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            You can read this quotation but not change it.
+          </p>
+        ) : frozen ? (
           <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
             An approved quotation is never edited in place. Create a revision to change it and keep the history.
           </p>

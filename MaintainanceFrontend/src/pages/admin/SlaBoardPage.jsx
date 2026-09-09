@@ -9,12 +9,16 @@ import { SlaChip } from '@/components/common/SlaChip';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/hooks/useAuth';
 import { PageTransition, Stagger, AnimatePresence } from '@/components/motion';
 import { toastSuccess, toastError } from '@/features/ui/uiSlice';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 function LeadCard({ lead, tone }) {
+  // The board is route-guarded on leads:read, but logging a response writes.
+  const { can } = useAuth();
+  const canWrite = can('leads:write');
   const dispatch = useDispatch();
   const [logCall, { isLoading }] = useAddLeadActivityMutation();
 
@@ -54,9 +58,11 @@ function LeadCard({ lead, tone }) {
             <Button asChild size="sm" variant="default">
               <a href={`tel:${lead.phone}`}><Phone className="h-4 w-4" /> {lead.phone}</a>
             </Button>
-            <Button size="sm" variant="outline" onClick={onLogCall} loading={isLoading}>
-              <CheckCircle2 className="h-4 w-4" /> Log response
-            </Button>
+            {canWrite ? (
+              <Button size="sm" variant="outline" onClick={onLogCall} loading={isLoading}>
+                <CheckCircle2 className="h-4 w-4" /> Log response
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>

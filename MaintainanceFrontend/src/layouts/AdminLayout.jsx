@@ -19,20 +19,26 @@ import {
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-/** Navigation is filtered by capability — the same map the API enforces. */
+/**
+ * Navigation is filtered by capability — the same map the API enforces.
+ *
+ * `soon` marks a module whose API exists but whose screen does not. It renders
+ * as plainly unavailable rather than as a link, because a nav item that bounces
+ * you back to the dashboard reads as a broken app, not as an unbuilt one.
+ */
 const NAV = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/sla', label: 'SLA board', icon: Timer, capability: 'leads:read', badge: 'sla' },
   { to: '/admin/leads', label: 'Leads', icon: Users, capability: 'leads:read' },
-  { to: '/admin/customers', label: 'Customers', icon: Users, capability: 'customers:read' },
+  { to: '/admin/customers', label: 'Customers', icon: Users, capability: 'customers:read', soon: true },
   { to: '/admin/surveys', label: 'Site surveys', icon: ClipboardCheck, capability: 'surveys:read' },
   { to: '/admin/quotations', label: 'Quotations', icon: FileText, capability: 'quotations:read' },
-  { to: '/admin/jobs', label: 'Jobs', icon: Briefcase, capability: 'jobs:read' },
-  { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read' },
-  { to: '/admin/invoices', label: 'Invoices', icon: Receipt, capability: 'invoices:read' },
-  { to: '/admin/warranties', label: 'Warranty & AMC', icon: ShieldCheck, capability: 'jobs:read' },
-  { to: '/admin/content', label: 'Website', icon: Image, capability: 'cms:read' },
-  { to: '/admin/settings', label: 'Settings', icon: Settings, capability: 'settings:read' },
+  { to: '/admin/jobs', label: 'Jobs', icon: Briefcase, capability: 'jobs:read', soon: true },
+  { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', soon: true },
+  { to: '/admin/invoices', label: 'Invoices', icon: Receipt, capability: 'invoices:read', soon: true },
+  { to: '/admin/warranties', label: 'Warranty & AMC', icon: ShieldCheck, capability: 'jobs:read', soon: true },
+  { to: '/admin/content', label: 'Website', icon: Image, capability: 'cms:read', soon: true },
+  { to: '/admin/settings', label: 'Settings', icon: Settings, capability: 'settings:read', soon: true },
 ];
 
 export function AdminLayout() {
@@ -54,7 +60,20 @@ export function AdminLayout() {
 
   const sidebar = (
     <nav className="flex flex-1 flex-col gap-0.5 p-3">
-      {items.map((item) => (
+      {items.map((item) => (item.soon ? (
+        <span
+          key={item.to}
+          aria-disabled="true"
+          title={`${item.label} is not built yet`}
+          className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground/40"
+        >
+          <item.icon className="h-4 w-4 shrink-0" aria-hidden />
+          {item.label}
+          <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+            Soon
+          </span>
+        </span>
+      ) : (
         <NavLink
           key={item.to}
           to={item.to}
@@ -79,7 +98,7 @@ export function AdminLayout() {
             </>
           )}
         </NavLink>
-      ))}
+      )))}
     </nav>
   );
 

@@ -92,7 +92,13 @@ router.get('/technicians', readTech, validate({ query: s.technicianListQuery }),
       ...(req.validatedQuery?.role ? { user: { role: req.validatedQuery.role } } : {}),
       ...(req.validatedQuery?.available ? { isAvailable: true } : {}),
     },
-    include: { user: { select: { id: true, name: true, email: true, phone: true, role: true, isActive: true } } },
+    // No hourlyRate: SALES reads this list to pick a surveyor and has no business
+    // seeing labour cost. Rates stay on the write path, for the roles that set them.
+    select: {
+      id: true, employeeCode: true, skills: true, certifications: true, serviceAreas: true,
+      dailyCapacity: true, rating: true, ratingCount: true, isAvailable: true,
+      user: { select: { id: true, name: true, email: true, phone: true, role: true, isActive: true } },
+    },
     orderBy: { employeeCode: 'asc' },
   }))));
 
