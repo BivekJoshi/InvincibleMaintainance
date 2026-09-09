@@ -222,39 +222,51 @@ function buildLiving(ctx) {
   const wall = new Group();
   const floor = new Group();
 
-  // Everything free-standing rides the floor group, so it travels with the
-  // floor reveal as one furnished plate rather than hovering over a hole.
-  floor.add(box(m.fabric, 1.66, 0.014, 1.50, 0.25, 0.042, 0.0));   // rug
+  // Everything free-standing rides the floor group, so the furnished room
+  // travels with the floor reveal as one plate instead of hovering over a hole.
+  floor.add(box(m.rug, 1.46, 0.014, 1.34, 0.16, 0.042, -0.02));
 
-  floor.add(instanced(ctx, m.fabric, [
-    { p: [0.269, 0.225, 0.12], s: [1.44, 0.20, 0.60] },   // seat
-    { p: [0.269, 0.400, 0.51], s: [1.52, 0.56, 0.18] },   // back
-    { p: [-0.421, 0.295, 0.21], s: [0.14, 0.34, 0.78] },  // arms
-    { p: [0.959, 0.295, 0.21], s: [0.14, 0.34, 0.78] },
-    { p: [0.269, 0.730, 0.48], s: [1.52, 0.10, 0.24] },   // back roll
+  // The sofa is built facing local +Z and then turned to stand along the return
+  // wall. Against the back wall it would face the camera's TV and show the
+  // viewer nothing but its own back — an L is what puts a seat in the picture.
+  const sofa = new Group();
+  sofa.add(instanced(ctx, m.fabric, [
+    { p: [0, 0.225, 0.05], s: [1.26, 0.20, 0.58] },     // seat
+    { p: [0, 0.400, -0.28], s: [1.34, 0.56, 0.18] },    // back
+    { p: [-0.60, 0.295, 0.0], s: [0.14, 0.34, 0.74] },  // arms
+    { p: [0.60, 0.295, 0.0], s: [0.14, 0.34, 0.74] },
+    { p: [0, 0.730, -0.29], s: [1.34, 0.10, 0.22] },    // back roll
   ]));
+  sofa.add(instanced(ctx, m.timber, [
+    { p: [-0.56, 0.135, 0.26], s: [0.06, 0.13, 0.06] },
+    { p: [0.56, 0.135, 0.26], s: [0.06, 0.13, 0.06] },
+    { p: [-0.56, 0.135, -0.26], s: [0.06, 0.13, 0.06] },
+    { p: [0.56, 0.135, -0.26], s: [0.06, 0.13, 0.06] },
+  ]));
+  sofa.rotation.y = Math.PI / 2;
+  sofa.position.set(-0.60, 0, 0.02);
+  floor.add(sofa);
 
   floor.add(instanced(ctx, m.timber, [
-    { p: [0.269, 0.135, 0.10], s: [0.06, 0.13, 0.06] },   // sofa legs
-    { p: [-0.36, 0.135, -0.12], s: [0.06, 0.13, 0.06] },
-    { p: [0.90, 0.135, -0.12], s: [0.06, 0.13, 0.06] },
-    { p: [0.20, 0.395, -0.62], s: [0.86, 0.035, 0.46] },  // coffee table top
-    { p: [-0.17, 0.20, -0.62], s: [0.05, 0.36, 0.05] },
-    { p: [0.57, 0.20, -0.62], s: [0.05, 0.36, 0.05] },
+    { p: [0.42, 0.395, 0.02], s: [0.52, 0.035, 0.88] },   // coffee table top
+    { p: [0.42, 0.20, -0.36], s: [0.05, 0.36, 0.05] },
+    { p: [0.42, 0.20, 0.40], s: [0.05, 0.36, 0.05] },
   ]));
 
-  // A floor lamp gives the corner a vertical and a warm point of light.
+  // A lamp in the far corner gives the room a vertical, and the planter breaks
+  // the run of straight edges.
   floor.add(
-    pipe(m.substrate, 0.035, 0.03, -0.72, 0.05, 0.44),
-    pipe(m.substrate, 0.018, 1.28, -0.72, 0.69, 0.44),
-    pipe(m.porcelain, 0.14, 0.22, -0.72, 1.42, 0.44),
-    pipe(m.timber, 0.09, 0.30, 0.95, 0.19, -0.70),        // planter
+    pipe(m.substrate, 0.035, 0.03, -0.86, 0.05, -0.86),
+    pipe(m.substrate, 0.018, 1.28, -0.86, 0.69, -0.86),
+    pipe(m.porcelain, 0.14, 0.22, -0.86, 1.42, -0.86),
+    pipe(m.timber, 0.09, 0.30, 0.90, 0.19, 0.78),
+    pipe(m.rug, 0.13, 0.26, 0.90, 0.46, 0.78),
   );
 
-  // The one thing on the wall, landing on the board penetration the shell
-  // already cuts — so a television needs no new hole.
+  // The one thing on the wall, landing on the penetration the shell already
+  // cuts — a television needs no new hole.
   wall.add(
-    box(m.ink, 1.06, 0.60, 0.035, SOCKET_X, SOCKET_Y, FACE(0.28)),
+    box(m.dark, 1.06, 0.60, 0.035, SOCKET_X, SOCKET_Y, FACE(0.28)),
     box(m.substrateShade, 0.22, 0.020, 0.020, SOCKET_X, SOCKET_Y - 0.31, FACE(0.28)),
     box(m.timber, 1.20, 0.06, 0.16, SOCKET_X, 0.62, FACE(0.32)),   // console shelf
   );

@@ -60,7 +60,8 @@
        plus the timber and upholstery they share. Each pair has to be
        unmistakable from the other four at a glance, not a few degrees of hue. */
     --room-timber: 26 42% 40%;
-    --room-fabric: 197 12% 52%;
+    --room-fabric: 24 18% 52%;
+    --room-rug: 186 32% 30%;
     --room-elec-floor: 30 9% 48%;
     --room-elec-wall: 203 17% 33%;
     --room-wc-floor: 30 10% 78%;
@@ -118,7 +119,8 @@
     --trade-porcelain: 200 12% 86%;
 
     --room-timber: 26 38% 46%;
-    --room-fabric: 197 12% 46%;
+    --room-fabric: 24 16% 48%;
+    --room-rug: 186 28% 38%;
     --room-elec-floor: 30 8% 40%;
     --room-elec-wall: 203 19% 25%;
     --room-wc-floor: 30 9% 56%;

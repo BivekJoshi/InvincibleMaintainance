@@ -117,7 +117,8 @@ const TOKENS = {
   primary: ['--primary', '#154c59'],
   outline: ['--foreground', '#1b262b'],
   timber: ['--room-timber', '#8a5a34'],
-  fabric: ['--room-fabric', '#7d8a86'],
+  fabric: ['--room-fabric', '#96806e'],
+  rug: ['--room-rug', '#2f5f63'],
 };
 
 // ── turned profiles ────────────────────────────────────────────────────────────
@@ -258,6 +259,8 @@ export function SectionCutScene({ className, reduced = false, layerLabels }) {
     const porcelainMat = new MeshPhongMaterial({ shininess: 60 });
     const brassMat = new MeshPhongMaterial({ shininess: 150 });
     const cutCapMat = new MeshBasicMaterial();
+    const darkMat = lam();
+    const rugMat = lam();
     const discMat = new MeshBasicMaterial({
       transparent: true, opacity: 0.13, depthWrite: false, vertexColors: true,
     });
@@ -271,7 +274,7 @@ export function SectionCutScene({ className, reduced = false, layerLabels }) {
     const materials = [
       substrateMat, substrateShadeMat, screedMat, membraneMat, adhesiveMat, tileMat, boardMat,
       wallTileMat, timberMat, fabricMat, liveMat, coldMat, hotMat, wasteMat,
-      porcelainMat, brassMat, cutCapMat,
+      porcelainMat, brassMat, cutCapMat, darkMat, rugMat,
       discMat, flashMat, fallMat, outlineMat, outlineGoldMat,
     ];
 
@@ -510,7 +513,7 @@ export function SectionCutScene({ className, reduced = false, layerLabels }) {
         substrate: substrateMat, substrateShade: substrateShadeMat, board: boardMat,
         porcelain: porcelainMat, brass: brassMat, live: liveMat, cold: coldMat,
         hot: hotMat, waste: wasteMat, disc: discMat, timber: timberMat,
-        fabric: fabricMat, ink: cutCapMat,
+        fabric: fabricMat, dark: darkMat, rug: rugMat,
       },
     };
     const kits = ROOMS.map((room) => {
@@ -591,6 +594,8 @@ export function SectionCutScene({ className, reduced = false, layerLabels }) {
       brassMat.specular.copy(tintL(c.gold.clone(), 0.86));
       brassMat.emissive.copy(c.gold).multiplyScalar(0.10);
       cutCapMat.color.copy(c.gold);
+      darkMat.color.copy(c.ink).lerp(c.paper, 0.12);
+      rugMat.color.copy(c.rug);
       flashMat.color.copy(c.gold);
       fallMat.color.copy(c.gold);
       discMat.color.copy(c.ink);
