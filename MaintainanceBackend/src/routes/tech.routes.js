@@ -8,10 +8,12 @@ import { ok, created } from '../utils/response.js';
 import { idParam } from '../shared/schemas/common.js';
 import * as jobs from '../services/job.service.js';
 import * as media from '../services/media.service.js';
+import * as surveys from '../services/survey.service.js';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, notFound } from '../utils/AppError.js';
 import { logger } from '../lib/logger.js';
 import * as s from '../shared/schemas/ops.js';
+import * as sv from '../shared/schemas/survey.js';
 import { FIELD_ROLES } from '../shared/enums.js';
 
 const router = Router();
@@ -61,6 +63,13 @@ const own = asyncHandler(async (req, _res, next) => {
   next();
 });
 
+/** The survey equivalent of `own` — a field user only touches their own surveys. */
+const ownSurvey = asyncHandler(async (req, _res, next) => {
+  if (!FIELD_ROLES.includes(req.user.role)) return next();
+  await surveys.assertOwnSurvey(req.params.id, req.technician.id);
+  next();
+});
+
 router.get('/jobs/today', asyncHandler(async (req, res) =>
   ok(res, req.technician ? await jobs.myJobsToday(req.technician.id) : [])));
 
@@ -98,6 +107,48 @@ router.post('/jobs/:id/time/stop', requireTechnician, validate({ params: idParam
 
 router.post('/jobs/:id/complete', validate({ params: idParam, body: s.jobCompleteSchema }), own,
   asyncHandler(async (req, res) => ok(res, await jobs.completeJob(req.params.id, req.body, req.user.id))));
+
+// ── site surveys
+
+router.get('/surveys', requireTechnician, asyncHandler(async (req, res) =>
+  ok(res, await surveys.mySurveys(req.technician.id, req.query))));
+
+router.get('/surveys/:id', validate({ params: idParam }), ownSurvey,
+  asyncHandler(async (req, res) => ok(res, await surveys.getSurvey(req.params.id, { field: true }))));
+
+/** Create-or-return, so an offline device firing this twice is harmless. */
+router.post('/jobs/:id/survey', validate({ params: idParam, body: sv.surveyCreateSchema }), own,
+  asyncHandler(async (req, res) => {
+    const { survey, created: isNew } = await surveys.createFromJob(
+      req.params.id,
+      { surveyorId: req.body.surveyorId ?? req.technician?.id },
+      req.user.id,
+    );
+    const full = await surveys.getSurvey(survey.id, { field: true });
+    return isNew ? created(res, full) : ok(res, full);
+  }));
+
+router.put('/surveys/:id', validate({ params: idParam, body: sv.surveySaveSchema }), ownSurvey,
+  asyncHandler(async (req, res) =>
+    ok(res, await surveys.saveDraft(req.params.id, req.body, { userId: req.user.id }))));
+
+router.post('/surveys/:id/submit', validate({ params: idParam, body: sv.surveySubmitSchema }), ownSurvey,
+  asyncHandler(async (req, res) => {
+    await surveys.submitSurvey(req.params.id, req.body, { userId: req.user.id });
+    ok(res, await surveys.getSurvey(req.params.id, { field: true }));
+  }));
+
+/** Survey evidence is a JobPhoto of kind ISSUE on the parent inspection job. */
+router.post('/surveys/:id/photos', validate({ params: idParam }), ownSurvey, uploadImages.array('files', 10),
+  asyncHandler(async (req, res) => {
+    const survey = await surveys.getSurvey(req.params.id, { field: true });
+    const uploaded = await media.uploadFiles(req.files, { uploadedBy: req.user.id });
+    const rows = [];
+    for (const m of uploaded) {
+      rows.push(await jobs.addPhoto(survey.job.id, { mediaId: m.id, kind: 'ISSUE', caption: req.body.caption }));
+    }
+    created(res, { photos: rows, media: uploaded });
+  }));
 
 /** Reference data the offline app caches on login. Deliberately no rates: the
  *  field reports quantities, the office attaches price. */

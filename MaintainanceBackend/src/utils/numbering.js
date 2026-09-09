@@ -6,7 +6,7 @@ import { fiscalYear } from './nepaliDate.js';
  * is held until the document row is written.
  *
  * @param {import('@prisma/client').Prisma.TransactionClient} tx
- * @param {'QT'|'JOB'|'INV'|'AMC'|'PAY'} scope
+ * @param {'QT'|'JOB'|'INV'|'AMC'|'PAY'|'SRV'} scope
  */
 export async function nextNumber(tx, scope, date = new Date()) {
   const year = fiscalYear(date);

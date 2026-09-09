@@ -274,7 +274,12 @@ export async function completeJob(id, input, userId) {
 
   const { job: updated, warranty } = result;
 
-  if (updated.customer?.phone) {
+  // A free inspection is not "work completed" and carries no warranty — telling the
+  // customer it does, with an empty warranty link, is worse than saying nothing.
+  // The survey submission notifies the office instead.
+  const isInspection = updated.type === 'INSPECTION';
+
+  if (updated.customer?.phone && !isInspection) {
     const webOrigin = env.corsOrigins[0] ?? env.appUrl;
     await notify({
       templateKey: 'job_completed', channel: 'sms', to: updated.customer.phone,
@@ -287,12 +292,14 @@ export async function completeJob(id, input, userId) {
         'Job {{number}} is complete. Your work carries a {{warrantyDays}}-day warranty: {{warrantyLink}} - {{appName}}',
     });
   }
-  await notifyRoles(['ADMIN', 'ACCOUNTANT'], {
-    type: 'job_completed',
-    title: `Job ${updated.number} completed`,
-    body: `${updated.customer?.name} · ready to invoice`,
-    link: `/jobs/${id}`,
-  });
+  if (!isInspection) {
+    await notifyRoles(['ADMIN', 'ACCOUNTANT'], {
+      type: 'job_completed',
+      title: `Job ${updated.number} completed`,
+      body: `${updated.customer?.name} · ready to invoice`,
+      link: `/jobs/${id}`,
+    });
+  }
 
   return updated;
 }
