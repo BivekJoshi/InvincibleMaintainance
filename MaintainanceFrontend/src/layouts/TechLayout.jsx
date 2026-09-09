@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { ClipboardList, ClipboardCheck, LogOut } from 'lucide-react';
+import { ClipboardList, ClipboardCheck, LogOut, CloudOff, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 import { useLogoutMutation } from '@/features/auth/authApi';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ const ROLE_LABELS = {
 export function TechLayout() {
   const { user, role } = useAuth();
   const tabs = TABS.filter((t) => !t.roles || t.roles.includes(role));
+  const { count, online, syncing, drain } = useOfflineQueue();
   const [logout] = useLogoutMutation();
   const navigate = useNavigate();
 
@@ -43,6 +45,21 @@ export function TechLayout() {
           <LogOut className="h-4 w-4" />
         </Button>
       </header>
+
+      {/* A surveyor has to know their work is still on the phone. */}
+      {!online || count > 0 ? (
+        <button
+          type="button"
+          onClick={drain}
+          disabled={!online || syncing}
+          className="flex w-full items-center justify-center gap-2 bg-amber-100 px-4 py-2 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+        >
+          {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <CloudOff className="h-3.5 w-3.5" aria-hidden />}
+          {!online
+            ? `No signal${count ? ` · ${count} change${count === 1 ? '' : 's'} saved here` : ''}`
+            : `${count} change${count === 1 ? '' : 's'} waiting to send · tap to retry`}
+        </button>
+      ) : null}
 
       <main className="flex-1 p-4 pb-24"><Outlet /></main>
 

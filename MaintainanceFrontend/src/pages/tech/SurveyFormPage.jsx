@@ -20,6 +20,7 @@ import { CardSkeleton } from '@/components/ui/skeleton';
 import { PageTransition } from '@/components/motion';
 import { toastError, toastSuccess } from '@/features/ui/uiSlice';
 import { SURVEY_ITEM_KINDS, SURVEY_METRICS, PRIORITIES, UNITS } from '@/lib/constants';
+import { enqueue } from '@/lib/offlineQueue';
 import { titleCase } from '@/lib/format';
 
 const EDITABLE = ['DRAFT', 'RETURNED'];
@@ -108,21 +109,39 @@ export default function SurveyFormPage() {
       })),
   });
 
+  /** A request that never reached the server has no `data` — that is the offline case. */
+  const isOffline = (err) => !navigator.onLine || err?.status === 'FETCH_ERROR' || !err?.data;
+
   const onSave = async () => {
+    const body = payload();
     try {
-      await saveDraft({ id, ...payload() }).unwrap();
+      await saveDraft({ id, ...body }).unwrap();
       dispatch(toastSuccess('Saved'));
     } catch (err) {
+      if (isOffline(err)) {
+        await enqueue({ kind: 'survey_draft', surveyId: id, payload: body });
+        dispatch(toastSuccess('Saved on this phone', 'It will reach the office when you have signal.'));
+        return;
+      }
       dispatch(toastError(err?.data?.error?.message ?? 'Could not save'));
     }
   };
 
   const onSubmit = async () => {
+    const body = payload();
     try {
-      await submit({ id, ...payload() }).unwrap();
+      await submit({ id, ...body }).unwrap();
       dispatch(toastSuccess('Survey submitted', 'The office will price it and send the quotation.'));
       navigate('/tech/surveys');
     } catch (err) {
+      if (isOffline(err)) {
+        // Draft first, then submit — /tech/sync replays them in this order.
+        await enqueue({ kind: 'survey_draft', surveyId: id, payload: body });
+        await enqueue({ kind: 'survey_submit', surveyId: id, payload: { note: 'Submitted offline' } });
+        dispatch(toastSuccess('Queued on this phone', 'It will be submitted as soon as you have signal.'));
+        navigate('/tech/surveys');
+        return;
+      }
       dispatch(toastError(err?.data?.error?.message ?? 'Could not submit the survey'));
     }
   };
