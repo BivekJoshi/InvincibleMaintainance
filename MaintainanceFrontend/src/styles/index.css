@@ -41,6 +41,34 @@
     --sla-ok: 152 55% 36%;
     --sla-warn: 34 84% 46%;
     --sla-breach: 4 66% 48%;
+
+    /* The hero scene. The layers of a real build-up, in the colours those
+       materials actually are: grey structure, one loud blue for the
+       waterproofing, and four thin saturated service runs. */
+    --build-substrate: 200 7% 63%;   /* slab and blockwork — the quietest surface */
+    --build-screed: 34 32% 70%;
+    --build-membrane: 205 76% 45%;   /* the loudest colour, deliberately */
+    --build-adhesive: 152 13% 70%;
+    --build-tile: 16 60% 55%;
+    --build-board: 38 16% 78%;       /* not lighter: at 90% it vanishes on paper */
+    --build-walltile: 180 38% 44%;
+    --trade-live: 30 92% 52%;        /* conduit */
+    --trade-cold: 198 82% 56%;       /* lighter than the membrane so the blues part */
+    --trade-porcelain: 40 26% 96%;
+
+    /* The five rooms the hero cycles through: a floor and a wall finish each,
+       plus the timber and upholstery they share. Each pair has to be
+       unmistakable from the other four at a glance, not a few degrees of hue. */
+    --room-timber: 26 42% 40%;
+    --room-fabric: 197 12% 52%;
+    --room-elec-floor: 30 9% 48%;
+    --room-elec-wall: 203 17% 33%;
+    --room-wc-floor: 30 10% 78%;
+    --room-wc-wall: 312 15% 33%;
+    --room-kitchen-floor: 28 7% 42%;
+    --room-kitchen-wall: 96 16% 76%;
+    --room-living-floor: 28 36% 48%;
+    --room-living-wall: 36 20% 87%;
   }
 
   .dark {
@@ -75,6 +103,30 @@
     --sla-ok: 152 48% 46%;
     --sla-warn: 36 84% 56%;
     --sla-breach: 4 66% 58%;
+
+    /* Lightness lifted, saturation pulled back on the shoutiest, so nothing
+       glares against a near-black panel. */
+    --build-substrate: 200 8% 44%;
+    --build-screed: 34 26% 56%;
+    --build-membrane: 205 68% 57%;
+    --build-adhesive: 152 11% 52%;
+    --build-tile: 16 56% 60%;
+    --build-board: 38 10% 62%;
+    --build-walltile: 180 36% 52%;
+    --trade-live: 32 88% 60%;
+    --trade-cold: 198 78% 64%;
+    --trade-porcelain: 200 12% 86%;
+
+    --room-timber: 26 38% 46%;
+    --room-fabric: 197 12% 46%;
+    --room-elec-floor: 30 8% 40%;
+    --room-elec-wall: 203 19% 25%;
+    --room-wc-floor: 30 9% 56%;
+    --room-wc-wall: 312 18% 39%;
+    --room-kitchen-floor: 28 8% 50%;
+    --room-kitchen-wall: 96 15% 62%;
+    --room-living-floor: 28 32% 37%;
+    --room-living-wall: 34 11% 25%;
   }
 }
 

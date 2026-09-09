@@ -8,6 +8,7 @@ import {
   MeshLambertMaterial, MeshPhongMaterial, NormalBlending, Object3D, Path, PerspectiveCamera,
   RingGeometry, Scene, Shape, SphereGeometry, Vector2, Vector3, WebGLRenderer,
 } from 'three';
+import { ROOMS } from './rooms';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -69,10 +70,10 @@ const FLOOR = {
   tiles: { base: 0.215, lift: 0.88 },
 };
 
-const CENTRE = new Vector3(0, 0.92, 0);
+const CENTRE = new Vector3(0, 0.96, 0);
 const VIEW = new Vector3(0.62, 0.42, 0.66).normalize();
-const FIT_WIDE = 2.16;
-const FIT_DENSE = 1.98;
+const FIT_WIDE = 2.06;
+const FIT_DENSE = 1.94;
 const UP = new Vector3(0, 1, 0);
 
 // ── easing ─────────────────────────────────────────────────────────────────────
@@ -115,6 +116,8 @@ const TOKENS = {
   paper: ['--background', '#faf8f5'],
   primary: ['--primary', '#154c59'],
   outline: ['--foreground', '#1b262b'],
+  timber: ['--room-timber', '#8a5a34'],
+  fabric: ['--room-fabric', '#7d8a86'],
 };
 
 // ── turned profiles ────────────────────────────────────────────────────────────
@@ -168,12 +171,6 @@ function boardShape() {
   return shape;
 }
 
-const DEFAULT_CAPTIONS = {
-  rest: 'A bathroom corner, layer by layer — slab, screed, waterproofing, tile.',
-  membrane: 'Waterproof membrane, turned up onto the wall. This is what stops seepage.',
-  services: 'Conduit and supply pipes, set into the wall before the board goes on.',
-};
-
 const DEFAULT_LAYERS = [
   'Reinforced concrete slab', 'Cement screed', 'Waterproof membrane', 'Notched tile adhesive',
   'Terracotta floor tile', 'Blockwork', 'Conduit and supply pipes', 'Cement board', 'Wall tile',
@@ -183,14 +180,12 @@ const DEFAULT_LAYERS = [
  * @param {object} props
  * @param {string} [props.className]
  * @param {boolean} [props.reduced] Render one static frame and schedule no rAF.
- * @param {{rest?:string, membrane?:string, services?:string}} [props.captions]
- *   Pass Nepali strings here — the component never translates.
  * @param {string[]} [props.layerLabels] The screen-reader layer list, in build order.
  */
-export function SectionCutScene({ className, reduced = false, captions, layerLabels }) {
+export function SectionCutScene({ className, reduced = false, layerLabels }) {
   const hostRef = useRef(null);
   const [failed, setFailed] = useState(false);
-  const [pass, setPass] = useState(null); // null = resting
+  const [pass, setPass] = useState({ room: 0, phase: null });
 
   useEffect(() => {
     const host = hostRef.current;
@@ -252,6 +247,8 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
     const tileMat = lam();
     const boardMat = lam();
     const wallTileMat = lam();
+    const timberMat = lam();
+    const fabricMat = lam();
     const liveMat = lam();
     const coldMat = lam();
     const hotMat = lam();
@@ -273,7 +270,8 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
 
     const materials = [
       substrateMat, substrateShadeMat, screedMat, membraneMat, adhesiveMat, tileMat, boardMat,
-      wallTileMat, liveMat, coldMat, hotMat, wasteMat, porcelainMat, brassMat, cutCapMat,
+      wallTileMat, timberMat, fabricMat, liveMat, coldMat, hotMat, wasteMat,
+      porcelainMat, brassMat, cutCapMat,
       discMat, flashMat, fallMat, outlineMat, outlineGoldMat,
     ];
 
@@ -366,14 +364,7 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
       }
     }
     const floorTiles = new InstancedMesh(UNIT_BOX, tileMat, floorCells.length);
-    const drain = pipe(brassMat, 0.095, 0.032, DRAIN.x, 0.0175, DRAIN.z);
-    const drainInner = pipe(substrateShadeMat, 0.070, 0.016, DRAIN.x, 0.026, DRAIN.z);
-    const floorDisc = new Mesh(DISC, discMat);
-    floorDisc.rotation.x = -Math.PI / 2;
-    floorDisc.scale.setScalar(0.55);
-    floorDisc.position.set(BASIN_X, 0.024, -0.46);
-    floorDisc.renderOrder = 2;
-    gFloorTiles.add(floorTiles, drain, drainInner, floorDisc);
+    gFloorTiles.add(floorTiles);
 
     world.add(gScreed, gMembrane, gAdhesive, gFloorTiles);
 
@@ -456,9 +447,22 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
     );
     wallBack.add(gServices);
 
+    // The finished face — board, tiles and everything fixed to them — hangs off a
+    // hinge at the wall's left edge. Sliding it straight out of the wall would
+    // park it in the middle of the room, in front of the cavity it is opening.
+    // Hinged at the LEFT edge. The camera sits front-right, so this is the way
+    // round that swings the panel AWAY from the eye and leaves the cavity in
+    // clear view; hinging it right brings the tiled face into the lens instead.
+    const hingeBack = new Group();
+    hingeBack.position.set(-HALF, 0, 0);
+    wallBack.add(hingeBack);
+    const panelBack = new Group();
+    panelBack.position.set(HALF, 0, 0);
+    hingeBack.add(panelBack);
+
     const gBoardBack = new Group();
     gBoardBack.add(new Mesh(BOARD, boardMat), outline(ROOM, WALL_H, 0.015, 0, WALL_H / 2, 0.0075));
-    wallBack.add(gBoardBack);
+    panelBack.add(gBoardBack);
 
     const RET_MID = -HALF + RETURN_LEN / 2;
     const gBoardReturn = new Group();
@@ -486,39 +490,35 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
     const gTileBack = new Group();
     const wallTilesBack = new InstancedMesh(UNIT_BOX, wallTileMat, backTileDefs.length);
     gTileBack.add(wallTilesBack);
-    wallBack.add(gTileBack);
+    panelBack.add(gTileBack);
 
     const gTileReturn = new Group();
     const wallTilesReturn = new InstancedMesh(UNIT_BOX, wallTileMat, returnTileDefs.length);
     gTileReturn.add(wallTilesReturn);
     wallReturn.add(gTileReturn);
 
-    // ── fixtures: children of the back tiles, so they ride the finishes ──
-    // Their depths are quoted from the tiled FACE, not from the wall origin —
-    // the group they hang off is already SEAT.wallTile forward, and adding the
-    // two together is what leaves a basin floating in the middle of the room.
-    const FACE = (z) => z - SEAT.wallTile;
-    const basin = new Mesh(BASIN, porcelainMat);
-    basin.position.set(BASIN_X, 0.82, FACE(0.46));
-    const bracket = box(porcelainMat, 0.34, 0.05, 0.16, BASIN_X, 0.755, FACE(0.30));
-    const tapParts = new Group();
-    const tapBody = new Mesh(TAP_BODY, brassMat);
-    tapBody.position.set(BASIN_X, 0.826, FACE(0.30));
-    const tapLever = box(brassMat, 0.075, 0.022, 0.055, BASIN_X + 0.055, 1.012, FACE(0.30));
-    tapParts.add(
-      tapBody,
-      pipe(brassMat, 0.026, 0.13, BASIN_X, 1.045, FACE(0.36), 'z'),
-      pipe(brassMat, 0.024, 0.06, BASIN_X, 1.015, FACE(0.421)),
-      tapLever,
-    );
-    const trap = pipe(brassMat, 0.045, 0.16, BASIN_X, 0.655, FACE(0.46));
-    const FACE_SOCKET_Z = FACE(0.249);
-    const socketPlate = box(boardMat, 0.22, 0.22, 0.014, SOCKET_X, SOCKET_Y, FACE_SOCKET_Z);
-    const wallDisc = new Mesh(DISC, discMat);
-    wallDisc.scale.set(0.42, 0.30, 1);
-    wallDisc.position.set(BASIN_X, 0.60, FACE(0.244));
-    wallDisc.renderOrder = 2;
-    gTileBack.add(basin, bracket, tapParts, trap, socketPlate, wallDisc);
+    // ── the five rooms ──
+    // Every room is built once, here, and then shown or hidden. Building them
+    // lazily would stutter the first transition, and there are only ~60 meshes
+    // across all five.
+    const ctx = {
+      UNIT_BOX, BASIN, TAP_BODY, DISC,
+      box, pipe, joint, outline,
+      FACE: (z) => z - SEAT.wallTile,
+      COL, ROW, BASIN_X, SOCKET_X, SOCKET_Y, DRAIN,
+      m: {
+        substrate: substrateMat, substrateShade: substrateShadeMat, board: boardMat,
+        porcelain: porcelainMat, brass: brassMat, live: liveMat, cold: coldMat,
+        hot: hotMat, waste: wasteMat, disc: discMat, timber: timberMat,
+        fabric: fabricMat, ink: cutCapMat,
+      },
+    };
+    const kits = ROOMS.map((room) => {
+      const built = room.build(ctx);
+      gTileBack.add(built.wall);
+      gFloorTiles.add(built.floor);
+      return built;
+    });
 
     // ── the section caps: a gold L that holds while everything else flies apart ──
     const caps = [
@@ -558,20 +558,29 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
 
     // ── palette, re-read whenever the theme is toggled ──
     let isDark = false;
+    const roomFloor = [];
+    const roomWall = [];
     const paint = () => {
       const styles = getComputedStyle(document.documentElement);
       const c = {};
       for (const k of Object.keys(TOKENS)) c[k] = cssColor(styles, TOKENS[k][0], TOKENS[k][1]);
       isDark = document.documentElement.classList.contains('dark');
 
+      // Each room's two surfaces, kept as Colors so a transition is a lerp
+      // rather than a re-read of the stylesheet on every frame.
+      ROOMS.forEach((room, i) => {
+        roomFloor[i] = cssColor(styles, room.floor, '#b06a46');
+        roomWall[i] = cssColor(styles, room.wall, '#3f8f92');
+      });
+
       substrateMat.color.copy(c.substrate);
       substrateShadeMat.color.copy(c.substrate).multiplyScalar(0.7);
       screedMat.color.copy(c.screed);
       membraneMat.color.copy(c.membrane);
       adhesiveMat.color.copy(c.adhesive);
-      tileMat.color.copy(c.tile);
       boardMat.color.copy(c.board);
-      wallTileMat.color.copy(c.wallTile);
+      timberMat.color.copy(c.timber);
+      fabricMat.color.copy(c.fabric);
       liveMat.color.copy(c.live);
       coldMat.color.copy(c.cold);
       hotMat.color.copy(c.hot);
@@ -616,7 +625,13 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
     // the only writer. That is what makes the reduced-motion frame reachable at
     // all — it is a composition no moment on the timeline produces — and what
     // lets resize and repaint re-apply the last pose instead of guessing a time.
-    const START = 4.2, PASS = 16.0, HOLD = 9.4, OPENING = 1.3, HELD = 2.9;
+    // One room at a time. Each gets a long still hold, one reveal of its own,
+    // and a short handover to the next. Motion is about a fifth of the loop;
+    // the rest is a finished room standing still beside the CTA.
+    const START = 4.2;
+    const ROOM_T = 15.0;                    // seconds a room owns, handover included
+    const HOLD = 7.4, OPENING = 1.2, HELD = 2.8;
+    const SWAP_AT = 13.2, SWAP_T = 1.8;     // when the handover starts, and how long
 
     const fallAt = (t, at) => {
       const p = clamp01((t - at) / 0.9);
@@ -663,29 +678,54 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
           Math.max(0, 1 - Math.abs(t - 2.91) / 0.14),
         ],
         fall: fallAt(t, 3.0),
+        swing: 0,
+        room: 0,
+        next: 0,
+        swap: 0,
+        outScale: 1,
+        inScale: 0,
         bob: 0.006 * Math.sin(2 * Math.PI * 0.13 * t),
         phase: null,
       };
 
       if (t >= START) {
-        const cycle = (t - START) % (PASS * 2);
-        const inB = cycle >= PASS;
-        const tau = inB ? cycle - PASS : cycle;
+        const elapsedIdle = t - START;
+        const index = Math.floor(elapsedIdle / ROOM_T);
+        const tau = elapsedIdle - index * ROOM_T;
+        pose.room = index % ROOMS.length;
+        pose.next = (index + 1) % ROOMS.length;
+
         const open = easeInOutCubic(clamp01((tau - HOLD) / OPENING))
           - easeInOutCubic(clamp01((tau - HOLD - OPENING - HELD) / OPENING));
-        if (open > 0.02) pose.phase = inB ? 'services' : 'membrane';
-        if (inB) {
-          // The board and its tiles push forward carrying the basin and socket,
-          // and what is behind them is the pitch.
-          pose.back.board = open;
-          pose.back.tiles = open;
-          pose.pipeEmissive = 0.16 + 0.18 * open;
-        } else {
+        if (open > 0.02) pose.phase = 'reveal';
+
+        // Rooms alternate which way they open: the wet rooms lift the floor to
+        // show the waterproofing, the dry ones swing the wall to show the
+        // services. Both are things a customer is paying for and cannot see.
+        if (pose.room === 0 || pose.room === 2) {
           pose.floor.tiles = open;
           pose.floor.adhesive = open * 0.72;
           pose.membraneEmissive = 0.08 + 0.18 * open;
           pose.gold = open > 0.4;
           pose.fall = fallAt(tau, HOLD + OPENING + 0.5);
+        } else {
+          pose.swing = open;
+          pose.pipeEmissive = 0.16 + 0.18 * open;
+        }
+
+        // The handover. The outgoing fit-out folds away, the tiles fly off and
+        // re-lay in the next room's colour, then the new fit-out unfolds.
+        const swap = clamp01((tau - SWAP_AT) / SWAP_T);
+        if (swap > 0) {
+          pose.swap = easeInOutCubic(swap);
+          pose.outScale = 1 - easeOutCubic(clamp01(swap / 0.42));
+          pose.inScale = easeOutBack(clamp01((swap - 0.52) / 0.48));
+          // The tile field lifts and lays itself again, which is the same
+          // gesture the room was built with in the first place.
+          pose.lay = swap < 0.5
+            ? 1 - easeInOutCubic(swap / 0.5)
+            : easeOutCubic((swap - 0.5) / 0.5);
+          pose.phase = 'swap';
         }
       }
       return pose;
@@ -696,7 +736,7 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
       dolly: 1,
       explode: 1,
       floor: { screed: 0, membrane: 0, adhesive: 0.14, tiles: 0.30 },
-      back: { services: 0, board: 0.26, tiles: 0.26 },
+      back: { services: 0, board: 0, tiles: 0 },
       ret: { board: 0, tiles: 0 },
       lay: 1,
       fixtures: { basin: 1, tap: 1, trap: 1, socket: 1, drain: 1 },
@@ -705,6 +745,12 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
       gold: true,
       flash: [0, 0, 0],
       fall: { alpha: 0, u: 0, len: 0 },
+      swing: 0.55,
+      room: 0,
+      next: 0,
+      swap: 0,
+      outScale: 1,
+      inScale: 0,
       bob: 0,
       phase: null,
     };
@@ -739,6 +785,7 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
       gFloorTiles.position.y = FLOOR.tiles.base + pose.floor.tiles * FLOOR.tiles.lift * pose.explode;
 
       gServices.position.z = SEAT.services + pose.back.services * OPEN.services * pose.explode;
+      hingeBack.rotation.y = -pose.swing * 0.62;
       gBoardBack.position.z = SEAT.board + pose.back.board * OPEN.board * pose.explode;
       gTileBack.position.z = SEAT.wallTile + pose.back.tiles * OPEN.wallTile * pose.explode;
       gBoardReturn.position.z = SEAT.board + pose.ret.board * OPEN.board * pose.explode;
@@ -752,17 +799,31 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
         laid = pose.lay === 1 ? 1 : 0;
       }
 
-      const f = pose.fixtures;
-      basin.visible = f.basin > 0.01;
-      bracket.visible = f.basin > 0.01;
-      basin.position.y = 0.82 + (1 - f.basin) * 0.20;
-      tapParts.visible = f.tap > 0.01;
-      tapParts.position.y = (1 - f.tap) * -0.14;
-      trap.visible = f.trap > 0.01 && !dense;
-      socketPlate.visible = f.socket > 0.01 && !dense;
-      socketPlate.position.z = FACE_SOCKET_Z + (1 - f.socket) * 0.12;
-      drain.visible = f.drain > 0.01;
-      drainInner.visible = f.drain > 0.01;
+      // Only the two rooms involved in a handover are in the graph at all; the
+      // other three are switched off, so they cost nothing to keep built.
+      const landing = pose.fixtures.basin;   // the assemble's fixture beat
+      for (let i = 0; i < kits.length; i += 1) {
+        const active = i === pose.room;
+        const arriving = i === pose.next && pose.swap > 0;
+        const on = active || arriving;
+        kits[i].wall.visible = on;
+        kits[i].floor.visible = on;
+        if (!on) continue;
+        // Fit-out folds away and unfolds rather than fading: nothing here is
+        // ever transparent, so no material flips its program mid-loop.
+        const k = active ? Math.min(pose.outScale, landing) : pose.inScale;
+        const scale = Math.max(0.0001, k);
+        kits[i].wall.scale.setScalar(scale);
+        kits[i].floor.scale.setScalar(scale);
+      }
+
+      // The two shared tile surfaces carry the room change as a colour.
+      const from = roomFloor[pose.room];
+      const to = roomFloor[pose.next];
+      if (from && to) tileMat.color.lerpColors(from, to, pose.swap);
+      const wFrom = roomWall[pose.room];
+      const wTo = roomWall[pose.next];
+      if (wFrom && wTo) wallTileMat.color.lerpColors(wFrom, wTo, pose.swap);
 
       membraneMat.emissiveIntensity = pose.membraneEmissive;
       liveMat.emissiveIntensity = pose.pipeEmissive;
@@ -821,7 +882,6 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
       const vFov = (camera.fov * Math.PI) / 180;
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
       baseDistance = (dense ? FIT_DENSE : FIT_WIDE) / Math.sin(Math.min(vFov, hFov) / 2);
-      tapLever.visible = !dense;
 
       // The bias sits on the camera's own position, never on the aim point:
       // offsetting the target makes the model slide across the panel instead of
@@ -874,7 +934,9 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
       rig.rotation.x = eye.y * 0.045;
       renderer.render(scene, camera);
       // Two setState calls per 32s cycle, never one per frame.
-      if (pose.phase !== shown) { shown = pose.phase; setPass(pose.phase); }
+      // Two setState calls per room, never one per frame.
+      const line = `${pose.room}:${pose.phase ?? ''}`;
+      if (line !== shown) { shown = line; setPass({ room: pose.room, phase: pose.phase }); }
     };
 
     const tick = (now) => {
@@ -935,24 +997,31 @@ export function SectionCutScene({ className, reduced = false, captions, layerLab
     };
   }, [reduced]);
 
-  const copy = { ...DEFAULT_CAPTIONS, ...captions };
   const labels = layerLabels ?? DEFAULT_LAYERS;
+  const room = ROOMS[pass.room] ?? ROOMS[0];
 
   if (failed) return <SectionCutFallback className={className} labels={labels} />;
 
   return (
     <figure className={cn('relative m-0', className)}>
       <div ref={hostRef} aria-hidden className="aspect-[7/6] w-full" style={{ pointerEvents: 'none' }} />
-      {/* The layers named in build order, so the panel is legible to a screen
-          reader and to a crawler whatever WebGL does. */}
-      <ul className="sr-only">{labels.map((l) => <li key={l}>{l}</li>)}</ul>
-      <figcaption className="border-t bg-muted/40 px-5 py-2.5 text-[12px] leading-snug text-muted-foreground">
+      {/* Every room and every layer named in text, so the panel is legible to a
+          screen reader and to a crawler whatever WebGL does. */}
+      <ul className="sr-only">
+        {ROOMS.map((r) => <li key={r.key}>{r.name}: {r.caption}</li>)}
+        {labels.map((l) => <li key={l}>{l}</li>)}
+      </ul>
+      <figcaption className="flex min-h-[2.75rem] items-center gap-2.5 border-t bg-muted/40 px-5 py-2.5 text-[12px] leading-snug text-muted-foreground">
         {reduced ? (
+          <span>{ROOMS.map((r) => r.name).join(' · ')} — the rooms we fit out and maintain.</span>
+        ) : (
           <>
-            {copy.membrane}
-            <span className="mt-1 block">{copy.services}</span>
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+              {room.name}
+            </span>
+            <span>{pass.phase === 'reveal' ? room.reveal : room.caption}</span>
           </>
-        ) : (copy[pass] ?? copy.rest)}
+        )}
       </figcaption>
     </figure>
   );
@@ -977,7 +1046,7 @@ function SectionCutFallback({ className, labels }) {
       </div>
       <ul className="sr-only">{labels.map((l) => <li key={l}>{l}</li>)}</ul>
       <figcaption className="border-t bg-muted/40 px-5 py-2.5 text-[12px] leading-snug text-muted-foreground">
-        {DEFAULT_CAPTIONS.rest}
+        {ROOMS.map((r) => r.name).join(' · ')} — the rooms we fit out and maintain.
       </figcaption>
     </figure>
   );

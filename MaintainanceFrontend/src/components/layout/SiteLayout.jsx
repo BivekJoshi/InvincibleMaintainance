@@ -3,9 +3,12 @@ import { Outlet, Link, NavLink, useLocation, useNavigate, useSearchParams } from
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Phone, Menu, X, MessageCircle, Moon, Sun, Search, CalendarCheck, Mail, MapPin, ChevronRight,
+  LogIn, LayoutDashboard,
 } from 'lucide-react';
 import { AnimatePresence, motion, ScrollProgress, BackToTop } from '@/three/motion';
 import { useGetBootstrapQuery } from '@/api/publicApi';
+import { useAuth } from '@/hooks/useAuth';
+import { FIELD_ROLES } from '@/config/constants';
 import { selectLocale, setLocale, selectTheme, setTheme } from '@/redux/slices/uiSlice';
 import { Button } from '@/components/ui/button';
 import { DataIcon } from '@/components/site';
@@ -35,7 +38,12 @@ export function SiteLayout() {
   const { pathname } = useLocation();
   const [params] = useSearchParams();
   const { data } = useGetBootstrapQuery(locale);
+  const { isAuthenticated, role } = useAuth();
   const s = data?.settings ?? {};
+
+  // Staff who are already signed in get a way back into their own app rather
+  // than a login form that would only bounce them onward.
+  const appHome = FIELD_ROLES.includes(role) ? '/tech' : '/admin';
 
   const phone = s['contact.phonePrimary'] ?? '01-5407720';
   const mobile = s['contact.phoneSecondary'] ?? '9808338255';
@@ -122,6 +130,13 @@ export function SiteLayout() {
               <Sun className="h-4 w-4 dark:hidden" />
               <Moon className="hidden h-4 w-4 dark:block" />
             </Button>
+            <Button asChild variant="ghost" size="sm" className="hidden md:inline-flex">
+              <Link to={isAuthenticated ? appHome : '/login'}>
+                {isAuthenticated
+                  ? <><LayoutDashboard className="h-4 w-4" /> Dashboard</>
+                  : <><LogIn className="h-4 w-4" /> Log in</>}
+              </Link>
+            </Button>
             <Button asChild size="sm" className="hidden sm:inline-flex">
               <Link to="/book"><CalendarCheck className="h-4 w-4" /> Book a visit</Link>
             </Button>
@@ -173,6 +188,23 @@ export function SiteLayout() {
                     </NavLink>
                   </motion.div>
                 ))}
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.04 + NAV.length * 0.05, duration: 0.28 }}
+                >
+                  <Link
+                    to={isAuthenticated ? appHome : '/login'}
+                    className="flex items-center justify-between border-b py-3 text-[15px] font-medium"
+                  >
+                    <span className="flex items-center gap-2">
+                      {isAuthenticated
+                        ? <><LayoutDashboard className="h-4 w-4 text-muted-foreground" aria-hidden /> Dashboard</>
+                        : <><LogIn className="h-4 w-4 text-muted-foreground" aria-hidden /> Staff login</>}
+                    </span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  </Link>
+                </motion.div>
                 <div className="flex gap-3 py-4">
                   <Button asChild className="flex-1"><Link to="/book">Book a visit</Link></Button>
                   <Button asChild variant="outline" className="flex-1"><a href={`tel:${mobile}`}>Call us</a></Button>
@@ -230,7 +262,11 @@ export function SiteLayout() {
             <ul className="mt-4 space-y-2.5 text-ink-muted">
               <li><Link to="/book" className="hover:text-ink-foreground">Book a visit</Link></li>
               {NAV.map((n) => <li key={n.to}><Link to={n.to} className="hover:text-ink-foreground">{n.label}</Link></li>)}
-              <li><Link to="/login" className="hover:text-ink-foreground">Staff login</Link></li>
+              <li>
+                <Link to={isAuthenticated ? appHome : '/login'} className="hover:text-ink-foreground">
+                  {isAuthenticated ? 'Dashboard' : 'Staff login'}
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
