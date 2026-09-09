@@ -83,11 +83,18 @@ router.delete('/jobs/:id', writeJobs, validate({ params: idParam }),
 const readTech = requires('technicians:read');
 const writeTech = requires('technicians:write');
 
-router.get('/technicians', readTech, asyncHandler(async (_req, res) => ok(res, await prisma.technician.findMany({
-  where: { deletedAt: null },
-  include: { user: { select: { id: true, name: true, email: true, phone: true, isActive: true } } },
-  orderBy: { employeeCode: 'asc' },
-}))));
+// `role` is selected so callers can tell a surveyor from a repair technician —
+// the Technician row itself carries no role.
+router.get('/technicians', readTech, validate({ query: s.technicianListQuery }),
+  asyncHandler(async (req, res) => ok(res, await prisma.technician.findMany({
+    where: {
+      deletedAt: null,
+      ...(req.validatedQuery?.role ? { user: { role: req.validatedQuery.role } } : {}),
+      ...(req.validatedQuery?.available ? { isAvailable: true } : {}),
+    },
+    include: { user: { select: { id: true, name: true, email: true, phone: true, role: true, isActive: true } } },
+    orderBy: { employeeCode: 'asc' },
+  }))));
 
 router.post('/technicians', writeTech, validate({ body: s.technicianSchema }),
   asyncHandler(async (req, res) => created(res, await prisma.technician.create({

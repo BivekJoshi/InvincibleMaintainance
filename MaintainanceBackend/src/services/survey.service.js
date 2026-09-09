@@ -250,7 +250,13 @@ export async function submitSurvey(id, input = {}, actor = {}) {
     include: { items: true, job: { select: { id: true, number: true, status: true, type: true } } },
   });
   if (!survey) throw notFound('Survey');
-  assertTransition(SURVEY_TRANSITIONS, survey.status, 'SUBMITTED', 'survey');
+  // An offline device may replay this. canTransition treats same -> same as legal,
+  // so without an early return the visit would be completed a second time and the
+  // office notified again. Return what is already there instead.
+  if (survey.status !== 'DRAFT' && survey.status !== 'RETURNED') {
+    assertTransition(SURVEY_TRANSITIONS, survey.status, 'SUBMITTED', 'survey');
+    return getSurvey(id);
+  }
   if (!survey.items.length) {
     throw unprocessable('Add at least one material or labour line before submitting the survey');
   }

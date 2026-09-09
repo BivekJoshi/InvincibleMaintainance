@@ -49,6 +49,45 @@ export const techApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       invalidatesTags: (r, e, { id }) => [{ type: 'Job', id }, { type: 'Job', id: 'TECH_TODAY' }, 'Dashboard'],
     }),
+    // ── site surveys. Quantities only: nothing here sends or receives a rate.
+    getMySurveys: build.query({
+      query: (params = {}) => ({ url: '/tech/surveys', params }),
+      transformResponse: (r) => r.data,
+      providesTags: [{ type: 'Survey', id: 'TECH_LIST' }],
+    }),
+    getMySurvey: build.query({
+      query: (id) => `/tech/surveys/${id}`,
+      transformResponse: (r) => r.data,
+      providesTags: (result, error, id) => [{ type: 'Survey', id }],
+    }),
+    startJobSurvey: build.mutation({
+      query: ({ jobId, surveyorId }) => ({ url: `/tech/jobs/${jobId}/survey`, method: 'POST', body: { surveyorId } }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: [{ type: 'Survey', id: 'TECH_LIST' }],
+    }),
+    saveSurveyDraft: build.mutation({
+      query: ({ id, ...body }) => ({ url: `/tech/surveys/${id}`, method: 'PUT', body }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, arg) => [{ type: 'Survey', id: arg.id }, { type: 'Survey', id: 'TECH_LIST' }],
+    }),
+    submitSurvey: build.mutation({
+      query: ({ id, ...body }) => ({ url: `/tech/surveys/${id}/submit`, method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, arg) => [
+        { type: 'Survey', id: arg.id }, { type: 'Survey', id: 'TECH_LIST' },
+        { type: 'Job', id: 'TECH_TODAY' }, { type: 'Job', id: 'TECH_LIST' },
+      ],
+    }),
+    uploadSurveyPhotos: build.mutation({
+      query: ({ id, body }) => ({ url: `/tech/surveys/${id}/photos`, method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, arg) => [{ type: 'Survey', id: arg.id }],
+    }),
+    getTechRateCard: build.query({
+      query: () => '/tech/rate-card',
+      transformResponse: (r) => r.data,
+      providesTags: ['RateCard'],
+    }),
     getTechMaterials: build.query({
       query: () => '/tech/materials',
       transformResponse: (r) => r.data,
@@ -68,4 +107,11 @@ export const {
   useSetMyJobStatusMutation, useToggleMyTaskMutation,
   useStartMyTimerMutation, useStopMyTimerMutation, useCompleteMyJobMutation,
   useGetTechMaterialsQuery, useSyncOfflineMutation,
+  useGetMySurveysQuery,
+  useGetMySurveyQuery,
+  useStartJobSurveyMutation,
+  useSaveSurveyDraftMutation,
+  useSubmitSurveyMutation,
+  useUploadSurveyPhotosMutation,
+  useGetTechRateCardQuery,
 } = techApi;

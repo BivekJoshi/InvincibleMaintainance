@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { ClipboardList, Calendar, LogOut } from 'lucide-react';
+import { ClipboardList, ClipboardCheck, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useLogoutMutation } from '@/features/auth/authApi';
 import { Button } from '@/components/ui/button';
@@ -7,16 +7,24 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { to: '/tech', label: 'Today', icon: ClipboardList, end: true },
-  { to: '/tech/schedule', label: 'Schedule', icon: Calendar },
+  { to: '/tech/surveys', label: 'Surveys', icon: ClipboardCheck, roles: ['SURVEYOR', 'ADMIN', 'DISPATCHER'] },
 ];
 
+const ROLE_LABELS = {
+  TECHNICIAN: 'Technician',
+  SURVEYOR: 'Site surveyor',
+  ADMIN: 'Admin',
+  DISPATCHER: 'Dispatcher',
+};
+
 /**
- * Mobile-first shell for field technicians. Big tap targets, bottom navigation,
- * and nothing that needs a desktop. Safe-area padding keeps the bar clear of
- * the iOS home indicator.
+ * Mobile-first shell for field staff. Big tap targets, bottom navigation, and
+ * nothing that needs a desktop. Safe-area padding keeps the bar clear of the
+ * iOS home indicator.
  */
 export function TechLayout() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const tabs = TABS.filter((t) => !t.roles || t.roles.includes(role));
   const [logout] = useLogoutMutation();
   const navigate = useNavigate();
 
@@ -25,7 +33,7 @@ export function TechLayout() {
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background px-4">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{user?.name}</p>
-          <p className="text-[11px] text-muted-foreground">Technician</p>
+          <p className="text-[11px] text-muted-foreground">{ROLE_LABELS[role] ?? 'Field'}</p>
         </div>
         <Button
           variant="ghost" size="icon"
@@ -42,7 +50,7 @@ export function TechLayout() {
         className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-background/95 backdrop-blur"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}

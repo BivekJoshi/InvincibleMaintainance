@@ -216,3 +216,52 @@ export function CategoryTile({ category, count, index = 0 }) {
     </motion.div>
   );
 }
+
+/**
+ * A published case study. Cost is always a band — the real contract value of a
+ * named customer's job never reaches the public site.
+ */
+export function ProjectCard({ project, media }) {
+  const asset = project.coverId ? media?.[project.coverId] : media?.[project.images?.[0]?.mediaId];
+  const img = asset ? (asset.variants?.['800'] ?? asset.url) : null;
+
+  return (
+    <article className="sheen group flex h-full flex-col overflow-hidden rounded-xl border bg-card transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-card">
+      <Link to={`/projects/${project.slug}`} className="relative block overflow-hidden bg-muted" aria-label={project.title}>
+        {img ? (
+          <img src={img} alt="" loading="lazy" className="aspect-[16/10] w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]" />
+        ) : (
+          <div className="blueprint-fine grid aspect-[16/10] w-full place-items-center">
+            <DataIcon name="hammer" className="h-7 w-7 text-muted-foreground/40" />
+          </div>
+        )}
+        {project.service ? (
+          <span className="absolute left-3 top-3 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
+            {project.service.name}
+          </span>
+        ) : null}
+      </Link>
+
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">
+          <Link to={`/projects/${project.slug}`} className="transition-colors hover:text-primary">{project.title}</Link>
+        </h3>
+        {project.problem ? (
+          <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{project.problem}</p>
+        ) : null}
+
+        <div className="mt-4 flex items-end justify-between gap-3 border-t pt-3.5 text-[11px] text-muted-foreground">
+          <span>
+            {project.location ? <span className="block">{project.location}</span> : null}
+            {project.durationDays ? <span>{project.durationDays} day{project.durationDays === 1 ? '' : 's'}</span> : null}
+          </span>
+          {project.costBandMin ? (
+            <span className="shrink-0 text-right font-medium text-foreground">
+              {formatNpr(project.costBandMin, { compact: true })}–{formatNpr(project.costBandMax, { symbol: false, compact: true })}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}

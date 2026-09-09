@@ -11,6 +11,7 @@ export const apiSlice = createApi({
   tagTypes: [
     'Auth', 'Dashboard', 'Notification',
     'Lead', 'LeadBoard', 'Customer', 'Site', 'Quotation', 'RateCard',
+    'Survey', 'SurveyPricing', 'Availability',
     'Job', 'Dispatch', 'Technician', 'JobTemplate',
     'Material', 'Stock', 'Supplier',
     'Invoice', 'Payment', 'Expense',

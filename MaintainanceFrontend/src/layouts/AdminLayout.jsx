@@ -3,7 +3,7 @@ import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   LayoutDashboard, Users, Timer, Briefcase, FileText, Receipt, Package, ShieldCheck,
-  Image, Settings, Menu, X, LogOut, Moon, Sun, Bell, ChevronDown,
+  Image, Settings, Menu, X, LogOut, Moon, Sun, Bell, ChevronDown, ClipboardCheck,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,6 +25,7 @@ const NAV = [
   { to: '/admin/sla', label: 'SLA board', icon: Timer, capability: 'leads:read', badge: 'sla' },
   { to: '/admin/leads', label: 'Leads', icon: Users, capability: 'leads:read' },
   { to: '/admin/customers', label: 'Customers', icon: Users, capability: 'customers:read' },
+  { to: '/admin/surveys', label: 'Site surveys', icon: ClipboardCheck, capability: 'surveys:read' },
   { to: '/admin/quotations', label: 'Quotations', icon: FileText, capability: 'quotations:read' },
   { to: '/admin/jobs', label: 'Jobs', icon: Briefcase, capability: 'jobs:read' },
   { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read' },

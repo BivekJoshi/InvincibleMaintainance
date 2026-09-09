@@ -8,7 +8,7 @@ import {
   AlertCircle, ArrowLeft, ArrowRight, CalendarCheck, Check, CheckCircle2, Clock, Phone, Search,
 } from 'lucide-react';
 import {
-  useGetBootstrapQuery, useGetPublicServicesQuery, useEstimateMutation, useSubmitLeadMutation,
+  useGetBootstrapQuery, useGetPublicServicesQuery, useGetAvailabilityQuery, useEstimateMutation, useSubmitLeadMutation,
 } from '@/features/public/publicApi';
 import { selectLocale } from '@/features/ui/uiSlice';
 import { Button } from '@/components/ui/button';
@@ -83,6 +83,9 @@ export function BookingWizard({ slug }) {
   }, [slug, services, serviceId]);
 
   const days = useMemo(() => buildDays(booking), [booking]);
+  // An availability outage must never block a booking — this is a funnel, so a
+  // failed query degrades to "everything is available" rather than an empty calendar.
+  const { data: availability } = useGetAvailabilityQuery({ days: 14 });
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -167,7 +170,7 @@ export function BookingWizard({ slug }) {
             ) : null}
 
             {step === 2 ? (
-              <StepWhen days={days} slots={booking.slots} date={date} slot={slot} onDate={setDate} onSlot={setSlot} />
+              <StepWhen days={days} slots={booking.slots} availability={availability} date={date} slot={slot} onDate={setDate} onSlot={setSlot} />
             ) : null}
 
             {step === 3 ? (
@@ -366,22 +369,33 @@ function StepSize({ service, qty, onQty, estimate, estimating }) {
   );
 }
 
-function StepWhen({ days, slots, date, slot, onDate, onSlot }) {
+function StepWhen({ days, slots, availability, date, slot, onDate, onSlot }) {
+  const byDate = new Map((availability?.days ?? []).map((d) => [d.date, d]));
+  const dayInfo = byDate.get(date);
+  const remaining = (slotKey) => {
+    const info = dayInfo?.slots?.find((x) => x.key === slotKey);
+    return info ? { left: Math.max(0, info.capacity - info.booked), isFull: info.isFull } : null;
+  };
+
   return (
     <div>
       <h2 className="text-xl font-bold tracking-tight">When suits you?</h2>
       <p className="mt-1 text-sm text-muted-foreground">Pick a day and a window. We confirm the exact time when we call.</p>
 
       <div className="no-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1">
-        {days.map((d) => (
+        {days.map((d) => {
+          const full = byDate.get(d.key)?.isFull ?? false;
+          return (
           <button
             key={d.key}
             type="button"
             onClick={() => onDate(d.key)}
             aria-pressed={date === d.key}
+            title={full ? 'Fully booked — call us and we will fit you in' : undefined}
             className={cn(
               'flex w-16 shrink-0 flex-col items-center gap-0.5 rounded-lg border bg-card py-2.5 transition-all',
               date === d.key ? 'border-primary bg-primary text-primary-foreground' : 'hover:border-primary/40',
+              full && date !== d.key && 'opacity-50',
             )}
           >
             <span className={cn('text-[10px] uppercase tracking-wide', date === d.key ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
@@ -390,11 +404,14 @@ function StepWhen({ days, slots, date, slot, onDate, onSlot }) {
             <span className="text-lg font-bold leading-none tabular-nums">{d.day}</span>
             <span className={cn('text-[10px]', date === d.key ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{d.month}</span>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-6 grid gap-2 sm:grid-cols-3">
-        {slots.map((s) => (
+        {slots.map((s) => {
+          const info = remaining(s.key);
+          return (
           <button
             key={s.key}
             type="button"
@@ -403,15 +420,22 @@ function StepWhen({ days, slots, date, slot, onDate, onSlot }) {
             className={cn(
               'flex items-center gap-3 rounded-lg border bg-card p-3.5 text-left transition-all',
               slot === s.key ? 'border-primary ring-1 ring-primary/25' : 'hover:border-primary/40',
+              info?.isFull && slot !== s.key && 'opacity-60',
             )}
           >
             <Clock className={cn('h-4 w-4 shrink-0', slot === s.key ? 'text-primary' : 'text-muted-foreground')} aria-hidden />
-            <span>
+            <span className="min-w-0">
               <span className="block text-[14px] font-semibold tracking-tight">{s.label}</span>
               <span className="block text-[12px] text-muted-foreground">{s.window}</span>
+              {info ? (
+                <span className={cn('mt-0.5 block text-[11px]', info.isFull ? 'text-amber-600 dark:text-amber-500' : 'text-emerald-600 dark:text-emerald-500')}>
+                  {info.isFull ? 'Busy — we will call to confirm' : `${info.left} visit${info.left === 1 ? '' : 's'} left`}
+                </span>
+              ) : null}
             </span>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       <p className="mt-4 text-xs text-muted-foreground">

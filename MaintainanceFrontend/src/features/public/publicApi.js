@@ -46,6 +46,11 @@ export const publicApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
     }),
     /** Live cost estimate — the conversion feature the old site lacked. */
+    getAvailability: build.query({
+      query: (params = {}) => ({ url: '/public/availability', params }),
+      transformResponse: (r) => r.data,
+      providesTags: ['Availability'],
+    }),
     estimate: build.mutation({
       query: (body) => ({ url: '/public/estimate', method: 'POST', body }),
       transformResponse: (r) => r.data,
@@ -78,6 +83,7 @@ export const {
   useGetBootstrapQuery, useGetHomeQuery, useGetPublicServicesQuery, useGetPublicServiceQuery,
   useGetPublicProjectsQuery, useGetPublicProjectQuery, useGetPublicPricingQuery,
   useGetPublicGalleryQuery, useGetPublicFaqsQuery,
+  useGetAvailabilityQuery,
   useEstimateMutation, useSubmitLeadMutation,
   useGetQuotationByTokenQuery, useDecideQuotationMutation,
   useGetWarrantyByTokenQuery, useClaimWarrantyMutation,

@@ -6,6 +6,7 @@ import { RequireAuth } from './RequireAuth';
 import { SiteLayout } from '@/layouts/SiteLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import { TechLayout } from '@/layouts/TechLayout';
+import { FIELD_ROLES } from '@/lib/constants';
 
 // Route-level splitting: the marketing site never downloads the back office.
 const HomePage = lazy(() => import('@/pages/site/HomePage'));
@@ -14,6 +15,8 @@ const ServiceDetailPage = lazy(() => import('@/pages/site/ServiceDetailPage'));
 const PricingPage = lazy(() => import('@/pages/site/PricingPage'));
 const ContactPage = lazy(() => import('@/pages/site/ContactPage'));
 const BookingPage = lazy(() => import('@/pages/site/BookingPage'));
+const ProjectsPage = lazy(() => import('@/pages/site/ProjectsPage'));
+const ProjectDetailPage = lazy(() => import('@/pages/site/ProjectDetailPage'));
 const QuotationPublicPage = lazy(() => import('@/pages/site/QuotationPublicPage'));
 const WarrantyPublicPage = lazy(() => import('@/pages/site/WarrantyPublicPage'));
 
@@ -21,8 +24,15 @@ const LoginPage = lazy(() => import('@/pages/admin/LoginPage'));
 const DashboardPage = lazy(() => import('@/pages/admin/DashboardPage'));
 const LeadsPage = lazy(() => import('@/pages/admin/LeadsPage'));
 const SlaBoardPage = lazy(() => import('@/pages/admin/SlaBoardPage'));
+const LeadDetailPage = lazy(() => import('@/pages/admin/LeadDetailPage'));
+const SurveysPage = lazy(() => import('@/pages/admin/SurveysPage'));
+const SurveyReviewPage = lazy(() => import('@/pages/admin/SurveyReviewPage'));
+const QuotationsPage = lazy(() => import('@/pages/admin/QuotationsPage'));
+const QuotationBuilderPage = lazy(() => import('@/pages/admin/QuotationBuilderPage'));
 
 const TechTodayPage = lazy(() => import('@/pages/tech/TechTodayPage'));
+const SurveyListPage = lazy(() => import('@/pages/tech/SurveyListPage'));
+const SurveyFormPage = lazy(() => import('@/pages/tech/SurveyFormPage'));
 
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
 
@@ -49,6 +59,8 @@ export function AppRoutes() {
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/book" element={<BookingPage />} />
             <Route path="/book/:slug" element={<BookingPage />} />
+            <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:slug" element={<ProjectDetailPage />} />
             <Route path="/quotation/:token" element={<QuotationPublicPage />} />
             <Route path="/warranty/:token" element={<WarrantyPublicPage />} />
           </Route>
@@ -61,15 +73,26 @@ export function AppRoutes() {
               <Route path="/admin" element={<DashboardPage />} />
               <Route element={<RequireAuth capability="leads:read" />}>
                 <Route path="/admin/leads" element={<LeadsPage />} />
+                <Route path="/admin/leads/:id" element={<LeadDetailPage />} />
                 <Route path="/admin/sla" element={<SlaBoardPage />} />
+              </Route>
+              <Route element={<RequireAuth capability="surveys:read" />}>
+                <Route path="/admin/surveys" element={<SurveysPage />} />
+                <Route path="/admin/surveys/:id" element={<SurveyReviewPage />} />
+              </Route>
+              <Route element={<RequireAuth capability="quotations:read" />}>
+                <Route path="/admin/quotations" element={<QuotationsPage />} />
+                <Route path="/admin/quotations/:id" element={<QuotationBuilderPage />} />
               </Route>
             </Route>
           </Route>
 
-          {/* Technician PWA */}
-          <Route element={<RequireAuth roles={['TECHNICIAN', 'ADMIN', 'DISPATCHER']} />}>
+          {/* Field app — technicians and surveyors */}
+          <Route element={<RequireAuth roles={[...FIELD_ROLES, 'ADMIN', 'DISPATCHER']} fallbackTo="/tech" />}>
             <Route element={<TechLayout />}>
               <Route path="/tech" element={<TechTodayPage />} />
+              <Route path="/tech/surveys" element={<SurveyListPage />} />
+              <Route path="/tech/surveys/:id" element={<SurveyFormPage />} />
             </Route>
           </Route>
 

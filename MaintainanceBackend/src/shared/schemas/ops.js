@@ -113,6 +113,12 @@ export const jobCompleteSchema = z.object({
   warrantyScope: z.string().trim().max(2000).optional(),
 });
 
+export const technicianListQuery = z.object({
+  role: z.enum(ROLES).optional(),
+  available: z.coerce.boolean().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
 export const dispatchQuery = z.object({
   date: z.string().optional(),
   view: z.enum(['day', 'week']).default('day'),

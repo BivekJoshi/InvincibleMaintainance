@@ -50,12 +50,19 @@ export const leadsApi = apiSlice.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/admin/leads/${id}/activities`, method: 'POST', body }),
       invalidatesTags: (r, e, { id }) => [{ type: 'Lead', id }, { type: 'Lead', id: 'LIST' }, 'LeadBoard', 'Dashboard'],
     }),
+    // Who is available to send on the visit. Filtered to surveyors by the caller.
+    getTechnicians: build.query({
+      query: (params = {}) => ({ url: '/admin/technicians', params }),
+      transformResponse: (r) => ({ items: r.data, meta: r.meta }),
+      providesTags: [{ type: 'Technician', id: 'LIST' }],
+    }),
     convertLead: build.mutation({
       query: ({ id, ...body }) => ({ url: `/admin/leads/${id}/convert`, method: 'POST', body }),
       transformResponse: (r) => r.data,
       invalidatesTags: (r, e, { id }) => [
         { type: 'Lead', id }, { type: 'Lead', id: 'LIST' },
         { type: 'Customer', id: 'LIST' }, { type: 'Job', id: 'LIST' }, { type: 'Quotation', id: 'LIST' },
+        { type: 'Survey', id: 'LIST' }, 'Availability',
         'LeadBoard', 'Dashboard',
       ],
     }),
@@ -73,6 +80,6 @@ export const leadsApi = apiSlice.injectEndpoints({
 export const {
   useGetLeadsQuery, useGetSlaBoardQuery, useGetLeadQuery, useGetLeadDuplicatesQuery,
   useCreateLeadMutation, useUpdateLeadMutation, useSetLeadStatusMutation, useAssignLeadMutation,
-  useAddLeadNoteMutation, useAddLeadActivityMutation, useConvertLeadMutation,
+  useAddLeadNoteMutation, useAddLeadActivityMutation, useConvertLeadMutation, useGetTechniciansQuery,
   useMergeLeadsMutation, useDeleteLeadMutation,
 } = leadsApi;

@@ -143,11 +143,22 @@ export default function ServiceDetailPage() {
           {data.related?.length ? (
             <section className="mt-14">
               <Eyebrow>Proof</Eyebrow>
-              <h2 className="mt-3 text-2xl font-bold tracking-tight">Related projects</h2>
+              <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+                <h2 className="text-2xl font-bold tracking-tight">Work we have done like this</h2>
+                <Link to={`/projects?service=${slug}`} className="text-sm font-medium text-primary hover:underline">
+                  See all
+                </Link>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                The problem, what we did and what it cost. Read one before you book.
+              </p>
               <div className="mt-7 grid gap-4 sm:grid-cols-3">
                 {data.related.map((p) => (
                   <Reveal key={p.id}>
-                    <article className="group h-full overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-card">
+                    <Link
+                      to={`/projects/${p.slug}`}
+                      className="group block h-full overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-card"
+                    >
                       <div className="h-28 overflow-hidden bg-muted">
                         {p.images?.[0] && data.media?.[p.images[0].mediaId] ? (
                           <img
@@ -158,9 +169,16 @@ export default function ServiceDetailPage() {
                       </div>
                       <div className="p-4">
                         <p className="text-[14px] font-semibold leading-snug tracking-tight">{p.title}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{p.location}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {[p.location, p.durationDays ? `${p.durationDays} days` : null].filter(Boolean).join(' · ')}
+                        </p>
+                        {p.costBandMin ? (
+                          <p className="mt-1.5 text-xs font-medium">
+                            {formatNpr(p.costBandMin, { compact: true })}–{formatNpr(p.costBandMax, { symbol: false, compact: true })}
+                          </p>
+                        ) : null}
                       </div>
-                    </article>
+                    </Link>
                   </Reveal>
                 ))}
               </div>
