@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { FIELD_ROLES } from '@/lib/constants';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -30,7 +31,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    const to = location.state?.from?.pathname ?? (role === 'TECHNICIAN' ? '/tech' : '/admin');
+    const to = location.state?.from?.pathname ?? (FIELD_ROLES.includes(role) ? '/tech' : '/admin');
     navigate(to, { replace: true });
   }, [isAuthenticated, role, navigate, location.state]);
 

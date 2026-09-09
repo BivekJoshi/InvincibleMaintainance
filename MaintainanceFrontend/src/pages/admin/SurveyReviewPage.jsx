@@ -32,6 +32,9 @@ export default function SurveyReviewPage() {
   const dispatch = useDispatch();
   const canPrice = can('quotations:read');
   const canQuote = can('quotations:write');
+  // DISPATCHER holds surveys:read but not surveys:write — showing them actions
+  // that will 403 is worse than not showing them.
+  const canReview = can('surveys:write');
 
   const { data: survey, isLoading, error, refetch } = useGetSurveyQuery(id);
   // Pricing is guarded by quotations:read, so a dispatcher reads the survey while
@@ -95,12 +98,12 @@ export default function SurveyReviewPage() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin/surveys')}>
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
-            {quotable ? (
+            {canReview && quotable ? (
               <Button variant="outline" size="sm" onClick={() => setReturnOpen(true)} disabled={reviewing}>
                 <Undo2 className="h-4 w-4" /> Send back
               </Button>
             ) : null}
-            {quotable && survey.status === 'SUBMITTED' ? (
+            {canReview && quotable && survey.status === 'SUBMITTED' ? (
               <Button variant="outline" size="sm" onClick={startReview} disabled={reviewing}>
                 <Eye className="h-4 w-4" /> Start review
               </Button>
