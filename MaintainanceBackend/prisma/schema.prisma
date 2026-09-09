@@ -237,6 +237,7 @@ model Service {
   jobTemplates JobTemplate[]
   surveys      SiteSurvey[]
   surveyItems  SurveyItem[]
+  projects     Project[]
 
   @@index([isActive, sortOrder])
   @@index([categoryId])
@@ -250,11 +251,20 @@ model Project {
   clientName      String?
   location        String?
   categoryId      String?
+  serviceId       String?
+  jobId           String?   @unique
   status          String    @default("completed")
   summary         String?
   body            String?
+  problem         String?
+  solution        String?
+  outcome         String?
+  durationDays    Int?
+  costBandMin     Int?
+  costBandMax     Int?
   coverId         String?
   completedAt     DateTime?
+  publishedAt     DateTime?
   isFeatured      Boolean   @default(false)
   sortOrder       Int       @default(0)
   isActive        Boolean   @default(true)
@@ -265,10 +275,13 @@ model Project {
   deletedAt       DateTime?
 
   category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  service  Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  job      Job?             @relation(fields: [jobId], references: [id], onDelete: SetNull)
   images   ProjectImage[]
   gallery  GalleryImage[]
 
   @@index([isActive, sortOrder])
+  @@index([serviceId, isActive])
 }
 
 model ProjectImage {
@@ -824,6 +837,7 @@ model Job {
   warranty     Warranty?
   amcVisit     AmcVisit?
   survey       SiteSurvey?
+  project      Project?
 
   @@index([status, scheduledStart])
   @@index([customerId])

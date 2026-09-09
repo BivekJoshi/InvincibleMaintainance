@@ -61,15 +61,40 @@ export const projectSchema = z.object({
   clientName: z.string().trim().max(160).optional(),
   location: z.string().trim().max(200).optional(),
   categoryId: z.string().optional().nullable(),
+  serviceId: z.string().optional().nullable(),
   status: z.enum(['ongoing', 'completed']).default('completed'),
   summary: optionalText,
   body: optionalText,
+  // Case-study shape: the problem the customer had, what we did, how it ended.
+  problem: optionalText,
+  solution: optionalText,
+  outcome: optionalText,
+  durationDays: z.coerce.number().int().min(0).max(3650).optional(),
+  // A BAND in rupees, never the customer's exact contract value.
+  costBandMin: optionalRupees,
+  costBandMax: optionalRupees,
   coverId: optionalImage,
   completedAt: z.coerce.date().optional(),
+  publishedAt: z.coerce.date().optional(),
   isFeatured: z.coerce.boolean().default(false),
   sortOrder,
   isActive,
   ...seoFields,
+});
+
+/** POST /admin/jobs/:id/publish-case-study — everything is optional but the title. */
+export const caseStudySchema = z.object({
+  title: z.string().trim().min(3).max(200).optional(),
+  slug: z.string().trim().max(140).optional(),
+  problem: optionalText,
+  solution: optionalText,
+  outcome: optionalText,
+  costBandMin: optionalRupees,
+  costBandMax: optionalRupees,
+  /** Off by default: a case study names our work, not our customer. */
+  includeClientName: z.coerce.boolean().default(false),
+  imageIds: z.array(z.string()).max(24).optional(),
+  isActive: z.coerce.boolean().default(false),
 });
 
 export const projectImageSchema = z.object({

@@ -141,10 +141,23 @@ export async function getService(slug, locale = 'en') {
   const service = await prisma.service.findFirst({ where: { ...ACTIVE, slug }, include: { category: true } });
   if (!service) throw notFound('Service');
   const [localized] = await withLocale('service', [service], locale);
-  const [related, faqs] = await Promise.all([
-    prisma.project.findMany({ where: { ...ACTIVE, categoryId: service.categoryId }, orderBy: BY_SORT, take: 3, include: { images: { take: 1, orderBy: { sortOrder: 'asc' } } } }),
+  const RELATED_SELECT = {
+    orderBy: BY_SORT,
+    take: 3,
+    include: { images: { take: 1, orderBy: { sortOrder: 'asc' } } },
+  };
+  // Work done on THIS service is stronger proof than anything merely in the same
+  // category, so it wins; the category is only the fallback.
+  const [onService, faqs] = await Promise.all([
+    prisma.project.findMany({ where: { ...ACTIVE, serviceId: service.id }, ...RELATED_SELECT }),
     prisma.faq.findMany({ where: { ...ACTIVE, OR: [{ group: slug }, { group: 'general' }] }, orderBy: BY_SORT }),
   ]);
+  const related = onService.length
+    ? onService
+    : await prisma.project.findMany({
+        where: { ...ACTIVE, categoryId: service.categoryId, serviceId: null },
+        ...RELATED_SELECT,
+      });
   return withMedia({ service: localized, related, faqs });
 }
 
@@ -153,10 +166,15 @@ export async function listProjects(query = {}, locale = 'en') {
     where: {
       ...ACTIVE,
       ...(query.category ? { category: { slug: query.category } } : {}),
+      ...(query.service ? { service: { slug: query.service } } : {}),
       ...(query.status ? { status: query.status } : {}),
     },
     orderBy: BY_SORT,
-    include: { category: { select: { name: true, slug: true } }, images: { take: 1, orderBy: { sortOrder: 'asc' } } },
+    include: {
+      category: { select: { name: true, slug: true } },
+      service: { select: { name: true, slug: true } },
+      images: { take: 1, orderBy: { sortOrder: 'asc' } },
+    },
   });
   return withMedia({ items: await withLocale('project', rows, locale) });
 }
@@ -164,7 +182,11 @@ export async function listProjects(query = {}, locale = 'en') {
 export async function getProject(slug, locale = 'en') {
   const project = await prisma.project.findFirst({
     where: { ...ACTIVE, slug },
-    include: { category: true, images: { orderBy: { sortOrder: 'asc' } } },
+    include: {
+      category: true,
+      service: { select: { id: true, name: true, slug: true, priceUnit: true } },
+      images: { orderBy: { sortOrder: 'asc' } },
+    },
   });
   if (!project) throw notFound('Project');
   const [localized] = await withLocale('project', [project], locale);

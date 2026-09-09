@@ -9,6 +9,8 @@ import * as materials from '../../services/material.service.js';
 import { makeCrud } from '../../services/crud.service.js';
 import { prisma } from '../../lib/prisma.js';
 import * as s from '../../shared/schemas/ops.js';
+import { caseStudySchema } from '../../shared/schemas/cms.js';
+import { publishJobAsCaseStudy } from '../../services/casestudy.service.js';
 
 const router = Router();
 const readJobs = requires('jobs:read');
@@ -34,6 +36,10 @@ router.post('/jobs', writeJobs, validate({ body: s.jobSchema }),
 
 router.get('/jobs/:id', readJobs, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await jobs.getJob(req.params.id))));
+
+router.post('/jobs/:id/publish-case-study', requires('cms:write'),
+  validate({ params: idParam, body: caseStudySchema }),
+  asyncHandler(async (req, res) => created(res, await publishJobAsCaseStudy(req.params.id, req.body, req.user.id))));
 
 router.get('/jobs/:id/costing', readJobs, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await jobs.jobCosting(req.params.id))));

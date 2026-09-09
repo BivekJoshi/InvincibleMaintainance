@@ -202,6 +202,22 @@ model Project {
   images          ProjectImage[]
   category        ServiceCategory? @relation(fields: [categoryId], references: [id])
   deletedAt       DateTime?
+
+  // Case study: a finished job, published as the proof a customer reads before booking.
+  serviceId    String?   // stronger than categoryId for "work like this"
+  jobId        String?   @unique   // provenance; also blocks publishing twice
+  problem      String?
+  solution     String?
+  outcome      String?
+  durationDays Int?
+  costBandMin  Int?      // paisa. A BAND, widened +/-20% — never the customer's contract value.
+  costBandMax  Int?
+  publishedAt  DateTime?
+
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  job     Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([serviceId, isActive])
 }
 
 model ProjectImage {

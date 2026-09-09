@@ -10,7 +10,7 @@ GET  /public/bootstrap              ⚡ settings + nav + home sections + booking
 GET  /public/home                   ⚡ every visible home section, hydrated, in order
 GET  /public/services               ⚡ ?category&featured
 GET  /public/services/:slug         ⚡ + related projects, faqs
-GET  /public/projects               ⚡ ?category&status
+GET  /public/projects                 ?service=<slug>&category=<slug>  case studies               ⚡ ?category&status
 GET  /public/projects/:slug         ⚡
 GET  /public/offers                 ⚡ active window only
 GET  /public/pricing                ⚡ pricing plans + rate card
@@ -129,6 +129,10 @@ POST   /admin/jobs/:id/materials
 POST   /admin/jobs/:id/time-logs
 POST   /admin/jobs/:id/complete     { note, signature } -> creates Warranty, enables invoicing
 GET    /admin/jobs/:id/costing      labour + materials + expenses vs invoiced
+POST   /admin/jobs/:id/publish-case-study   cms:write · COMPLETED|VERIFIED only
+                                    pre-fills problem/solution from the survey, duration from the
+                                    job, images from its BEFORE/AFTER photos, and the cost as a
+                                    +/-20% band. The customer's name is omitted unless opted in.
 
 GET    /admin/dispatch/board        ?date&view=day|week  technicians x timeslots
 GET    /admin/dispatch/unassigned

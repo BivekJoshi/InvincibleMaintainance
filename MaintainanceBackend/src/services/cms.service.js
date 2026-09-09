@@ -29,14 +29,17 @@ export const services = makeCrud({
 export const projects = makeCrud({
   model: 'project',
   label: 'Project',
-  searchFields: ['title', 'slug', 'clientName', 'location'],
+  searchFields: ['title', 'slug', 'clientName', 'location', 'problem'],
   slugFrom: 'title',
+  moneyFields: ['costBandMin', 'costBandMax'],
   include: {
     category: { select: { id: true, name: true, slug: true } },
+    service: { select: { id: true, name: true, slug: true } },
     images: { orderBy: { sortOrder: 'asc' } },
   },
   filter: (q) => ({
     ...(q.categoryId ? { categoryId: q.categoryId } : {}),
+    ...(q.serviceId ? { serviceId: q.serviceId } : {}),
     ...(q.status ? { status: q.status } : {}),
   }),
 });
