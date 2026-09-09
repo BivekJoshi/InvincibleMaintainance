@@ -40,7 +40,7 @@ export default function PricingPage() {
             <Reveal>
               <Card className="border-gold/40">
                 <CardContent className="p-6">
-                  <h2 className="font-display text-lg font-semibold tracking-tight">Get this quoted exactly</h2>
+                  <h2 className="text-lg font-semibold tracking-tight">Get this quoted exactly</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     We will bring your estimate to the free inspection.
                   </p>
@@ -61,7 +61,7 @@ export default function PricingPage() {
         <div className="space-y-10">
           <section>
             <Eyebrow>Packages</Eyebrow>
-            <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight">Popular packages</h2>
+            <h2 className="mt-3 text-2xl font-bold tracking-tight">Popular packages</h2>
             <StaggerOnView className="mt-6 grid gap-5 sm:grid-cols-2" stagger={0.07}>
               {data.plans.map((plan) => {
                 const featured = plan.badge === 'Popular';
@@ -73,7 +73,7 @@ export default function PricingPage() {
                         featured ? 'ink-panel border-ink shadow-lift' : 'bg-card',
                       )}>
                         <div className="flex items-start justify-between gap-3">
-                          <h3 className="font-display text-lg font-semibold tracking-tight">{plan.title}</h3>
+                          <h3 className="text-lg font-semibold tracking-tight">{plan.title}</h3>
                           {plan.badge ? (
                             <span className={cn(
                               'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest',
@@ -87,7 +87,7 @@ export default function PricingPage() {
                           {plan.description}
                         </p>
                         <p className="mt-5">
-                          <span className="font-display text-2xl font-semibold tabular-nums tracking-tight">
+                          <span className="text-2xl font-semibold tabular-nums tracking-tight">
                             {formatNpr(plan.priceMin, { compact: true })}
                           </span>
                           <span className={cn('text-sm', featured ? 'text-ink-muted' : 'text-muted-foreground')}>
@@ -113,7 +113,7 @@ export default function PricingPage() {
 
           <section>
             <Eyebrow>No hidden lines</Eyebrow>
-            <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight">Full rate card</h2>
+            <h2 className="mt-3 text-2xl font-bold tracking-tight">Full rate card</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               The same rates our quotations are built from.
             </p>

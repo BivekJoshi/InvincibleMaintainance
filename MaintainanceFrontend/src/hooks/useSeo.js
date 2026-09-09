@@ -9,7 +9,7 @@ export function useSeo({ title, description, jsonLd, canonical }) {
   useEffect(() => {
     if (!title) return undefined;
     const previous = document.title;
-    document.title = `${title} · Homeplex Nepal`;
+    document.title = `${title} · Ghar Jatan`;
     return () => { document.title = previous; };
   }, [title]);
 

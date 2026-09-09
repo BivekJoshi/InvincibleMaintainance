@@ -3,7 +3,7 @@
 export const ROLES = ['ADMIN', 'EDITOR', 'SALES', 'DISPATCHER', 'TECHNICIAN', 'ACCOUNTANT'];
 
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON', 'LOST'];
-export const LEAD_SOURCES = ['web_form', 'estimator', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
+export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 
 export const JOB_STATUSES = [

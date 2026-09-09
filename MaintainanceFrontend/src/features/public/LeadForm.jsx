@@ -136,7 +136,7 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
         ) : null}
       </AnimatePresence>
 
-      <Button type="submit" variant="gold" size="lg" className="w-full" loading={isLoading}>
+      <Button type="submit" size="lg" className="w-full" loading={isLoading}>
         Request a free inspection
       </Button>
       <p className="text-center text-xs text-muted-foreground">

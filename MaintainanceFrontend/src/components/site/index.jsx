@@ -1,19 +1,18 @@
+import { Link } from 'react-router-dom';
+import { ArrowRight, ShieldCheck } from 'lucide-react';
 import {
   BadgeCheck, CalendarCheck, ChefHat, Clock, Coins, Compass, Droplets, Expand, FileCheck,
   FileText, Flame, Gift, Hammer, HardHat, Home, LayoutGrid, Phone, Plug, Receipt, Recycle,
-  Recycle as Loop, Ruler, Search, Shield, ShieldCheck, Sofa, TestTube, Timer, Umbrella,
-  Wrench, Zap,
+  Ruler, Search, Shield, Sofa, TestTube, Timer, Umbrella, Wrench, Zap,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { ArrowUpRight } from 'lucide-react';
-import { Reveal, WordReveal, WordRevealOnView, Spotlight, DriftField, motion } from '@/components/motion';
+import { Button } from '@/components/ui/button';
+import { Reveal, motion } from '@/components/motion';
 import { formatNpr } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 /**
- * Shared vocabulary for the marketing site. Sections on the home page, the
- * services page and the pricing page are all built from these three pieces, so
- * the rhythm — rule, eyebrow, display heading, body — never drifts between them.
+ * Shared vocabulary for the storefront. Every public page is assembled from
+ * these, so the catalogue, the home page and the service pages cannot drift.
  */
 
 /**
@@ -25,7 +24,7 @@ const ICONS = {
   'badge-check': BadgeCheck, 'calendar-check': CalendarCheck, 'chef-hat': ChefHat,
   clock: Clock, coins: Coins, compass: Compass, droplets: Droplets, expand: Expand,
   'file-check': FileCheck, 'file-text': FileText, flame: Flame, gift: Gift, hammer: Hammer,
-  'hard-hat': HardHat, home: Home, 'layout-grid': LayoutGrid, loop: Loop, phone: Phone,
+  'hard-hat': HardHat, home: Home, 'layout-grid': LayoutGrid, phone: Phone,
   plug: Plug, receipt: Receipt, recycle: Recycle, ruler: Ruler, search: Search,
   shield: Shield, 'shield-check': ShieldCheck, sofa: Sofa, 'test-tube': TestTube,
   timer: Timer, umbrella: Umbrella, wrench: Wrench, zap: Zap,
@@ -37,81 +36,66 @@ export function DataIcon({ name, className }) {
   return <Icon className={cn('h-5 w-5', className)} aria-hidden />;
 }
 
-/** A small caps label with a leading rule — the tag above every heading. */
-export function Eyebrow({ children, tone = 'gold', className }) {
+/** A small caps label above a heading. */
+export function Eyebrow({ children, className }) {
   if (!children) return null;
   return (
-    <p className={cn('eyebrow flex items-center gap-3', tone === 'gold' ? 'text-gold' : 'text-ink-muted', className)}>
-      <span className={cn('h-px w-8', tone === 'gold' ? 'bg-gold/60' : 'bg-ink-muted/50')} aria-hidden />
+    <p className={cn('text-[11px] font-bold uppercase tracking-[0.14em] text-primary', className)}>
       {children}
     </p>
   );
 }
 
-/**
- * Vertical rhythm for a marketing band. `tone` picks the surface; nothing else
- * on the site sets its own section background.
- */
-export function SectionShell({ children, className, tone = 'paper', id, wide = false }) {
+/** Vertical rhythm for a storefront band. `tone` picks the surface. */
+export function SectionShell({ children, className, tone = 'paper', id }) {
   return (
     <section
       id={id}
       className={cn(
-        'relative py-20 md:py-28',
-        tone === 'muted' && 'bg-muted/60',
+        'relative py-12 md:py-16',
+        tone === 'muted' && 'bg-muted/50',
         tone === 'ink' && 'ink-panel',
         className,
       )}
     >
-      <div className={cn('container relative', wide && 'max-w-none 2xl:px-12')}>{children}</div>
+      <div className="container relative">{children}</div>
     </section>
   );
 }
 
-/**
- * Section heading. Left-aligned by default — centred headings everywhere is the
- * tell of a template, and an optional `action` keeps the "see all" link on the
- * same optical line as the title.
- */
-export function SectionHeading({ eyebrow, title, description, action, align = 'left', tone = 'paper', className }) {
-  const centred = align === 'center';
+/** Section heading with an optional "see all" action on the same optical line. */
+export function SectionHeading({ eyebrow, title, description, action, tone = 'paper', className }) {
   return (
     <Reveal
       from="none"
       blur={false}
-      className={cn(
-        'mb-12 gap-6 md:mb-16',
-        centred ? 'mx-auto max-w-2xl text-center' : 'flex flex-col md:flex-row md:items-end md:justify-between',
-        className,
-      )}
+      className={cn('mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between', className)}
     >
-      <div className={cn(centred ? 'flex flex-col items-center' : 'max-w-2xl')}>
-        <Eyebrow tone={tone === 'ink' ? 'muted' : 'gold'}>{eyebrow}</Eyebrow>
-        <WordRevealOnView
-          as="h2"
-          text={title}
-          className={cn(
-            'mt-4 font-display text-[2rem] font-semibold leading-[1.1] tracking-[-0.02em] md:text-[2.75rem]',
-            !eyebrow && 'mt-0',
-          )}
-        />
+      <div className="max-w-2xl">
+        {eyebrow ? (
+          <span className="flex items-center gap-2.5">
+            <span className={cn('h-px w-6 shrink-0', tone === 'ink' ? 'bg-gold' : 'bg-gold/70')} aria-hidden />
+            <Eyebrow className={tone === 'ink' ? 'text-gold' : undefined}>{eyebrow}</Eyebrow>
+          </span>
+        ) : null}
+        <h2 className={cn('text-2xl font-bold tracking-tight md:text-[1.75rem]', eyebrow && 'mt-2.5')}>{title}</h2>
         {description ? (
-          <p className={cn('mt-4 text-[15px] leading-relaxed', tone === 'ink' ? 'text-ink-muted' : 'text-muted-foreground')}>
+          <p className={cn('mt-2 text-sm leading-relaxed', tone === 'ink' ? 'text-ink-muted' : 'text-muted-foreground')}>
             {description}
           </p>
         ) : null}
       </div>
-      {action ? <div className={cn('shrink-0', centred && 'mt-6')}>{action}</div> : null}
+      {action ? <div className="shrink-0">{action}</div> : null}
     </Reveal>
   );
 }
 
-/** Five stars, filled to the rating. Gold, because the accent is gold everywhere. */
+/** Five stars, filled to the rating. */
 export function Stars({ rating = 5, className }) {
   return (
-    <div className={cn('flex gap-1', className)} aria-label={`${rating} out of 5`}>
+    <div className={cn('flex gap-0.5', className)} aria-label={`${rating} out of 5`}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <svg key={i} viewBox="0 0 20 20" className={cn('h-3.5 w-3.5', i < rating ? 'fill-gold' : 'fill-current opacity-20')} aria-hidden>
+        <svg key={i} viewBox="0 0 20 20" className={cn('h-3.5 w-3.5', i < rating ? 'fill-gold' : 'fill-muted-foreground/25')} aria-hidden>
           <path d="M10 1.5l2.6 5.3 5.9.8-4.3 4.1 1 5.8L10 14.8 4.8 17.5l1-5.8L1.5 7.6l5.9-.8L10 1.5z" />
         </svg>
       ))}
@@ -119,118 +103,116 @@ export function Stars({ rating = 5, className }) {
   );
 }
 
-/** Monospaced-feeling section index — 01, 02, 03 — used on cards and lists. */
-export function Index({ n, className }) {
-  return (
-    <span className={cn('font-display text-sm tabular-nums', className)}>
-      {String(n).padStart(2, '0')}
-    </span>
-  );
-}
-
-/**
- * The masthead every interior public page opens with. It continues the ink of
- * the header, so a visitor arriving from the home page hero never sees a seam.
- */
+/** The masthead an interior page opens with — light, so it reads as a shop. */
 export function PageHero({ eyebrow, title, description, children, className }) {
   return (
-    <section className={cn('ink-panel relative overflow-hidden', className)}>
-      <div className="blueprint mask-b absolute inset-0 opacity-60" aria-hidden />
-      <Spotlight size={560} />
-      <DriftField count={10} />
-      <div className="container relative py-16 md:py-20">
+    <section className={cn('border-b bg-muted/40', className)}>
+      <div className="container py-10 md:py-14">
         <Eyebrow>{eyebrow}</Eyebrow>
-        <WordReveal
-          as="h1"
-          text={title}
-          className={cn(
-            'block max-w-3xl font-display text-[clamp(2.1rem,4.4vw,3.25rem)] font-semibold leading-[1.06] tracking-[-0.025em]',
-            eyebrow ? 'mt-5' : 'mt-0',
-          )}
-        />
-        {description ? (
-          <p className="mt-5 max-w-2xl leading-relaxed text-ink-muted">{description}</p>
-        ) : null}
+        <h1 className={cn('max-w-3xl text-[1.9rem] font-bold leading-[1.15] tracking-tight md:text-4xl', eyebrow && 'mt-2')}>
+          {title}
+        </h1>
+        {description ? <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">{description}</p> : null}
         {children}
       </div>
     </section>
   );
 }
 
-/**
- * One service tile, shared by the home page grid and the services index so the
- * two can never drift apart. Meant to sit in a `gap-px bg-border` grid.
- */
-export function ServiceCard({ service, media, index }) {
-  const asset = service.imageId ? media?.[service.imageId] : null;
-  const img = asset ? (asset.variants?.['800'] ?? asset.url) : null;
-
+/** The price line on a product card, or the honest absence of one. */
+export function PriceTag({ service, className }) {
+  if (!service.priceFrom) {
+    return (
+      <p className={cn('text-sm font-medium text-muted-foreground', className)}>Priced after inspection</p>
+    );
+  }
   return (
-    <Link to={`/services/${service.slug}`} className="group relative flex h-full flex-col">
-      <span
-        className="absolute inset-x-0 top-0 z-10 h-px origin-left scale-x-0 bg-gold transition-transform duration-500 ease-out group-hover:scale-x-100"
-        aria-hidden
-      />
-      {/* A card with a photograph gets a full frame; one without gets a short
-          marker band, so an empty site does not read as broken. */}
-      <div className={cn('relative overflow-hidden bg-muted', img ? 'aspect-[16/10]' : 'h-32')}>
-        {img ? (
-          <motion.div
-            className="h-full w-full"
-            initial={{ clipPath: 'inset(100% 0 0 0)' }}
-            whileInView={{ clipPath: 'inset(0% 0 0 0)' }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <img
-              src={img} alt="" loading="lazy"
-              className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
-            />
-          </motion.div>
-        ) : (
-          <div className="blueprint-fine grid h-full w-full place-items-center bg-muted">
-            <DataIcon name={service.icon} className="h-7 w-7 text-muted-foreground/45 transition-colors duration-300 group-hover:text-gold" />
-          </div>
-        )}
-        <span className="absolute left-4 top-4 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground backdrop-blur">
-          {service.category?.name ?? 'Service'}
-        </span>
-      </div>
-
-      <div className="flex flex-1 flex-col p-6">
-        <div className="flex items-baseline gap-3">
-          <Index n={index} className="text-gold" />
-          <h3 className="font-display text-xl font-semibold leading-snug tracking-tight transition-colors group-hover:text-primary">
-            {service.name}
-          </h3>
-        </div>
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground">{service.excerpt}</p>
-        <div className="mt-auto flex items-end justify-between gap-4 pt-6">
-          <p className="text-sm">
-            {service.priceFrom ? (
-              <>
-                <span className="font-display text-lg font-semibold">{formatNpr(service.priceFrom, { compact: true })}</span>
-                <span className="text-muted-foreground">
-                  {service.priceUnit ? ` / ${service.priceUnit}` : ''} onwards
-                </span>
-              </>
-            ) : (
-              <span className="text-muted-foreground">Priced after a free inspection</span>
-            )}
-          </p>
-          <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-gold" aria-hidden />
-        </div>
-      </div>
-    </Link>
+    <p className={className}>
+      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">From</span>
+      <span className="mt-0.5 block text-lg font-bold leading-none tabular-nums">
+        {formatNpr(service.priceFrom, { compact: true })}
+        {service.priceUnit ? <span className="text-xs font-normal text-muted-foreground"> /{service.priceUnit}</span> : null}
+      </span>
+    </p>
   );
 }
 
 /**
- * Column count for a hairline grid: the seams are drawn by the background, so a
- * half-empty last row would show as a grey block. Returns the columns to use
- * and how many blank tiles close the final row.
+ * One service tile. This is the unit the whole storefront is built from — the
+ * home page grid, the catalogue and the search results all render this, so a
+ * price or a booking link can never be shown one way in one place and another
+ * way somewhere else.
  */
-export function gridFit(count) {
-  const cols = count % 3 === 0 ? 3 : 2;
-  return { cols, fillers: (cols - (count % cols)) % cols };
+export function ServiceCard({ service, media, compact = false }) {
+  const asset = service.imageId ? media?.[service.imageId] : null;
+  const img = asset ? (asset.variants?.['800'] ?? asset.url) : null;
+
+  return (
+    <article className="sheen group flex h-full flex-col overflow-hidden rounded-xl border bg-card transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-card">
+      <Link to={`/services/${service.slug}`} className="relative block overflow-hidden bg-muted" aria-label={service.name}>
+        {img ? (
+          <img
+            src={img} alt="" loading="lazy"
+            className={cn('w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]', compact ? 'h-32' : 'aspect-[16/10]')}
+          />
+        ) : (
+          <div className={cn('blueprint-fine grid w-full place-items-center', compact ? 'h-28' : 'h-36')}>
+            <DataIcon name={service.icon} className="h-7 w-7 text-muted-foreground/40 transition-colors duration-300 group-hover:text-primary" />
+          </div>
+        )}
+        {service.category ? (
+          <span className="absolute left-3 top-3 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
+            {service.category.name}
+          </span>
+        ) : null}
+      </Link>
+
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">
+          <Link to={`/services/${service.slug}`} className="transition-colors hover:text-primary">{service.name}</Link>
+        </h3>
+        <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{service.excerpt}</p>
+
+        <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5 text-gold" aria-hidden />
+          Free inspection · 1-month warranty
+        </p>
+
+        <div className="mt-4 flex items-end justify-between gap-3 border-t pt-3.5">
+          <PriceTag service={service} />
+          <Button asChild size="sm" className="shrink-0">
+            <Link to={`/book/${service.slug}`}>
+              {service.priceFrom ? 'Book' : 'Get a quote'}
+              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+/** A category tile for the storefront's front door. */
+export function CategoryTile({ category, count, index = 0 }) {
+  return (
+    <motion.div
+      variants={{
+        hidden: { opacity: 0, y: 16 },
+        show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1], delay: index * 0.04 } },
+      }}
+    >
+      <Link
+        to={`/services?category=${category.slug}`}
+        className="sheen group flex h-full flex-col items-center gap-3 rounded-xl border bg-card p-5 text-center transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-card"
+      >
+        <span className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary transition-all duration-300 group-hover:scale-105 group-hover:bg-primary group-hover:text-primary-foreground">
+          <DataIcon name={category.icon} />
+        </span>
+        <span className="text-sm font-semibold leading-tight tracking-tight">{category.name}</span>
+        {count != null ? (
+          <span className="text-[11px] text-muted-foreground">{count} service{count === 1 ? '' : 's'}</span>
+        ) : null}
+      </Link>
+    </motion.div>
+  );
 }

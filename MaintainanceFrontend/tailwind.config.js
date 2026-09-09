@@ -7,9 +7,6 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
-        // Editorial display face for headings — the contrast against Inter is
-        // what separates this from a default Tailwind template.
-        display: ['"Source Serif 4"', 'Georgia', 'Cambria', 'serif'],
         // Devanagari needs its own stack or Nepali copy renders in a fallback face.
         deva: ['"Noto Sans Devanagari"', 'Mangal', 'sans-serif'],
       },

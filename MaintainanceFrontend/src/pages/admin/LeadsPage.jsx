@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Download, Plus, Phone } from 'lucide-react';
+import { Download, Plus, Phone, CalendarCheck } from 'lucide-react';
 import { useGetLeadsQuery } from '@/features/leads/leadsApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageTransition } from '@/components/motion';
 import { LEAD_STATUSES, LEAD_SOURCES } from '@/lib/constants';
-import { formatDateTime, titleCase } from '@/lib/format';
+import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 
 const columns = [
   {
@@ -36,6 +36,18 @@ const columns = [
     ),
   },
   { key: 'sla', header: 'Response', cell: (r) => <SlaChip sla={r.sla} /> },
+  {
+    // An online booking names a day and a window; dispatch has to see it here,
+    // not only after opening the lead.
+    key: 'preferredAt', header: 'Requested visit', sortable: true,
+    cell: (r) => (r.preferredAt ? (
+      <span className="whitespace-nowrap text-xs">
+        <CalendarCheck className="mr-1 inline h-3.5 w-3.5 text-primary" aria-hidden />
+        {formatDate(r.preferredAt)}
+        {r.preferredSlot ? <span className="text-muted-foreground"> · {r.preferredSlot}</span> : null}
+      </span>
+    ) : <span className="text-muted-foreground">—</span>),
+  },
   { key: 'source', header: 'Source', cell: (r) => <span className="text-xs text-muted-foreground">{titleCase(r.source)}</span> },
   { key: 'assignedTo', header: 'Owner', cell: (r) => r.assignedTo?.name ?? <span className="text-muted-foreground">Unassigned</span> },
   { key: 'createdAt', header: 'Received', sortable: true, cell: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</span> },

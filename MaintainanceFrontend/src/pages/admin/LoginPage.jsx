@@ -54,7 +54,7 @@ export default function LoginPage() {
               H
             </div>
             <CardTitle className="text-xl">Sign in</CardTitle>
-            <CardDescription>Homeplex Nepal back office</CardDescription>
+            <CardDescription>Ghar Jatan back office</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>

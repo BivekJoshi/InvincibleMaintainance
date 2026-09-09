@@ -34,7 +34,7 @@ export default function ContactPage() {
           <Reveal>
             <div className="overflow-hidden rounded-lg border bg-card shadow-card">
               <div className="border-b bg-muted/50 px-7 py-5">
-                <h2 className="font-display text-xl font-semibold tracking-tight">Request an inspection</h2>
+                <h2 className="text-lg font-semibold tracking-tight">Request an inspection</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Two-hour response, every working day.
                 </p>
@@ -47,7 +47,7 @@ export default function ContactPage() {
 
           <div>
             <Eyebrow>Direct lines</Eyebrow>
-            <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight">Reach us without a form</h2>
+            <h2 className="mt-3 text-2xl font-bold tracking-tight">Reach us without a form</h2>
             <StaggerOnView className="mt-8 divide-y border-y" stagger={0.06}>
               {details.map((d) => (
                 <Stagger.Item
@@ -89,7 +89,7 @@ function ContactRow({ icon: Icon, label, value, href }) {
         <Icon className="h-4 w-4 shrink-0 text-gold" aria-hidden />
         <span>
           <span className="block text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{label}</span>
-          <span className="mt-0.5 block font-display text-lg tracking-tight">{value}</span>
+          <span className="mt-0.5 block text-lg tracking-tight">{value}</span>
         </span>
       </span>
       {href ? (

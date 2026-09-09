@@ -19,7 +19,7 @@ The backend must be running on `:4000` (`cd ../MaintainanceBackend && npm run de
 Vite proxies `/api` and `/uploads` to it, which keeps the browser same-origin so the
 httpOnly refresh cookie works without any CORS or SameSite juggling.
 
-Sign in with `admin@homeplexnepal.com` / `Password123` (all seeded logins are in the
+Sign in with `admin@gharjatan.com.np` / `Password123` (all seeded logins are in the
 backend README).
 
 ```

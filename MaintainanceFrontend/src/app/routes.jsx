@@ -13,6 +13,7 @@ const ServicesPage = lazy(() => import('@/pages/site/ServicesPage'));
 const ServiceDetailPage = lazy(() => import('@/pages/site/ServiceDetailPage'));
 const PricingPage = lazy(() => import('@/pages/site/PricingPage'));
 const ContactPage = lazy(() => import('@/pages/site/ContactPage'));
+const BookingPage = lazy(() => import('@/pages/site/BookingPage'));
 const QuotationPublicPage = lazy(() => import('@/pages/site/QuotationPublicPage'));
 const WarrantyPublicPage = lazy(() => import('@/pages/site/WarrantyPublicPage'));
 
@@ -46,6 +47,8 @@ export function AppRoutes() {
             <Route path="/services/:slug" element={<ServiceDetailPage />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/contact" element={<ContactPage />} />
+            <Route path="/book" element={<BookingPage />} />
+            <Route path="/book/:slug" element={<BookingPage />} />
             <Route path="/quotation/:token" element={<QuotationPublicPage />} />
             <Route path="/warranty/:token" element={<WarrantyPublicPage />} />
           </Route>

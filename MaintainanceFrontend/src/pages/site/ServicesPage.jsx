@@ -1,30 +1,57 @@
+import { useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import { Search, X } from 'lucide-react';
 import { useGetPublicServicesQuery, useGetBootstrapQuery } from '@/features/public/publicApi';
 import { selectLocale } from '@/features/ui/uiSlice';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
-import { PageHero, ServiceCard, SectionShell, gridFit } from '@/components/site';
+import { PageHero, ServiceCard, SectionShell } from '@/components/site';
 import { PageTransition, StaggerOnView, Stagger } from '@/components/motion';
 import { cn } from '@/lib/utils';
 
+const SORTS = {
+  recommended: { label: 'Recommended', compare: null },
+  'price-asc': { label: 'Price: low to high', compare: (a, b) => (a.priceFrom ?? Infinity) - (b.priceFrom ?? Infinity) },
+  'price-desc': { label: 'Price: high to low', compare: (a, b) => (b.priceFrom ?? -1) - (a.priceFrom ?? -1) },
+  name: { label: 'Name A–Z', compare: (a, b) => a.name.localeCompare(b.name) },
+};
+
+/**
+ * The catalogue. Category filtering is a server query (the API supports it);
+ * the text search and the sort run on the returned list, which is a page of
+ * services, not a database — no round trip per keystroke.
+ */
 export default function ServicesPage() {
   const locale = useSelector(selectLocale);
   const [params, setParams] = useSearchParams();
   const category = params.get('category') ?? '';
+  const q = params.get('q') ?? '';
+  const sort = params.get('sort') ?? 'recommended';
+
   const { data: boot } = useGetBootstrapQuery(locale);
   const { data, isLoading, error, refetch } = useGetPublicServicesQuery({
     locale, ...(category ? { category } : {}),
   });
 
   const categories = boot?.nav?.categories ?? [];
-  const items = data?.items ?? [];
-  const { cols, fillers } = gridFit(items.length);
+  const categoryName = categories.find((c) => c.slug === category)?.name;
 
-  const select = (slug) => {
-    if (slug) setParams({ category: slug });
-    else setParams({});
+  const items = useMemo(() => {
+    const all = data?.items ?? [];
+    const needle = q.trim().toLowerCase();
+    const filtered = needle
+      ? all.filter((s) => [s.name, s.excerpt, s.category?.name].filter(Boolean).join(' ').toLowerCase().includes(needle))
+      : all;
+    const compare = SORTS[sort]?.compare;
+    return compare ? [...filtered].sort(compare) : filtered;
+  }, [data, q, sort]);
+
+  const patch = (next) => {
+    const merged = { ...Object.fromEntries(params), ...next };
+    setParams(Object.fromEntries(Object.entries(merged).filter(([, v]) => v)));
   };
 
   if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
@@ -32,79 +59,78 @@ export default function ServicesPage() {
   return (
     <PageTransition>
       <PageHero
-        eyebrow="What we do"
-        title="Every service, diagnosed before it is priced"
-        description="Instruments before opinions, a published rate card before a quotation, and a written one-month warranty after handover."
+        eyebrow={categoryName ?? 'Catalogue'}
+        title={q ? `Results for “${q}”` : (categoryName ?? 'Every service we book online')}
+        description="Published rates, a free inspection before any work, and a one-month written warranty after it."
       />
 
       <SectionShell>
-        {/* Category filter — the footer and the home page both link straight in
-            with ?category=, so the state lives in the URL, not in a store. */}
-        {categories.length ? (
-          <div className="mb-10 flex flex-wrap gap-2">
-            <FilterChip active={!category} onClick={() => select('')}>All work</FilterChip>
-            {categories.map((c) => (
-              <FilterChip key={c.id} active={category === c.slug} onClick={() => select(c.slug)}>
-                {c.name}
-              </FilterChip>
-            ))}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {isLoading ? 'Loading…' : `${items.length} service${items.length === 1 ? '' : 's'}`}
+            {categoryName ? <> in <span className="font-medium text-foreground">{categoryName}</span></> : null}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {q ? (
+              <button
+                type="button"
+                onClick={() => patch({ q: '' })}
+                className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs font-medium transition-colors hover:border-primary/40"
+              >
+                <Search className="h-3 w-3" aria-hidden /> {q} <X className="h-3 w-3 text-muted-foreground" aria-hidden />
+              </button>
+            ) : null}
+            {category ? (
+              <button
+                type="button"
+                onClick={() => patch({ category: '' })}
+                className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs font-medium transition-colors hover:border-primary/40"
+              >
+                {categoryName} <X className="h-3 w-3 text-muted-foreground" aria-hidden />
+              </button>
+            ) : null}
+
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              Sort
+              <select
+                value={sort}
+                onChange={(e) => patch({ sort: e.target.value === 'recommended' ? '' : e.target.value })}
+                className="h-9 rounded-md border bg-card px-2 text-xs font-medium text-foreground outline-none focus:border-primary"
+              >
+                {Object.entries(SORTS).map(([key, s]) => <option key={key} value={key}>{s.label}</option>)}
+              </select>
+            </label>
           </div>
-        ) : null}
+        </div>
 
         {isLoading ? (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-72 rounded-lg" />)}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className={cn('h-80 rounded-xl')} />)}
           </div>
         ) : items.length ? (
-          <StaggerOnView
-            className={cn(
-              'grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2',
-              cols === 3 && 'lg:grid-cols-3',
-            )}
-            stagger={0.06}
-          >
-            {items.map((service, i) => (
+          <StaggerOnView className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" stagger={0.04}>
+            {items.map((service) => (
               <Stagger.Item
                 key={service.id}
-                className="bg-card"
                 variants={{
-                  hidden: { opacity: 0, y: 24, filter: 'blur(6px)' },
-                  show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
+                  hidden: { opacity: 0, y: 18 },
+                  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
                 }}
               >
-                <ServiceCard service={service} media={data.media} index={i + 1} />
+                <ServiceCard service={service} media={data.media} />
               </Stagger.Item>
-            ))}
-            {Array.from({ length: fillers }).map((_, i) => (
-              <div key={`filler-${i}`} className="hidden bg-card sm:block" aria-hidden />
             ))}
           </StaggerOnView>
         ) : (
           <EmptyState
-            title="Nothing in this category yet"
-            description="Try another category, or tell us what you need and we will quote it."
-            action={{ asChild: <Link to="/contact">Ask us directly</Link> }}
+            icon={Search}
+            title="Nothing matched that"
+            description="Try a different word or browse another category — or tell us what you need and we will quote it."
+            action={{ asChild: <Link to="/book">Describe the job</Link> }}
           />
         )}
       </SectionShell>
     </PageTransition>
-  );
-}
-
-function FilterChip({ active, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'rounded-full border px-4 py-2 text-sm transition-colors',
-        active
-          ? 'border-foreground bg-foreground text-background'
-          : 'border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground',
-      )}
-    >
-      {children}
-    </button>
   );
 }

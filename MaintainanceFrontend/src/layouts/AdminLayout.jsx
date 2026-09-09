@@ -87,8 +87,8 @@ export function AdminLayout() {
       {/* Desktop sidebar */}
       <aside className="hidden w-60 shrink-0 flex-col border-r bg-background lg:flex">
         <div className="flex h-16 items-center gap-2 border-b px-5 font-extrabold tracking-tight">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-sm text-primary-foreground">H</span>
-          Homeplex
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-sm text-primary-foreground">G</span>
+          Ghar Jatan
         </div>
         {sidebar}
         <div className="border-t p-3 text-[11px] text-muted-foreground">
@@ -111,7 +111,7 @@ export function AdminLayout() {
               className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-background lg:hidden"
             >
               <div className="flex h-16 items-center justify-between border-b px-5 font-extrabold">
-                Homeplex
+                Ghar Jatan
                 <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)} aria-label="Close menu">
                   <X className="h-5 w-5" />
                 </Button>

@@ -149,4 +149,41 @@
   .ink-panel {
     @apply bg-ink text-ink-foreground;
   }
+
+  /* Ambient washes. Two soft radial lights give a flat band depth without
+     needing photography — the storefront ships before any media is uploaded. */
+  .glow-paper {
+    background:
+      radial-gradient(58% 52% at 12% -8%, hsl(var(--primary) / 0.10), transparent 68%),
+      radial-gradient(46% 48% at 96% 6%, hsl(var(--gold) / 0.13), transparent 70%);
+  }
+  .glow-ink {
+    background:
+      radial-gradient(52% 58% at 8% 0%, hsl(var(--gold) / 0.14), transparent 68%),
+      radial-gradient(48% 52% at 94% 104%, hsl(var(--primary) / 0.22), transparent 70%);
+  }
+
+  /* A hairline of light along a card's top edge. Reads as a lit surface rather
+     than an outline, and brightens when the card's group is hovered. */
+  .sheen {
+    position: relative;
+  }
+  .sheen::after {
+    content: '';
+    position: absolute;
+    left: 1.25rem;
+    right: 1.25rem;
+    top: 0;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, hsl(var(--gold) / 0.55), transparent);
+    opacity: 0.35;
+    transition: opacity 0.35s ease;
+  }
+  .group:hover .sheen::after,
+  .sheen:hover::after {
+    opacity: 1;
+  }
+
+  .mask-t { mask-image: linear-gradient(to top, #000 55%, transparent); }
 }

@@ -33,7 +33,7 @@ export function Estimator({ services = [], onEstimate }) {
           <Calculator className="h-4 w-4" aria-hidden />
         </span>
         <div>
-          <h3 className="font-display text-lg font-semibold tracking-tight">Estimate your cost</h3>
+          <h3 className="text-lg font-semibold tracking-tight">Estimate your cost</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Enter the area and see the range from our published rates.
           </p>
@@ -62,7 +62,7 @@ export function Estimator({ services = [], onEstimate }) {
             />
           </div>
 
-          <Button type="submit" variant="gold" className="w-full" loading={isLoading} disabled={!serviceId || !qty}>
+          <Button type="submit" className="w-full" loading={isLoading} disabled={!serviceId || !qty}>
             Calculate <ArrowRight className="h-4 w-4" />
           </Button>
         </form>
@@ -86,7 +86,7 @@ export function Estimator({ services = [], onEstimate }) {
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Estimated range for {data.qty} {data.unit}
               </p>
-              <p className="mt-2 font-display text-2xl font-semibold tabular-nums tracking-tight">
+              <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight">
                 {data.display.min} <span className="text-muted-foreground">–</span> {data.display.max}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{data.display.rate}</p>
