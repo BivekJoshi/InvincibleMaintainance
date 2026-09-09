@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 
 const NAV = [
   { to: '/services', label: 'All services' },
+  { to: '/projects', label: 'Our work' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/contact', label: 'Contact' },
 ];

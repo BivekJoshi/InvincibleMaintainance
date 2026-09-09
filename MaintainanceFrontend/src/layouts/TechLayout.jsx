@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { ClipboardList, ClipboardCheck, LogOut, CloudOff, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -24,6 +25,17 @@ const ROLE_LABELS = {
  * iOS home indicator.
  */
 export function TechLayout() {
+  // The manifest is what makes the browser offer to install this, and its
+  // start_url is /tech — so it is linked only while the field app is on screen.
+  // A customer reading the marketing site should never be offered a job sheet.
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = '/manifest.webmanifest';
+    document.head.appendChild(link);
+    return () => link.remove();
+  }, []);
+
   const { user, role } = useAuth();
   const tabs = TABS.filter((t) => !t.roles || t.roles.includes(role));
   const { count, online, syncing, drain } = useOfflineQueue();

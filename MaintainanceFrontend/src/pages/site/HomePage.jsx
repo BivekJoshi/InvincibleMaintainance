@@ -659,6 +659,7 @@ function RecentWork({ section, media }) {
         eyebrow="Our work"
         title="Recently completed"
         description="Measured, photographed at each stage, handed over against a signed snag list."
+        action={<Link to="/projects" className="text-sm font-medium text-primary hover:underline">See all work</Link>}
       />
       <StaggerOnView className="grid gap-4 md:grid-cols-3" stagger={0.06}>
         {projects.map((p) => {
@@ -672,7 +673,10 @@ function RecentWork({ section, media }) {
                 show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
               }}
             >
-              <article className="group h-full overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-card">
+              <Link
+                to={`/projects/${p.slug}`}
+                className="group block h-full overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-card"
+              >
                 <div className="relative h-40 overflow-hidden bg-muted">
                   {img ? (
                     <img src={img} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -691,7 +695,7 @@ function RecentWork({ section, media }) {
                   <p className="mt-1 text-xs text-muted-foreground">{p.location}</p>
                   <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{p.summary}</p>
                 </div>
-              </article>
+              </Link>
             </Stagger.Item>
           );
         })}

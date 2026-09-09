@@ -261,39 +261,41 @@ export async function getPage(slug) {
   return { page };
 }
 
-/** sitemap.xml generated from published content. */
+/**
+ * sitemap.xml generated from published content.
+ *
+ * Only paths the SPA actually routes belong here — a sitemap entry with no route
+ * is a soft 404, which costs exactly the crawl budget the sitemap exists to earn.
+ * Keep this list in step with MaintainanceFrontend/src/app/routes.jsx; /offers,
+ * /gallery and /blog were listed here for months with no page behind them.
+ *
+ * There is no /ne URL prefix either: the site switches locale with a toggle, so
+ * an hreflang alternate under /ne pointed every crawler at a 404.
+ */
 export async function sitemap(origin) {
-  const [services, projects, posts, pages] = await Promise.all([
+  const [services, projects] = await Promise.all([
     prisma.service.findMany({ where: ACTIVE, select: { slug: true, updatedAt: true } }),
     prisma.project.findMany({ where: ACTIVE, select: { slug: true, updatedAt: true } }),
-    prisma.post.findMany({ where: { ...ACTIVE, publishedAt: { lte: new Date() } }, select: { slug: true, updatedAt: true } }),
-    prisma.page.findMany({ where: ACTIVE, select: { slug: true, updatedAt: true } }),
   ]);
 
   const urls = [
     { loc: '/', priority: '1.0', changefreq: 'weekly' },
     { loc: '/services', priority: '0.9', changefreq: 'weekly' },
     { loc: '/projects', priority: '0.8', changefreq: 'weekly' },
-    { loc: '/offers', priority: '0.8', changefreq: 'daily' },
     { loc: '/pricing', priority: '0.8', changefreq: 'weekly' },
-    { loc: '/gallery', priority: '0.6', changefreq: 'monthly' },
-    { loc: '/blog', priority: '0.7', changefreq: 'weekly' },
+    { loc: '/book', priority: '0.8', changefreq: 'monthly' },
     { loc: '/contact', priority: '0.7', changefreq: 'monthly' },
     ...services.map((s) => ({ loc: `/services/${s.slug}`, lastmod: s.updatedAt, priority: '0.9', changefreq: 'monthly' })),
     ...projects.map((p) => ({ loc: `/projects/${p.slug}`, lastmod: p.updatedAt, priority: '0.7', changefreq: 'monthly' })),
-    ...posts.map((p) => ({ loc: `/blog/${p.slug}`, lastmod: p.updatedAt, priority: '0.6', changefreq: 'monthly' })),
-    ...pages.map((p) => ({ loc: `/${p.slug}`, lastmod: p.updatedAt, priority: '0.5', changefreq: 'monthly' })),
   ];
 
-  const body = urls.map((u) => {
-    const alt = `    <xhtml:link rel="alternate" hreflang="ne" href="${origin}/ne${u.loc}"/>\n` +
-                `    <xhtml:link rel="alternate" hreflang="en" href="${origin}${u.loc}"/>`;
-    return `  <url>\n    <loc>${origin}${u.loc}</loc>\n` +
-      (u.lastmod ? `    <lastmod>${new Date(u.lastmod).toISOString()}</lastmod>\n` : '') +
-      `    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n${alt}\n  </url>`;
-  }).join('\n');
+  const body = urls.map((u) => (
+    `  <url>\n    <loc>${origin}${u.loc}</loc>\n` +
+    (u.lastmod ? `    <lastmod>${new Date(u.lastmod).toISOString()}</lastmod>\n` : '') +
+    `    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+  )).join('\n');
 
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${body}\n</urlset>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>`;
 }
 
 /** schema.org JSON-LD for the business — the SEO win the original site misses. */
