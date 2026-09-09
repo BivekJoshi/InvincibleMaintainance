@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-02. Plan and phases: `docs/PLAN.md`.
+Updated 2026-09-09. Plan and phases: `docs/PLAN.md`.
 
 ## Done
 
@@ -17,9 +17,49 @@ Updated 2026-09-02. Plan and phases: `docs/PLAN.md`.
 | 8 Finance | Invoices from actual consumption, payments, VAT, expenses, aging | ✅ backend · UI pending |
 | 9 Aftercare | Warranty auto-creation, claims, AMC contracts + auto-scheduled visits, reminders | ✅ backend · public pages built |
 | 10 Reports | Lead source, funnel, SLA compliance, margin, technician, warranty, dashboards | ✅ backend · dashboard built |
+| 11 Site surveys | SURVEYOR role, survey capture, pricing preview, survey → quotation, offline queue | ✅ |
 
-**The whole backend is built and verified.** The frontend has its foundation plus the public
-site, auth, dashboard, SLA board, leads list and the technician today screen.
+**The whole backend is built and verified.** The frontend has its foundation, the public site,
+auth, dashboard, SLA board, leads (list + detail), the site-survey inbox and review screen, the
+quotation builder, and the field app for technicians and surveyors.
+
+## Site surveys — how the business actually runs
+
+The company's own sequence, now expressible end to end:
+
+> browse services → read past work on similar problems → book a free consultation →
+> a **site visitor** attends → **takes readings** → reports the **materials and labour
+> required** → the office **reviews it and builds the priced quotation**.
+
+- **The visit is a Job**, `type: INSPECTION`, `isBillable: false`. It keeps dispatch,
+  assignment, geo-stamped status events and photos rather than growing a parallel scheduler.
+- **`SiteSurvey`** hangs off that job (`jobId @unique`, which also makes creation idempotent
+  for an offline device). `SurveyReading` carries a numeric *and* a text column — a moisture
+  meter gives 18.4, "is there a DPC?" gives "none visible".
+- **Quantities and money are separate.** `SurveyItem` has `qty`, `unit` and `wastagePct` and
+  **no rate, no amount, no price snapshot**; the zod schema is `.strict()`, so a payload
+  carrying one is rejected rather than ignored. `survey.service.js#priceSurvey` is the single
+  place quantities meet the catalogue, and anything unpriceable comes back in `missing[]` with
+  a reason instead of being priced at zero.
+- **The money wall is a capability, not a screen.** `SURVEYOR` has no `quotations:read`, which
+  is what guards `GET /admin/surveys/:id/pricing`. A dispatcher reads the findings and the
+  quantities; the rates never load. No `/tech` response carries a money field at all.
+- **`buildQuotationFromSurvey`** converts paisa back through `toRupees()` and hands the lines
+  to the existing `createQuotation`, so `documentTotals` stays the only implementation of
+  subtotal, discount and VAT. Two reviewers pressing the button resolve through a guarded
+  `updateMany`, not a read-then-write.
+- **Booking availability** (`GET /public/availability`) counts scheduled inspection jobs plus
+  booking leads still `NEW`/`CONTACTED` against surveyor capacity. A full slot flags the lead
+  `HIGH` with a timeline note — it never rejects the customer.
+- **Case studies** — a finished job publishes as a `Project` with the problem, what we did, the
+  duration and a ±20% cost band. The customer's name is omitted unless someone opts in, and
+  the band is never their contract value.
+- **Offline** — field mutations that fail for network reasons queue in IndexedDB and replay
+  through `POST /tech/sync`. The service worker caches the app shell only; a cached job sheet
+  would have a surveyor acting on stale scope.
+
+Seeded demo: `survey@gharjatan.com.np` / `Password123`, with `SRV-2083-0001` sitting submitted
+in the admin inbox and one case study published.
 
 ## Public site — storefront
 
@@ -53,12 +93,13 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 
 Frontend screens for modules whose APIs already exist (`docs/API.md`):
 
-1. Lead detail drawer — timeline, notes, convert-to-customer.
-2. Customers + sites, quotation builder off the rate card.
+1. ~~Lead detail — timeline, notes, convert-to-customer~~ ✅
+2. ~~Quotation builder off the rate card~~ ✅ — customers + sites screens still to do.
 3. Job detail (checklist, photos, materials, timer) and the dispatch calendar.
 4. Materials/stock, invoices + payments, warranty/AMC screens.
 5. CMS editors on `<DataTable>` + the home-section drag-and-drop composer.
-6. Technician offline queue (service worker + IndexedDB) against `POST /tech/sync`.
+6. ~~Field offline queue against `POST /tech/sync`~~ ✅ — job mutations still to be wired to it;
+   only survey drafts and submits queue today.
 
 ## Verification
 
