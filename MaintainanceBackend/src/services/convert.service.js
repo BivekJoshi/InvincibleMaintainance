@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { notFound, unprocessable } from '../utils/AppError.js';
 import { findOrCreateByPhone } from './customer.service.js';
 import { createJob } from './job.service.js';
+import { createFromJob } from './survey.service.js';
 import { nextNumber } from '../utils/numbering.js';
 
 /**
@@ -38,7 +39,7 @@ export async function convertLead(leadId, input, userId) {
     data: { customerId: customer.id, status: lead.status === 'NEW' ? 'CONTACTED' : lead.status, firstResponseAt: lead.firstResponseAt ?? new Date() },
   });
 
-  const result = { customer, site, quotation: null, job: null };
+  const result = { customer, site, quotation: null, job: null, survey: null };
 
   if (input.createQuotation) {
     result.quotation = await prisma.$transaction(async (tx) => {
@@ -70,6 +71,8 @@ export async function convertLead(leadId, input, userId) {
   }
 
   if (input.createInspectionJob) {
+    // The visit the customer booked. createJob already assigns, moves the job to
+    // ASSIGNED and SMSes the surveyor, so passing surveyorId buys the whole thing.
     result.job = await createJob({
       type: 'INSPECTION',
       customerId: customer.id,
@@ -78,9 +81,25 @@ export async function convertLead(leadId, input, userId) {
       title: `Free inspection — ${lead.service?.name ?? 'site visit'}`,
       description: lead.message ?? null,
       priority: lead.priority,
-      scheduledStart: input.scheduledStart,
+      // Fall back to the slot the customer picked online rather than losing it.
+      scheduledStart: input.scheduledStart ?? lead.preferredAt ?? undefined,
+      scheduledEnd: input.scheduledEnd,
       isBillable: false,
+      ...(input.surveyorId
+        ? { technicianIds: [input.surveyorId], leadTechnicianId: input.surveyorId }
+        : {}),
     }, userId);
+
+    // Created here rather than on the device: the number comes from a server-side
+    // counter, so the field app cannot mint one offline. It downloads a real
+    // survey id along with the job instead.
+    const { survey } = await createFromJob(
+      result.job.id,
+      { surveyorId: input.surveyorId },
+      userId,
+    );
+    result.survey = survey;
+
     await prisma.lead.update({ where: { id: leadId }, data: { status: 'INSPECTION_SCHEDULED' } });
   }
 
@@ -89,7 +108,8 @@ export async function convertLead(leadId, input, userId) {
       leadId, userId: userId ?? null, type: 'note',
       summary: `Converted to customer ${customer.name}` +
         (result.quotation ? ` · quotation ${result.quotation.number}` : '') +
-        (result.job ? ` · job ${result.job.number}` : ''),
+        (result.job ? ` · job ${result.job.number}` : '') +
+        (result.survey ? ` · survey ${result.survey.number}` : ''),
     },
   });
 

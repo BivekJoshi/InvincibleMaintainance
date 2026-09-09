@@ -88,6 +88,9 @@ export const leadConvertSchema = z.object({
   createQuotation: z.coerce.boolean().default(false),
   createInspectionJob: z.coerce.boolean().default(false),
   scheduledStart: z.coerce.date().optional(),
+  scheduledEnd: z.coerce.date().optional(),
+  /** Technician.id of the surveyor to send. Assigning one also creates the survey. */
+  surveyorId: z.string().optional(),
 });
 
 export const leadListQuery = z.object({

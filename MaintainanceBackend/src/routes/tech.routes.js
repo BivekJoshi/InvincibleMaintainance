@@ -166,15 +166,24 @@ router.get('/rate-card', asyncHandler(async (_req, res) => ok(res, await prisma.
 
 // ── offline sync
 
+const SURVEY_KINDS = ['survey_draft', 'survey_submit'];
+
 const syncSchema = z.object({
   mutations: z.array(z.object({
     idempotencyKey: z.string().min(8).max(80),
     at: z.coerce.date(),
-    kind: z.enum(['status', 'task', 'material', 'time_start', 'time_stop', 'complete']),
-    jobId: z.string().min(1),
+    kind: z.enum(['status', 'task', 'material', 'time_start', 'time_stop', 'complete', ...SURVEY_KINDS]),
+    jobId: z.string().min(1).optional(),
+    surveyId: z.string().min(1).optional(),
     taskId: z.string().optional(),
     payload: z.record(z.any()).default({}),
-  })).min(1).max(200),
+  }).refine(
+    // jobId went optional so survey mutations could address a surveyId instead.
+    // Without this, a malformed job mutation would sail through validation and
+    // fail somewhere in the service layer with a far less useful message.
+    (m) => (SURVEY_KINDS.includes(m.kind) ? Boolean(m.surveyId) : Boolean(m.jobId)),
+    { message: 'A survey mutation needs a surveyId; every other kind needs a jobId' },
+  )).min(1).max(200),
 });
 
 /**
@@ -194,7 +203,10 @@ router.post('/sync', requireTechnician, validate({ body: syncSchema }), asyncHan
       continue;
     }
     try {
-      if (FIELD_ROLES.includes(req.user.role)) await jobs.assertAssigned(m.jobId, req.technician.id);
+      if (FIELD_ROLES.includes(req.user.role)) {
+        if (m.surveyId) await surveys.assertOwnSurvey(m.surveyId, req.technician.id);
+        else await jobs.assertAssigned(m.jobId, req.technician.id);
+      }
 
       switch (m.kind) {
         case 'status':
@@ -215,15 +227,27 @@ router.post('/sync', requireTechnician, validate({ body: syncSchema }), asyncHan
         case 'complete':
           await jobs.completeJob(m.jobId, s.jobCompleteSchema.parse(m.payload), req.user.id);
           break;
+        // saveDraft is a full replace, so replaying it lands on the same state.
+        case 'survey_draft':
+          await surveys.saveDraft(m.surveyId, sv.surveySaveSchema.parse(m.payload), { userId: req.user.id });
+          break;
+        // Not idempotent: a replay throws INVALID_TRANSITION (422), which the
+        // client must treat as terminal success and drop, not retry forever.
+        case 'survey_submit':
+          await surveys.submitSurvey(m.surveyId, sv.surveySubmitSchema.parse(m.payload), { userId: req.user.id });
+          break;
         default:
           throw badRequest(`Unknown mutation kind: ${m.kind}`);
       }
       await prisma.auditLog.create({
-        data: { actorId: req.user.id, action: 'sync', model: 'TechSync', recordId: m.idempotencyKey, changes: { kind: m.kind, jobId: m.jobId } },
+        data: {
+          actorId: req.user.id, action: 'sync', model: 'TechSync', recordId: m.idempotencyKey,
+          changes: { kind: m.kind, jobId: m.jobId ?? null, surveyId: m.surveyId ?? null },
+        },
       });
       results.push({ idempotencyKey: m.idempotencyKey, status: 'applied' });
     } catch (err) {
-      logger.warn({ err: err.message, mutation: m.kind, jobId: m.jobId }, 'sync mutation rejected');
+      logger.warn({ err: err.message, mutation: m.kind, jobId: m.jobId, surveyId: m.surveyId }, 'sync mutation rejected');
       results.push({ idempotencyKey: m.idempotencyKey, status: 'failed', error: err.message, code: err.code ?? 'SYNC_FAILED' });
     }
   }
