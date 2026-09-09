@@ -20,6 +20,19 @@ export const QUOTATION_TRANSITIONS = {
   CONVERTED: [],
 };
 
+/**
+ * RETURNED is a first-class state: the surveyor is the only person who stood on the
+ * site, so "you missed the west-wall reading" has to be a round trip, not a phone call.
+ */
+export const SURVEY_TRANSITIONS = {
+  DRAFT: ['SUBMITTED', 'CANCELLED'],
+  SUBMITTED: ['IN_REVIEW', 'RETURNED', 'QUOTED', 'CANCELLED'],
+  IN_REVIEW: ['QUOTED', 'RETURNED', 'CANCELLED'],
+  RETURNED: ['DRAFT', 'SUBMITTED', 'CANCELLED'],
+  QUOTED: [],
+  CANCELLED: [],
+};
+
 export const JOB_TRANSITIONS = {
   DRAFT: ['SCHEDULED', 'ASSIGNED', 'CANCELLED'],
   SCHEDULED: ['ASSIGNED', 'EN_ROUTE', 'CANCELLED'],

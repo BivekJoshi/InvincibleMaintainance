@@ -21,6 +21,7 @@ enum Role {
   DISPATCHER
   TECHNICIAN
   ACCOUNTANT
+  SURVEYOR
 }
 
 model User {
@@ -39,17 +40,19 @@ model User {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  refreshTokens  RefreshToken[]
-  passwordResets PasswordReset[]
-  assignedLeads  Lead[]          @relation("LeadAssignee")
-  leadNotes      LeadNote[]
-  leadActivities LeadActivity[]
-  technician     Technician?
-  auditLogs      AuditLog[]
-  notifications  Notification[]
-  createdQuotes  Quotation[]     @relation("QuotationCreator")
-  createdJobs    Job[]           @relation("JobCreator")
-  jobEvents      JobStatusEvent[]
+  refreshTokens    RefreshToken[]
+  passwordResets   PasswordReset[]
+  assignedLeads    Lead[]           @relation("LeadAssignee")
+  leadNotes        LeadNote[]
+  leadActivities   LeadActivity[]
+  technician       Technician?
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  createdQuotes    Quotation[]      @relation("QuotationCreator")
+  createdJobs      Job[]            @relation("JobCreator")
+  jobEvents        JobStatusEvent[]
+  submittedSurveys SiteSurvey[]     @relation("SurveySubmitter")
+  reviewedSurveys  SiteSurvey[]     @relation("SurveyReviewer")
 
   @@index([role, isActive])
   @@index([deletedAt])
@@ -232,6 +235,8 @@ model Service {
   category     ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   leads        Lead[]
   jobTemplates JobTemplate[]
+  surveys      SiteSurvey[]
+  surveyItems  SurveyItem[]
 
   @@index([isActive, sortOrder])
   @@index([categoryId])
@@ -267,11 +272,11 @@ model Project {
 }
 
 model ProjectImage {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   projectId String
   mediaId   String
   caption   String?
-  sortOrder Int    @default(0)
+  sortOrder Int     @default(0)
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -536,6 +541,7 @@ model Lead {
   activities LeadActivity[]
   quotations Quotation[]
   jobs       Job[]
+  surveys    SiteSurvey[]
 
   @@index([status, createdAt])
   @@index([phone])
@@ -593,6 +599,7 @@ model Customer {
   contracts  AmcContract[]
   warranties Warranty[]
   reminders  ServiceReminder[]
+  surveys    SiteSurvey[]
 
   @@index([phone])
   @@index([deletedAt])
@@ -612,10 +619,11 @@ model CustomerSite {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  customer  Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  jobs      Job[]
-  contracts AmcContract[]
+  customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  jobs       Job[]
+  contracts  AmcContract[]
   quotations Quotation[]
+  surveys    SiteSurvey[]
 
   @@index([customerId])
 }
@@ -635,6 +643,7 @@ model RateCardItem {
   deletedAt   DateTime?
 
   quotationItems QuotationItem[]
+  surveyItems    SurveyItem[]
 
   @@index([isActive, sortOrder])
 }
@@ -676,15 +685,16 @@ model Quotation {
   updatedAt    DateTime        @updatedAt
   deletedAt    DateTime?
 
-  customer  Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  site      CustomerSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  lead      Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  createdBy User?         @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  parent    Quotation?    @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
-  revisions Quotation[]   @relation("QuotationVersions")
+  customer  Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site      CustomerSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead      Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdBy User?           @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  parent    Quotation?      @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
+  revisions Quotation[]     @relation("QuotationVersions")
   items     QuotationItem[]
   jobs      Job[]
   invoices  Invoice[]
+  survey    SiteSurvey?
 
   @@index([status, createdAt])
   @@index([customerId])
@@ -749,6 +759,7 @@ model Technician {
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments JobAssignment[]
   timeLogs    TimeLog[]
+  surveys     SiteSurvey[]
 }
 
 model JobTemplate {
@@ -795,23 +806,24 @@ model Job {
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
 
-  customer    Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  site        CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  lead        Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  quotation   Quotation?       @relation(fields: [quotationId], references: [id], onDelete: SetNull)
-  createdBy   User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  parentJob   Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
-  childJobs   Job[]            @relation("JobRework")
-  tasks       JobTask[]
-  assignments JobAssignment[]
-  events      JobStatusEvent[]
-  photos      JobPhoto[]
-  timeLogs    TimeLog[]
-  materials   JobMaterial[]
+  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site         CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead         Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  quotation    Quotation?       @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  createdBy    User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  parentJob    Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
+  childJobs    Job[]            @relation("JobRework")
+  tasks        JobTask[]
+  assignments  JobAssignment[]
+  events       JobStatusEvent[]
+  photos       JobPhoto[]
+  timeLogs     TimeLog[]
+  materials    JobMaterial[]
   invoiceItems InvoiceItem[]
-  expenses    Expense[]
-  warranty    Warranty?
-  amcVisit    AmcVisit?
+  expenses     Expense[]
+  warranty     Warranty?
+  amcVisit     AmcVisit?
+  survey       SiteSurvey?
 
   @@index([status, scheduledStart])
   @@index([customerId])
@@ -895,6 +907,126 @@ model TimeLog {
   @@index([technicianId, startedAt])
 }
 
+// ═══════════════════════════ Site surveys
+//
+// The visit itself is a Job of type INSPECTION — this is the report the surveyor
+// fills in while standing on the site. It carries QUANTITIES ONLY: no rate, no
+// amount, no price snapshot anywhere below. Pricing happens once, at review time,
+// in survey.service.js#priceSurvey against the rate card and material sell rates.
+
+enum SurveyStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  RETURNED
+  QUOTED
+  CANCELLED
+}
+
+enum SurveyItemKind {
+  LABOUR
+  MATERIAL
+  SERVICE
+  OTHER
+}
+
+model SiteSurvey {
+  id             String       @id @default(cuid())
+  number         String       @unique
+  jobId          String       @unique
+  leadId         String?
+  customerId     String
+  siteId         String?
+  serviceId      String?
+  surveyorId     String?
+  status         SurveyStatus @default(DRAFT)
+  problemSummary String?
+  diagnosis      String?
+  recommendation String?
+  accessNotes    String?
+  riskNotes      String?
+  areaValue      Float?
+  areaUnit       String?
+  estimatedDays  Float?
+  urgency        Priority     @default(NORMAL)
+  submittedAt    DateTime?
+  submittedById  String?
+  reviewedAt     DateTime?
+  reviewedById   String?
+  reviewNote     String?
+  returnedReason String?
+  quotationId    String?      @unique
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  job         Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  lead        Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer    Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site        CustomerSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  service     Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  surveyor    Technician?     @relation(fields: [surveyorId], references: [id], onDelete: SetNull)
+  submittedBy User?           @relation("SurveySubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  reviewedBy  User?           @relation("SurveyReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  quotation   Quotation?      @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  readings    SurveyReading[]
+  items       SurveyItem[]
+
+  @@index([status, submittedAt])
+  @@index([surveyorId, status])
+  @@index([customerId])
+  @@index([deletedAt])
+}
+
+// A moisture meter gives 18.4; "is there a DPC?" gives "none visible". Both are
+// readings, so both a numeric and a text column — not a Json blob, because `value`
+// is what the review screen thresholds on and what reports group by.
+model SurveyReading {
+  id        String   @id @default(cuid())
+  surveyId  String
+  label     String
+  metric    String
+  value     Float?
+  unit      String?
+  textValue String?
+  location  String?
+  mediaId   String?
+  lat       Float?
+  lng       Float?
+  takenAt   DateTime @default(now())
+  sortOrder Int      @default(0)
+
+  survey SiteSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId, sortOrder])
+}
+
+model SurveyItem {
+  id             String         @id @default(cuid())
+  surveyId       String
+  kind           SurveyItemKind @default(MATERIAL)
+  materialId     String?
+  rateCardItemId String?
+  serviceId      String?
+  description    String
+  unit           String
+  qty            Float
+  wastagePct     Float          @default(0)
+  isOptional     Boolean        @default(false)
+  note           String?
+  sortOrder      Int            @default(0)
+  createdAt      DateTime       @default(now())
+
+  survey       SiteSurvey    @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  material     Material?     @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  rateCardItem RateCardItem? @relation(fields: [rateCardItemId], references: [id], onDelete: SetNull)
+  service      Service?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([surveyId, sortOrder])
+  @@index([materialId])
+  @@index([rateCardItemId])
+}
+
 // ═══════════════════════════ Materials
 
 model Supplier {
@@ -944,6 +1076,7 @@ model Material {
   supplier     Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   movements    StockMovement[]
   jobMaterials JobMaterial[]
+  surveyItems  SurveyItem[]
 
   @@index([isActive, sortOrder])
 }
@@ -1151,13 +1284,13 @@ model AmcContract {
 }
 
 model AmcVisit {
-  id         String    @id @default(cuid())
+  id         String   @id @default(cuid())
   contractId String
   dueDate    DateTime
-  jobId      String?   @unique
-  status     String    @default("pending")
+  jobId      String?  @unique
+  status     String   @default("pending")
   note       String?
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime @default(now())
 
   contract AmcContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   job      Job?        @relation(fields: [jobId], references: [id], onDelete: SetNull)
