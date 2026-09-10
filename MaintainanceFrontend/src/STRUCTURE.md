@@ -41,7 +41,7 @@ Import them directly — `import { useGetLeadsQuery } from '@/api/leadsApi'`.
 | `layout/` | The three shells — `SiteLayout`, `AdminLayout`, `TechLayout` — plus what the public one is made of: `SiteHeader/`, `SiteFooter`, `MobileCallBar`. |
 | `site/` | Marketing presentation, **one component per file**: `ServiceCard`, `ProjectCard`, `CategoryTile`, `PageHero`, `SectionShell`, `SectionHeading`, `Media`, `Breadcrumb`, `PromiseList`, `FaqList`, `FilterChip`, `PriceTag`, `Cta`, `Eyebrow`, `Stars`, `DataIcon`. |
 | `documents/` | The customer-facing sheet a token link opens: `DocumentShell`, `DocumentHeader`, `LineItemsTable`, `TotalsList`, `DocumentNotice`. Shared by the quotation, invoice and warranty pages. |
-| `public/`, `booking/`, `leads/`, `quotations/`, `surveys/` | Domain components, named for the domain they serve. |
+| `public/`, `booking/`, `leads/`, `quotations/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. |
 
 A component used by exactly one page can live beside its domain here; a component
 used by two pages **must**. Nothing imports upward from `pages/`.

@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { PageHero } from '@/components/site/PageHero';
 import { PageTransition } from '@/three/motion/motionKit';
-import { BookingWizard } from '@/components/booking/BookingWizard';
+import { BookingWizard } from '@/components/booking/BookingWizard/BookingWizard';
 import { useSeo } from '@/hooks/useSeo';
 
 /**
