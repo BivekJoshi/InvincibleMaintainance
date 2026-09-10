@@ -8,7 +8,8 @@ export default defineConfig({
     alias: { '@': path.resolve(process.cwd(), './src') },
   },
   server: {
-    port: 5173,
+    port: 5400,
+    strictPort: true,
     proxy: {
       // Keeps the browser same-origin in dev, so the httpOnly refresh cookie just works.
       '/api': { target: 'http://localhost:4000', changeOrigin: true },

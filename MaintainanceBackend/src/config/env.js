@@ -33,7 +33,7 @@ export const env = {
   cookieSecure: bool('COOKIE_SECURE', false),
 
   corsOrigins: [
-    ...list('PUBLIC_WEB_ORIGIN', 'http://localhost:5173'),
+    ...list('PUBLIC_WEB_ORIGIN', 'http://localhost:5400'),
     ...list('ADMIN_ORIGIN', 'http://localhost:5174'),
   ],
 

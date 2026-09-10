@@ -30,7 +30,7 @@ This is **not** a clone. The marketing page is one deliverable out of nine modul
 
 ```
 MaintainanceBackend/    Express + Prisma + PostgreSQL      :4000
-MaintainanceFrontend/   Vite + React + shadcn + RTK        :5173
+MaintainanceFrontend/   Vite + React + shadcn + RTK        :5400
 docs/                   PLAN.md, ARCHITECTURE.md, DATA-MODEL.prisma, API.md
 ```
 
@@ -102,7 +102,7 @@ npm test               # vitest
 
 # frontend
 cd MaintainanceFrontend
-npm run dev            # Vite on :5173
+npm run dev            # Vite on :5400
 ```
 
 Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password123`).

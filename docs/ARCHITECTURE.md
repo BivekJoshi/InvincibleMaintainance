@@ -6,7 +6,7 @@
 |---|---|---|
 | `apps/api` | 4000 | REST API, auth, business logic, Prisma |
 | `apps/api` worker | — | BullMQ consumers: SMS, email, image processing, SLA timers, AMC/reminder crons |
-| `apps/web` | 5173 | Public marketing site |
+| `apps/web` | 5400 | Public marketing site |
 | `apps/admin` | 5174 | Back-office SPA (includes the `/tech` mobile PWA route tree) |
 | postgres | 5432 | System of record |
 | redis | 6379 | Queues, public response cache, rate-limit counters |

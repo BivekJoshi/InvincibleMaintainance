@@ -12,7 +12,7 @@ office, and a mobile-first technician view.
 ```bash
 cp .env.example .env       # leave VITE_API_URL blank in dev
 npm install
-npm run dev                # http://localhost:5173
+npm run dev                # http://localhost:5400
 ```
 
 The backend must be running on `:4000` (`cd ../MaintainanceBackend && npm run dev`).
