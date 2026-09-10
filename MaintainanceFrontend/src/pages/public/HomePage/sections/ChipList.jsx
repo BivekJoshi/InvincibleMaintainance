@@ -1,32 +1,49 @@
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { ArrowUpRight } from 'lucide-react';
+import { SectionHeading } from '@/components/site/SectionHeading';
+import { SectionShell } from '@/components/site/SectionShell';
 import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
 
-/** The trades that need a line each rather than a card each. */
-export function ChipList({ section }) {
+/**
+ * The trades that need a line each rather than a card each — nine of them, so
+ * a row of pills turns into tag soup. Ruled rows in three columns read as what
+ * this is: the rest of the rate card.
+ */
+export function ChipList({ section, tone }) {
   const items = Array.isArray(section.data) ? section.data : [];
   if (!items.length) return null;
+
   return (
-    <SectionShell>
+    <SectionShell tone={tone}>
       <SectionHeading
         eyebrow="Also on the books"
         title="Other civil work"
         description="Carried out by our own crews, measured and billed against a published rate."
       />
-      <StaggerOnView className="flex flex-wrap gap-2" stagger={0.03}>
-        {items.map((item) => (
+      <StaggerOnView className="grid border-t sm:grid-cols-2 sm:gap-x-10 lg:grid-cols-3" stagger={0.03}>
+        {items.map((item, i) => (
           <Stagger.Item
             key={item.id}
-            variants={{ hidden: { opacity: 0, scale: 0.96 }, show: { opacity: 1, scale: 1, transition: { duration: 0.35 } } }}
+            variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } }}
+            className="border-b"
           >
-            <Button asChild variant="outline" size="sm" className="group h-auto rounded-full py-2 text-[13px] font-medium hover:border-primary/40 hover:text-primary">
-              <Link to={`/services/${item.slug}`}>
-                {item.name}
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-300 group-hover:translate-x-0.5" aria-hidden />
-              </Link>
-            </Button>
+            <Link
+              to={`/services/${item.slug}`}
+              className="group flex items-center justify-between gap-3 py-4"
+            >
+              <span className="flex items-baseline gap-3">
+                <span className="text-[11px] font-semibold tabular-nums text-muted-foreground/40">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="text-[14px] font-medium tracking-tight transition-colors duration-300 group-hover:text-primary">
+                  {item.name}
+                </span>
+              </span>
+              <ArrowUpRight
+                className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-gold"
+                aria-hidden
+              />
+            </Link>
           </Stagger.Item>
         ))}
       </StaggerOnView>

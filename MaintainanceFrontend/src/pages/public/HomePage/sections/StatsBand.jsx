@@ -11,6 +11,10 @@ export function StatsBand({ section }) {
       <div className="blueprint absolute inset-0 -z-10 opacity-60" aria-hidden />
       <Spotlight />
       <DriftField count={10} />
+      {/* Gold trim top and bottom, so the band reads as inlaid into the page
+          rather than as a hole cut out of it. */}
+      <span className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/45 to-transparent" aria-hidden />
+      <span className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-gold/25 to-transparent" aria-hidden />
       <StaggerOnView className="container relative grid grid-cols-2 gap-y-10 py-14 md:py-16 lg:grid-cols-4" stagger={0.1}>
         {stats.map((s, i) => (
           <Stagger.Item
@@ -28,7 +32,8 @@ export function StatsBand({ section }) {
             <p className="text-[2.25rem] font-bold leading-none tracking-tight text-gold md:text-[2.75rem]">
               <CountUp value={s.value} />
             </p>
-            <p className="mt-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{s.label}</p>
+            <span className="mx-auto mt-4 block h-px w-8 bg-ink-foreground/20" aria-hidden />
+            <p className="mt-3.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{s.label}</p>
           </Stagger.Item>
         ))}
       </StaggerOnView>

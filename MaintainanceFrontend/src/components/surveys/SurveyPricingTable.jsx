@@ -66,12 +66,12 @@ export function SurveyPricingTable({ lines, missing = [], draft, onChange }) {
                   <p className="font-medium leading-tight">{line.description}</p>
                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     <Badge variant="outline" className="px-1 py-0 text-[10px]">{titleCase(line.kind)}</Badge>
-                    {line.isOptional ? <span className="text-amber-600 dark:text-amber-500">optional</span> : null}
+                    {line.isOptional ? <span className="text-warning">optional</span> : null}
                     {line.wastagePct > 0 ? <span>{line.rawQty} + {line.wastagePct}% waste</span> : null}
                     {line.note ? <span className="italic">{line.note}</span> : null}
                   </div>
                   {reason ? (
-                    <p className="mt-1 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
+                    <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                       <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> {reason}
                     </p>
                   ) : null}
@@ -110,7 +110,7 @@ export function SurveyPricingTable({ lines, missing = [], draft, onChange }) {
       </div>
 
       {unpriced.length ? (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        <p className="surface-warning rounded-md border px-3 py-2 text-xs">
           {unpriced.length} included line{unpriced.length === 1 ? ' has' : 's have'} no rate yet. Set a rate or exclude
           {unpriced.length === 1 ? ' it' : ' them'} before building the quotation.
         </p>

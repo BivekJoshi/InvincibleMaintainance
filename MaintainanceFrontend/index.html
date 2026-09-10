@@ -3,13 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f1b20" />
+    <meta name="theme-color" content="#fbfaf8" />
     <title>Ghar Jatan — Construction, Repair & Interior Services</title>
     <meta name="description" content="Certified engineers for seepage repair, waterproofing, renovation and interiors across Kathmandu and Lalitpur. Free consultation, 2-hour response, 1-month warranty." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    </head>
+
+    <!--
+      The colour class, before the first paint. React cannot do this: the bundle
+      is fetched, parsed and mounted long after the browser has painted <body>,
+      so a dark-mode visitor would get a white flash on every cold load.
+
+      This is the only place outside `providers/ThemeProvider.jsx` that decides
+      a theme, and it answers the same question the same way — the stored key is
+      `config/theme.js`'s THEME_STORAGE_KEY, and the colours are its THEME_COLORS.
+    -->
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem('theme');
+          if (mode !== 'light' && mode !== 'dark' && mode !== 'system') mode = 'system';
+          var dark = mode === 'dark'
+            || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.classList.toggle('dark', dark);
+          root.dataset.theme = dark ? 'dark' : 'light';
+          root.dataset.themeMode = mode;
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', dark ? '#11191d' : '#fbfaf8');
+        } catch (e) { /* private mode, or no storage at all — light it is */ }
+      })();
+    </script>
+  </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

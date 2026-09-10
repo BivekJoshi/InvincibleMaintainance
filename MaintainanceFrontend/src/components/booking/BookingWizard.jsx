@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DataIcon } from '@/components/site/siteBlocks';
+import { DataIcon } from '@/components/site/DataIcon';
 import { motion, AnimatePresence } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
@@ -412,7 +412,7 @@ function StepWhen({ days, slots, availability, date, slot, onDate, onSlot }) {
               <span className="block text-[14px] font-semibold tracking-tight">{s.label}</span>
               <span className="block text-[12px] text-muted-foreground">{s.window}</span>
               {info ? (
-                <span className={cn('mt-0.5 block text-[11px]', info.isFull ? 'text-amber-600 dark:text-amber-500' : 'text-emerald-600 dark:text-emerald-500')}>
+                <span className={cn('mt-0.5 block text-[11px]', info.isFull ? 'text-warning' : 'text-success')}>
                   {info.isFull ? 'Busy — we will call to confirm' : `${info.left} visit${info.left === 1 ? '' : 's'} left`}
                 </span>
               ) : null}

@@ -1,25 +1,24 @@
-import { useEffect } from 'react';
-import { useSelector } from 'react-redux';
-import { selectTheme } from '@/redux/slices/uiSlice';
+import { useContext } from 'react';
+import { ThemeContext } from '@/providers/ThemeProvider';
 
-/** Applies the theme class to <html>, following the OS when set to "system". */
+/**
+ * The colour mode and everything that can change it.
+ *
+ * @returns {{
+ *   mode: 'light'|'dark'|'system',  what the user chose
+ *   theme: 'light'|'dark',          what that resolves to right now
+ *   isDark: boolean,
+ *   systemTheme: 'light'|'dark',    what the device is asking for
+ *   modes: string[],
+ *   setMode: (mode: string) => void,
+ *   toggle: () => void,             flips to the opposite of what is on screen
+ *   cycle: () => void,              light → dark → system
+ * }}
+ */
 export function useTheme() {
-  const theme = useSelector(selectTheme);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-
-    const apply = () => {
-      const dark = theme === 'dark' || (theme === 'system' && media.matches);
-      root.classList.toggle('dark', dark);
-    };
-
-    apply();
-    if (theme !== 'system') return undefined;
-    media.addEventListener('change', apply);
-    return () => media.removeEventListener('change', apply);
-  }, [theme]);
-
-  return theme;
+  const value = useContext(ThemeContext);
+  if (!value) {
+    throw new Error('useTheme must be used inside <ThemeProvider> — see providers/AppProviders.');
+  }
+  return value;
 }

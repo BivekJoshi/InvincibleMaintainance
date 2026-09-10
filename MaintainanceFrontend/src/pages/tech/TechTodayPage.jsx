@@ -64,7 +64,7 @@ function JobCard({ job }) {
           ) : null}
 
           {job.site?.accessNotes ? (
-            <p className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            <p className="surface-warning mt-2 rounded-md border p-2 text-xs">
               {job.site.accessNotes}
             </p>
           ) : null}

@@ -30,6 +30,27 @@ export default {
           foreground: 'hsl(var(--ink-foreground))',
           muted: 'hsl(var(--ink-muted))',
         },
+        // Outcome colours. `DEFAULT` is the mark or the text; `surface` and
+        // `border` are the panel it sits on. Defined once in globals.css so a
+        // component never reaches for a raw Tailwind palette again.
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+          surface: 'hsl(var(--success-surface))',
+          border: 'hsl(var(--success-border))',
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+          surface: 'hsl(var(--warning-surface))',
+          border: 'hsl(var(--warning-border))',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+          surface: 'hsl(var(--info-surface))',
+          border: 'hsl(var(--info-border))',
+        },
         // SLA traffic light — used by the lead board and countdown chips.
         sla: {
           ok: 'hsl(var(--sla-ok))',
@@ -43,9 +64,12 @@ export default {
         sm: 'calc(var(--radius) - 4px)',
       },
       boxShadow: {
-        card: '0 1px 2px hsl(var(--ink) / 0.04), 0 10px 30px -18px hsl(var(--ink) / 0.25)',
-        lift: '0 30px 70px -32px hsl(var(--ink) / 0.45)',
+        // Bound to the elevation ramp in globals.css, so a dark theme can cut
+        // its own shadows instead of inheriting ones tuned for paper.
+        card: 'var(--elevation-2)',
+        lift: 'var(--elevation-3)',
         float: '0 40px 90px -40px hsl(var(--ink) / 0.55)',
+        hairline: 'var(--elevation-1)',
       },
       keyframes: {
         'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },

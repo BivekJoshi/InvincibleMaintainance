@@ -106,7 +106,7 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
           </div>
 
           {slotInfo?.isFull ? (
-            <p className={cn('rounded-md px-3 py-2 text-xs', 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300')}>
+            <p className={cn('rounded-md px-3 py-2 text-xs', 'surface-warning border')}>
               That window is already full. You can still book it — the visit will need juggling.
             </p>
           ) : null}

@@ -207,7 +207,7 @@ export default function TechJobPage() {
                 aria-label="Completion note"
               />
               {openTasks.length ? (
-                <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                <p className="surface-warning rounded-md border px-3 py-2 text-xs">
                   {openTasks.length} checklist item{openTasks.length === 1 ? '' : 's'} still open — finish
                   {openTasks.length === 1 ? ' it' : ' them'} before completing.
                 </p>

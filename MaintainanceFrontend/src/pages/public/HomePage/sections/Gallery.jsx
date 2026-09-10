@@ -1,5 +1,7 @@
 import { Card } from '@/components/ui/card';
-import { Media, SectionHeading, SectionShell } from '@/components/site/siteBlocks';
+import { Media } from '@/components/site/Media';
+import { SectionHeading } from '@/components/site/SectionHeading';
+import { SectionShell } from '@/components/site/SectionShell';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -7,11 +9,11 @@ import { cn } from '@/helpers/utils';
  * twice the size, so the block reads as a wall of work instead of a grid of
  * thumbnails. Each picture wipes open as it arrives.
  */
-export function Gallery({ section, media }) {
+export function Gallery({ section, media, tone }) {
   const images = (Array.isArray(section.data) ? section.data : []).slice(0, 7);
   if (!images.length) return null;
   return (
-    <SectionShell tone="muted">
+    <SectionShell tone={tone}>
       <SectionHeading eyebrow="On site" title="From the field" />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {images.map((g, i) => (

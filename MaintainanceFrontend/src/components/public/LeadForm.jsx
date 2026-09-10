@@ -49,10 +49,10 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-        className="rounded-xl border border-emerald-500/30 bg-emerald-50 p-6 text-center dark:bg-emerald-950"
+        className="surface-success rounded-xl border p-6 text-center"
         role="status"
       >
-        <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+        <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
         <h3 className="mt-3 font-semibold">Request received</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Our engineer will call you within two hours. There is no charge for the visit.

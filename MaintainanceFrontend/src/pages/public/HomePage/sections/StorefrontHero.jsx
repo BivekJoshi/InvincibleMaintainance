@@ -6,13 +6,13 @@ import { useGetBootstrapQuery, useGetPublicServicesQuery } from '@/api/publicApi
 import { selectLocale } from '@/redux/slices/uiSlice';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { CategoryTile, Eyebrow } from '@/components/site/siteBlocks';
+import { CategoryTile } from '@/components/site/CategoryTile';
+import { Eyebrow } from '@/components/site/Eyebrow';
 import { CountUp, StaggerOnView, WordReveal, motion, useReducedMotion } from '@/three/motion/motionKit';
 import { MaintenanceDrift } from '@/three/motion/maintenanceDrift';
-import { Cta } from '../shared';
+import { Cta } from '@/components/site/Cta';
 
 // The hero's anchor. Deliberately not the login page's timber frame: this one
 // is the trades themselves — screed, waterproofing, tile, conduit, supply — in

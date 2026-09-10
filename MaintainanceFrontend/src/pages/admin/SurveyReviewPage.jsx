@@ -126,7 +126,7 @@ export default function SurveyReviewPage() {
           ) : null}
         </div>
         {survey.returnedReason ? (
-          <p className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+          <p className="mt-2 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             Sent back: {survey.returnedReason}
           </p>
         ) : null}

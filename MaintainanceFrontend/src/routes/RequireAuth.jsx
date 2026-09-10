@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { RouteFallback } from './PageOutlet';
 import { useAuth } from '@/hooks/useAuth';
 import { FIELD_ROLES } from '@/config/constants';
 
@@ -11,8 +12,14 @@ import { FIELD_ROLES } from '@/config/constants';
  * a field user bounced into the admin shell sees a dashboard they cannot act on.
  */
 export function RequireAuth({ roles, capability, redirectTo = '/login', fallbackTo }) {
-  const { isAuthenticated, role, can } = useAuth();
+  const { isAuthenticated, isReady, role, can } = useAuth();
   const location = useLocation();
+
+  // The session is restored in the background so the public site never waits on
+  // it, which means a deep link into the back office can render before the
+  // refresh has answered. Redirecting on that in-between state would bounce a
+  // signed-in user to the login form on every cold load.
+  if (!isReady) return <RouteFallback className="min-h-dvh" />;
 
   if (!isAuthenticated) {
     return <Navigate to={redirectTo} state={{ from: location }} replace />;

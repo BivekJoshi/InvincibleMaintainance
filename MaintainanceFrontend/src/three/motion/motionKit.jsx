@@ -34,6 +34,12 @@ export const scaleIn = {
   exit: { opacity: 0, scale: 0.98, transition: { duration: 0.15 } },
 };
 
+/** The rise-into-place a card uses when its grid scrolls in. */
+export const cardRise = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
+};
+
 export const slideRight = {
   hidden: { opacity: 0, x: -12 },
   show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: EASE } },

@@ -33,10 +33,12 @@ import { ClosingCta } from './sections/ClosingCta';
  * `./sections/`. An unknown key, or a section the API sent empty, renders
  * nothing rather than an empty band.
  *
- * Two things every section obeys. Surfaces are shadcn primitives — <Card>,
- * <Badge>, <Separator> — never a hand-rolled `rounded-xl border bg-card`. And
- * every picture goes in a <Media> slot, so the layout is identical before and
- * after an editor uploads one.
+ * Three things every section obeys. Surfaces are shadcn primitives — <Card>,
+ * <Badge>, <Separator> — never a hand-rolled `rounded-xl border bg-card`. Every
+ * picture goes in a <Media> slot, so the layout is identical before and after
+ * an editor uploads one. And no section picks its own background: the `tone`
+ * it is handed alternates down the page, so reordering two sections in the CMS
+ * can never leave three of the same surface stacked on top of each other.
  */
 const SECTIONS = {
   hero: StorefrontHero,
@@ -60,6 +62,20 @@ const SECTIONS = {
   cta_form: ClosingCta,
 };
 
+/**
+ * Surfaces that are not the page's alternating paper/muted pair. `own` is a
+ * band that paints itself — the hero and the promise ribbon — and takes no
+ * part in the rhythm; `ink` is a dark interruption, which ends the run so the
+ * band after it opens on paper again.
+ */
+const SURFACE = { hero: 'own', quick_inquiry: 'own', stats: 'ink', cta_form: 'ink' };
+
+/** A section the API sent with nothing in it is not a section. */
+function isEmpty(data) {
+  if (!data) return true;
+  return Array.isArray(data) ? data.length === 0 : Object.keys(data).length === 0;
+}
+
 export default function HomePage() {
   const locale = useSelector(selectLocale);
   const { data, isLoading, error, refetch } = useGetHomeQuery(locale);
@@ -67,13 +83,31 @@ export default function HomePage() {
   if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
   if (isLoading) return <HomeSkeleton />;
 
-  return (
-    <PageTransition>
-      {data.sections.map((section) => {
-        const Component = SECTIONS[section.key];
-        if (!Component || !section.data) return null;
-        return <Component key={section.key} section={section} media={data.media} settings={data.settings} />;
-      })}
-    </PageTransition>
-  );
+  // Tones are assigned in one pass rather than inside each section, because a
+  // section cannot know what is above it — and it is what is above it that
+  // decides whether it should be paper or muted.
+  let alternation = 0;
+  const bands = [];
+
+  for (const section of data.sections) {
+    const Component = SECTIONS[section.key];
+    if (!Component || isEmpty(section.data)) continue;
+
+    const surface = SURFACE[section.key];
+    const tone = surface ?? (alternation % 2 === 0 ? 'paper' : 'muted');
+    if (surface === 'ink') alternation = 0;
+    else if (!surface) alternation += 1;
+
+    bands.push(
+      <Component
+        key={section.key}
+        section={section}
+        media={data.media}
+        settings={data.settings}
+        tone={tone === 'own' ? undefined : tone}
+      />,
+    );
+  }
+
+  return <PageTransition>{bands}</PageTransition>;
 }

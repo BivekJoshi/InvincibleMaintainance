@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Timer, Briefcase, FileText, Receipt, Package, ShieldCheck,
-  Image, Settings, Menu, X, LogOut, Moon, Sun, Bell, ChevronDown, ClipboardCheck,
+  Image, Settings, Menu, X, LogOut, Bell, ChevronDown, ClipboardCheck,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
+import { useIdlePreload } from '@/hooks/useIdlePreload';
+import { PageOutlet } from '@/routes/PageOutlet';
 import { useLogoutMutation } from '@/api/authApi';
 import { useGetNotificationsQuery } from '@/api/dashboardApi';
-import { selectTheme, setTheme } from '@/redux/slices/uiSlice';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { ThemeModeSwitch } from '@/components/theme/ThemeModeSwitch';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -42,9 +44,8 @@ const NAV = [
 ];
 
 export function AdminLayout() {
+  useIdlePreload('admin');
   const { user, role, can } = useAuth();
-  const dispatch = useDispatch();
-  const theme = useSelector(selectTheme);
   const navigate = useNavigate();
   const [logout] = useLogoutMutation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -161,14 +162,7 @@ export function AdminLayout() {
               ) : null}
             </Button>
 
-            <Button
-              variant="ghost" size="icon"
-              onClick={() => dispatch(setTheme(theme === 'dark' ? 'light' : 'dark'))}
-              aria-label="Toggle theme"
-            >
-              <Sun className="h-4 w-4 dark:hidden" />
-              <Moon className="hidden h-4 w-4 dark:block" />
-            </Button>
+            <ThemeToggle />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -186,6 +180,14 @@ export function AdminLayout() {
                   <p className="text-xs font-normal text-muted-foreground">{user?.email}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {/* The bar's button flips light and dark; the preference —
+                    including following the device — is set here, where a
+                    setting belongs. */}
+                <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+                  <span className="text-sm">Theme</span>
+                  <ThemeModeSwitch size="sm" />
+                </div>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem asChild><Link to="/">View website</Link></DropdownMenuItem>
                 {role === 'TECHNICIAN' || role === 'ADMIN' ? (
                   <DropdownMenuItem asChild><Link to="/tech">Technician view</Link></DropdownMenuItem>
@@ -199,7 +201,7 @@ export function AdminLayout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6"><Outlet /></main>
+        <main className="flex-1 p-4 sm:p-6"><PageOutlet /></main>
       </div>
     </div>
   );

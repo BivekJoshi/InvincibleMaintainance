@@ -67,7 +67,7 @@ function Section({ title, surveys, muted }) {
                 {s.service?.name ?? 'General'} · {formatDate(s.job?.scheduledStart)}
               </p>
               {s.returnedReason ? (
-                <p className="mt-1.5 rounded bg-rose-50 px-2 py-1 text-xs text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+                <p className="mt-1.5 rounded border border-destructive/25 bg-destructive/10 px-2 py-1 text-xs text-destructive">
                   {s.returnedReason}
                 </p>
               ) : null}

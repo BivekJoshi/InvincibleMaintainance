@@ -1,15 +1,16 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SectionHeading, SectionShell, ServiceCard } from '@/components/site/siteBlocks';
-import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
-import { RISE } from '../shared';
+import { SectionHeading } from '@/components/site/SectionHeading';
+import { SectionShell } from '@/components/site/SectionShell';
+import { ServiceCard } from '@/components/site/ServiceCard';
+import { Stagger, StaggerOnView, cardRise } from '@/three/motion/motionKit';
 
-export function PopularServices({ section, media }) {
+export function PopularServices({ section, media, tone }) {
   const services = Array.isArray(section.data) ? section.data : [];
   if (!services.length) return null;
   return (
-    <SectionShell>
+    <SectionShell tone={tone}>
       <SectionHeading
         eyebrow="Book online"
         title="Popular services"
@@ -22,7 +23,7 @@ export function PopularServices({ section, media }) {
       />
       <StaggerOnView className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.06}>
         {services.map((service) => (
-          <Stagger.Item key={service.id} variants={RISE} className="h-full">
+          <Stagger.Item key={service.id} variants={cardRise} className="h-full">
             <ServiceCard service={service} media={media} />
           </Stagger.Item>
         ))}

@@ -1,25 +1,27 @@
 import { ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Eyebrow, Media, SectionShell } from '@/components/site/siteBlocks';
+import { Eyebrow } from '@/components/site/Eyebrow';
+import { Media } from '@/components/site/Media';
+import { SectionShell } from '@/components/site/SectionShell';
 import { HeadlineReveal, Reveal } from '@/three/motion/motionKit';
-import { Cta } from '../shared';
+import { Cta } from '@/components/site/Cta';
 
 /** Seepage: the symptom list beside the explanation of what causes it. */
-export function ExplainerBlock({ section, media }) {
+export function ExplainerBlock({ section, media, tone }) {
   const { block, checkpoints = [] } = section.data ?? {};
   if (!block) return null;
   return (
-    <SectionShell tone="muted">
+    <SectionShell tone={tone}>
       <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
         <Reveal>
           <Eyebrow>Diagnosis</Eyebrow>
           <HeadlineReveal
             as="h2"
             text={block.heading}
-            className="mt-2 text-2xl font-bold tracking-tight md:text-[1.75rem]"
+            className="mt-2.5 text-[1.6rem] font-bold leading-[1.15] tracking-tight md:text-[2rem]"
           />
           {block.subheading ? (
-            <p className="mt-3 border-l-2 border-gold pl-4 text-[15px] leading-relaxed">{block.subheading}</p>
+            <p className="mt-4 border-l-2 border-gold pl-4 text-[15px] leading-relaxed">{block.subheading}</p>
           ) : null}
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{block.body}</p>
           {block.cta ? (

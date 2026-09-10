@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { ClipboardList, ClipboardCheck, LogOut, CloudOff, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useIdlePreload } from '@/hooks/useIdlePreload';
+import { PageOutlet } from '@/routes/PageOutlet';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 import { useLogoutMutation } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
@@ -25,6 +27,7 @@ const ROLE_LABELS = {
  * iOS home indicator.
  */
 export function TechLayout() {
+  useIdlePreload('tech');
   // The manifest is what makes the browser offer to install this, and its
   // start_url is /tech — so it is linked only while the field app is on screen.
   // A customer reading the marketing site should never be offered a job sheet.
@@ -64,7 +67,7 @@ export function TechLayout() {
           type="button"
           onClick={drain}
           disabled={!online || syncing}
-          className="flex w-full items-center justify-center gap-2 bg-amber-100 px-4 py-2 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+          className="flex w-full items-center justify-center gap-2 surface-warning px-4 py-2 text-xs font-medium"
         >
           {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <CloudOff className="h-3.5 w-3.5" aria-hidden />}
           {!online
@@ -73,7 +76,7 @@ export function TechLayout() {
         </button>
       ) : null}
 
-      <main className="flex-1 p-4 pb-24"><Outlet /></main>
+      <main className="flex-1 p-4 pb-24"><PageOutlet /></main>
 
       <nav
         className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-background/95 backdrop-blur"

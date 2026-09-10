@@ -84,11 +84,7 @@ export function DataTable({
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-primary/20"
             >
-              <motion.div
-                className="h-full w-1/3 bg-primary"
-                animate={{ x: ['-100%', '300%'] }}
-                transition={{ repeat: Infinity, duration: 1.1, ease: 'linear' }}
-              />
+              <div className="animate-indeterminate h-full w-1/3 bg-primary" />
             </motion.div>
           ) : null}
         </AnimatePresence>
