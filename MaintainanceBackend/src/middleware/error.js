@@ -39,6 +39,14 @@ export function errorHandler(err, req, res, _next) {
     status = 400;
     code = 'PRISMA_VALIDATION';
     message = 'Malformed database query';
+    // Usually a query the code built wrong, since bodies and query strings are
+    // zod-validated first. It stays a 400 because a few list parameters (?sort,
+    // some ?status filters) still reach Prisma unchecked, but it is logged at
+    // warn: at debug level two real bugs of this kind went unnoticed for weeks.
+    logger.warn(
+      { url: req.originalUrl, method: req.method, prisma: err.message.trim().split('\n').pop() },
+      'prisma rejected a query',
+    );
   }
 
   if (status >= 500) {

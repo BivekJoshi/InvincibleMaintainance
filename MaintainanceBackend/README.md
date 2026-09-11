@@ -47,8 +47,29 @@ customer → approved quotation → completed job → warranty → part-paid inv
 npm run dev          API with reload            npm run db:migrate
 npm start            production                 npm run db:seed
 npm run worker       standalone job worker      npm run db:studio
-npm test             vitest (42 tests)          npm run db:reset
+npm test             unit suite, no database    npm run db:reset
+npm run test:api     every route over HTTP      npm run test:api:prepare
 ```
+
+## API tests
+
+`npm run test:api` drives every route over HTTP against a real, seeded database —
+auth, public, CRM, surveys, operations, the field app, finance, aftercare, platform
+and all sixteen CMS resources, including RBAC and the error envelope. It refuses to
+run against any database whose name does not end in `_test`.
+
+```bash
+sudo -u postgres psql -c "CREATE DATABASE maintainance_test OWNER maintainance;"   # once
+npm run test:api:prepare    # migrate + seed it — once, or whenever you want a clean slate
+npm run test:api
+```
+
+Every test creates the records it acts on and reads seed data without changing it, so the
+suite runs repeatedly against the same database with no reset in between. `test:api:prepare`
+wraps `prisma migrate reset`, which Prisma refuses to run from an AI agent without a human's
+consent — run it yourself. Point the suite elsewhere with `TEST_DATABASE_URL`. Files run one at
+a time in a single process, because they share the database and the app's in-memory rate-limit
+store.
 
 ## Redis is optional
 
@@ -72,7 +93,8 @@ src/
   routes/              public · auth · tech · admin/{cms,crm,ops,finance,aftercare,platform}
   queues/ crons/       SLA sweep, overdue invoices, AMC visits, reminders
 prisma/                schema.prisma · seed.js · seed-data.js
-tests/                 money, BS dates, phone, state machines, permissions, SLA, schemas
+tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas
+tests/api/             every route over supertest, against a database whose name ends in _test
 ```
 
 ### Three ideas hold the code together

@@ -243,6 +243,21 @@ async function driveJobToInProgress(job, userId) {
 /** DRAFT|RETURNED -> SUBMITTED. Also closes the inspection visit it belongs to. */
 export async function submitSurvey(id, input = {}, actor = {}) {
   const { note, ...draft } = input;
+
+  // Status before payload. An offline device replays the submit it queued, body
+  // and all. Saving that body first made a replay's answer depend on whether it
+  // carried one: bare, it returned the survey; with lines, saveDraft refused it
+  // with a different error. Now every replay of a survey still SUBMITTED returns
+  // it unchanged, and one the office has moved on (IN_REVIEW, QUOTED) is refused
+  // with INVALID_TRANSITION. canTransition treats same -> same as legal, which is
+  // what makes the SUBMITTED case a no-op rather than a second completion.
+  const current = await prisma.siteSurvey.findFirst({ where: { id, deletedAt: null }, select: { status: true } });
+  if (!current) throw notFound('Survey');
+  if (current.status !== 'DRAFT' && current.status !== 'RETURNED') {
+    assertTransition(SURVEY_TRANSITIONS, current.status, 'SUBMITTED', 'survey');
+    return getSurvey(id);
+  }
+
   if (Object.keys(draft).length) await saveDraft(id, draft, actor);
 
   const survey = await prisma.siteSurvey.findFirst({
@@ -250,13 +265,6 @@ export async function submitSurvey(id, input = {}, actor = {}) {
     include: { items: true, job: { select: { id: true, number: true, status: true, type: true } } },
   });
   if (!survey) throw notFound('Survey');
-  // An offline device may replay this. canTransition treats same -> same as legal,
-  // so without an early return the visit would be completed a second time and the
-  // office notified again. Return what is already there instead.
-  if (survey.status !== 'DRAFT' && survey.status !== 'RETURNED') {
-    assertTransition(SURVEY_TRANSITIONS, survey.status, 'SUBMITTED', 'survey');
-    return getSurvey(id);
-  }
   if (!survey.items.length) {
     throw unprocessable('Add at least one material or labour line before submitting the survey');
   }

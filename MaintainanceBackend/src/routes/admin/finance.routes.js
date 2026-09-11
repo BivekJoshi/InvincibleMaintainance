@@ -41,9 +41,16 @@ router.post('/invoices/:id/payments', requires('payments:write'), validate({ par
 router.delete('/invoices/:id/payments/:paymentId', requires('payments:write'),
   asyncHandler(async (req, res) => { await invoices.deletePayment(req.params.id, req.params.paymentId); noContent(res); }));
 
+router.get('/payments', requires('payments:read'), validate({ query: s.paymentListQuery }), asyncHandler(async (req, res) => {
+  const { items, meta } = await invoices.listPayments(req.validatedQuery);
+  ok(res, items, meta);
+}));
+
 // ── expenses
 router.get('/expenses', requires('expenses:read'), validate({ query: listQuery.passthrough() }),
   asyncHandler(async (req, res) => { const { items, meta } = await invoices.expenses.list(req.query); ok(res, items, meta); }));
+router.get('/expenses/:id', requires('expenses:read'), validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await invoices.expenses.get(req.params.id))));
 router.post('/expenses', requires('expenses:write'), validate({ body: s.expenseSchema }),
   asyncHandler(async (req, res) => created(res, await invoices.expenses.create(req.body, req.user.id))));
 router.put('/expenses/:id', requires('expenses:write'), validate({ params: idParam, body: toPartial(s.expenseSchema) }),

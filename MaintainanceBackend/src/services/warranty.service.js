@@ -350,6 +350,16 @@ export async function createReminder(data) {
   return prisma.serviceReminder.create({ data });
 }
 
+/** A pending reminder can be moved or reworded; one already sent is history. */
+export async function updateReminder(id, data) {
+  const row = await prisma.serviceReminder.findUnique({ where: { id } });
+  if (!row) throw notFound('Service reminder');
+  if (row.status !== 'pending') {
+    throw unprocessable(`This reminder was already ${row.status} and can no longer be changed`);
+  }
+  return prisma.serviceReminder.update({ where: { id }, data });
+}
+
 export async function deleteReminder(id) {
   await prisma.serviceReminder.delete({ where: { id } });
 }

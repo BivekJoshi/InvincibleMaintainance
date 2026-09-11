@@ -246,6 +246,36 @@ export async function deletePayment(invoiceId, paymentId) {
   });
 }
 
+/**
+ * Every payment received, searchable by the reference a customer quotes — an
+ * eSewa transaction id, a cheque number — which is how a payment is actually
+ * reconciled. The collections report sums a period; this finds one payment.
+ */
+export async function listPayments(query) {
+  const { page, limit, skip, take, orderBy, q } = parseListQuery(query, { defaultSort: '-receivedAt' });
+  const received = dateRange(query.from, query.to);
+  const where = {
+    invoice: { deletedAt: null, ...(query.customerId ? { customerId: query.customerId } : {}) },
+    ...(query.method ? { method: query.method } : {}),
+    ...(received ? { receivedAt: received } : {}),
+    ...(q ? {
+      OR: [
+        { reference: { contains: q, mode: 'insensitive' } },
+        { invoice: { number: { contains: q, mode: 'insensitive' } } },
+        { invoice: { customer: { name: { contains: q, mode: 'insensitive' } } } },
+      ],
+    } : {}),
+  };
+  const [items, total] = await Promise.all([
+    prisma.payment.findMany({
+      where, orderBy, skip, take,
+      include: { invoice: { select: { id: true, number: true, status: true, customer: { select: { id: true, name: true } } } } },
+    }),
+    prisma.payment.count({ where }),
+  ]);
+  return { items, meta: meta({ page, limit, total }) };
+}
+
 export async function getByPublicToken(token) {
   const inv = await prisma.invoice.findFirst({
     where: { publicToken: token, deletedAt: null },
@@ -305,6 +335,13 @@ export const expenses = {
       prisma.expense.count({ where }),
     ]);
     return { items, meta: meta({ page, limit, total }) };
+  },
+  async get(id) {
+    const row = await prisma.expense.findFirst({
+      where: { id, deletedAt: null }, include: { job: { select: { id: true, number: true } } },
+    });
+    if (!row) throw notFound('Expense');
+    return row;
   },
   async create(data, userId) {
     return prisma.expense.create({ data: { ...data, amount: toPaisa(data.amount), approvedBy: userId ?? null } });

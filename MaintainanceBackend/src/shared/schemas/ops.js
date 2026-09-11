@@ -58,6 +58,21 @@ export const jobUpdateSchema = z.object({
   isBillable: z.coerce.boolean().optional(),
 });
 
+/** POST /admin/quotations/:id/convert-to-job — only what the quotation does not already know. */
+export const quotationToJobSchema = z.object({
+  type: z.enum(JOB_TYPES).default('REPAIR'),
+  title: z.string().trim().min(2).max(250).optional(),
+  description: optionalText,
+  priority: z.enum(PRIORITIES).default('NORMAL'),
+  scheduledStart: z.coerce.date().optional(),
+  scheduledEnd: z.coerce.date().optional(),
+  templateId: z.string().optional().nullable(),
+  technicianIds: z.array(z.string()).max(20).optional(),
+  leadTechnicianId: z.string().optional(),
+}).refine((v) => !v.scheduledStart || !v.scheduledEnd || v.scheduledEnd > v.scheduledStart, {
+  message: 'End time must be after the start time', path: ['scheduledEnd'],
+});
+
 export const jobStatusSchema = z.object({
   status: z.enum(JOB_STATUSES),
   note: z.string().trim().max(2000).optional(),
@@ -103,6 +118,17 @@ export const jobMaterialSchema = z.object({
 
 export const timeLogStartSchema = z.object({ note: z.string().trim().max(500).optional() });
 export const timeLogStopSchema = z.object({ note: z.string().trim().max(500).optional() });
+
+/** Labour recorded by the office. Give an end time or a duration. */
+export const timeLogCreateSchema = z.object({
+  technicianId: z.string().min(1),
+  startedAt: z.coerce.date(),
+  endedAt: z.coerce.date().optional(),
+  minutes: z.coerce.number().int().min(1).max(24 * 60).optional(),
+  note: z.string().trim().max(500).optional(),
+})
+  .refine((v) => v.endedAt || v.minutes, { message: 'Give an end time or a duration in minutes', path: ['minutes'] })
+  .refine((v) => !v.endedAt || v.endedAt > v.startedAt, { message: 'End time must be after the start time', path: ['endedAt'] });
 
 export const jobCompleteSchema = z.object({
   note: z.string().trim().max(4000).optional(),
@@ -243,6 +269,17 @@ export const invoiceListQuery = z.object({
   status: z.enum(INVOICE_STATUSES).optional(),
   customerId: z.string().optional(),
   overdueOnly: z.coerce.boolean().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+});
+
+export const paymentListQuery = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  sort: z.string().optional(),
+  q: z.string().trim().max(200).optional(),
+  method: z.enum(PAYMENT_METHODS).optional(),
+  customerId: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
 });

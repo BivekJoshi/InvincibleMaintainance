@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-09. Plan and phases: `docs/PLAN.md`.
+Updated 2026-09-11. Plan and phases: `docs/PLAN.md`.
 
 ## Done
 
@@ -103,12 +103,35 @@ Frontend screens for modules whose APIs already exist (`docs/API.md`):
 
 ## Verification
 
-- 42 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas).
+- 59 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas) — `npm test`.
+- 347 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
+  route in `docs/API.md`, RBAC per role and the error envelope, and runs twice in a row without a reset.
 - Full pipeline exercised over HTTP against a live database: lead → SLA breach → response →
   customer → quotation → public approval → job → checklist → materials → completion → warranty →
   claim → free rework job → invoice → payments → PAID.
 - Migration + seed verified on a throwaway database from empty.
 - Both apps rendered in headless Chrome with zero runtime errors.
+
+## API audit — 2026-09-11
+
+The HTTP suite found three defects, all fixed and now covered:
+
+- `POST /admin/jobs/:id/publish-case-study` failed on every call — it included a Job relation named
+  `caseStudy` that does not exist (it is `project`). The seeded case study was written by the seed,
+  so the endpoint itself had never run.
+- `PATCH /admin/list-items/reorder` failed on every call — the CRUD factory wrote `sortOrder` to a
+  model that orders by `position`. The factory now takes an `orderField`.
+- `POST /admin/jobs` with a `quotationId` marked the quotation `CONVERTED` whatever its status, so a
+  draft could become work without the customer ever approving it. It now asserts APPROVED → CONVERTED.
+
+A replayed `survey_submit` now answers the same way whatever payload it carries (a no-op while the
+survey is `SUBMITTED`). Prisma validation errors are logged at warn instead of debug — both
+always-failing endpoints above had been answering 400 with nothing in the logs.
+
+Gaps filled: `POST /admin/quotations/:id/convert-to-job`, `POST|DELETE /admin/jobs/:id/time-logs`
+(labour when the timer was never started), `GET /admin/payments` (find a payment by its reference),
+`PUT /admin/service-reminders/:id`, and `GET /:id` for technicians, job templates and expenses.
+`docs/API.md` rewritten to match what is actually mounted.
 
 ## Known gaps
 
@@ -116,3 +139,5 @@ Frontend screens for modules whose APIs already exist (`docs/API.md`):
   and print cleanly. Add Puppeteer if a real PDF file is required.
 - The S3 storage driver is a documented seam; local disk is the supported default.
 - Turnstile is wired but inert until `TURNSTILE_SECRET` is set.
+- An unknown `?sort=` field still reaches Prisma and returns a generic 400 `PRISMA_VALIDATION`
+  rather than naming the fields a list can be sorted by.

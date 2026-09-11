@@ -11,6 +11,8 @@ import { convertLead } from '../../services/convert.service.js';
 import { makeCrud } from '../../services/crud.service.js';
 import { recordAudit } from '../../services/audit.service.js';
 import * as s from '../../shared/schemas/crm.js';
+import * as jobs from '../../services/job.service.js';
+import { quotationToJobSchema } from '../../shared/schemas/ops.js';
 
 const router = Router();
 const readLeads = requires('leads:read');
@@ -124,6 +126,11 @@ router.post('/quotations/:id/send', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await quotations.sendQuotation(req.params.id))));
 router.post('/quotations/:id/revise', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => created(res, await quotations.reviseQuotation(req.params.id, req.user.id))));
+// Scheduling the crew is dispatch's call, so this takes jobs:write rather than
+// quotations:write — SALES can win the work but not put people on it.
+router.post('/quotations/:id/convert-to-job', requires('jobs:write'),
+  validate({ params: idParam, body: quotationToJobSchema }),
+  asyncHandler(async (req, res) => created(res, await jobs.createJobFromQuotation(req.params.id, req.body, req.user.id))));
 router.delete('/quotations/:id', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => { await quotations.deleteQuotation(req.params.id); noContent(res); }));
 

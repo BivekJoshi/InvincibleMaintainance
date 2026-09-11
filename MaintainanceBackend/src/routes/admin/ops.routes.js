@@ -11,6 +11,7 @@ import { prisma } from '../../lib/prisma.js';
 import * as s from '../../shared/schemas/ops.js';
 import { caseStudySchema } from '../../shared/schemas/cms.js';
 import { publishJobAsCaseStudy } from '../../services/casestudy.service.js';
+import { can } from '../../shared/permissions.js';
 
 const router = Router();
 const readJobs = requires('jobs:read');
@@ -76,6 +77,11 @@ router.post('/jobs/:id/materials', writeJobs, validate({ params: idParam, body: 
 router.delete('/jobs/:id/materials/:jobMaterialId', writeJobs,
   asyncHandler(async (req, res) => { await jobs.removeMaterial(req.params.id, req.params.jobMaterialId, req.user.id); noContent(res); }));
 
+router.post('/jobs/:id/time-logs', writeJobs, validate({ params: idParam, body: s.timeLogCreateSchema }),
+  asyncHandler(async (req, res) => created(res, await jobs.addTimeLog(req.params.id, req.body))));
+router.delete('/jobs/:id/time-logs/:logId', writeJobs,
+  asyncHandler(async (req, res) => { await jobs.removeTimeLog(req.params.id, req.params.logId); noContent(res); }));
+
 router.delete('/jobs/:id', writeJobs, validate({ params: idParam }),
   asyncHandler(async (req, res) => { await jobs.deleteJob(req.params.id); noContent(res); }));
 
@@ -102,6 +108,11 @@ router.get('/technicians', readTech, validate({ query: s.technicianListQuery }),
     orderBy: { employeeCode: 'asc' },
   }))));
 
+router.get('/technicians/:id', readTech, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await jobs.getTechnician(req.params.id, {
+    withRate: can(req.user.role, 'technicians:write'),
+  }))));
+
 router.post('/technicians', writeTech, validate({ body: s.technicianSchema }),
   asyncHandler(async (req, res) => created(res, await prisma.technician.create({
     data: { ...req.body, hourlyRate: req.body.hourlyRate != null ? Math.round(req.body.hourlyRate * 100) : null },
@@ -126,6 +137,8 @@ const templates = makeCrud({ model: 'jobTemplate', label: 'Job template', search
 router.get('/job-templates', readJobs, asyncHandler(async (req, res) => {
   const { items, meta } = await templates.list(req.query); ok(res, items, meta);
 }));
+router.get('/job-templates/:id', readJobs, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await templates.get(req.params.id))));
 router.post('/job-templates', writeJobs, validate({ body: s.jobTemplateSchema }),
   asyncHandler(async (req, res) => created(res, await templates.create(req.body))));
 router.put('/job-templates/:id', writeJobs, validate({ params: idParam, body: toPartial(s.jobTemplateSchema) }),

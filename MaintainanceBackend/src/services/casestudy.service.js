@@ -41,7 +41,8 @@ export async function publishJobAsCaseStudy(jobId, input = {}, userId) {
       lead: { select: { serviceId: true, service: { select: { id: true, name: true, categoryId: true } } } },
       survey: { select: { problemSummary: true, diagnosis: true, recommendation: true, areaValue: true, areaUnit: true } },
       photos: { where: { kind: { in: ['BEFORE', 'AFTER'] } }, orderBy: { createdAt: 'asc' } },
-      caseStudy: { select: { id: true, slug: true } },
+      // Job.project is the case study a finished job was published as.
+      project: { select: { id: true, slug: true } },
       invoiceItems: { select: { amount: true } },
     },
   });
@@ -49,8 +50,8 @@ export async function publishJobAsCaseStudy(jobId, input = {}, userId) {
   if (!['COMPLETED', 'VERIFIED'].includes(job.status)) {
     throw unprocessable(`Job ${job.number} is ${job.status.toLowerCase()} — only finished work becomes a case study`);
   }
-  if (job.caseStudy) {
-    throw conflict('This job has already been published as a case study', { projectId: job.caseStudy.id });
+  if (job.project) {
+    throw conflict('This job has already been published as a case study', { projectId: job.project.id });
   }
 
   const service = job.lead?.service ?? null;

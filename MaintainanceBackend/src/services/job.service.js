@@ -5,7 +5,7 @@ import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.j
 import { nextNumber } from '../utils/numbering.js';
 import { toPaisa, sum } from '../utils/money.js';
 import { addDays, startOfDay, endOfDay } from '../utils/dates.js';
-import { JOB_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
+import { JOB_TRANSITIONS, QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { publicToken } from '../utils/tokens.js';
@@ -76,6 +76,14 @@ export async function createJob(input, userId) {
     const site = await prisma.customerSite.findFirst({ where: { id: rest.siteId, customerId: rest.customerId, deletedAt: null } });
     if (!site) throw badRequest('That site does not belong to this customer');
   }
+  if (rest.quotationId) {
+    const quotation = await prisma.quotation.findFirst({ where: { id: rest.quotationId, deletedAt: null } });
+    if (!quotation) throw badRequest('That quotation does not exist');
+    if (quotation.customerId !== rest.customerId) throw badRequest('That quotation belongs to another customer');
+    // Only approved work becomes a job. Without this, a job pointing at a draft
+    // marked it CONVERTED and the customer's approval step simply never happened.
+    assertTransition(QUOTATION_TRANSITIONS, quotation.status, 'CONVERTED', 'quotation');
+  }
 
   let tasks = [];
   if (templateId) {
@@ -115,6 +123,35 @@ export async function createJob(input, userId) {
 
   if (technicianIds.length) await announceAssignment(job, technicianIds);
   return job;
+}
+
+/**
+ * The work order that carries out an approved quotation.
+ *
+ * The quotation already knows the customer, the site and the lead, so the
+ * dispatcher supplies only what it does not: when, who, and which checklist.
+ * createJob asserts APPROVED -> CONVERTED, so a draft or a declined quotation
+ * cannot become work by this route either.
+ */
+export async function createJobFromQuotation(quotationId, input, userId) {
+  const quotation = await prisma.quotation.findFirst({
+    where: { id: quotationId, deletedAt: null },
+    include: {
+      lead: { select: { service: { select: { name: true } } } },
+      items: { orderBy: { sortOrder: 'asc' }, take: 1, select: { description: true } },
+    },
+  });
+  if (!quotation) throw notFound('Quotation');
+  const { title, ...rest } = input;
+  const what = quotation.lead?.service?.name ?? quotation.items[0]?.description ?? 'Work';
+  return createJob({
+    ...rest,
+    customerId: quotation.customerId,
+    siteId: quotation.siteId,
+    leadId: quotation.leadId,
+    quotationId: quotation.id,
+    title: title ?? `${what} — ${quotation.number}`,
+  }, userId);
 }
 
 async function announceAssignment(job, technicianIds) {
@@ -421,6 +458,38 @@ export async function stopTimer(jobId, technicianId, note) {
   });
 }
 
+/**
+ * Labour an office user records by hand — the timer was never started, or the
+ * work was logged on paper. Costing reads time logs, so without this a
+ * forgotten timer was a job that cost nothing in labour, permanently.
+ * Only a technician on the job can be credited with time on it.
+ */
+export async function addTimeLog(jobId, { technicianId, startedAt, endedAt, minutes, note }) {
+  const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null }, select: { id: true } });
+  if (!job) throw notFound('Job');
+  const assigned = await prisma.jobAssignment.findFirst({ where: { jobId, technicianId } });
+  if (!assigned) throw unprocessable('That technician is not assigned to this job');
+
+  const start = new Date(startedAt);
+  const end = endedAt ? new Date(endedAt) : new Date(start.getTime() + minutes * 60_000);
+  return prisma.timeLog.create({
+    data: {
+      jobId,
+      technicianId,
+      startedAt: start,
+      endedAt: end,
+      minutes: minutes ?? Math.max(1, Math.round((end - start) / 60_000)),
+      note: note ?? null,
+    },
+    include: { technician: { include: { user: { select: { id: true, name: true } } } } },
+  });
+}
+
+export async function removeTimeLog(jobId, logId) {
+  const { count } = await prisma.timeLog.deleteMany({ where: { id: logId, jobId } });
+  if (!count) throw notFound('Time log');
+}
+
 // ── costing
 
 /** Labour + materials + expenses against what was invoiced. */
@@ -540,6 +609,17 @@ function findConflicts(jobs) {
 // ── technician-scoped access
 
 /** Resolves the Technician row for a logged-in user, rejecting non-technicians. */
+/** One technician. The labour rate is returned only to a caller allowed to set it. */
+export async function getTechnician(id, { withRate = false } = {}) {
+  const tech = await prisma.technician.findFirst({
+    where: { id, deletedAt: null },
+    include: { user: { select: { id: true, name: true, email: true, phone: true, role: true, isActive: true } } },
+  });
+  if (!tech) throw notFound('Technician');
+  if (!withRate) delete tech.hourlyRate;
+  return tech;
+}
+
 export async function technicianForUser(userId) {
   const tech = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
   if (!tech) throw forbidden('Your account is not linked to a technician profile');

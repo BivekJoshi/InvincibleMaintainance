@@ -41,6 +41,8 @@ router.get('/service-reminders', staff, validate({ query: listQuery.passthrough(
   asyncHandler(async (req, res) => { const { items, meta } = await w.listReminders(req.query); ok(res, items, meta); }));
 router.post('/service-reminders', manage, validate({ body: s.serviceReminderSchema }),
   asyncHandler(async (req, res) => created(res, await w.createReminder(req.body))));
+router.put('/service-reminders/:id', manage, validate({ params: idParam, body: toPartial(s.serviceReminderSchema) }),
+  asyncHandler(async (req, res) => ok(res, await w.updateReminder(req.params.id, req.body))));
 router.delete('/service-reminders/:id', manage, validate({ params: idParam }),
   asyncHandler(async (req, res) => { await w.deleteReminder(req.params.id); noContent(res); }));
 

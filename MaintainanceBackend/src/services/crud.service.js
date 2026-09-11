@@ -13,7 +13,10 @@ import { toPaisa } from '../utils/money.js';
  * @param {string} [opts.label]          Human label used in error messages
  * @param {string[]} [opts.searchFields] Fields included in ?q search
  * @param {boolean} [opts.softDelete]    Model has a deletedAt column
- * @param {boolean} [opts.sortable]      Model has a sortOrder column
+ * @param {boolean} [opts.sortable]      Model has a manual order column
+ * @param {string} [opts.orderField]     That column — `sortOrder` unless the model numbers its rows
+ *                                      another way (ListItem uses `position`). The reorder body is
+ *                                      always `{ id, sortOrder }`; this maps it onto the column.
  * @param {boolean} [opts.slugFrom]      Field to derive a unique slug from
  * @param {string[]} [opts.moneyFields]  Fields submitted in rupees, stored as paisa
  * @param {object} [opts.include]        Default Prisma include
@@ -27,10 +30,11 @@ export function makeCrud(opts) {
     searchFields = [],
     softDelete = true,
     sortable = true,
+    orderField = 'sortOrder',
     slugFrom = null,
     moneyFields = [],
     include,
-    defaultSort = sortable ? 'sortOrder' : '-createdAt',
+    defaultSort = sortable ? orderField : '-createdAt',
     filter,
   } = opts;
 
@@ -132,7 +136,7 @@ export function makeCrud(opts) {
     async reorder(items) {
       if (!sortable) return;
       await prisma.$transaction(
-        items.map((i) => db().update({ where: { id: i.id }, data: { sortOrder: i.sortOrder } })),
+        items.map((i) => db().update({ where: { id: i.id }, data: { [orderField]: i.sortOrder } })),
       );
       await invalidatePublic();
     },
@@ -141,7 +145,7 @@ export function makeCrud(opts) {
     async published(where = {}, take) {
       return db().findMany({
         where: { isActive: true, ...(softDelete ? { deletedAt: null } : {}), ...where },
-        orderBy: sortable ? [{ sortOrder: 'asc' }, { createdAt: 'desc' }] : { createdAt: 'desc' },
+        orderBy: sortable ? [{ [orderField]: 'asc' }, { createdAt: 'desc' }] : { createdAt: 'desc' },
         ...(take ? { take } : {}),
         ...(include ? { include } : {}),
       });

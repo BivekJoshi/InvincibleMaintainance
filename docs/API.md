@@ -1,97 +1,124 @@
 # API Surface — `/api/v1`
 
 Conventions: `{ data, meta }` on success · `{ error: { code, message, details } }` on failure ·
-lists accept `?page&limit&sort&q` plus per-resource filters · all mutations audited.
+lists accept `?page&limit&sort&q` plus per-resource filters · all mutations audited ·
+money in requests is **rupees**, in responses **integer paisa**.
+
+Every route below is exercised over HTTP by `npm run test:api`
+(`MaintainanceBackend/tests/api/`), against a database whose name ends in `_test`.
 
 ## Public (no auth, rate-limited, cached 60s where marked ⚡)
+
+Content endpoints take `?locale=en|ne`.
 
 ```
 GET  /public/bootstrap              ⚡ settings + nav + home sections + booking rules in one call
 GET  /public/home                   ⚡ every visible home section, hydrated, in order
 GET  /public/services               ⚡ ?category&featured
 GET  /public/services/:slug         ⚡ + related projects, faqs
-GET  /public/projects                 ?service=<slug>&category=<slug>  case studies               ⚡ ?category&status
+GET  /public/projects               ⚡ ?service=<slug>&category=<slug>   case studies
 GET  /public/projects/:slug         ⚡
-GET  /public/offers                 ⚡ active window only
-GET  /public/pricing                ⚡ pricing plans + rate card
+GET  /public/offers                   active window only, cached 30s
+GET  /public/pricing                ⚡ pricing plans + rate card + priced services
 GET  /public/gallery                ⚡
 GET  /public/testimonials           ⚡ approved only
 GET  /public/faqs                   ⚡ ?group
 GET  /public/posts  /posts/:slug    ⚡
 GET  /public/pages/:slug            ⚡
-POST /public/estimate                 { serviceId, qty, unit } -> { min, max, breakdown }
+POST /public/estimate                 { serviceId | pricingPlanId, qty } -> { min, max, breakdown }
 GET  /public/availability             ?from&days  free survey capacity per day and slot
                                       demand = scheduled INSPECTION jobs + booking leads still
                                       NEW/CONTACTED (past that they have a Job and would double-count)
                                       cached 30s; a full slot is flagged, never rejected
-POST /public/leads                    honeypot + turnstile + rate limit -> creates Lead
+POST /public/leads                    honeypot + timing + turnstile + rate limit -> creates Lead
                                       online booking adds { preferredAt, preferredSlot },
                                       which sets source=booking; a closed weekday is rejected
 GET  /public/quotations/:token        customer views a quotation
-POST /public/quotations/:token/decide { decision: approve|reject, note }
+POST /public/quotations/:token/decide { decision: approve|reject, note }   once — a second is 422
+GET  /public/invoices/:token          customer views an invoice (read-only; paid offline)
 GET  /public/warranties/:token
-POST /public/warranties/:token/claim
-GET  /sitemap.xml   /robots.txt
+POST /public/warranties/:token/claim  { description }   one open claim at a time — a second is 422
+GET  /sitemap.xml   /robots.txt   /json-ld              ?origin=https://…
 ```
+
+A CMS write (create, update, toggle, reorder, delete, restore) invalidates the public cache, so
+the change is visible on the next request rather than after the TTL.
 
 ## Auth
 
 ```
-POST /auth/login            -> access token + httpOnly refresh cookie
-POST /auth/refresh
-POST /auth/logout
-POST /auth/forgot-password
+POST /auth/login            -> { user, accessToken } + httpOnly refresh cookie
+POST /auth/refresh          rotates the cookie; the previous one stops working
+POST /auth/logout           revokes the refresh token
+POST /auth/forgot-password  same answer for known and unknown emails
 POST /auth/reset-password
-POST /auth/change-password
+POST /auth/change-password  revokes every existing session
 GET  /auth/me
 ```
 
+Five failed logins lock an account for 15 minutes; a disabled account is refused at login and
+on its next authenticated request.
+
 ## Admin — CMS (`ADMIN`, `EDITOR`)
 
-Full CRUD for each, plus `PATCH /:resource/reorder` and `PATCH /:id/toggle`:
+Every resource below gets the same eight endpoints from one factory: `GET /`, `GET /:id`,
+`POST /`, `PUT /:id` (partial), `PATCH /:id/toggle`, `PATCH /reorder { items: [{ id, sortOrder }] }`,
+`DELETE /:id` (soft; `?hard=true` removes the row) and `PATCH /:id/restore`.
 
 ```
-/admin/settings                 GET, PATCH (bulk)
-/admin/media                    GET, POST (upload), PATCH, DELETE ; /admin/media/folders
-/admin/home-sections            GET, PATCH reorder/visibility
 /admin/hero-slides
 /admin/service-categories
 /admin/services
-/admin/projects                 + /:id/images
+/admin/projects                 + POST /:id/images, PATCH /:id/images/reorder, DELETE /:id/images/:imageId
 /admin/offers
 /admin/pricing-plans
-/admin/rate-card
 /admin/features                 ?group=
-/admin/list-items               ?group=
+/admin/list-items               ?group=   ordered by `position` — reorder maps sortOrder onto it
 /admin/content-blocks
 /admin/process-steps
-/admin/testimonials             + PATCH /:id/approve
+/admin/testimonials             + PATCH /:id/approve   (testimonials:moderate)
 /admin/gallery
 /admin/faqs
 /admin/pages  /admin/posts  /admin/post-categories
-/admin/translations             GET/PUT ?model&recordId
+
+/admin/home-sections            GET, PUT { items: [{ key, sortOrder, isVisible, settings? }] }
+/admin/translations             GET ?model&recordId, PUT { model, recordId, values }
+
+/admin/settings                 GET (settings:read), PATCH { values } (ADMIN only)
+/admin/media                    GET, POST (images, multipart `files`), GET /:id, PUT /:id, DELETE /:id
+/admin/media/documents          POST (PDFs and other files)
+/admin/media/folders            GET, POST, DELETE /:id
 ```
 
 ## Admin — CRM (`ADMIN`, `SALES`)
 
 ```
-GET    /admin/leads                 ?status&assignedTo&source&slaRisk&from&to
+GET    /admin/leads                 ?status&priority&source&assignedToId&serviceId&slaRisk&from&to&q
 POST   /admin/leads                 manual entry (phone/walk-in)
+GET    /admin/leads/sla-board       at-risk + breached
+GET    /admin/leads/export.csv
+POST   /admin/leads/merge           { primaryId, duplicateIds }
 GET    /admin/leads/:id
-PATCH  /admin/leads/:id
-PATCH  /admin/leads/:id/status
+GET    /admin/leads/:id/duplicates  other leads with the same phone or email
+PUT    /admin/leads/:id
+PATCH  /admin/leads/:id/status      validated transition; LOST needs lostReason
 PATCH  /admin/leads/:id/assign
 POST   /admin/leads/:id/notes
 POST   /admin/leads/:id/activities  logging a call stamps firstResponseAt
-POST   /admin/leads/:id/convert     { createInspectionJob, scheduledStart, scheduledEnd, surveyorId, ... }
-                                    -> { customerId, siteId, quotationId?, jobId? }
+POST   /admin/leads/:id/convert     { customerId?, site?, createQuotation, createInspectionJob,
+                                      scheduledStart, scheduledEnd, surveyorId }
+                                    -> 201 { customer, site, quotation?, job?, survey? }
                                     assigning surveyorId schedules the visit and pre-creates its SiteSurvey
-POST   /admin/leads/merge           { primaryId, duplicateIds }
-GET    /admin/leads/export.csv
-GET    /admin/leads/sla-board       at-risk + breached
+DELETE /admin/leads/:id             soft delete
 
-/admin/customers                    CRUD + /:id/sites CRUD + /:id/timeline
-/admin/quotations                   CRUD + /:id/send + /:id/pdf + /:id/revise + /:id/convert-to-job
+/admin/customers                    CRUD + /:id/sites CRUD + GET /:id/timeline
+/admin/rate-card                    CRUD — quotations:read / quotations:write
+/admin/quotations                   CRUD + POST /:id/send + POST /:id/revise
+POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only
+                                    { type?, title?, description?, priority?, scheduledStart?,
+                                      scheduledEnd?, templateId?, technicianIds?, leadTechnicianId? }
+                                    -> 201 job. Customer, site and lead come from the quotation, which
+                                    becomes CONVERTED. SALES can win the work but not schedule it.
 ```
 
 ## Admin — Site surveys (`ADMIN`, `SALES`; `DISPATCHER` reads)
@@ -106,7 +133,7 @@ GET    /admin/surveys/:id/pricing    priced preview (paisa) + missing[]         
 PATCH  /admin/surveys/:id/review     { status: IN_REVIEW|RETURNED, note }        surveys:write
                                      RETURNED requires a note and SMSes the surveyor
 POST   /admin/surveys/:id/quotation  { items?, discount?, vatApplied?, validUntil?, terms? }
-                                     -> { survey, quotation }  rates in RUPEES   quotations:write
+                                     -> 201 { survey, quotation }  rates in RUPEES   quotations:write
 DELETE /admin/surveys/:id            soft delete, DRAFT only                     surveys:write
 ```
 
@@ -117,35 +144,48 @@ and returns anything unpriceable in `missing[]` with a reason rather than pricin
 ## Admin — Operations (`ADMIN`, `DISPATCHER`)
 
 ```
-GET    /admin/jobs                  ?status&type&technicianId&from&to&customerId
-POST   /admin/jobs
+GET    /admin/jobs                  ?status&type&priority&technicianId&customerId&unassigned&from&to&q
+POST   /admin/jobs                  a quotationId must belong to the customer and be APPROVED
+                                    (it becomes CONVERTED); a templateId pulls its checklist
 GET    /admin/jobs/:id
-PATCH  /admin/jobs/:id
-PATCH  /admin/jobs/:id/status       validated transition, writes JobStatusEvent
+PUT    /admin/jobs/:id
+DELETE /admin/jobs/:id
+PATCH  /admin/jobs/:id/status       validated transition, writes JobStatusEvent;
+                                    ON_HOLD and CANCELLED need a note
 POST   /admin/jobs/:id/assign       { technicianIds, leadTechnicianId }
-POST   /admin/jobs/:id/tasks        + PATCH /tasks/:taskId
-POST   /admin/jobs/:id/photos
-POST   /admin/jobs/:id/materials
-POST   /admin/jobs/:id/time-logs
-POST   /admin/jobs/:id/complete     { note, signature } -> creates Warranty, enables invoicing
+POST   /admin/jobs/:id/tasks        + PATCH /tasks/:taskId + DELETE /tasks/:taskId
+POST   /admin/jobs/:id/photos       { mediaId, kind } + DELETE /photos/:photoId
+POST   /admin/jobs/:id/materials    issues stock + DELETE /materials/:jobMaterialId (reverses it)
+POST   /admin/jobs/:id/time-logs    { technicianId, startedAt, endedAt | minutes, note }
+                                    labour the office records by hand — the timer was never started.
+                                    The technician must be assigned to the job (422 otherwise).
+DELETE /admin/jobs/:id/time-logs/:logId
+POST   /admin/jobs/:id/complete     { note, signatureMediaId, customerRating, ... }
+                                    checklist must be done -> creates Warranty, enables invoicing
+POST   /admin/jobs/:id/verify       COMPLETED -> VERIFIED
 GET    /admin/jobs/:id/costing      labour + materials + expenses vs invoiced
-POST   /admin/jobs/:id/publish-case-study   cms:write · COMPLETED|VERIFIED only
+POST   /admin/jobs/:id/publish-case-study   cms:write · COMPLETED|VERIFIED only · once (409)
                                     pre-fills problem/solution from the survey, duration from the
                                     job, images from its BEFORE/AFTER photos, and the cost as a
                                     +/-20% band. The customer's name is omitted unless opted in.
 
 GET    /admin/dispatch/board        ?date&view=day|week  technicians x timeslots
 GET    /admin/dispatch/unassigned
-GET    /admin/technicians           + CRUD, availability, skills
-GET    /admin/job-templates         + CRUD
+/admin/technicians                  GET ?role&available, GET /:id, POST, PUT /:id, DELETE /:id
+                                    hourlyRate is returned only to callers with technicians:write
+/admin/job-templates                GET, GET /:id, POST, PUT /:id, DELETE /:id
 
-/admin/materials  /admin/material-categories  /admin/suppliers
+/admin/materials  /admin/material-categories  /admin/suppliers    CRUD + PATCH /reorder
 GET  /admin/stock                   derived balances
-POST /admin/stock/movements
 GET  /admin/stock/low
+GET  /admin/stock/movements         ?materialId
+POST /admin/stock/movements
 ```
 
 ## Field app (`TECHNICIAN`, `SURVEYOR` — scoped to own assignments)
+
+`ADMIN` and `DISPATCHER` may also call these; with `?technicianId=` they act on that
+technician's queue, and without one they have an empty queue rather than an error.
 
 ```
 GET   /tech/jobs/today
@@ -153,15 +193,15 @@ GET   /tech/jobs                    ?from&to
 GET   /tech/jobs/:id
 PATCH /tech/jobs/:id/status         EN_ROUTE | IN_PROGRESS | ON_HOLD | COMPLETED
 PATCH /tech/jobs/:id/tasks/:taskId
-POST  /tech/jobs/:id/photos
+POST  /tech/jobs/:id/photos         multipart `files` + `kind`
 POST  /tech/jobs/:id/materials
 POST  /tech/jobs/:id/time/start  |  /time/stop
-POST  /tech/jobs/:id/complete       { note, signatureImage, rating? }
+POST  /tech/jobs/:id/complete       { note, signatureMediaId, customerRating? }
 POST  /tech/sync                    offline mutation queue replay (idempotency keys)
 
 GET   /tech/surveys                 ?status              own surveys
 GET   /tech/surveys/:id
-POST  /tech/jobs/:id/survey         create-or-return for this INSPECTION job (idempotent)
+POST  /tech/jobs/:id/survey         create-or-return for this INSPECTION job (201, then 200)
 PUT   /tech/surveys/:id             save draft — fields + readings + items, FULL REPLACE
 POST  /tech/surveys/:id/submit      DRAFT|RETURNED -> SUBMITTED, closes the inspection job
 POST  /tech/surveys/:id/photos      multipart -> JobPhoto{ kind: 'ISSUE' } on the parent job
@@ -170,40 +210,64 @@ GET   /tech/rate-card               offline reference — id, code, name, unit. 
 ```
 
 `/tech` responses never carry money. `PUT /tech/surveys/:id` accepts quantities only; a
-payload carrying `rate` or `amount` writes nothing. `sync` gains the mutation kinds
-`survey_draft` and `survey_submit`, which address a `surveyId` instead of a `jobId`.
-A replayed `survey_submit` returns 422 `INVALID_TRANSITION` — the client must treat that
-as terminal success and drop it from the queue rather than retrying forever.
+payload carrying `rate` or `amount` is rejected (400), not silently ignored.
+
+`sync` gains the mutation kinds `survey_draft` and `survey_submit`, which address a
+`surveyId` instead of a `jobId`. A replayed `survey_submit` on a survey that is still
+`SUBMITTED` is a no-op: it comes back `applied`, and the survey is unchanged whatever payload
+the replay carries. Once the office has moved the survey on (`IN_REVIEW`, `QUOTED`), a submit is
+refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and drops.
 
 ## Admin — Finance (`ADMIN`, `ACCOUNTANT`)
 
 ```
-/admin/invoices                     CRUD + /:id/send + /:id/pdf + /:id/void
-POST /admin/invoices/from-job/:jobId
-/admin/payments                     CRUD + /:id/receipt.pdf
-/admin/expenses                     CRUD
+/admin/invoices                     GET ?status&customerId&overdueOnly&from&to&q, POST, GET /:id, PUT /:id
+                                    no DELETE — an invoice is voided, never removed
+POST   /admin/invoices/:id/send
+POST   /admin/invoices/:id/void     { reason }
+POST   /admin/invoices/from-job/:jobId          once per job — a second is 422
+POST   /admin/invoices/:id/payments             payments:write · an overpayment is refused;
+                                                status (PARTIAL / PAID) follows the paid total
+DELETE /admin/invoices/:id/payments/:paymentId
+GET    /admin/payments              ?q&method&customerId&from&to    payments:read
+                                    q matches the payment reference, invoice number or customer
+/admin/expenses                     GET, GET /:id, POST, PUT /:id, DELETE /:id
 GET  /admin/reports/aging
 GET  /admin/reports/revenue         ?groupBy=service|month|technician
-GET  /admin/reports/collections
+GET  /admin/reports/collections     ?from&to   payments received, summed by method
 GET  /admin/customers/:id/statement
 ```
 
-## Admin — Aftercare
+## Admin — Aftercare (reads `ADMIN`, `DISPATCHER`, `SALES`; writes `ADMIN`, `DISPATCHER`)
 
 ```
-/admin/warranties                   GET, PATCH ; GET /expiring
-/admin/warranty-claims              GET, PATCH, POST /:id/create-job
-/admin/amc-contracts                CRUD + /:id/visits + /renewals-due
-/admin/service-reminders            CRUD
+/admin/warranties                   GET, GET /expiring ?days, GET /:id, PUT /:id
+/admin/warranty-claims              GET, PATCH /:id { status: accepted|rejected|resolved,
+                                                      rejectReason?, scheduledStart? }
+                                    accepting creates the free WARRANTY job, linked to the original;
+                                    rejecting needs a reason
+/admin/amc-contracts                GET, GET /renewals-due ?days, POST, GET /:id, PUT /:id, DELETE /:id
+                                    POST lays down the visit schedule; visits come back inside GET /:id,
+                                    and a cron turns each into a scheduled job a week before it is due
+/admin/service-reminders            GET, POST, PUT /:id (pending only — 422 once sent), DELETE /:id
 ```
 
-## Admin — Platform (`ADMIN`)
+## Admin — Platform
 
 ```
-/admin/users                        CRUD + /:id/toggle
-GET /admin/audit-logs               ?model&recordId&actorId&from&to
-/admin/message-templates            CRUD
-GET /admin/message-logs
-GET /admin/notifications            + PATCH /:id/read
-GET /admin/dashboard                role-aware widget payload
+/admin/users                        ADMIN · GET, POST, PUT /:id, PATCH /:id/toggle, DELETE /:id
+                                    an admin cannot disable or delete their own account
+GET   /admin/audit-logs             ADMIN · ?model&recordId&actorId&from&to
+/admin/message-templates            ADMIN · GET, POST, PUT /:id, DELETE /:id
+GET   /admin/message-logs           ADMIN · ?status&channel
+GET   /admin/notifications          own only · ?unreadOnly · meta.unread
+PATCH /admin/notifications/:id/read  ·  PATCH /admin/notifications/read-all
+GET   /admin/dashboard              every role · role-aware widget payload
+GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
+GET   /admin/reports/job-margin | /technicians | /warranty-claims   reports:ops
 ```
+
+## Not implemented
+
+- Quotation, invoice and payment-receipt PDFs. The public token pages render the document in
+  HTML and print cleanly; add a headless-browser renderer if a PDF file is required.

@@ -47,7 +47,8 @@ export const projects = makeCrud({
 export const offers = makeCrud({ model: 'offer', label: 'Offer', searchFields: ['title', 'description'], moneyFields: ['priceMin', 'priceMax'] });
 export const pricingPlans = makeCrud({ model: 'pricingPlan', label: 'Pricing plan', searchFields: ['title', 'description'], moneyFields: ['priceMin', 'priceMax'] });
 export const features = makeCrud({ model: 'feature', label: 'Feature', searchFields: ['title', 'description'], filter: (q) => (q.group ? { group: q.group } : {}) });
-export const listItems = makeCrud({ model: 'listItem', label: 'List item', searchFields: ['text'], defaultSort: 'position', filter: (q) => (q.group ? { group: q.group } : {}) });
+// A numbered list: the order IS the number a visitor reads, so it lives in `position`.
+export const listItems = makeCrud({ model: 'listItem', label: 'List item', searchFields: ['text'], orderField: 'position', filter: (q) => (q.group ? { group: q.group } : {}) });
 export const contentBlocks = makeCrud({ model: 'contentBlock', label: 'Content block', searchFields: ['key', 'heading', 'body'] });
 export const processSteps = makeCrud({ model: 'processStep', label: 'Process step', searchFields: ['title', 'description'], defaultSort: 'stepNo' });
 export const galleryImages = makeCrud({ model: 'galleryImage', label: 'Gallery image', searchFields: ['caption'], filter: (q) => (q.projectId ? { projectId: q.projectId } : {}) });
