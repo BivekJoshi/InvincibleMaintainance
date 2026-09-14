@@ -108,6 +108,7 @@ npm test               # vitest
 # frontend
 cd MaintainanceFrontend
 npm run dev            # Vite on :5400
+npm test               # vitest (jsdom)
 ```
 
 Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password123`).
@@ -116,7 +117,10 @@ Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password1
 
 1. Work phase by phase from `docs/ADMIN-PLAN.md` (prompts in `docs/prompts/`). Finish a phase's acceptance criteria before starting the next.
 2. Before adding a model or field, update `docs/DATA-MODEL.prisma` and `docs/API.md` in the same change.
-3. New admin CRUD screens are built from the shared `<DataTable>` / `<ResourceForm>` primitives. Do not hand-roll a fifth variant of a data table.
+3. New admin CRUD screens are built from the admin kit in `MaintainanceFrontend/src/components/common/`:
+   **DataTable v2** (filters, row and bulk actions, page size, trash, reorder) and **`<ResourceForm>`** (declarative
+   fields, server-error mapping, unsaved-changes guard), with `LocaleTabs`, `MediaPicker` and `useConfirm`. The
+   resource registry that turns these into config files arrives in Phase C2. Do not hand-roll another table or form.
 4. Add shadcn components with `npx shadcn@latest add <name>` — do not hand-copy them.
 5. Money, phone numbers, and Nepali text are the three things that break. Test them.
 6. No secrets in the repo. Everything through `.env` with a matching `.env.example` entry.

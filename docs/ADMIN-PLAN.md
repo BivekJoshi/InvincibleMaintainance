@@ -229,7 +229,7 @@ rows and Phase F needs domain events.
   it). The `TechSync` idempotency rows are unchanged and carry no `requestId`; the mutations they replay are
   audited normally. #14 stays open — Phase B added task logging, not retries or a cron leader lock (J2).
 
-### Phase C — Admin UI kit · ~4 days
+### Phase C — Admin UI kit · ~4 days · C1 ✅ done 2026-09-14
 
 Every later screen is built from this, so it is the highest-leverage phase.
 
@@ -254,6 +254,41 @@ Every later screen is built from this, so it is the highest-leverage phase.
 - Regroup the admin nav: Overview · Sales · Operations · Finance · Aftercare · Content · Platform, capability-filtered so an EDITOR lands on Content.
 
 **Acceptance:** FAQs are fully managed (list, filter, create, edit, NE translation, reorder, toggle, trash, restore) from a registry entry alone, with no bespoke page. Adding a second resource takes under an hour.
+
+**Deviations (Phase C1, 2026-09-14)** — built differently from the plan, or beyond it. C1 closed none of the §3 defects
+(none were assigned to it); #13 stays with the phases that touch those routes.
+- **Router:** `AppProviders` now uses a data router (`createBrowserRouter`, one splat route around the unchanged
+  `<AppRoutes>`). `useBlocker`, which the unsaved-changes guard needs for links and the back button, does not work
+  under `<BrowserRouter>`. Only one guard can be active per page, so a second form on a page passes `guard={false}`.
+- **Markdown field:** the public site does not render markdown — `ServiceBody` split plain text on blank lines. The
+  field type is `prose` (`markdown` is accepted as an alias) and its preview uses the same `components/site/ProseBody`
+  the service page now renders with. `splitParagraphs` also treats a whitespace-only line as a paragraph break and
+  drops empty paragraphs, a small change on the public page too.
+- **Beyond the plan (backend):** `slugify` split Devanagari words at every vowel sign and virama (`नेपाली` →
+  `न-प-ल`), because marks (`\p{M}`) counted as separators. Fixed in `src/utils/slug.js`, mirrored in the SPA's
+  `helpers/slug.js`, with a unit test and an API test. `?deleted` is parsed strictly (`true`/`false`, else 400), unlike
+  `includeInactive`/`includeDeleted`, whose `z.coerce.boolean()` reads `'false'` as true — left as it was.
+- **shadcn on Tailwind 3:** `shadcn@latest add` rewrote `tailwind.config.js` (comments stripped, the Devanagari font
+  entry broken as `'Noto Sans Devanagari"'`), so the file was restored; `calendar.jsx` arrived with Tailwind 4-only
+  classes, fixed by hand; `button` and `dialog` were not overwritten; the new overlays match `dialog`; the generated
+  `textarea` got `Input`'s focus and invalid styling; `command.jsx` spreads its `cmdk-input-wrapper` attribute so lint
+  passes. The Radix, `cmdk`, `react-day-picker` and `date-fns` dependencies came with the CLI.
+- **Structure:** `DataTable` became the folder `components/common/DataTable/` (entry `DataTable.jsx`) by the folder
+  rule, and the callers' imports changed. New shared pieces not named in the prompt: `RecordCombobox` with
+  `api/lookupApi.js` (the relation filter and the relation field are the same component), `hooks/useDebouncedValue`,
+  `hooks/useUnsavedChangesGuard`, `api/mediaApi.js`, `api/translationsApi.js`, `src/test/renderWithProviders.jsx`.
+- **List pages:** Quotations and Surveys moved their status selects onto `filters` as well, and Leads gained a
+  "Received" date-range filter (`from`/`to`, which the API already accepted).
+- **Dependencies beyond the expected list:** `@dnd-kit/utilities` (sortable transforms), `blurhash` (thumbnail
+  placeholders), `@testing-library/user-event` and `@testing-library/jest-dom` (interaction tests, DOM matchers).
+- **useConfirm** returns `[confirm, dialogElement]` for the caller to render, rather than an app-wide provider, so
+  alert-dialog stays out of the marketing bundle.
+- **MediaPicker** uploads one file per request, because `POST /admin/media` takes a single `alt` for the batch.
+- **Form values:** money is held in rupees; an empty number, money, date or media field is `undefined` (a mirrored
+  `z.coerce.number()` turns null into 0), an empty relation is `null` (how the API unlinks). A failed save focuses the
+  first failing field once the form is enabled again.
+- **Not browser-tested yet:** ResourceForm, LocaleTabs and MediaPicker have no screen until C2; they are covered by
+  component tests. Lint warnings went 25 → 26 (the generated `toggle.jsx` exports its variants).
 
 ### Phase D — Service listing & CMS · ~6 days
 
@@ -406,7 +441,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 |---|---|---|---|
 | A Safety fixes ✅ 2026-09-14 | 2 | 2 | Correct money, locked quotations, no hard-deleted payments, honest docs |
 | B Logging & audit ✅ 2026-09-14 | 3 | 5 | Redacted request-id logs, complete audit with domain events |
-| C Admin UI kit (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
+| C Admin UI kit (C1 ✅ 2026-09-14 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
 | D Services & CMS (D1 + D2) | 6 | 15 | Editors run the whole public site |
 | E Leads & CRM | 5 | 20 | Sales works entirely in the UI |
 | F Quotation approval (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |

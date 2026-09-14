@@ -23,7 +23,7 @@ Sign in with `admin@gharjatan.com.np` / `Password123` (all seeded logins are in 
 backend README).
 
 ```
-npm run dev      npm run build      npm run preview      npm run lint
+npm run dev      npm run build      npm run preview      npm run lint      npm test
 ```
 
 ### Lint and CI
@@ -37,7 +37,33 @@ component, mostly `three/motion/motionKit.jsx`) are left as warnings: they only 
 
 `.github/workflows/ci.yml` runs on every push to `prabesh`, `admin/**` and `DEVELOPMENT`, and on pull
 requests into `prabesh` or `DEVELOPMENT`. The frontend job, on Node 20: `npm ci` → `npm run lint` →
-`npm run build`. Phase C1 adds `npm test`; Phase F2 adds an end-to-end job.
+`npm test` → `npm run build`. Phase F2 adds an end-to-end job.
+
+### Tests
+
+`npm test` runs [Vitest](https://vitest.dev) once in jsdom (`npm run test:watch` keeps it running).
+`vitest.config.js` reuses `vite.config.js`, so the `@/` alias and the React plugin match the build.
+
+- Tests sit **beside the file they test** as `*.test.js` / `*.test.jsx`.
+- `src/test/setup.js` loads the jest-dom matchers and stubs the browser APIs jsdom lacks (ResizeObserver,
+  matchMedia, pointer capture) that Radix and dnd-kit touch.
+- `src/test/renderWithProviders.jsx` renders a component inside a fresh store and a memory **data** router —
+  the only kind `useBlocker` works in — with `signedInAs(role)` for capability checks.
+- Money, phone numbers and Nepali text are the three things that break (CLAUDE.md rule 5). Test them.
+
+### Dependencies added in Phase C1
+
+| Package | Why |
+|---|---|
+| `@radix-ui/react-{accordion,alert-dialog,collapsible,progress,radio-group,scroll-area,toggle,toggle-group}`, `cmdk`, `react-day-picker`, `date-fns` | Installed by `npx shadcn@latest add` for sheet, alert-dialog, popover, calendar, command, breadcrumb, scroll-area, radio-group, accordion, collapsible, progress and toggle-group. |
+| `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` | Drag-to-reorder in DataTable's reorder mode and the gallery field. `utilities` is the CSS transform helper sortable items need. |
+| `blurhash` | Decodes the blurhash the API stores for every image, so media thumbnails have a placeholder while they load. |
+| `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom` (dev) | The frontend test runner — there was none before C1. |
+
+**shadcn on Tailwind 3:** `shadcn@latest` rewrites `tailwind.config.js` when it adds some components — it strips the
+comments and breaks the Devanagari font entry (`'Noto Sans Devanagari"'`). Run `git checkout tailwind.config.js`
+after `add` unless the component really needs a config change, and decline overwriting `button` and `dialog`,
+which are edited. `calendar.jsx` also arrived with a few Tailwind 4-only classes, fixed by hand.
 
 ---
 
@@ -105,7 +131,10 @@ the live cost estimator; contact; and the customer self-service pages for quotat
 and warranty claims, both opened from an SMS link with no login.
 
 **Back office** — login, role-aware dashboard, the SLA response board, and the leads table with
-status/response/source filters, URL-persisted, CSV export.
+status/response/source/received-date filters, URL-persisted, CSV export.
+
+**Admin kit (Phase C1)** — DataTable v2, `<ResourceForm>` with 16 field types, `LocaleTabs`, `MediaPicker`,
+`ConfirmDialog` / `useConfirm`. See `src/STRUCTURE.md` → "The admin kit".
 
 **Technician** — mobile-first `/tech` with today's jobs, tap-to-call, tap-to-navigate, and
 one-tap status advance.

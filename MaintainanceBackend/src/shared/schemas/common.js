@@ -16,6 +16,11 @@ export const listQuery = z.object({
   to: z.string().optional(),
   includeInactive: z.coerce.boolean().optional(),
   includeDeleted: z.coerce.boolean().optional(),
+  /**
+   * Trash view: only soft-deleted rows. Parsed strictly, because z.coerce.boolean()
+   * reads the string 'false' as true.
+   */
+  deleted: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
 });
 
 export const nepaliPhone = z

@@ -1,5 +1,6 @@
 import { AlertCircle } from 'lucide-react';
-import { Input, Textarea } from '@/components/ui/input';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
 /** One labelled field with its error, so four of them cannot drift apart. */

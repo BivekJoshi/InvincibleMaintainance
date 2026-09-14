@@ -58,10 +58,17 @@ describe.each(Object.entries(RESOURCES))('/admin/%s', (path, body) => {
   });
 
   it('DELETE soft-deletes, PATCH /:id/restore brings it back, ?hard=true is ADMIN only (cms:purge)', async () => {
+    const ids = async (query) => expectStatus(await editor.get(`/admin/${path}?limit=100&sort=-createdAt${query}`), 200)
+      .data.map((r) => r.id);
     expectStatus(await editor.delete(`/admin/${path}/${id}`), 204);
     expectStatus(await editor.get(`/admin/${path}/${id}`), 404);
+    // ?deleted=true is the trash view: only soft-deleted rows, and the row leaves the normal list.
+    expect(await ids('&deleted=true')).toContain(id);
+    expect(await ids('')).not.toContain(id);
     expectStatus(await editor.patch(`/admin/${path}/${id}/restore`), 200);
     expectStatus(await editor.get(`/admin/${path}/${id}`), 200);
+    expect(await ids('&deleted=true')).not.toContain(id);
+    expect(await ids('&deleted=false')).toContain(id);
     expectStatus(await editor.delete(`/admin/${path}/${id}?hard=true`), 403);
     expectStatus(await editor.get(`/admin/${path}/${id}`), 200);
     expectStatus(await (await as('ADMIN')).delete(`/admin/${path}/${id}?hard=true`), 204);
@@ -102,6 +109,16 @@ describe('resource specifics', () => {
     expectStatus(await editor.delete(`/admin/media/${doomed.id}?hard=true`), 403);
     expectStatus(await editor.delete(`/admin/media/${doomed.id}`), 204);
     expectStatus(await (await as('ADMIN')).delete(`/admin/media/${doomed.id}?hard=true`), 204);
+  });
+
+  it('?deleted must be true or false — anything else is a 400, not a silent full list', async () => {
+    const res = expectStatus(await editor.get('/admin/faqs?deleted=yes'), 400);
+    expect(res.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('a Devanagari title keeps its vowel signs in the slug', async () => {
+    const row = expectStatus(await editor.post('/admin/service-categories').send({ name: `नेपाली सेवा ${uid()}` }), 201).data;
+    expect(row.slug.startsWith('नेपाली-सेवा-')).toBe(true);
   });
 
   it('SALES cannot write CMS content', async () => {

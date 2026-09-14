@@ -1,6 +1,6 @@
 # Lint, unit tests, the HTTP API suite against a real Postgres, and the frontend build.
 # Runs on every push to the working branches and on pull requests into them.
-# Phase C1 adds the frontend `npm test` step; Phase F2 adds the end-to-end job.
+# Phase F2 adds the end-to-end job.
 name: CI
 
 on:
@@ -82,7 +82,7 @@ jobs:
         run: npm run test:api
 
   frontend:
-    name: Frontend · lint, build
+    name: Frontend · lint, test, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -103,6 +103,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Unit and component tests
+        run: npm test
 
       - name: Build
         run: npm run build

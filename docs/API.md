@@ -85,6 +85,13 @@ Every resource below gets the same eight endpoints from one factory: `GET /`, `G
 anyone else gets 403 `FORBIDDEN` and nothing is deleted. The same applies to `DELETE /admin/media/:id?hard=true`,
 which also removes the stored file and its variants.
 
+`GET /?deleted=true` is the **trash view**: only soft-deleted rows, paginated, sorted and searchable like the normal
+list, with the same capability (`cms:read`). `?deleted=false` or no parameter lists live rows only. Any other value
+is 400 `BAD_REQUEST` (`details: [{ path: 'deleted', … }]`). `PATCH /:id/restore` brings a row back.
+
+A slug derived from a title (`slugFrom`) keeps Devanagari as-is, vowel signs and virama included:
+`नेपाली सेवा` → `नेपाली-सेवा`, then `-2`, `-3`… if taken.
+
 ```
 /admin/hero-slides
 /admin/service-categories

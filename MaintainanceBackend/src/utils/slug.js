@@ -1,11 +1,17 @@
-/** URL slug that preserves Devanagari as-is and transliterates nothing. */
+/**
+ * URL slug that preserves Devanagari as-is and transliterates nothing.
+ *
+ * Marks (\p{M}) are part of a word: Devanagari vowel signs, the virama and the
+ * anusvara are all marks, and treating them as separators turned "नेपाली" into
+ * "न-प-ल". The SPA's src/helpers/slug.js is a copy — change both together.
+ */
 export function slugify(input) {
   return String(input)
     .normalize('NFKC')
     .toLowerCase()
     .trim()
     .replace(/['"’]/g, '')
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 120);
 }

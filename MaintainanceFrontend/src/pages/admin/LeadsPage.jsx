@@ -5,11 +5,10 @@ import { useGetLeadsQuery, useLazyExportLeadsCsvQuery } from '@/api/leadsApi';
 import { useListParams } from '@/hooks/useListParams';
 import { toastError } from '@/redux/slices/uiSlice';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable';
+import { DataTable } from '@/components/common/DataTable/DataTable';
 import { SlaChip } from '@/components/common/SlaChip';
 import { StatusBadge, PriorityBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageTransition } from '@/three/motion/motionKit';
 import { LEAD_STATUSES, LEAD_SOURCES } from '@/config/constants';
 import { formatDate, formatDateTime, titleCase } from '@/helpers/format';
@@ -55,6 +54,16 @@ const columns = [
   { key: 'createdAt', header: 'Received', sortable: true, cell: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</span> },
 ];
 
+const filters = [
+  { key: 'status', label: 'Status', type: 'enum', allLabel: 'All statuses', options: LEAD_STATUSES.map((s) => ({ value: s, label: titleCase(s) })) },
+  {
+    key: 'slaRisk', label: 'Response', type: 'enum', allLabel: 'Any response state', className: 'w-[180px]',
+    options: [{ value: 'breached', label: 'Deadline passed' }, { value: 'at_risk', label: 'Due soon' }, { value: 'ok', label: 'On track' }],
+  },
+  { key: 'source', label: 'Source', type: 'enum', allLabel: 'All sources', className: 'w-[150px]', options: LEAD_SOURCES.map((s) => ({ value: s, label: titleCase(s) })) },
+  { key: 'received', label: 'Received', type: 'dateRange' },
+];
+
 export default function LeadsPage() {
   const [params, setParams] = useListParams({ limit: 20 });
   const { data, isLoading, isFetching, error, refetch } = useGetLeadsQuery(params);
@@ -64,9 +73,9 @@ export default function LeadsPage() {
 
   const exportCsv = async () => {
     // Paging belongs to the table; the export takes every row the filters match.
-    const { page: _page, limit: _limit, ...filters } = params;
+    const { page: _page, limit: _limit, ...query } = params;
     try {
-      const csv = await fetchCsv(filters).unwrap();
+      const csv = await fetchCsv(query).unwrap();
       // res.text() drops the byte-order mark the API sends. Put it back, or Excel
       // opens the file as ANSI and every Devanagari name turns to mojibake.
       const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
@@ -109,35 +118,7 @@ export default function LeadsPage() {
         searchPlaceholder="Search name, phone, address…"
         emptyTitle="No leads match these filters"
         emptyDescription="Clear the filters, or wait for the next enquiry from the website."
-        toolbar={
-          <>
-            <Select value={params.status ?? 'all'} onValueChange={(v) => setParams({ ...params, page: 1, status: v === 'all' ? undefined : v })}>
-              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {LEAD_STATUSES.map((s) => <SelectItem key={s} value={s}>{titleCase(s)}</SelectItem>)}
-              </SelectContent>
-            </Select>
-
-            <Select value={params.slaRisk ?? 'all'} onValueChange={(v) => setParams({ ...params, page: 1, slaRisk: v === 'all' ? undefined : v })}>
-              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Response" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any response state</SelectItem>
-                <SelectItem value="breached">Deadline passed</SelectItem>
-                <SelectItem value="at_risk">Due soon</SelectItem>
-                <SelectItem value="ok">On track</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={params.source ?? 'all'} onValueChange={(v) => setParams({ ...params, page: 1, source: v === 'all' ? undefined : v })}>
-              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Source" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sources</SelectItem>
-                {LEAD_SOURCES.map((s) => <SelectItem key={s} value={s}>{titleCase(s)}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </>
-        }
+        filters={filters}
       />
     </PageTransition>
   );

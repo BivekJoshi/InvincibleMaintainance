@@ -1,7 +1,7 @@
 import { CheckCircle2 } from 'lucide-react';
 import { DocumentNotice } from '@/components/documents/DocumentNotice';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
 /** Below this, a description is not enough for a technician to act on. */

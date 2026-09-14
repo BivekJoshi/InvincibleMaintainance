@@ -21,10 +21,12 @@ Updated 2026-09-14. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLA
 | 11 Site surveys | SURVEYOR role, survey capture, pricing preview, survey → quotation, offline queue | ✅ |
 | **v2 · A Safety fixes** | Convert priced by `documentTotals` and atomic, quotation expiry at decide time + `quotation:expire`, DRAFT-only edits, payment void (no hard delete), `transitionLead`, `cms:purge`, CSV export via RTK Query, real booking timing, ESLint in both apps, GitHub Actions CI, doc housekeeping | ✅ 2026-09-14 |
 | **v2 · B Logging & audit** | Request context (AsyncLocalStorage) and `X-Request-Id`; pino redaction, phone masking, context mixin, `LOG_FILE` via pino-roll, optional Sentry; `AuditLog` gains `requestId` / `userAgent` / `actorType` / `event` / `before` / `after`; audit rows written inside the caller's transaction for all 7 write operations, one row per id on bulk writes; 38 named domain events (`AUDIT_EVENTS`, 7 more reserved for F); `GET /admin/audit-logs` filters | ✅ 2026-09-14 |
+| **v2 · C1 Admin UI primitives** | shadcn sheet/alert-dialog/textarea/popover/calendar/command/breadcrumb/scroll-area/radio-group/accordion/collapsible/progress/toggle-group; Vitest + Testing Library as `npm test` (in CI); DataTable v2 (row and bulk actions, page size, URL-synced filter bar, trash via `?deleted=true`, dnd-kit reorder with move buttons); `<ResourceForm>` with 16 field types, server-error mapping and an unsaved-changes guard (data router); `LocaleTabs`; `MediaPicker` with alt-required upload; `ConfirmDialog` / `useConfirm`; Devanagari slug fix in the API | ✅ 2026-09-14 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, leads (list + detail), the site-survey inbox and review screen, the
-quotation builder, and the field app for technicians and surveyors.
+quotation builder, the field app for technicians and surveyors, and the admin UI kit every later
+screen is built from (DataTable v2, ResourceForm, LocaleTabs, MediaPicker, useConfirm).
 
 ## Site surveys — how the business actually runs
 
@@ -95,12 +97,12 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A and B are done; next is **Phase C1 — Admin UI primitives** (`docs/prompts/PHASE-C1-ui-primitives.md`).
+Phases A, B and C1 are done; next is **Phase C2 — resource registry, admin shell & first resource** (`docs/prompts/PHASE-C2-registry-shell.md`).
 
 ## Verification
 
-- 89 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas, logging) — `npm test`.
-- 397 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
+- 92 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas, logging, slugs) — `npm test`.
+- 399 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
   route in `docs/API.md`, RBAC per role and the error envelope, and runs twice in a row without a reset.
 - Phase A (2026-09-14): unit 59 → 62, API 347 → 368; every new test was run against the old code first and
   failed there. `npm run lint` is clean in the backend and has 0 errors (25 `react-refresh` warnings, kept on
@@ -113,6 +115,16 @@ Phases A and B are done; next is **Phase C1 — Admin UI primitives** (`docs/pro
   `api.2026-09-14.1.log`, 9 lines, `grep -c Bearer` = 0, neither the access token nor the refresh cookie present,
   and that request id on the request line (with `userId`) and on its two `AuditLog` rows (`Setting` upsert and
   `settings.changed`, both with before/after).
+- Phase C1 (2026-09-14): backend unit 89 → 92, API 397 → 399 (the trash list, strict `?deleted`, Devanagari
+  slugs); the Devanagari slug test failed on the old `slugify` (`नेपाली` → `न-प-ल`). The frontend has a test runner
+  for the first time: **40 tests in 6 files** — money rupees↔paisa (0, 1 paisa, 1,23,45,678.90), Kathmandu time,
+  Devanagari slugs, `useListParams` ↔ URL, DataTable selection / page size / reorder and rollback / search re-sync /
+  trash, ResourceForm 400 and 409 mapping, focus, the leave guard and slug following, `useConfirm`. `npm run lint`:
+  0 errors in both apps (26 `react-refresh` warnings in the frontend); `npm run build` succeeds.
+- Phase C1 browser walk-through (headless Chrome, dev servers, `sales@gharjatan.com.np`): Leads, Quotations and
+  Surveys page, sort and search; the Leads status, response, source and received-date filters write the URL, survive
+  a reload and Back from a lead's detail page, and "Clear filters" empties them; `?limit=2` shows 2 rows over 3 pages,
+  Next goes to page 2, and choosing 10 rows per page shows all 5 on one page; no console errors.
 - Phase A browser walk-through (headless Chrome against the dev servers): signed in as
   `sales@gharjatan.com.np`, exported leads filtered to NEW — the first export call was forced to 401, the page
   refreshed once and retried, both calls carried the Bearer token, and the file (UTF-8 BOM) held exactly the 2

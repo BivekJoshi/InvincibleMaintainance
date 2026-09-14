@@ -52,8 +52,15 @@ export function makeCrud(opts) {
     return out;
   };
 
+  /** `deleted` is the trash view (only soft-deleted rows); `includeDeleted` shows both. */
+  const deletedWhere = (query) => {
+    if (!softDelete) return {};
+    if (query.deleted === true || query.deleted === 'true') return { deletedAt: { not: null } };
+    return query.includeDeleted ? {} : { deletedAt: null };
+  };
+
   const baseWhere = (query = {}) => ({
-    ...(softDelete && !query.includeDeleted ? { deletedAt: null } : {}),
+    ...deletedWhere(query),
     ...(query.includeInactive ? {} : query.onlyActive ? { isActive: true } : {}),
     ...(filter ? filter(query) : {}),
   });

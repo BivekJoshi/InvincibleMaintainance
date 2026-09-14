@@ -2,9 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import { useGetQuotationsQuery } from '@/api/quotationsApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable';
+import { DataTable } from '@/components/common/DataTable/DataTable';
 import { StatusBadge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageTransition } from '@/three/motion/motionKit';
 import { QUOTATION_STATUSES } from '@/config/constants';
 import { formatDate, formatDateTime, formatNpr, titleCase } from '@/helpers/format';
@@ -34,6 +33,10 @@ const columns = [
   { key: 'createdAt', header: 'Created', sortable: true, cell: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</span> },
 ];
 
+const filters = [
+  { key: 'status', label: 'Status', type: 'enum', allLabel: 'All statuses', options: QUOTATION_STATUSES.map((s) => ({ value: s, label: titleCase(s) })) },
+];
+
 export default function QuotationsPage() {
   const [params, setParams] = useListParams({ limit: 20 });
   const { data, isLoading, isFetching, error, refetch } = useGetQuotationsQuery(params);
@@ -56,15 +59,7 @@ export default function QuotationsPage() {
         searchPlaceholder="Search number or customer…"
         emptyTitle="No quotations yet"
         emptyDescription="Build one from a submitted site survey, or start from a lead."
-        toolbar={
-          <Select value={params.status ?? 'all'} onValueChange={(v) => setParams({ ...params, page: 1, status: v === 'all' ? undefined : v })}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {QUOTATION_STATUSES.map((s) => <SelectItem key={s} value={s}>{titleCase(s)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        }
+        filters={filters}
       />
     </PageTransition>
   );
