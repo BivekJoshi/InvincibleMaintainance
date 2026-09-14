@@ -29,6 +29,12 @@ K  Optional customer accounts (email signup)   after launch
 
 Finish a phase's acceptance criteria before starting the next (CLAUDE.md rule 1).
 
+## Branches
+
+All phase work starts from **`prabesh`** (created from `DEVELOPMENT`; it already carries this plan and
+these prompts). Each session creates its `admin/phase-…` branch from `prabesh`; you merge each phase
+branch back into `prabesh`, and `prabesh` into `DEVELOPMENT` whenever you choose.
+
 ## Before Phase A — one-time, by hand
 
 The API suite needs a database whose name ends in `_test`. Its prepare step wraps
@@ -69,7 +75,7 @@ Every prompt asks the session to:
 
 1. Check that the previous phase's work is present, and **stop if it is not**.
 2. Read the listed files and post a short plan (files to touch, migrations, open questions) **before** editing.
-3. Work on a local branch and **ask your permission before every commit** — showing the changed files
+3. Work on a local branch created from `prabesh` and **ask your permission before every commit** — showing the changed files
    and the proposed message; nothing is committed without your yes.
 4. Write the failing test first for every backend behaviour change.
 5. Run the phase's verification commands.
@@ -80,7 +86,7 @@ Every prompt asks the session to:
    needed — reason", anything skipped and why, follow-ups.
 8. Stop — never push, open a pull request, merge, or start the next phase.
 
-**Between phases (you):** review the work, push / open pull requests / merge however you prefer, then
+**Between phases (you):** review the work, merge the phase branch into `prabesh` (and `prabesh` into `DEVELOPMENT` when you choose), then
 paste the next prompt into a fresh session. CI (added in Phase A) runs lint, unit and API tests when
 you push; C1 adds frontend tests and F2 the end-to-end test.
 

@@ -121,8 +121,8 @@ A11 · Doc housekeeping (ADMIN-PLAN §8)
 - STATUS.md: replace "Next" with a pointer to docs/ADMIN-PLAN.md and record Phase A.
 
 A12 · Continuous integration (GitHub Actions)
-The repo has no CI and its remote is GitHub. Add .github/workflows/ci.yml, triggered on pull
-requests into DEVELOPMENT and pushes to DEVELOPMENT:
+The repo has no CI and its remote is GitHub. Add .github/workflows/ci.yml, triggered on pushes
+to `prabesh`, `admin/**` phase branches and DEVELOPMENT, and on pull requests into `prabesh` or DEVELOPMENT:
 - backend job: Node 20, `npm ci`, `npx prisma generate`, `npm run lint`, `npm test`; a postgres:16
   service with a database named maintainance_test; `npx prisma migrate deploy` and `npm run db:seed`
   against it (not migrate reset); then `npm run test:api`. Set DATABASE_URL / TEST_DATABASE_URL and
@@ -147,11 +147,11 @@ ACCEPTANCE
 - .github/workflows/ci.yml is in place and its commands match the package.json scripts (it runs when you push).
 
 GIT
-- Work on a local branch `admin/phase-a-safety-fixes` created from DEVELOPMENT.
+- Work on a local branch `admin/phase-a-safety-fixes` created from `prabesh`.
 - ASK ME BEFORE EVERY COMMIT. When a logical chunk of work is ready, show `git status --short`,
   a one-line summary of the change, and the proposed message in the repo's style
   (`feat(api): …`, `fix(web): …`); commit only after I say yes. If I say no, keep working uncommitted.
-- This is the first phase; start from DEVELOPMENT.
+- This is the first phase; start from `prabesh`.
 - Do NOT push, open a pull request or merge. I review the work and handle git myself.
 
 DOCS — part of the definition of done; update them together with the code they describe (in the same commit), not at the end

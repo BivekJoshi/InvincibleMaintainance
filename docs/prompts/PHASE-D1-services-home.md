@@ -78,11 +78,11 @@ Editors manage categories, services, media, home-section order and hero slides w
 changes; the rate card is managed by sales/admin; every change is audited (Phase B).
 
 GIT
-- Work on a local branch `admin/phase-d1-services-home` created from DEVELOPMENT.
+- Work on a local branch `admin/phase-d1-services-home` created from `prabesh`.
 - ASK ME BEFORE EVERY COMMIT. When a logical chunk of work is ready, show `git status --short`,
   a one-line summary of the change, and the proposed message in the repo's style
   (`feat(api): …`, `fix(web): …`); commit only after I say yes. If I say no, keep working uncommitted.
-- Before starting, check that Phase C2's work is present on DEVELOPMENT (its files and migrations
+- Before starting, check that Phase C2's work is present on `prabesh` (its files and migrations
   exist). If it is not, STOP and tell me.
 - Do NOT push, open a pull request or merge. I review the work and handle git myself.
 

@@ -113,7 +113,7 @@ Gaps against the intended business process:
 
 Each phase ends with acceptance criteria. Estimates assume one developer working with Claude Code.
 
-C, D, F and H each run as two prompts (C1/C2, D1/D2, F1/F2, H1/H2) so every session stays focused. Sessions work on a local branch, ask the owner before every commit, and stop; the owner reviews the work and handles branches, pull requests and merges between phases.
+C, D, F and H each run as two prompts (C1/C2, D1/D2, F1/F2, H1/H2) so every session stays focused. Sessions branch from `prabesh`, ask the owner before every commit, and stop; the owner reviews the work, merges each phase branch into `prabesh`, and later merges `prabesh` into `DEVELOPMENT`.
 
 ### Phase A — Safety fixes · ~2 days
 
@@ -132,7 +132,7 @@ Frontend
 - Docs housekeeping (§8).
 
 CI
-- GitHub Actions on pushes and pull requests to `DEVELOPMENT`: lint, unit tests, API tests against a Postgres service, frontend build. C1 adds frontend tests; F2 adds the end-to-end test.
+- GitHub Actions on pushes to `prabesh`, phase branches and `DEVELOPMENT`, and on pull requests into `prabesh` or `DEVELOPMENT`: lint, unit tests, API tests against a Postgres service, frontend build. C1 adds frontend tests; F2 adds the end-to-end test.
 
 **Acceptance:** each fix has an API test that fails on the old code. `npm test`, `npm run test:api` and `npm run lint` are green, locally and in CI.
 

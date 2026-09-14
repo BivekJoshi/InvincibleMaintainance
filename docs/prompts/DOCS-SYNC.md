@@ -1,7 +1,7 @@
 # Docs sync — reconcile documentation with the code
 
 Run any time: after a phase, after ad-hoc changes, before a release. Docs only. ~1–2 hours.
-Branch `docs/sync-<date>`.
+Branch `docs/sync-<date>` created from `prabesh`.
 
 ````text
 You are working in the InvincibleMaintainance repo. Your only job is to make the documentation

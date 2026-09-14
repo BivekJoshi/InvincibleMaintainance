@@ -157,7 +157,7 @@ from a phone in Nepali or English, and can never see another customer's data. A 
 the new surface (auth, linking, IDOR, enumeration) is written into docs/SECURITY-REVIEW.md.
 
 GIT
-- Work on a local branch `admin/phase-k-customer-accounts` created from DEVELOPMENT.
+- Work on a local branch `admin/phase-k-customer-accounts` created from `prabesh`.
 - ASK ME BEFORE EVERY COMMIT. When a logical chunk of work is ready, show `git status --short`,
   a one-line summary of the change, and the proposed message in the repo's style
   (`feat(api): …`, `fix(web): …`); commit only after I say yes. If I say no, keep working uncommitted.
