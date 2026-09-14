@@ -9,7 +9,7 @@ import * as customers from '../../services/customer.service.js';
 import * as quotations from '../../services/quotation.service.js';
 import { convertLead } from '../../services/convert.service.js';
 import { makeCrud } from '../../services/crud.service.js';
-import { recordAudit } from '../../services/audit.service.js';
+import { recordEvent } from '../../services/audit.service.js';
 import * as s from '../../shared/schemas/crm.js';
 import * as jobs from '../../services/job.service.js';
 import { quotationToJobSchema } from '../../shared/schemas/ops.js';
@@ -28,7 +28,7 @@ router.get('/leads/sla-board', readLeads, asyncHandler(async (_req, res) => ok(r
 
 router.get('/leads/export.csv', readLeads, validate({ query: s.leadListQuery }), asyncHandler(async (req, res) => {
   const csv = await leads.exportLeadsCsv(req.validatedQuery);
-  await recordAudit({ actorId: req.user.id, action: 'export', model: 'Lead', ip: req.ip, changes: req.validatedQuery });
+  await recordEvent('export.csv', { model: 'Lead', meta: req.validatedQuery });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.send(`\uFEFF${csv}`); // BOM so Excel renders Devanagari correctly

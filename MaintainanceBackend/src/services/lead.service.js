@@ -12,6 +12,7 @@ import { isSlotFull } from './availability.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { getSetting } from './settings.service.js';
 import { logger } from '../lib/logger.js';
+import { recordEvent } from './audit.service.js';
 
 const LEAD_INCLUDE = {
   service: { select: { id: true, name: true, slug: true } },
@@ -47,6 +48,22 @@ async function pickAssignee() {
   });
   if (!candidates.length) return null;
   return candidates.sort((a, b) => a._count.assignedLeads - b._count.assignedLeads)[0].id;
+}
+
+/** Creates a lead together with its lead.created event. */
+function createLeadRow(args) {
+  return prisma.$transaction(async (tx) => {
+    const lead = await tx.lead.create(args);
+    await recordEvent('lead.created', {
+      model: 'Lead',
+      recordId: lead.id,
+      after: {
+        status: lead.status, source: lead.source, priority: lead.priority,
+        serviceId: lead.serviceId, assignedToId: lead.assignedToId,
+      },
+    }, tx);
+    return lead;
+  });
 }
 
 /** Public form submission. Spam checks run before anything is written. */
@@ -110,7 +127,7 @@ export async function createPublicLead(input, { ip, userAgent }) {
     ? await isSlotFull(input.preferredAt, input.preferredSlot).catch(() => false)
     : false;
 
-  const lead = await prisma.lead.create({
+  const lead = await createLeadRow({
     data: {
       ...rest,
       phone,
@@ -193,7 +210,7 @@ async function announceNewLead(lead) {
 
 export async function createLead(input, actorId) {
   const { estimatedAmount, ...rest } = input;
-  const lead = await prisma.lead.create({
+  const lead = await createLeadRow({
     data: {
       ...rest,
       phone: normalizePhone(input.phone),
@@ -319,6 +336,9 @@ export async function transitionLead(tx, leadId, to, { actorId, note, data = {} 
       meta: { from: lead.status, to },
     },
   });
+  await recordEvent('lead.status_changed', {
+    model: 'Lead', recordId: leadId, before: { status: lead.status }, after: { status: to }, ...(note ? { meta: { note } } : {}),
+  }, tx);
   return tx.lead.findUnique({ where: { id: leadId } });
 }
 
@@ -344,12 +364,18 @@ export async function assignLead(id, { assignedToId, note }, actorId) {
     const user = await prisma.user.findFirst({ where: { id: assignedToId, isActive: true, deletedAt: null } });
     if (!user) throw badRequest('That staff member does not exist or is inactive');
   }
-  const updated = await prisma.lead.update({ where: { id }, data: { assignedToId }, include: LEAD_INCLUDE });
-  await prisma.leadActivity.create({
-    data: {
-      leadId: id, userId: actorId ?? null, type: 'assignment',
-      summary: assignedToId ? `Assigned to ${updated.assignedTo?.name}${note ? ` · ${note}` : ''}` : 'Unassigned',
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.lead.update({ where: { id }, data: { assignedToId }, include: LEAD_INCLUDE });
+    await tx.leadActivity.create({
+      data: {
+        leadId: id, userId: actorId ?? null, type: 'assignment',
+        summary: assignedToId ? `Assigned to ${row.assignedTo?.name}${note ? ` · ${note}` : ''}` : 'Unassigned',
+      },
+    });
+    await recordEvent('lead.assigned', {
+      model: 'Lead', recordId: id, before: { assignedToId: lead.assignedToId }, after: { assignedToId }, ...(note ? { meta: { note } } : {}),
+    }, tx);
+    return row;
   });
   if (assignedToId) {
     await prisma.notification.create({
@@ -395,6 +421,7 @@ export async function mergeLeads({ primaryId, duplicateIds }, actorId) {
     await tx.leadActivity.create({
       data: { leadId: primaryId, userId: actorId ?? null, type: 'note', summary: `Merged ${ids.length} duplicate lead(s)` },
     });
+    await recordEvent('lead.merged', { model: 'Lead', recordId: primaryId, meta: { duplicateIds: ids } }, tx);
   });
   return getLead(primaryId);
 }

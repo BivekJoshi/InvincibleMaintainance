@@ -4,6 +4,14 @@ Conventions: `{ data, meta }` on success · `{ error: { code, message, details }
 lists accept `?page&limit&sort&q` plus per-resource filters · all mutations audited ·
 money in requests is **rupees**, in responses **integer paisa**.
 
+**Request id.** Every response carries `X-Request-Id` (exposed to browsers through CORS). A client may
+send its own `X-Request-Id`; it is kept only if it matches `^[A-Za-z0-9._-]{8,64}$`, otherwise a UUID
+replaces it. The same id is on every log line of the request and on every `AuditLog` row it wrote.
+
+**Origins.** A browser request from an origin outside `PUBLIC_WEB_ORIGIN` / `ADMIN_ORIGIN` answers
+`403 FORBIDDEN_ORIGIN`. A 5xx always answers `INTERNAL_ERROR` / "Something went wrong" (the detail is
+logged, and reported to Sentry when `SENTRY_DSN` is set); only `NODE_ENV=development` shows the real message.
+
 Every route below is exercised over HTTP by `npm run test:api`
 (`MaintainanceBackend/tests/api/`), against a database whose name ends in `_test`.
 
@@ -285,8 +293,17 @@ GET  /admin/customers/:id/statement             ledger of invoices and payments 
 
 ```
 /admin/users                        ADMIN · GET, POST, PUT /:id, PATCH /:id/toggle, DELETE /:id
-                                    an admin cannot disable or delete their own account
-GET   /admin/audit-logs             ADMIN · ?model&recordId&actorId&from&to
+                                    an admin cannot disable or delete their own account (400)
+                                    events: user.created · user.role_changed · user.disabled (toggle off,
+                                    PUT isActive=false, DELETE)
+GET   /admin/audit-logs             ADMIN · paginated, newest first
+                                    ?event&actorType=user|public|system&requestId&model&recordId&actorId
+                                     &action&from&to&q&page&limit&sort=createdAt|-createdAt
+                                    q matches event/model/action (contains) or recordId/requestId (exact)
+                                    400 on an unknown actorType or sort
+                                    row: { id, event, action, model, recordId, actorId, actorType,
+                                           requestId, ip, userAgent, before, after, changes, createdAt,
+                                           actor: { id, name, role } | null }
 /admin/message-templates            ADMIN · GET, POST, PUT /:id, DELETE /:id
 GET   /admin/message-logs           ADMIN · ?status&channel
 GET   /admin/notifications          own only · ?unreadOnly · meta.unread
@@ -295,6 +312,68 @@ GET   /admin/dashboard              every role · role-aware widget payload
 GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
 GET   /admin/reports/job-margin | /technicians | /warranty-claims   reports:ops
 ```
+
+## Audit log
+
+Two kinds of `AuditLog` row, both carrying `requestId`, `actorId`, `actorType`, `ip` and `userAgent`
+from the request (or `<task>:<job id>` and `system` for background work):
+
+- **Model change** — written automatically by the Prisma extension for `create`, `createMany`, `update`,
+  `updateMany`, `upsert`, `delete`, `deleteMany` on every model except `AuditLog`, `RefreshToken`,
+  `PasswordReset`, `MessageLog`, `Notification`, `JobStatusEvent`, `LeadActivity`, `Counter`.
+  `event` is null, `action` is the operation without `Many`, `before`/`after` hold only the scalar
+  columns that changed (redacted: anything named `*password*`, `*token*`, `*secret*`, `otp*`), one row
+  per record for bulk writes (the first 500; past that a warning is logged). `changes` is null.
+- **Domain event** — a named business moment. `action` is the part after the dot, `before`/`after`
+  hold the fields that describe it, and `changes` holds extra detail (`meta`). Written in the same
+  transaction as the change, so a rollback removes it too.
+
+Rows written before Phase B have `changes` holding the sanitized write data, no `before`/`after`, and
+`actorType` `user`.
+
+| Event | Fires when | before → after · meta |
+|---|---|---|
+| `lead.created` | a lead is created from the public form (`public`) or by staff | → status, source, priority, serviceId, assignedToId |
+| `lead.status_changed` | any lead status move (`transitionLead`: staff, convert, approval, survey quote, merge) | status → status · note |
+| `lead.assigned` | `PATCH /admin/leads/:id/assign` | assignedToId → assignedToId · note |
+| `lead.merged` | `POST /admin/leads/merge`, on the primary lead | · duplicateIds |
+| `lead.converted` | `POST /admin/leads/:id/convert` | customerId → customerId · quotationId, jobId, surveyId |
+| `quotation.created` | a quotation is created (admin, convert, survey quote) | → number, status, total, customerId, leadId |
+| `quotation.sent` | `POST /admin/quotations/:id/send` | status → SENT |
+| `quotation.customer_approved` | the customer approves by link (`public`) | SENT → APPROVED · note |
+| `quotation.customer_rejected` | the customer rejects by link (`public`) | SENT → REJECTED · note |
+| `quotation.expired` | a SENT quotation past `validUntil` is expired by the link or the `quotation:expire` task | SENT → EXPIRED |
+| `quotation.revised` | `POST /admin/quotations/:id/revise`, on the new version | → number, version, status, total · parentId, version |
+| `job.created` | a job is created (admin, convert, quotation) | → number, type, status, customerId, quotationId, leadId, technicianIds |
+| `job.status_changed` | `PATCH …/jobs/:id/status` (admin or field app), except completion | status → status · note |
+| `job.assigned` | `POST /admin/jobs/:id/assign` | technicianIds, status → technicianIds, status |
+| `job.completed` | a job is completed (admin, field app, survey submit) | status → COMPLETED · customerRating |
+| `job.verified` | `POST /admin/jobs/:id/verify` | COMPLETED → VERIFIED |
+| `invoice.created` | an invoice is created (admin or from a job) | → number, status, total, customerId, quotationId |
+| `invoice.sent` | `POST /admin/invoices/:id/send` | status → SENT |
+| `invoice.voided` | `POST /admin/invoices/:id/void` | status → VOID · reason |
+| `payment.recorded` | `POST /admin/invoices/:id/payments` (model `Payment`) | → invoiceId, amount (paisa), method, reference · invoiceStatus, paidAmount |
+| `payment.voided` | `POST …/payments/:paymentId/void` (model `Payment`) | voidedAt, amount → voidedAt, voidReason · invoiceId, invoiceStatus, paidAmount |
+| `survey.submitted` | the surveyor submits (model `SiteSurvey`) | DRAFT/RETURNED → SUBMITTED · jobId, lines |
+| `survey.returned` | `PATCH /admin/surveys/:id/review` with RETURNED | status → RETURNED · note |
+| `survey.quoted` | `POST /admin/surveys/:id/quotation` | status → QUOTED · quotationId, quotationNumber |
+| `auth.login` | a successful sign-in (actor = the user) | |
+| `auth.login_failed` | a wrong password, a locked or disabled account, or an unknown email (`public`; recordId null, `meta.email` for the last) | · reason, attempt |
+| `auth.locked` | the fifth consecutive failure locks the account | → lockedUntil · attempts |
+| `auth.logout` | `POST /auth/logout` with a live refresh cookie (actor = the user) | |
+| `auth.password_changed` | `POST /auth/change-password` or `POST /auth/reset-password` | · via: change_password \| reset_link |
+| `auth.password_reset_requested` | `POST /auth/forgot-password` for an existing, active account (nothing is written for an unknown email) | |
+| `settings.changed` | `PATCH /admin/settings`, once per save, only the keys whose value moved | { key: old } → { key: new } · keys |
+| `export.csv` | `GET /admin/leads/export.csv` | · the filters used |
+| `cms.deleted` | a soft delete through the CRUD factory (any resource it mounts) or `DELETE /admin/media/:id` | |
+| `cms.restored` | `PATCH …/:id/restore` | deletedAt → null |
+| `cms.purged` | `?hard=true` (needs `cms:purge`), or a delete on a resource with no soft delete | the removed row's scalars → |
+| `user.created` · `user.role_changed` · `user.disabled` | see `/admin/users` above | |
+
+Reserved for Phase F and not emitted yet: `quotation.submitted`, `quotation.auto_approved`,
+`quotation.office_approved`, `quotation.sent_back`, `quotation.pulled_back`,
+`quotation.customer_changes_requested`, `quotation.superseded`. The list lives in
+`MaintainanceBackend/src/shared/enums.js` (`AUDIT_EVENTS`); `recordEvent` refuses any other name.
 
 ## Not implemented
 

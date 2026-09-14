@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { recordEvent } from './audit.service.js';
 import { env } from '../config/env.js';
 import { conflict, forbidden, notFound, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
@@ -273,10 +274,17 @@ export async function submitSurvey(id, input = {}, actor = {}) {
   await driveJobToInProgress(survey.job, actor.userId);
   await jobs.completeJob(survey.job.id, { note: note ?? 'Site survey submitted' }, actor.userId);
 
-  const updated = await prisma.siteSurvey.update({
-    where: { id },
-    data: { status: 'SUBMITTED', submittedAt: new Date(), submittedById: actor.userId ?? null },
-    include: INCLUDE,
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.siteSurvey.update({
+      where: { id },
+      data: { status: 'SUBMITTED', submittedAt: new Date(), submittedById: actor.userId ?? null },
+      include: INCLUDE,
+    });
+    await recordEvent('survey.submitted', {
+      model: 'SiteSurvey', recordId: id, before: { status: current.status }, after: { status: 'SUBMITTED' },
+      meta: { jobId: survey.job.id, lines: survey.items.length },
+    }, tx);
+    return row;
   });
 
   await notifyRoles(['ADMIN', 'SALES'], {
@@ -299,16 +307,24 @@ export async function reviewSurvey(id, { status, note }, userId) {
   if (!survey) throw notFound('Survey');
   assertTransition(SURVEY_TRANSITIONS, survey.status, status, 'survey');
 
-  const updated = await prisma.siteSurvey.update({
-    where: { id },
-    data: {
-      status,
-      reviewNote: note ?? null,
-      reviewedAt: new Date(),
-      reviewedById: userId ?? null,
-      ...(status === 'RETURNED' ? { returnedReason: note ?? null } : {}),
-    },
-    include: INCLUDE,
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.siteSurvey.update({
+      where: { id },
+      data: {
+        status,
+        reviewNote: note ?? null,
+        reviewedAt: new Date(),
+        reviewedById: userId ?? null,
+        ...(status === 'RETURNED' ? { returnedReason: note ?? null } : {}),
+      },
+      include: INCLUDE,
+    });
+    if (status === 'RETURNED') {
+      await recordEvent('survey.returned', {
+        model: 'SiteSurvey', recordId: id, before: { status: survey.status }, after: { status }, meta: { note: note ?? null },
+      }, tx);
+    }
+    return row;
   });
 
   if (status === 'RETURNED' && survey.surveyor?.user) {
@@ -497,14 +513,23 @@ export async function buildQuotationFromSurvey(id, input = {}, userId) {
   // Compare-and-swap: two reviewers pressing "Build quotation" at once must not
   // produce two quotations. The guard lives in the where clause, so the loser
   // claims nothing and cleans up the draft it just made.
-  const claimed = await prisma.siteSurvey.updateMany({
-    where: { id, quotationId: null, status: { in: ['SUBMITTED', 'IN_REVIEW'] } },
-    data: {
-      status: 'QUOTED',
-      quotationId: quotation.id,
-      reviewedAt: new Date(),
-      reviewedById: userId ?? null,
-    },
+  const claimed = await prisma.$transaction(async (tx) => {
+    const result = await tx.siteSurvey.updateMany({
+      where: { id, quotationId: null, status: { in: ['SUBMITTED', 'IN_REVIEW'] } },
+      data: {
+        status: 'QUOTED',
+        quotationId: quotation.id,
+        reviewedAt: new Date(),
+        reviewedById: userId ?? null,
+      },
+    });
+    if (result.count) {
+      await recordEvent('survey.quoted', {
+        model: 'SiteSurvey', recordId: id, before: { status: survey.status }, after: { status: 'QUOTED' },
+        meta: { quotationId: quotation.id, quotationNumber: quotation.number },
+      }, tx);
+    }
+    return result;
   });
 
   if (claimed.count === 0) {

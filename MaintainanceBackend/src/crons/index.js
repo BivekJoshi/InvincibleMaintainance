@@ -1,5 +1,6 @@
 import { enqueue } from '../queues/index.js';
 import { logger } from '../lib/logger.js';
+import { runWithContext } from '../lib/requestContext.js';
 
 const MINUTE = 60_000;
 
@@ -21,12 +22,16 @@ const SCHEDULE = [
 
 const timers = [];
 
+/** A tick runs as the system actor; the job it enqueues gets its own `<task>:<job id>` context when it runs. */
+function tick(task) {
+  return runWithContext({ actorType: 'system', requestId: `cron:${task.name}:${Date.now()}` }, () =>
+    enqueue(task.name).catch((err) => logger.error({ err, task: task.name }, 'cron enqueue failed')));
+}
+
 export function startCrons() {
   for (const task of SCHEDULE) {
-    if (task.immediate) enqueue(task.name).catch(() => {});
-    const t = setInterval(() => {
-      enqueue(task.name).catch((err) => logger.error({ err: err.message, task: task.name }, 'cron enqueue failed'));
-    }, task.everyMs);
+    if (task.immediate) tick(task);
+    const t = setInterval(() => tick(task), task.everyMs);
     t.unref?.();
     timers.push(t);
   }

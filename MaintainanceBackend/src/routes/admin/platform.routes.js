@@ -8,15 +8,16 @@ import { ok, created, noContent } from '../../utils/response.js';
 import { idParam, listQuery, toPartial } from '../../shared/schemas/common.js';
 import { prisma } from '../../lib/prisma.js';
 import { notFound, badRequest } from '../../utils/AppError.js';
-import { parseListQuery, meta, searchOr } from '../../utils/pagination.js';
+import { parseListQuery, meta } from '../../utils/pagination.js';
 import * as media from '../../services/media.service.js';
 import * as settings from '../../services/settings.service.js';
 import * as audit from '../../services/audit.service.js';
 import * as reports from '../../services/report.service.js';
-import { hashPassword } from '../../services/auth.service.js';
+import * as users from '../../services/user.service.js';
 import { createUserSchema, updateUserSchema } from '../../shared/schemas/auth.js';
 import { mediaUpdateSchema, settingsUpdateSchema } from '../../shared/schemas/cms.js';
 import { messageTemplateSchema } from '../../shared/schemas/ops.js';
+import { auditLogQuery } from '../../shared/schemas/audit.js';
 import { makeCrud } from '../../services/crud.service.js';
 
 const router = Router();
@@ -88,60 +89,25 @@ router.patch('/settings', adminOnly, validate({ body: settingsUpdateSchema }),
 
 // ── users
 router.get('/users', adminOnly, validate({ query: listQuery }), asyncHandler(async (req, res) => {
-  const { page, limit, skip, take, orderBy, q } = parseListQuery(req.validatedQuery);
-  const where = { deletedAt: null, ...(q ? { OR: searchOr(q, ['name', 'email', 'phone']) } : {}) };
-  const [items, total] = await Promise.all([
-    prisma.user.findMany({
-      where, orderBy, skip, take,
-      select: { id: true, name: true, email: true, phone: true, role: true, isActive: true, lastLoginAt: true, createdAt: true },
-    }),
-    prisma.user.count({ where }),
-  ]);
-  ok(res, items, meta({ page, limit, total }));
+  const { items, meta: m } = await users.listUsers(req.validatedQuery);
+  ok(res, items, m);
 }));
 
-router.post('/users', adminOnly, validate({ body: createUserSchema }), asyncHandler(async (req, res) => {
-  const { password, ...rest } = req.body;
-  const user = await prisma.user.create({
-    data: { ...rest, email: rest.email.toLowerCase(), passwordHash: await hashPassword(password) },
-    select: { id: true, name: true, email: true, role: true, isActive: true },
-  });
-  created(res, user);
-}));
+router.post('/users', adminOnly, validate({ body: createUserSchema }),
+  asyncHandler(async (req, res) => created(res, await users.createUser(req.body))));
 
-router.put('/users/:id', adminOnly, validate({ params: idParam, body: updateUserSchema }), asyncHandler(async (req, res) => {
-  const { password, ...rest } = req.body;
-  const user = await prisma.user.update({
-    where: { id: req.params.id },
-    data: {
-      ...rest,
-      ...(rest.email ? { email: rest.email.toLowerCase() } : {}),
-      ...(password ? { passwordHash: await hashPassword(password) } : {}),
-    },
-    select: { id: true, name: true, email: true, role: true, isActive: true },
-  });
-  ok(res, user);
-}));
+router.put('/users/:id', adminOnly, validate({ params: idParam, body: updateUserSchema }),
+  asyncHandler(async (req, res) => ok(res, await users.updateUser(req.params.id, req.body))));
 
-router.patch('/users/:id/toggle', adminOnly, validate({ params: idParam }), asyncHandler(async (req, res) => {
-  const user = await prisma.user.findFirst({ where: { id: req.params.id, deletedAt: null } });
-  if (!user) throw notFound('User');
-  if (user.id === req.user.id) throw badRequest('You cannot disable your own account');
-  ok(res, await prisma.user.update({
-    where: { id: user.id }, data: { isActive: !user.isActive },
-    select: { id: true, name: true, isActive: true },
-  }));
-}));
+router.patch('/users/:id/toggle', adminOnly, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await users.toggleUser(req.params.id, req.user.id))));
 
-router.delete('/users/:id', adminOnly, validate({ params: idParam }), asyncHandler(async (req, res) => {
-  if (req.params.id === req.user.id) throw badRequest('You cannot delete your own account');
-  await prisma.user.update({ where: { id: req.params.id }, data: { deletedAt: new Date(), isActive: false } });
-  noContent(res);
-}));
+router.delete('/users/:id', adminOnly, validate({ params: idParam }),
+  asyncHandler(async (req, res) => { await users.deleteUser(req.params.id, req.user.id); noContent(res); }));
 
 // ── audit
-router.get('/audit-logs', adminOnly, asyncHandler(async (req, res) => {
-  const { items, meta: m } = await audit.listAuditLogs(req.query);
+router.get('/audit-logs', adminOnly, validate({ query: auditLogQuery }), asyncHandler(async (req, res) => {
+  const { items, meta: m } = await audit.listAuditLogs(req.validatedQuery);
   ok(res, items, m);
 }));
 

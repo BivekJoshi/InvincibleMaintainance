@@ -11,6 +11,7 @@ import { notify, notifyRoles } from './notify.service.js';
 import { publicToken } from '../utils/tokens.js';
 import { markConverted } from './quotation.service.js';
 import { issueToJob } from './material.service.js';
+import { recordEvent } from './audit.service.js';
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true } },
@@ -61,7 +62,8 @@ export async function getJob(id) {
   return job;
 }
 
-async function recordEvent(tx, { jobId, from, to, actorId, note, lat, lng }) {
+/** A row in the job's own status timeline (JobStatusEvent), shown on the job sheet. */
+async function recordStatusEvent(tx, { jobId, from, to, actorId, note, lat, lng }) {
   return tx.jobStatusEvent.create({
     data: { jobId, from: from ?? null, to, actorId: actorId ?? null, note: note ?? null, lat: lat ?? null, lng: lng ?? null },
   });
@@ -124,7 +126,15 @@ export async function createJob(input, userId, client = prisma) {
       },
       include: INCLUDE,
     });
-    await recordEvent(tx, { jobId: created.id, from: null, to: status, actorId: userId, note: 'Job created' });
+    await recordStatusEvent(tx, { jobId: created.id, from: null, to: status, actorId: userId, note: 'Job created' });
+    await recordEvent('job.created', {
+      model: 'Job',
+      recordId: created.id,
+      after: {
+        number, type: created.type, status, customerId: created.customerId,
+        quotationId: created.quotationId, leadId: created.leadId, technicianIds,
+      },
+    }, tx);
     if (rest.quotationId) await markConverted(rest.quotationId, tx);
     return created;
   };
@@ -223,7 +233,10 @@ export async function changeStatus(id, { status, note, lat, lng }, userId) {
 
   const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.job.update({ where: { id }, data, include: INCLUDE });
-    await recordEvent(tx, { jobId: id, from: job.status, to: status, actorId: userId, note, lat, lng });
+    await recordStatusEvent(tx, { jobId: id, from: job.status, to: status, actorId: userId, note, lat, lng });
+    await recordEvent('job.status_changed', {
+      model: 'Job', recordId: id, before: { status: job.status }, after: { status }, ...(note ? { meta: { note } } : {}),
+    }, tx);
     return row;
   });
 
@@ -290,7 +303,11 @@ export async function completeJob(id, input, userId) {
       include: INCLUDE,
     });
 
-    await recordEvent(tx, { jobId: id, from: job.status, to: 'COMPLETED', actorId: userId, note: input.note });
+    await recordStatusEvent(tx, { jobId: id, from: job.status, to: 'COMPLETED', actorId: userId, note: input.note });
+    await recordEvent('job.completed', {
+      model: 'Job', recordId: id, before: { status: job.status }, after: { status: 'COMPLETED' },
+      meta: { customerRating: input.customerRating ?? null },
+    }, tx);
 
     let warranty = job.warranty;
     if (!warranty && warrantyDays > 0 && job.type !== 'INSPECTION') {
@@ -358,7 +375,8 @@ export async function verifyJob(id, userId) {
   assertTransition(JOB_TRANSITIONS, job.status, 'VERIFIED', 'job');
   return prisma.$transaction(async (tx) => {
     const row = await tx.job.update({ where: { id }, data: { status: 'VERIFIED' }, include: INCLUDE });
-    await recordEvent(tx, { jobId: id, from: job.status, to: 'VERIFIED', actorId: userId });
+    await recordStatusEvent(tx, { jobId: id, from: job.status, to: 'VERIFIED', actorId: userId });
+    await recordEvent('job.verified', { model: 'Job', recordId: id, before: { status: job.status }, after: { status: 'VERIFIED' } }, tx);
     return row;
   });
 }
@@ -380,7 +398,13 @@ export async function assignTechnicians(id, { technicianIds, leadTechnicianId, n
     });
     const nextStatus = job.status === 'DRAFT' || job.status === 'SCHEDULED' ? 'ASSIGNED' : job.status;
     const row = await tx.job.update({ where: { id }, data: { status: nextStatus }, include: INCLUDE });
-    await recordEvent(tx, { jobId: id, from: job.status, to: nextStatus, actorId: userId, note: note ?? 'Technicians assigned' });
+    await recordStatusEvent(tx, { jobId: id, from: job.status, to: nextStatus, actorId: userId, note: note ?? 'Technicians assigned' });
+    await recordEvent('job.assigned', {
+      model: 'Job',
+      recordId: id,
+      before: { technicianIds: job.assignments.map((a) => a.technicianId), status: job.status },
+      after: { technicianIds, status: nextStatus },
+    }, tx);
     return row;
   });
 

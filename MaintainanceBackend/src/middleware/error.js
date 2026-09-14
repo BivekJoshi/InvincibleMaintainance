@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { logger } from '../lib/logger.js';
+import { captureException } from '../lib/sentry.js';
 import { env } from '../config/env.js';
 
 export function notFoundHandler(req, res) {
@@ -10,10 +11,13 @@ export function notFoundHandler(req, res) {
 
 // Express recognises an error handler by its four parameters, so _next stays.
 export function errorHandler(err, req, res, _next) {
+  // req.log carries the request id, so the error line joins its request line.
+  const log = req.log ?? logger;
   let status = err.status || 500;
   let code = err.code || 'INTERNAL_ERROR';
   let message = err.message || 'Something went wrong';
   let details = err.details;
+  let logged = false;
 
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') {
@@ -43,20 +47,21 @@ export function errorHandler(err, req, res, _next) {
     // zod-validated first. It stays a 400 because a few list parameters (?sort,
     // some ?status filters) still reach Prisma unchecked, but it is logged at
     // warn: at debug level two real bugs of this kind went unnoticed for weeks.
-    logger.warn(
-      { url: req.originalUrl, method: req.method, prisma: err.message.trim().split('\n').pop() },
-      'prisma rejected a query',
-    );
+    log.warn({ code, status, prisma: err.message.trim().split('\n').pop() }, 'prisma rejected a query');
+    logged = true;
   }
 
   if (status >= 500) {
-    logger.error({ err, url: req.originalUrl, method: req.method, userId: req.user?.id }, 'unhandled error');
-    if (env.isProd) {
+    log.error({ err, code, status }, 'unhandled error');
+    captureException(err, { requestId: req.id, userId: req.user?.id, method: req.method });
+    // The stack and the real message stay in the log; the client gets nothing internal.
+    if (env.nodeEnv !== 'development') {
+      code = 'INTERNAL_ERROR';
       message = 'Something went wrong';
       details = undefined;
     }
-  } else {
-    logger.debug({ code, message, url: req.originalUrl }, 'request rejected');
+  } else if (!logged) {
+    log.info({ code, status }, 'request rejected');
   }
 
   res.status(status).json({ error: { code, message, ...(details ? { details } : {}) } });

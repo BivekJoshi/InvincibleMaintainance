@@ -9,7 +9,7 @@
 //   { sed -n '1,/^\/\/ ═══/p' docs/DATA-MODEL.prisma; cat MaintainanceBackend/prisma/schema.prisma; } \
 //     > /tmp/dm && mv /tmp/dm docs/DATA-MODEL.prisma
 //
-// Last regenerated 2026-09-14 (Phase A: Payment.voidedAt / voidReason / voidedById).
+// Last regenerated 2026-09-14 (Phase B: AuditLog actorType / event / before / after / requestId / userAgent).
 // ═════════════════════════════════════════════════════════════════════════════
 // Maintenance System — Prisma schema
 // Money is ALWAYS Int paisa (NPR x 100). Timestamps are UTC.
@@ -98,14 +98,28 @@ model PasswordReset {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+/// One row per audited write (a model change: action create|update|upsert|delete, event null)
+/// or per domain event (event set, e.g. "quotation.customer_approved"; action is the part after the dot).
 model AuditLog {
   id        String   @id @default(cuid())
   actorId   String?
+  /// user | public | system — a signed-in user, a form or token link, or a task
+  actorType String   @default("user")
   action    String
+  /// Domain event name from AUDIT_EVENTS; null on a plain model-change row
+  event     String?
   model     String
   recordId  String?
+  /// Rows before Phase B: the sanitized write data. Domain events: their meta. Model changes: null (see before/after)
   changes   Json?
+  /// Shallow, redacted snapshot of the changed scalar fields before the write (null on create)
+  before    Json?
+  /// The same fields after the write (null on delete)
+  after     Json?
+  /// X-Request-Id of the request, or "<task>:<job id>" for background work
+  requestId String?
   ip        String?
+  userAgent String?
   createdAt DateTime @default(now())
 
   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
@@ -113,6 +127,8 @@ model AuditLog {
   @@index([model, recordId])
   @@index([createdAt])
   @@index([actorId])
+  @@index([event, createdAt])
+  @@index([requestId])
 }
 
 model Setting {

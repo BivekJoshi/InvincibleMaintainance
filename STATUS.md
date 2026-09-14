@@ -20,6 +20,7 @@ Updated 2026-09-14. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLA
 | 10 Reports | Lead source, funnel, SLA compliance, margin, technician, warranty, dashboards | ✅ backend · dashboard built |
 | 11 Site surveys | SURVEYOR role, survey capture, pricing preview, survey → quotation, offline queue | ✅ |
 | **v2 · A Safety fixes** | Convert priced by `documentTotals` and atomic, quotation expiry at decide time + `quotation:expire`, DRAFT-only edits, payment void (no hard delete), `transitionLead`, `cms:purge`, CSV export via RTK Query, real booking timing, ESLint in both apps, GitHub Actions CI, doc housekeeping | ✅ 2026-09-14 |
+| **v2 · B Logging & audit** | Request context (AsyncLocalStorage) and `X-Request-Id`; pino redaction, phone masking, context mixin, `LOG_FILE` via pino-roll, optional Sentry; `AuditLog` gains `requestId` / `userAgent` / `actorType` / `event` / `before` / `after`; audit rows written inside the caller's transaction for all 7 write operations, one row per id on bulk writes; 38 named domain events (`AUDIT_EVENTS`, 7 more reserved for F); `GET /admin/audit-logs` filters | ✅ 2026-09-14 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, leads (list + detail), the site-survey inbox and review screen, the
@@ -94,16 +95,24 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phase A is done; next is **Phase B — Logging & audit backbone** (`docs/prompts/PHASE-B-logging-audit.md`).
+Phases A and B are done; next is **Phase C1 — Admin UI primitives** (`docs/prompts/PHASE-C1-ui-primitives.md`).
 
 ## Verification
 
-- 62 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas) — `npm test`.
-- 368 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
+- 89 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas, logging) — `npm test`.
+- 397 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
   route in `docs/API.md`, RBAC per role and the error envelope, and runs twice in a row without a reset.
 - Phase A (2026-09-14): unit 59 → 62, API 347 → 368; every new test was run against the old code first and
   failed there. `npm run lint` is clean in the backend and has 0 errors (25 `react-refresh` warnings, kept on
   purpose) in the frontend; `npm run build` succeeds. `.github/workflows/ci.yml` runs all of it on push.
+- Phase B (2026-09-14): unit 62 → 89, API 368 → 397. The rollback test was run against the old audit extension
+  first and failed there (1 audit row survived a rolled-back transaction). Clean run: test database reset, then
+  the full API suite twice in a row with no reset, both green. `npm run lint` is clean. Manual check: the API
+  started with `LOG_FILE` against the `_test` database, signed in, made authenticated reads, a settings change
+  with `X-Request-Id: verify-1789368602335`, a refresh and a request with a bogus Bearer token →
+  `api.2026-09-14.1.log`, 9 lines, `grep -c Bearer` = 0, neither the access token nor the refresh cookie present,
+  and that request id on the request line (with `userId`) and on its two `AuditLog` rows (`Setting` upsert and
+  `settings.changed`, both with before/after).
 - Phase A browser walk-through (headless Chrome against the dev servers): signed in as
   `sales@gharjatan.com.np`, exported leads filtered to NEW — the first export call was forced to 401, the page
   refreshed once and retried, both calls carried the Bearer token, and the file (UTF-8 BOM) held exactly the 2

@@ -9,6 +9,7 @@ import { QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines
 import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { transitionLead } from './lead.service.js';
+import { recordEvent } from './audit.service.js';
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true } },
@@ -39,10 +40,19 @@ async function buildTotals(items, { discount = 0, vatApplied = true }) {
  */
 const isExpired = (q, now = new Date()) => q.status === 'SENT' && q.validUntil != null && q.validUntil < now;
 
-/** SENT → EXPIRED, guarded so a decision landing at the same moment is never overwritten. */
+/**
+ * SENT → EXPIRED, guarded so a decision landing at the same moment is never overwritten.
+ * @returns {Promise<number>} 1 if this call expired it, 0 if something else got there first
+ */
 async function markExpired(id) {
   assertTransition(QUOTATION_TRANSITIONS, 'SENT', 'EXPIRED', 'quotation');
-  await prisma.quotation.updateMany({ where: { id, status: 'SENT' }, data: { status: 'EXPIRED' } });
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.quotation.updateMany({ where: { id, status: 'SENT' }, data: { status: 'EXPIRED' } });
+    if (count) {
+      await recordEvent('quotation.expired', { model: 'Quotation', recordId: id, before: { status: 'SENT' }, after: { status: 'EXPIRED' } }, tx);
+    }
+    return count;
+  });
 }
 
 export async function listQuotations(query) {
@@ -83,7 +93,7 @@ export async function createQuotation(input, userId, client = prisma) {
 
   const run = async (tx) => {
     const number = await nextNumber(tx, 'QT');
-    return tx.quotation.create({
+    const quotation = await tx.quotation.create({
       data: {
         ...rest,
         number,
@@ -98,6 +108,12 @@ export async function createQuotation(input, userId, client = prisma) {
       },
       include: INCLUDE,
     });
+    await recordEvent('quotation.created', {
+      model: 'Quotation',
+      recordId: quotation.id,
+      after: { number, status: quotation.status, total: quotation.total, customerId: quotation.customerId, leadId: quotation.leadId },
+    }, tx);
+    return quotation;
   };
   return client === prisma ? prisma.$transaction(run) : run(client);
 }
@@ -156,6 +172,12 @@ export async function reviseQuotation(id, userId) {
       },
       include: INCLUDE,
     });
+    await recordEvent('quotation.revised', {
+      model: 'Quotation',
+      recordId: copy.id,
+      after: { number, version: copy.version, status: copy.status, total: copy.total },
+      meta: { parentId: source.id, version: copy.version },
+    }, tx);
     return copy;
   });
 }
@@ -165,10 +187,14 @@ export async function sendQuotation(id) {
   assertTransition(QUOTATION_TRANSITIONS, q.status, 'SENT', 'quotation');
 
   const token = q.publicToken ?? publicToken();
-  const updated = await prisma.quotation.update({
-    where: { id },
-    data: { status: 'SENT', sentAt: new Date(), publicToken: token },
-    include: INCLUDE,
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.quotation.update({
+      where: { id },
+      data: { status: 'SENT', sentAt: new Date(), publicToken: token },
+      include: INCLUDE,
+    });
+    await recordEvent('quotation.sent', { model: 'Quotation', recordId: id, before: { status: q.status }, after: { status: 'SENT' } }, tx);
+    return row;
   });
 
   const webOrigin = env.corsOrigins[0] ?? env.appUrl;
@@ -261,6 +287,9 @@ export async function decideByToken(token, { decision, note }, ip) {
     });
     if (claimed.count === 0) throw unprocessable('This quotation has already been responded to.');
     if (q.leadId && status === 'APPROVED') await winLeadOnApproval(tx, q);
+    await recordEvent(status === 'APPROVED' ? 'quotation.customer_approved' : 'quotation.customer_rejected', {
+      model: 'Quotation', recordId: q.id, before: { status: 'SENT' }, after: { status }, ...(note ? { meta: { note } } : {}),
+    }, tx);
     return tx.quotation.findUnique({ where: { id: q.id } });
   });
 
@@ -275,16 +304,18 @@ export async function decideByToken(token, { decision, note }, ip) {
 
 /**
  * The quotation:expire task: every SENT quotation past its validUntil becomes
- * EXPIRED in one guarded updateMany.
+ * EXPIRED, each through the same guarded markExpired the customer's link uses,
+ * so each one gets its own quotation.expired event.
  * @returns {Promise<{ expired: number }>}
  */
 export async function expireQuotations(now = new Date()) {
-  assertTransition(QUOTATION_TRANSITIONS, 'SENT', 'EXPIRED', 'quotation');
-  const { count } = await prisma.quotation.updateMany({
+  const due = await prisma.quotation.findMany({
     where: { deletedAt: null, status: 'SENT', validUntil: { lt: now } },
-    data: { status: 'EXPIRED' },
+    select: { id: true },
   });
-  return { expired: count };
+  let expired = 0;
+  for (const { id } of due) expired += await markExpired(id);
+  return { expired };
 }
 
 export async function deleteQuotation(id) {

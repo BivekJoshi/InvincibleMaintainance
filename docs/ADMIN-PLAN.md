@@ -81,12 +81,12 @@ Gaps against the intended business process:
 | ✅ 1 · A 2026-09-14 | **High · money** | Lead-convert builds a quotation by hand with `vatApplied: true`, `vatRate: 13` but `vatAmount: 0` and `total = subtotal`, bypassing `documentTotals`. The customer can be sent a quote missing its VAT. | `src/services/convert.service.js:44-67` |
 | ✅ 2 · A 2026-09-14 | **High** | Expired quotations can still be approved. Expiry is only applied when someone GETs the quotation, and `decideByToken` checks `status === 'SENT'` only. There is no expiry cron. | `quotation.service.js:188,198` |
 | ✅ 3 · A 2026-09-14 | **High** | A `SENT` quotation can be edited in place. `updateQuotation` blocks only APPROVED/CONVERTED, so a customer can approve numbers different from the ones they were sent. `reviseQuotation` never supersedes the parent. | `quotation.service.js:85` |
-| 4 | **High · security** | Access tokens and refresh cookies are almost certainly in the logs. The pino logger has no `redact`, and pino-http's default serializer logs request headers. | `src/lib/logger.js`, `src/app.js:22` |
+| ✅ 4 · B 2026-09-14 | **High · security** | Access tokens and refresh cookies are almost certainly in the logs. The pino logger has no `redact`, and pino-http's default serializer logs request headers. | `src/lib/logger.js`, `src/app.js:22` |
 | ✅ 5 · A 2026-09-14 | **High · finance** | Payments are hard-deleted, although CLAUDE.md requires soft delete and money records must never vanish. | `invoice.service.js:243` |
 | ✅ 6 · A 2026-09-14 | Medium | Lead status is written past the state machine (`→ WON` with `.catch(() => {})`; `→ CONTACTED / QUOTED / INSPECTION_SCHEDULED` directly). | `quotation.service.js:218`, `convert.service.js:37,70,103` |
 | ✅ 7 · A 2026-09-14 | Medium | Lead-convert writes customer, lead, job and survey in separate statements, so a failure midway leaves orphans. | `convert.service.js` |
 | ✅ 8 · A 2026-09-14 | Medium | EDITOR can `?hard=true` permanently delete any CMS row or media file. | `crud.service.js` via `cms.routes.js` |
-| 9 | Medium | Audit gaps: `upsert` and `createMany` are not audited (so **settings changes are unaudited**, which fails the v1 Phase 1 acceptance). There is no before-state. Rows are written outside the transaction. Public and cron writes have no actor or IP. The lead-merge audit write fails silently. | `src/lib/prisma.js:38-64` |
+| ✅ 9 · B 2026-09-14 | Medium | Audit gaps: `upsert` and `createMany` are not audited (so **settings changes are unaudited**, which fails the v1 Phase 1 acceptance). There is no before-state. Rows are written outside the transaction. Public and cron writes have no actor or IP. The lead-merge audit write fails silently. | `src/lib/prisma.js:38-64` |
 | ✅ 10 · A 2026-09-14 | Medium | Leads CSV export always 401s. It uses `window.open`, but the API accepts only a Bearer header. | `MaintainanceFrontend/src/pages/admin/LeadsPage.jsx` |
 | ✅ 11 · A 2026-09-14 | Medium | The booking wizard hardcodes `elapsedMs: 60_000`, which defeats the anti-spam timing check. | `components/booking/BookingWizard/BookingWizard.jsx` |
 | ✅ 12 · A 2026-09-14 | Low | `npm run lint` fails: eslint 9 with no `eslint.config.js` in the frontend. | `MaintainanceFrontend/` |
@@ -164,7 +164,7 @@ CI
 - **CSV export (#10)** has no automated frontend test — there is no frontend test runner until C1. It was verified in
   a headless-browser walk-through instead, including a forced 401 → refresh → retry.
 
-### Phase B — Logging & audit backbone (backend) · ~3 days
+### Phase B — Logging & audit backbone (backend) · ~3 days · ✅ done 2026-09-14
 
 This is the "proper logging" requirement. It comes early because every later screen writes audit
 rows and Phase F needs domain events.
@@ -200,6 +200,34 @@ rows and Phase F needs domain events.
 - A settings change shows before and after.
 - A public quotation approval is audited with IP, user agent and `actorType=public`.
 - Audit contents are asserted in API tests.
+
+**Deviations (Phase B, 2026-09-14)** — built differently from the plan, or beyond it:
+- **Transaction strategy:** the exported `prisma` is a Proxy whose `$transaction(fn)` runs `fn` with its
+  transaction client in an AsyncLocalStorage; the extension uses that client only when Prisma's
+  `__internalParams.transaction.kind` says the operation is in an interactive transaction. That is a Prisma
+  internal, so the rollback test is the tripwire on upgrades. Inside a transaction a failed audit insert
+  now fails the transaction (it used to be swallowed); outside one it is still logged at warn.
+- **`changes` column:** model-change rows leave it null (the diff is `before`/`after`); domain-event rows put
+  their `meta` there (export filters, merged ids). Pre-B rows keep their sanitized write data.
+- **Actor with no context** (scripts, seed, tests calling Prisma directly) is `system`; the column default
+  stays `user` so pre-B rows read as before. `recordEvent` also takes an `actorId` override, for login and
+  logout, where the request is public until the user is known.
+- **After-state is re-read** when the write had a `select` or `include`, because a select can hide the
+  changed column (user updates never select `passwordHash`). One extra query on those writes.
+- **Beyond the plan:** customer-link tokens in request URLs are redacted in logs; a 4xx request line now
+  logs at `info` (it was `warn`) to match the error handler; a 5xx message is hidden everywhere except
+  `NODE_ENV=development` (it was production only); `auth.login_failed` also fires for an unknown email
+  (`meta.email`), a locked and a disabled account; completing a reset link emits `auth.password_changed`.
+- **`cms.*` events** fire for every resource the CRUD factory mounts (rate card, materials, message
+  templates too) and for media; a delete on a model without soft delete is `cms.purged`.
+- **`expireQuotations`** now expires quotation by quotation through the guarded `markExpired`, so each
+  gets its own `quotation.expired` event (it was one `updateMany`).
+- **#15, partly:** user create/update/toggle/delete moved from `platform.routes.js` into
+  `services/user.service.js`, which is where the `user.*` events live. Technicians, notifications,
+  message logs and tech sync still call Prisma from routes.
+- **Not done here:** `AUDIT_EVENTS` is not yet mirrored in the frontend (Phase G builds the screen that needs
+  it). The `TechSync` idempotency rows are unchanged and carry no `requestId`; the mutations they replay are
+  audited normally. #14 stays open — Phase B added task logging, not retries or a cron leader lock (J2).
 
 ### Phase C — Admin UI kit · ~4 days
 
@@ -377,7 +405,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | Phase | Days | Cumulative | Delivers |
 |---|---|---|---|
 | A Safety fixes ✅ 2026-09-14 | 2 | 2 | Correct money, locked quotations, no hard-deleted payments, honest docs |
-| B Logging & audit | 3 | 5 | Redacted request-id logs, complete audit with domain events |
+| B Logging & audit ✅ 2026-09-14 | 3 | 5 | Redacted request-id logs, complete audit with domain events |
 | C Admin UI kit (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
 | D Services & CMS (D1 + D2) | 6 | 15 | Editors run the whole public site |
 | E Leads & CRM | 5 | 20 | Sales works entirely in the UI |

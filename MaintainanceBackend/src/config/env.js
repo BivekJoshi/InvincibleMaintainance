@@ -79,7 +79,9 @@ export const env = {
     timezone: process.env.TIMEZONE ?? 'Asia/Kathmandu',
   },
 
-  logLevel: process.env.LOG_LEVEL ?? 'debug',
+  logLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+  logFile: process.env.LOG_FILE || null,
+  logRetentionDays: num('LOG_RETENTION_DAYS', 14),
   sentryDsn: process.env.SENTRY_DSN || null,
 };
 

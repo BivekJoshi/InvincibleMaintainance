@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { recordEvent } from './audit.service.js';
 import { notFound, badRequest, forbidden } from '../utils/AppError.js';
 import { can } from '../shared/permissions.js';
 import { sniffMime } from '../middleware/upload.js';
@@ -65,10 +66,16 @@ export async function deleteMedia(id, { hard = false, role } = {}) {
     for (const url of Object.values(m.variants ?? {})) {
       await deleteObject(String(url).replace(/^\/uploads\//, ''));
     }
-    await prisma.media.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.media.delete({ where: { id } });
+      await recordEvent('cms.purged', { model: 'Media', recordId: id, before: m }, tx);
+    });
     return;
   }
-  await prisma.media.update({ where: { id }, data: { deletedAt: new Date() } });
+  await prisma.$transaction(async (tx) => {
+    await tx.media.update({ where: { id }, data: { deletedAt: new Date() } });
+    await recordEvent('cms.deleted', { model: 'Media', recordId: id }, tx);
+  });
 }
 
 export async function listFolders() {

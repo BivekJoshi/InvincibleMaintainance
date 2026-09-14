@@ -9,6 +9,7 @@ import { INVOICE_TRANSITIONS, assertTransition } from '../shared/stateMachines.j
 import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { addDays } from '../utils/dates.js';
+import { recordEvent } from './audit.service.js';
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true } },
@@ -64,7 +65,7 @@ export async function createInvoice(input) {
 
   return prisma.$transaction(async (tx) => {
     const number = await nextNumber(tx, 'INV');
-    return tx.invoice.create({
+    const invoice = await tx.invoice.create({
       data: {
         ...rest,
         number,
@@ -75,6 +76,12 @@ export async function createInvoice(input) {
       },
       include: INCLUDE,
     });
+    await recordEvent('invoice.created', {
+      model: 'Invoice',
+      recordId: invoice.id,
+      after: { number, status: invoice.status, total: invoice.total, customerId: invoice.customerId, quotationId: invoice.quotationId },
+    }, tx);
+    return invoice;
   });
 }
 
@@ -176,8 +183,12 @@ export async function sendInvoice(id) {
   const inv = await getInvoice(id);
   assertTransition(INVOICE_TRANSITIONS, inv.status, 'SENT', 'invoice');
   const token = inv.publicToken ?? publicToken();
-  const updated = await prisma.invoice.update({
-    where: { id }, data: { status: 'SENT', sentAt: new Date(), publicToken: token }, include: INCLUDE,
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.invoice.update({
+      where: { id }, data: { status: 'SENT', sentAt: new Date(), publicToken: token }, include: INCLUDE,
+    });
+    await recordEvent('invoice.sent', { model: 'Invoice', recordId: id, before: { status: inv.status }, after: { status: 'SENT' } }, tx);
+    return row;
   });
 
   const webOrigin = env.corsOrigins[0] ?? env.appUrl;
@@ -205,7 +216,13 @@ export async function sendInvoice(id) {
 export async function voidInvoice(id, reason) {
   const inv = await getInvoice(id);
   if (inv.paidAmount > 0) throw unprocessable('Refund the payments before voiding this invoice');
-  return prisma.invoice.update({ where: { id }, data: { status: 'VOID', voidReason: reason }, include: INCLUDE });
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.invoice.update({ where: { id }, data: { status: 'VOID', voidReason: reason }, include: INCLUDE });
+    await recordEvent('invoice.voided', {
+      model: 'Invoice', recordId: id, before: { status: inv.status }, after: { status: 'VOID' }, meta: { reason },
+    }, tx);
+    return row;
+  });
 }
 
 export async function recordPayment(invoiceId, input, userId) {
@@ -231,6 +248,12 @@ export async function recordPayment(invoiceId, input, userId) {
       where: { id: invoiceId },
       data: { paidAmount, status: deriveStatus(inv, paidAmount) },
     });
+    await recordEvent('payment.recorded', {
+      model: 'Payment',
+      recordId: payment.id,
+      after: { invoiceId, amount, method: payment.method, reference: payment.reference },
+      meta: { invoiceStatus: deriveStatus(inv, paidAmount), paidAmount },
+    }, tx);
     return payment;
   });
 }
@@ -260,6 +283,13 @@ export async function voidPayment(invoiceId, paymentId, reason, userId) {
     const status = deriveStatus(inv, paidAmount);
     assertTransition(INVOICE_TRANSITIONS, inv.status, status, 'invoice');
     await tx.invoice.update({ where: { id: invoiceId }, data: { paidAmount, status } });
+    await recordEvent('payment.voided', {
+      model: 'Payment',
+      recordId: paymentId,
+      before: { voidedAt: null, amount: payment.amount },
+      after: { voidedAt: new Date(), voidReason: reason },
+      meta: { invoiceId, invoiceStatus: status, paidAmount },
+    }, tx);
     return tx.payment.findUnique({ where: { id: paymentId } });
   });
 }

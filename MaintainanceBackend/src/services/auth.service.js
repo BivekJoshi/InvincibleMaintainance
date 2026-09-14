@@ -7,7 +7,8 @@ import { unauthorized, notFound, badRequest, forbidden } from '../utils/AppError
 import { hashToken } from '../utils/tokens.js';
 import { addDays } from '../utils/dates.js';
 import { notify } from './notify.service.js';
-import { recordAudit } from './audit.service.js';
+import { recordEvent } from './audit.service.js';
+import { setContext } from '../lib/requestContext.js';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -45,31 +46,42 @@ export async function login({ email, password, ip, userAgent }) {
 
   if (!user) {
     await argon2.hash('timing-equalizer').catch(() => {});
+    // The typed address is kept: a run of these against one address is what an attack looks like.
+    await recordEvent('auth.login_failed', { model: 'User', meta: { email: email.toLowerCase(), reason: 'unknown_email' } });
     return reject();
   }
   if (user.lockedUntil && user.lockedUntil > new Date()) {
+    await recordEvent('auth.login_failed', { model: 'User', recordId: user.id, meta: { reason: 'locked' } });
     throw forbidden(`Too many failed attempts. Try again after ${user.lockedUntil.toISOString()}`);
   }
-  if (!user.isActive) throw forbidden('This account is disabled');
+  if (!user.isActive) {
+    await recordEvent('auth.login_failed', { model: 'User', recordId: user.id, meta: { reason: 'disabled' } });
+    throw forbidden('This account is disabled');
+  }
 
   const okPassword = await verifyPassword(user.passwordHash, password).catch(() => false);
   if (!okPassword) {
     const failed = user.failedLogins + 1;
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        failedLogins: failed,
-        lockedUntil: failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60000) : null,
-      },
+    const lockedUntil = failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60000) : null;
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: user.id }, data: { failedLogins: failed, lockedUntil } });
+      await recordEvent('auth.login_failed', { model: 'User', recordId: user.id, meta: { reason: 'wrong_password', attempt: failed } }, tx);
+      if (lockedUntil) {
+        await recordEvent('auth.locked', { model: 'User', recordId: user.id, after: { lockedUntil }, meta: { attempts: failed } }, tx);
+      }
     });
     return reject();
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() },
+  // Signed in: the rest of this request, and its audit rows, belong to the user.
+  setContext({ userId: user.id, role: user.role, actorType: 'user' });
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: user.id },
+      data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() },
+    });
+    await recordEvent('auth.login', { model: 'User', recordId: user.id, actorId: user.id }, tx);
   });
-  await recordAudit({ actorId: user.id, action: 'login', model: 'User', recordId: user.id, ip });
 
   return {
     user: publicUser(user),
@@ -98,9 +110,13 @@ export async function refresh({ token, ip, userAgent }) {
 
 export async function logout(token) {
   if (!token) return;
-  await prisma.refreshToken.updateMany({
-    where: { tokenHash: hashToken(token), revokedAt: null },
-    data: { revokedAt: new Date() },
+  const tokenHash = hashToken(token);
+  const session = await prisma.refreshToken.findUnique({ where: { tokenHash }, select: { userId: true } });
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.refreshToken.updateMany({ where: { tokenHash, revokedAt: null }, data: { revokedAt: new Date() } });
+    if (count && session) {
+      await recordEvent('auth.logout', { model: 'User', recordId: session.userId, actorId: session.userId }, tx);
+    }
   });
 }
 
@@ -114,8 +130,11 @@ export async function forgotPassword(email) {
   if (!user) return;
 
   const raw = crypto.randomBytes(32).toString('base64url');
-  await prisma.passwordReset.create({
-    data: { userId: user.id, tokenHash: hashToken(raw), expiresAt: new Date(Date.now() + 60 * 60000) },
+  await prisma.$transaction(async (tx) => {
+    await tx.passwordReset.create({
+      data: { userId: user.id, tokenHash: hashToken(raw), expiresAt: new Date(Date.now() + 60 * 60000) },
+    });
+    await recordEvent('auth.password_reset_requested', { model: 'User', recordId: user.id }, tx);
   });
   await notify({
     templateKey: 'password_reset',
@@ -133,14 +152,13 @@ export async function resetPassword({ token, password }) {
   const row = await prisma.passwordReset.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!row || row.usedAt || row.expiresAt < new Date()) throw badRequest('This reset link is invalid or has expired');
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: row.userId },
-      data: { passwordHash: await hashPassword(password), failedLogins: 0, lockedUntil: null },
-    }),
-    prisma.passwordReset.update({ where: { id: row.id }, data: { usedAt: new Date() } }),
-    prisma.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
-  ]);
+  const passwordHash = await hashPassword(password);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: row.userId }, data: { passwordHash, failedLogins: 0, lockedUntil: null } });
+    await tx.passwordReset.update({ where: { id: row.id }, data: { usedAt: new Date() } });
+    await tx.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    await recordEvent('auth.password_changed', { model: 'User', recordId: row.userId, meta: { via: 'reset_link' } }, tx);
+  });
 }
 
 export async function changePassword(userId, { currentPassword, password }) {
@@ -148,7 +166,11 @@ export async function changePassword(userId, { currentPassword, password }) {
   if (!user) throw notFound('User');
   const ok = await verifyPassword(user.passwordHash, currentPassword).catch(() => false);
   if (!ok) throw badRequest('Your current password is incorrect');
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(password) } });
+  const passwordHash = await hashPassword(password);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    await recordEvent('auth.password_changed', { model: 'User', recordId: userId, meta: { via: 'change_password' } }, tx);
+  });
   await logoutAll(userId);
 }
 

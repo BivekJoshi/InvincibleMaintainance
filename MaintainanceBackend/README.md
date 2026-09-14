@@ -98,7 +98,7 @@ on the API).
 ```
 src/
   config/env.js        validated config — the process exits on a missing required var
-  lib/                 prisma (with audit extension), redis, logger
+  lib/                 prisma (audit extension), requestContext, auditDiff, logger, sentry, redis
   shared/              enums, permissions, state machines, zod schemas
   utils/               money (paisa), nepaliDate (BS), numbering, phone, pagination
   middleware/          validate, authenticate, authorize, upload, rateLimit, error
@@ -106,7 +106,7 @@ src/
   routes/              public · auth · tech · admin/{cms,crm,ops,finance,aftercare,platform}
   queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders
 prisma/                schema.prisma · seed.js · seed-data.js
-tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas
+tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging
 tests/api/             every route over supertest, against a database whose name ends in _test
 ```
 
@@ -176,7 +176,21 @@ Lists take `?page&limit&sort&q` plus per-resource filters. Full surface in `../d
 - Public links (quotation, warranty, invoice) are 32-byte random, single-purpose and
   scoped to one record.
 - Lead form: honeypot + submission-timing check + IP rate limit + optional Turnstile.
-- Every write is audited with actor, model, record and a redacted diff.
+- Every write is audited with actor (`user` / `public` / `system`), request id, ip, user agent, model,
+  record and a redacted before/after of the changed fields — inside the same transaction, so a
+  rollback leaves no row. Business moments (`quotation.customer_approved`, `auth.locked`, …) are named
+  domain events; the list is `AUDIT_EVENTS` in `shared/enums.js`, documented in `docs/API.md`.
+
+### Logging
+
+- Every response carries `X-Request-Id`; every log line of that request and every audit row it wrote
+  carry the same id. An incoming id is kept only if it is a plain 8–64 character token.
+- pino redacts the `Authorization` header, cookies, `Set-Cookie` and password/token/otp fields, masks
+  phone numbers to the last four digits, and hides the token in customer link URLs.
+- `LOG_LEVEL` (default `info` in production, `debug` otherwise) · `LOG_FILE` adds a daily-rotated file
+  via **pino-roll**, keeping `LOG_RETENTION_DAYS` (14) · `SENTRY_DSN` turns on **@sentry/node**, loaded
+  only when set, for 5xx errors, failed tasks and crashes.
+- Background tasks log `{ task, jobId, durationMs, count }` when they finish.
 
 ---
 

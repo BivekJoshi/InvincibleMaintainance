@@ -5,6 +5,7 @@ import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { uniqueSlug } from '../utils/slug.js';
 import { invalidatePublic } from './cache.service.js';
 import { toPaisa } from '../utils/money.js';
+import { recordEvent } from './audit.service.js';
 
 /**
  * Builds a standard CRUD service for a Prisma model.
@@ -40,6 +41,8 @@ export function makeCrud(opts) {
   } = opts;
 
   const db = () => prisma[model];
+  /** The Prisma model name ('faq' → 'Faq'), which is what audit rows carry. */
+  const modelName = model.charAt(0).toUpperCase() + model.slice(1);
 
   const toStorage = (data) => {
     const out = { ...data };
@@ -114,19 +117,24 @@ export function makeCrud(opts) {
      */
     async remove(id, { hard = false, role } = {}) {
       if (hard && !can(role, 'cms:purge')) throw forbidden('Permanent delete needs the cms:purge permission');
-      await this.get(id);
-      if (softDelete && !hard) {
-        await db().update({ where: { id }, data: { deletedAt: new Date() } });
-      } else {
-        await db().delete({ where: { id } });
-      }
+      const row = await this.get(id);
+      const purge = hard || !softDelete;
+      await prisma.$transaction(async (tx) => {
+        if (purge) await tx[model].delete({ where: { id } });
+        else await tx[model].update({ where: { id }, data: { deletedAt: new Date() } });
+        // A purge keeps what was removed; the row itself is gone.
+        await recordEvent(purge ? 'cms.purged' : 'cms.deleted', { model: modelName, recordId: id, ...(purge ? { before: row } : {}) }, tx);
+      });
       await invalidatePublic();
     },
 
     async restore(id) {
       const row = await db().findUnique({ where: { id } });
       if (!row) throw notFound(label);
-      await db().update({ where: { id }, data: { deletedAt: null } });
+      await prisma.$transaction(async (tx) => {
+        await tx[model].update({ where: { id }, data: { deletedAt: null } });
+        await recordEvent('cms.restored', { model: modelName, recordId: id, before: { deletedAt: row.deletedAt }, after: { deletedAt: null } }, tx);
+      });
       await invalidatePublic();
       return db().findUnique({ where: { id } });
     },

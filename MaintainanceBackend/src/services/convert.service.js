@@ -6,6 +6,7 @@ import { createJob, announceAssignment } from './job.service.js';
 import { createFromJob } from './survey.service.js';
 import { createQuotation } from './quotation.service.js';
 import { transitionLead } from './lead.service.js';
+import { recordEvent } from './audit.service.js';
 
 /** Funnel order. Convert only ever moves a lead forward along it, never back. */
 const FUNNEL = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON'];
@@ -116,6 +117,14 @@ export async function convertLead(leadId, input, userId) {
           (out.survey ? ` · survey ${out.survey.number}` : ''),
       },
     });
+
+    await recordEvent('lead.converted', {
+      model: 'Lead',
+      recordId: leadId,
+      before: { customerId: lead.customerId },
+      after: { customerId: customer.id },
+      meta: { quotationId: out.quotation?.id, jobId: out.job?.id, surveyId: out.survey?.id },
+    }, tx);
 
     return out;
     // Several documents, each with its numbering row and audit write: more than
