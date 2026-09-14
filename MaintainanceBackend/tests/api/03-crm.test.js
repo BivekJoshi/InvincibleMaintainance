@@ -2,6 +2,12 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import {
   anon, as, expectStatus, createCustomer, technicianIdFor, phone, uid, daysFromNow, prisma,
 } from './helpers.js';
+import { expireQuotations } from '../../src/services/quotation.service.js';
+
+/** The lead's status_change timeline, oldest first, as "FROM>TO". */
+const statusTrail = async (leadId) =>
+  (await prisma.leadActivity.findMany({ where: { leadId, type: 'status_change' }, orderBy: { createdAt: 'asc' } }))
+    .map((a) => `${a.meta.from}>${a.meta.to}`);
 
 let sales;
 let salesUserId;
@@ -135,6 +141,19 @@ describe('leads', () => {
     const b = expectStatus(await sales.post('/admin/leads').send({ name: 'Merge B', phone: p }), 201).data;
     expectStatus(await sales.post('/admin/leads/merge').send({ primaryId: a.id, duplicateIds: [b.id] }), 200);
     expectStatus(await sales.get(`/admin/leads/${b.id}`), 404);
+    expect((await prisma.lead.findUnique({ where: { id: b.id } })).status).toBe('LOST');
+  });
+
+  it('POST /admin/leads/merge refuses to bury a WON duplicate — make it the primary instead', async () => {
+    const p = phone();
+    const open = expectStatus(await sales.post('/admin/leads').send({ name: 'Merge Open', phone: p }), 201).data;
+    const won = expectStatus(await sales.post('/admin/leads').send({ name: 'Merge Won', phone: p }), 201).data;
+    expectStatus(await sales.patch(`/admin/leads/${won.id}/status`).send({ status: 'CONTACTED' }), 200);
+    expectStatus(await sales.patch(`/admin/leads/${won.id}/status`).send({ status: 'WON' }), 200);
+
+    expectStatus(await sales.post('/admin/leads/merge').send({ primaryId: open.id, duplicateIds: [won.id] }), 422);
+    const after = await prisma.lead.findUnique({ where: { id: won.id } });
+    expect(after).toMatchObject({ status: 'WON', deletedAt: null });
   });
 
   it('DELETE /admin/leads/:id soft-deletes', async () => {
@@ -151,6 +170,80 @@ describe('leads', () => {
     const dispatcher = await as('DISPATCHER');
     expectStatus(await dispatcher.get('/admin/leads'), 200);
     expectStatus(await dispatcher.post('/admin/leads').send({ name: 'No Rights', phone: phone() }), 403);
+  });
+});
+
+describe('lead convert — priced by documentTotals, all or nothing', () => {
+  let service;
+
+  beforeAll(async () => {
+    // Rs 2,500.50 makes VAT land on a half paisa, so the fixture checks rounding
+    // as well as that VAT is there at all.
+    service = expectStatus(await (await as('EDITOR')).post('/admin/services').send({
+      name: `Convert Fixture ${uid()}`,
+      excerpt: 'A fixed-price service used to check the totals a lead convert produces.',
+      priceFrom: 2500.5,
+    }), 201).data;
+  });
+
+  const newLead = async () =>
+    expectStatus(await sales.post('/admin/leads').send({ name: 'Convert Lead', phone: phone(), serviceId: service.id }), 201).data;
+
+  it('the converted quotation carries 13% VAT', async () => {
+    const lead = await newLead();
+    const { quotation } = expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createQuotation: true }), 201).data;
+    // 1 × 250050 paisa = 250050; VAT 13% = 32506.5 → 32507; total 282557.
+    expect(quotation.items).toHaveLength(1);
+    expect(quotation.items[0]).toMatchObject({ qty: 1, rate: 250050, amount: 250050 });
+    expect(quotation).toMatchObject({
+      subtotal: 250050, discount: 0, vatApplied: true, vatRate: 13, vatAmount: 32507, total: 282557, status: 'DRAFT',
+    });
+  });
+
+  it('a NEW lead passes through CONTACTED on its way to QUOTED, one timeline entry per step', async () => {
+    const lead = await newLead();
+    expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createQuotation: true }), 201);
+    expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('QUOTED');
+    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>QUOTED']);
+  });
+
+  it('an inspection and a quotation together walk the funnel in order and end QUOTED', async () => {
+    const lead = await newLead();
+    expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({
+      site: { address: 'Lazimpat, Kathmandu' },
+      createQuotation: true,
+      createInspectionJob: true,
+      surveyorId: await technicianIdFor('SURVEYOR'),
+    }), 201);
+    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>INSPECTION_SCHEDULED', 'INSPECTION_SCHEDULED>QUOTED']);
+  });
+
+  it('never moves a lead backwards: a QUOTED lead sent for an inspection stays QUOTED', async () => {
+    const lead = await newLead();
+    expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createQuotation: true }), 201);
+    const body = expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createInspectionJob: true }), 201).data;
+    expect(body.job.type).toBe('INSPECTION');
+    expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('QUOTED');
+  });
+
+  it('a failure in the job step leaves no customer, quotation, job or lead change behind', async () => {
+    const lead = await newLead();
+    // An unknown surveyor fails inside createJob, after the customer, site and
+    // quotation have already been written in the same transaction.
+    const res = await sales.post(`/admin/leads/${lead.id}/convert`).send({
+      site: { address: 'Kupondole, Lalitpur' },
+      createQuotation: true,
+      createInspectionJob: true,
+      surveyorId: 'no-such-technician',
+    });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+
+    expect(await prisma.customer.count({ where: { phone: lead.phone } })).toBe(0);
+    expect(await prisma.quotation.count({ where: { leadId: lead.id } })).toBe(0);
+    expect(await prisma.job.count({ where: { leadId: lead.id } })).toBe(0);
+    expect(await prisma.lead.findUnique({ where: { id: lead.id } })).toMatchObject({ status: 'NEW', customerId: null, firstResponseAt: null });
+    expect(await statusTrail(lead.id)).toEqual([]);
   });
 });
 
@@ -268,8 +361,88 @@ describe('quotations', () => {
     expect(body.data.status).toBe('SENT');
   });
 
+  it('PUT /admin/quotations/:id on a SENT quotation is 422 and changes nothing', async () => {
+    // The customer approves the numbers they were sent, so those numbers are frozen.
+    const before = expectStatus(await sales.get(`/admin/quotations/${quotation.id}`), 200).data;
+    const res = expectStatus(await sales.put(`/admin/quotations/${quotation.id}`).send({
+      items: [{ description: 'Changed after sending', unit: 'nos', qty: 1, rate: 1 }],
+      terms: 'Changed after sending',
+    }), 422);
+    expect(res.error.message).toMatch(/revision/i);
+    const after = expectStatus(await sales.get(`/admin/quotations/${quotation.id}`), 200).data;
+    expect(after.total).toBe(before.total);
+    expect(after.items.map((i) => i.description)).toEqual(before.items.map((i) => i.description));
+    expect(after.terms ?? null).toBe(before.terms ?? null);
+  });
+
   it('POST /admin/quotations/:id/revise opens a new revision', async () => {
     expectStatus(await sales.post(`/admin/quotations/${quotation.id}/revise`), 201);
+  });
+
+  it('expireQuotations() (the quotation:expire task) expires SENT quotations past validUntil, and only those', async () => {
+    const make = async (validUntil, { send = true } = {}) => {
+      const q = expectStatus(await sales.post('/admin/quotations').send({
+        customerId: customer.id, validUntil, items: [{ description: 'Expiry sweep', qty: 1, rate: 100 }],
+      }), 201).data;
+      if (send) expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
+      return q.id;
+    };
+    const stale = await make(daysFromNow(-2).toISOString());
+    const current = await make(daysFromNow(10).toISOString());
+    const staleDraft = await make(daysFromNow(-2).toISOString(), { send: false });
+
+    const result = await expireQuotations();
+    expect(result.expired).toBeGreaterThanOrEqual(1);
+    const status = async (id) => (await prisma.quotation.findUnique({ where: { id } })).status;
+    expect(await status(stale)).toBe('EXPIRED');
+    expect(await status(current)).toBe('SENT');
+    expect(await status(staleDraft)).toBe('DRAFT');
+  });
+
+  describe('customer approval moves the lead through the state machine', () => {
+    const leadAt = async (...statuses) => {
+      const lead = expectStatus(await sales.post('/admin/leads').send({ name: 'Approval Lead', phone: phone() }), 201).data;
+      for (const status of statuses) {
+        expectStatus(await sales.patch(`/admin/leads/${lead.id}/status`).send({
+          status, ...(status === 'LOST' ? { lostReason: 'Went with another company' } : {}),
+        }), 200);
+      }
+      return lead;
+    };
+    const approveFor = async (leadId) => {
+      const q = expectStatus(await sales.post('/admin/quotations').send({
+        customerId: customer.id, leadId, items: [{ description: 'Approval edge case', qty: 1, rate: 1000 }],
+      }), 201).data;
+      expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
+      const { publicToken } = await prisma.quotation.findUnique({ where: { id: q.id } });
+      return anon().post(`/public/quotations/${publicToken}/decide`).send({ decision: 'approve' });
+    };
+
+    it('a NEW lead is WON by way of CONTACTED, with closedAt and a timeline entry per step', async () => {
+      const lead = await leadAt();
+      expectStatus(await approveFor(lead.id), 200);
+      const after = await prisma.lead.findUnique({ where: { id: lead.id } });
+      expect(after.status).toBe('WON');
+      expect(after.closedAt).toBeTruthy();
+      expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>WON']);
+    });
+
+    it('a LOST lead does not fail the customer — it stays LOST and the timeline says the customer approved', async () => {
+      const lead = await leadAt('CONTACTED', 'LOST');
+      expect(expectStatus(await approveFor(lead.id), 200).data.status).toBe('APPROVED');
+      expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('LOST');
+      const note = await prisma.leadActivity.findFirst({
+        where: { leadId: lead.id, type: 'note', summary: { contains: 'approved', mode: 'insensitive' } },
+      });
+      expect(note).toBeTruthy();
+    });
+
+    it('a lead already WON stays WON and the approval goes through', async () => {
+      const lead = await leadAt('CONTACTED', 'WON');
+      expectStatus(await approveFor(lead.id), 200);
+      expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('WON');
+      expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>WON']);
+    });
   });
 
   it('DELETE /admin/quotations/:id on a draft', async () => {

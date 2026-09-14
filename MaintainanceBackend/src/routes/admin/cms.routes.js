@@ -40,7 +40,10 @@ function mountResource(router, path, service, schema, { capability = 'cms', extr
     asyncHandler(async (req, res) => ok(res, await service.restore(req.params.id))));
 
   router.delete(`/${path}/:id`, write, validate({ params: idParam }),
-    asyncHandler(async (req, res) => { await service.remove(req.params.id, { hard: req.query.hard === 'true' }); noContent(res); }));
+    asyncHandler(async (req, res) => {
+      await service.remove(req.params.id, { hard: req.query.hard === 'true', role: req.user.role });
+      noContent(res);
+    }));
 
   extra?.(router, { read, write });
 }

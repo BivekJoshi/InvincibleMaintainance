@@ -195,6 +195,26 @@ describe('customer documents by token', () => {
     expect(again.status).toBe(422);
   });
 
+  it('POST /public/quotations/:token/decide refuses an expired quotation nobody has opened', async () => {
+    // Expiry used to be applied only by a GET, so a customer who tapped "approve"
+    // straight from an old SMS approved a price that had lapsed.
+    const sales = await as('SALES');
+    const customer = await createCustomer(sales);
+    const q = expectStatus(await sales.post('/admin/quotations').send({
+      customerId: customer.id,
+      validUntil: new Date(Date.now() - 86_400_000).toISOString(),
+      items: [{ description: 'Stale offer', qty: 1, rate: 500 }],
+    }), 201).data;
+    expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
+    const { publicToken } = await prisma.quotation.findUnique({ where: { id: q.id } });
+
+    const res = expectStatus(await anon().post(`/public/quotations/${publicToken}/decide`).send({ decision: 'approve' }), 422);
+    expect(res.error.message).toMatch(/expired/i);
+    const after = await prisma.quotation.findUnique({ where: { id: q.id } });
+    expect(after.status).toBe('EXPIRED');
+    expect(after.decidedAt).toBeNull();
+  });
+
   it('a short token is a validation error, an unknown one is 404', async () => {
     expectStatus(await anon().get('/public/quotations/short'), 400);
     expectStatus(await anon().get(`/public/quotations/${'z'.repeat(43)}`), 404);

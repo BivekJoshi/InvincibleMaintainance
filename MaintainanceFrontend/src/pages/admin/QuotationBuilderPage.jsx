@@ -24,8 +24,11 @@ import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDate, formatNpr, paisaToRupees } from '@/helpers/format';
 
-/** An approved or converted quotation is frozen — the API refuses edits and offers a revision. */
-const FROZEN = ['APPROVED', 'CONVERTED'];
+/**
+ * Only a draft is edited in place. Once sent, the customer is deciding on those
+ * figures, so the API refuses any edit (422) and a change means a revision.
+ */
+const isEditable = (status) => status === 'DRAFT';
 
 export default function QuotationBuilderPage() {
   const { id } = useParams();
@@ -67,7 +70,7 @@ export default function QuotationBuilderPage() {
   if (isLoading) return <PageTransition><CardSkeleton /></PageTransition>;
   if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
 
-  const frozen = FROZEN.includes(quotation.status) || !canWrite;
+  const frozen = !isEditable(quotation.status) || !canWrite;
 
   const save = async () => {
     try {
@@ -152,7 +155,8 @@ export default function QuotationBuilderPage() {
           </p>
         ) : frozen ? (
           <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-            An approved quotation is never edited in place. Create a revision to change it and keep the history.
+            A {quotation.status.toLowerCase()} quotation is never edited in place — the customer was sent these
+            figures. Create a revision to change it and keep the history.
           </p>
         ) : null}
       </PageHeader>

@@ -57,12 +57,15 @@ describe.each(Object.entries(RESOURCES))('/admin/%s', (path, body) => {
     expectStatus(await editor.patch(`/admin/${path}/reorder`).send({ items: [{ id, sortOrder: 2 }] }), 204);
   });
 
-  it('DELETE soft-deletes, PATCH /:id/restore brings it back, ?hard=true removes it', async () => {
+  it('DELETE soft-deletes, PATCH /:id/restore brings it back, ?hard=true is ADMIN only (cms:purge)', async () => {
     expectStatus(await editor.delete(`/admin/${path}/${id}`), 204);
     expectStatus(await editor.get(`/admin/${path}/${id}`), 404);
     expectStatus(await editor.patch(`/admin/${path}/${id}/restore`), 200);
     expectStatus(await editor.get(`/admin/${path}/${id}`), 200);
-    expectStatus(await editor.delete(`/admin/${path}/${id}?hard=true`), 204);
+    expectStatus(await editor.delete(`/admin/${path}/${id}?hard=true`), 403);
+    expectStatus(await editor.get(`/admin/${path}/${id}`), 200);
+    expectStatus(await (await as('ADMIN')).delete(`/admin/${path}/${id}?hard=true`), 204);
+    expectStatus(await editor.patch(`/admin/${path}/${id}/restore`), 404);
   });
 });
 
@@ -92,6 +95,13 @@ describe('resource specifics', () => {
     const img = expectStatus(await editor.post(`/admin/projects/${p.id}/images`).send({ mediaId, caption: 'Before' }), 201).data;
     expectStatus(await editor.patch(`/admin/projects/${p.id}/images/reorder`).send({ items: [{ id: img.id, sortOrder: 1 }] }), 204);
     expectStatus(await editor.delete(`/admin/projects/${p.id}/images/${img.id}`), 204);
+  });
+
+  it('media: EDITOR soft-deletes, only ADMIN (cms:purge) removes the file for good', async () => {
+    const doomed = await uploadImage(editor, '#aa3355');
+    expectStatus(await editor.delete(`/admin/media/${doomed.id}?hard=true`), 403);
+    expectStatus(await editor.delete(`/admin/media/${doomed.id}`), 204);
+    expectStatus(await (await as('ADMIN')).delete(`/admin/media/${doomed.id}?hard=true`), 204);
   });
 
   it('SALES cannot write CMS content', async () => {

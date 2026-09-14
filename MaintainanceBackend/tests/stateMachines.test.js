@@ -32,6 +32,22 @@ describe('state machines', () => {
     expect(canTransition(INVOICE_TRANSITIONS, 'VOID', 'SENT')).toBe(false);
   });
 
+  it('lets a voided payment walk an invoice back down', () => {
+    // A bounced cheque on a settled invoice: PAID → PARTIAL, or all the way back
+    // to SENT / OVERDUE when it was the only payment.
+    expect(canTransition(INVOICE_TRANSITIONS, 'PAID', 'PARTIAL')).toBe(true);
+    expect(canTransition(INVOICE_TRANSITIONS, 'PAID', 'SENT')).toBe(true);
+    expect(canTransition(INVOICE_TRANSITIONS, 'PAID', 'OVERDUE')).toBe(true);
+    expect(canTransition(INVOICE_TRANSITIONS, 'PARTIAL', 'SENT')).toBe(true);
+    expect(canTransition(INVOICE_TRANSITIONS, 'PAID', 'DRAFT')).toBe(false);
+    expect(canTransition(INVOICE_TRANSITIONS, 'VOID', 'PAID')).toBe(false);
+  });
+
+  it('lets a sent quotation expire, and nothing but a resend follows', () => {
+    expect(canTransition(QUOTATION_TRANSITIONS, 'SENT', 'EXPIRED')).toBe(true);
+    expect(canTransition(QUOTATION_TRANSITIONS, 'EXPIRED', 'APPROVED')).toBe(false);
+  });
+
   it('throws a 422 with the allowed set listed', () => {
     try {
       assertTransition(JOB_TRANSITIONS, 'COMPLETED', 'DRAFT', 'job');

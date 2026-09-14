@@ -1198,7 +1198,11 @@ model Payment {
   receivedAt DateTime @default(now())
   receivedBy String?
   note       String?
-  createdAt  DateTime @default(now())
+  // A payment is never deleted. Voiding keeps the row, and every paid total ignores it.
+  voidedAt   DateTime?
+  voidReason String?
+  voidedById String?
+  createdAt  DateTime  @default(now())
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 

@@ -26,6 +26,19 @@ backend README).
 npm run dev      npm run build      npm run preview      npm run lint
 ```
 
+### Lint and CI
+
+`npm run lint` runs ESLint 9 over `src` with `eslint.config.js`: `@eslint/js` recommended,
+`eslint-plugin-react` (recommended + JSX runtime; `prop-types` off, since the project uses JSDoc),
+`eslint-plugin-react-hooks` **v5** (rules-of-hooks + exhaustive-deps — v6+ adds React Compiler rules
+this app does not use) and `eslint-plugin-react-refresh`. Errors fail the run. The known
+`react-refresh/only-export-components` warnings (a file exporting a hook or variants beside its
+component, mostly `three/motion/motionKit.jsx`) are left as warnings: they only affect hot reload.
+
+`.github/workflows/ci.yml` runs on every push to `prabesh`, `admin/**` and `DEVELOPMENT`, and on pull
+requests into `prabesh` or `DEVELOPMENT`. The frontend job, on Node 20: `npm ci` → `npm run lint` →
+`npm run build`. Phase C1 adds `npm test`; Phase F2 adds an end-to-end job.
+
 ---
 
 ## Layout

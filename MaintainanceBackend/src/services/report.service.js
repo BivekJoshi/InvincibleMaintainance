@@ -161,7 +161,8 @@ export async function agingReport() {
 export async function collectionsReport(query = {}) {
   const receivedAt = range(query);
   const payments = await prisma.payment.findMany({
-    where: { receivedAt },
+    // A voided payment was never money received.
+    where: { receivedAt, voidedAt: null },
     include: { invoice: { select: { number: true, customer: { select: { name: true } } } } },
     orderBy: { receivedAt: 'desc' },
   });
@@ -274,7 +275,7 @@ export async function customerStatement(customerId) {
   const [customer, invoices, payments] = await Promise.all([
     prisma.customer.findUnique({ where: { id: customerId } }),
     prisma.invoice.findMany({ where: { customerId, deletedAt: null, status: { not: 'VOID' } }, orderBy: { issuedAt: 'asc' } }),
-    prisma.payment.findMany({ where: { invoice: { customerId } }, orderBy: { receivedAt: 'asc' }, include: { invoice: { select: { number: true } } } }),
+    prisma.payment.findMany({ where: { invoice: { customerId }, voidedAt: null }, orderBy: { receivedAt: 'asc' }, include: { invoice: { select: { number: true } } } }),
   ]);
   const entries = [
     ...invoices.map((i) => ({ at: i.issuedAt, kind: 'invoice', ref: i.number, debit: i.total, credit: 0 })),

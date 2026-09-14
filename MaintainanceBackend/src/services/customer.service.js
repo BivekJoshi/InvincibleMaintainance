@@ -52,15 +52,16 @@ export async function deleteCustomer(id) {
 }
 
 /** Finds an existing customer by phone, or creates one — used by lead conversion. */
-export async function findOrCreateByPhone({ name, phone, email, address, area, siteLabel }) {
+/** @param {import('@prisma/client').Prisma.TransactionClient} [client]  the caller's transaction, if any */
+export async function findOrCreateByPhone({ name, phone, email, address, area, siteLabel }, client = prisma) {
   const normalized = normalizePhone(phone);
-  let customer = await prisma.customer.findFirst({ where: { phone: normalized, deletedAt: null } });
+  let customer = await client.customer.findFirst({ where: { phone: normalized, deletedAt: null } });
   if (!customer) {
-    customer = await prisma.customer.create({ data: { name, phone: normalized, email: email ?? null } });
+    customer = await client.customer.create({ data: { name, phone: normalized, email: email ?? null } });
   }
-  let site = await prisma.customerSite.findFirst({ where: { customerId: customer.id, deletedAt: null, isPrimary: true } });
+  let site = await client.customerSite.findFirst({ where: { customerId: customer.id, deletedAt: null, isPrimary: true } });
   if (!site && address) {
-    site = await prisma.customerSite.create({
+    site = await client.customerSite.create({
       data: { customerId: customer.id, label: siteLabel || 'Primary site', address, area: area ?? null, isPrimary: true },
     });
   }

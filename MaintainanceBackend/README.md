@@ -71,6 +71,19 @@ consent — run it yourself. Point the suite elsewhere with `TEST_DATABASE_URL`.
 a time in a single process, because they share the database and the app's in-memory rate-limit
 store.
 
+## Lint and CI
+
+`npm run lint` runs ESLint 9 over `src` and `prisma` with `eslint.config.js` (`@eslint/js`
+recommended, Node globals; a leading `_` marks a binding that is unused on purpose).
+
+`.github/workflows/ci.yml` runs on every push to `prabesh`, `admin/**` and `DEVELOPMENT`, and on
+pull requests into `prabesh` or `DEVELOPMENT`. The backend job, on Node 20: `npm ci` →
+`npx prisma generate` → `npm run lint` → `npm test` → `npx prisma migrate deploy` and
+`npm run db:seed` against a `postgres:16` service database named `maintainance_test` →
+`npm run test:api`. The database URL and JWT secrets it uses are throwaway values written in the
+workflow. Any failing step fails the run. A frontend job lints and builds `MaintainanceFrontend`
+in parallel.
+
 ## Redis is optional
 
 Without `REDIS_URL` the queue runs in-process and the cache is an in-memory Map, so
@@ -91,7 +104,7 @@ src/
   middleware/          validate, authenticate, authorize, upload, rateLimit, error
   services/            all business logic — controllers never touch Prisma
   routes/              public · auth · tech · admin/{cms,crm,ops,finance,aftercare,platform}
-  queues/ crons/       SLA sweep, overdue invoices, AMC visits, reminders
+  queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders
 prisma/                schema.prisma · seed.js · seed-data.js
 tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas
 tests/api/             every route over supertest, against a database whose name ends in _test

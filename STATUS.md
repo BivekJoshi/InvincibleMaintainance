@@ -1,6 +1,7 @@
 # Build status
 
-Updated 2026-09-11. Plan and phases: `docs/PLAN.md`.
+Updated 2026-09-14. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+`docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
 
@@ -18,6 +19,7 @@ Updated 2026-09-11. Plan and phases: `docs/PLAN.md`.
 | 9 Aftercare | Warranty auto-creation, claims, AMC contracts + auto-scheduled visits, reminders | ✅ backend · public pages built |
 | 10 Reports | Lead source, funnel, SLA compliance, margin, technician, warranty, dashboards | ✅ backend · dashboard built |
 | 11 Site surveys | SURVEYOR role, survey capture, pricing preview, survey → quotation, offline queue | ✅ |
+| **v2 · A Safety fixes** | Convert priced by `documentTotals` and atomic, quotation expiry at decide time + `quotation:expire`, DRAFT-only edits, payment void (no hard delete), `transitionLead`, `cms:purge`, CSV export via RTK Query, real booking timing, ESLint in both apps, GitHub Actions CI, doc housekeeping | ✅ 2026-09-14 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, leads (list + detail), the site-survey inbox and review screen, the
@@ -91,21 +93,22 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 
 ## Next
 
-Frontend screens for modules whose APIs already exist (`docs/API.md`):
-
-1. ~~Lead detail — timeline, notes, convert-to-customer~~ ✅
-2. ~~Quotation builder off the rate card~~ ✅ — customers + sites screens still to do.
-3. Job detail (checklist, photos, materials, timer) and the dispatch calendar.
-4. Materials/stock, invoices + payments, warranty/AMC screens.
-5. CMS editors on `<DataTable>` + the home-section drag-and-drop composer.
-6. ~~Field offline queue against `POST /tech/sync`~~ ✅ — job mutations still to be wired to it;
-   only survey drafts and submits queue today.
+The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
+Phase A is done; next is **Phase B — Logging & audit backbone** (`docs/prompts/PHASE-B-logging-audit.md`).
 
 ## Verification
 
-- 59 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas) — `npm test`.
-- 347 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
+- 62 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas) — `npm test`.
+- 368 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
   route in `docs/API.md`, RBAC per role and the error envelope, and runs twice in a row without a reset.
+- Phase A (2026-09-14): unit 59 → 62, API 347 → 368; every new test was run against the old code first and
+  failed there. `npm run lint` is clean in the backend and has 0 errors (25 `react-refresh` warnings, kept on
+  purpose) in the frontend; `npm run build` succeeds. `.github/workflows/ci.yml` runs all of it on push.
+- Phase A browser walk-through (headless Chrome against the dev servers): signed in as
+  `sales@gharjatan.com.np`, exported leads filtered to NEW — the first export call was forced to 401, the page
+  refreshed once and retried, both calls carried the Bearer token, and the file (UTF-8 BOM) held exactly the 2
+  NEW leads the API counts. A booking at `/book` (priced service, size, day + window, Nepali message) returned
+  201, sent the measured `elapsedMs`, and created a `source=booking` lead with its slot and SLA deadline.
 - Full pipeline exercised over HTTP against a live database: lead → SLA breach → response →
   customer → quotation → public approval → job → checklist → materials → completion → warranty →
   claim → free rework job → invoice → payments → PAID.
@@ -134,6 +137,12 @@ Gaps filled: `POST /admin/quotations/:id/convert-to-job`, `POST|DELETE /admin/jo
 `docs/API.md` rewritten to match what is actually mounted.
 
 ## Known gaps
+
+- Quotation `validUntil` is a date stored at midnight UTC, so "valid until the 14th" expires at 05:45 Kathmandu on
+  the 14th (unchanged behaviour, now applied consistently by GET, decide and the sweep).
+- A quotation whose `validUntil` has already passed can still be sent.
+- Converting a lead with an unknown `surveyorId` answers 409 `FK_CONSTRAINT` ("referenced by other records")
+  rather than naming the surveyor — the convert rolls back correctly, the message is just unhelpful.
 
 - Quotation/invoice PDFs are not generated; the public token pages render the document in HTML
   and print cleanly. Add Puppeteer if a real PDF file is required.

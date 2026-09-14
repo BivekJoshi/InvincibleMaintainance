@@ -31,7 +31,7 @@ router.get('/leads/export.csv', readLeads, validate({ query: s.leadListQuery }),
   await recordAudit({ actorId: req.user.id, action: 'export', model: 'Lead', ip: req.ip, changes: req.validatedQuery });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
-  res.send(`﻿${csv}`); // BOM so Excel renders Devanagari correctly
+  res.send(`\uFEFF${csv}`); // BOM so Excel renders Devanagari correctly
 }));
 
 router.post('/leads', writeLeads, validate({ body: s.adminLeadCreateSchema }),

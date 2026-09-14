@@ -27,6 +27,15 @@ src/
 `injectEndpoints`, so there is one cache and one tag registry. `baseQuery.js` holds
 the refresh-on-401 mutex — a burst of 401s triggers exactly one refresh.
 
+**File downloads go through RTK Query too, never `window.open` or a bare `<a href>`** — neither
+sends the Bearer token, so the API answers 401. The pattern (worked example:
+`exportLeadsCsv` in `leadsApi.js`, used by `pages/admin/LeadsPage.jsx`): a lazy query with
+`responseHandler: (res) => res.text()` and `keepUnusedDataFor: 0` — text, because the cache only
+holds serialisable values — and the page builds the `Blob` and clicks a temporary link. That way
+the request carries the token and survives a 401 → refresh → retry. For CSV, prepend `'﻿'`
+to the Blob: `res.text()` strips the byte-order mark the API sends, and Excel needs it to read
+Devanagari.
+
 `apiCore.js` exports only the core pieces. Domain endpoint files are **not** re-exported:
 a barrel there would drag the back office's endpoints into the marketing bundle.
 Import them directly — `import { useGetLeadsQuery } from '@/api/leadsApi'`.

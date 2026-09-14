@@ -8,7 +8,7 @@ export function notFoundHandler(req, res) {
   });
 }
 
-// eslint-disable-next-line no-unused-vars
+// Express recognises an error handler by its four parameters, so _next stays.
 export function errorHandler(err, req, res, _next) {
   let status = err.status || 500;
   let code = err.code || 'INTERNAL_ERROR';

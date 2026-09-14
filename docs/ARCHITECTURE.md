@@ -4,13 +4,12 @@
 
 | Process | Port | Responsibility |
 |---|---|---|
-| `apps/api` | 4000 | REST API, auth, business logic, Prisma |
-| `apps/api` worker | — | BullMQ consumers: SMS, email, image processing, SLA timers, AMC/reminder crons |
-| `apps/web` | 5400 | Public marketing site |
-| `apps/admin` | 5174 | Back-office SPA (includes the `/tech` mobile PWA route tree) |
+| `MaintainanceBackend` — `npm run dev` / `npm start` | 4000 | REST API, auth, business logic, Prisma; runs the schedulers and, without Redis, the job queue in-process |
+| `MaintainanceBackend` — `npm run worker` | — | Standalone BullMQ worker (SMS, email, SLA sweep, invoice/quotation/warranty/AMC/reminder tasks) when `REDIS_URL` is set |
+| `MaintainanceFrontend` — `npm run dev` | 5400 | **One Vite app** serving the public site, the `/admin` back office and the `/tech` field PWA, split by route group and lazy-loaded. Vite proxies `/api` and `/uploads` to :4000 |
 | postgres | 5432 | System of record |
-| redis | 6379 | Queues, public response cache, rate-limit counters |
-| MinIO / S3 | 9000 | Media originals + derivatives |
+| redis (optional) | 6379 | Queues, public response cache, rate-limit counters — in-memory fallbacks when blank |
+| S3-compatible storage (optional) | 9000 | Media originals + derivatives; local disk is the default driver |
 
 ## Request pipeline (API)
 
@@ -41,16 +40,22 @@ requestId → pino logger → helmet → cors(allowlist) → compression → rat
 
 ## State machines
 
-Transitions live in `packages/shared/stateMachines.js` and are enforced in the service layer —
-never by trusting a status string from the client.
+Transitions live in `MaintainanceBackend/src/shared/stateMachines.js` and are enforced in the
+service layer — never by trusting a status string from the client.
 
 ```
-Lead      NEW → CONTACTED → INSPECTION_SCHEDULED → QUOTED → WON | LOST
+Lead      NEW → CONTACTED → INSPECTION_SCHEDULED → QUOTED → WON | LOST ;  LOST → CONTACTED
 Quotation DRAFT → SENT → APPROVED | REJECTED | EXPIRED → CONVERTED
 Job       DRAFT → SCHEDULED → ASSIGNED → EN_ROUTE → IN_PROGRESS ⇄ ON_HOLD
                 → COMPLETED → VERIFIED ;  any → CANCELLED
 Invoice   DRAFT → SENT → PARTIAL → PAID ;  SENT|PARTIAL → OVERDUE ;  any → VOID
+          voiding a payment walks it back:  PAID → PARTIAL | SENT | OVERDUE ;  PARTIAL → SENT
 ```
+
+Every lead status change goes through `lead.service.js#transitionLead(tx, leadId, to, opts)`, which
+asserts the transition, stamps `closedAt` and writes the `status_change` timeline entry inside the
+caller's transaction. A quotation's `validUntil` is checked when the customer opens the link, when
+they decide, and hourly by the `quotation:expire` task — one rule (`isExpired`) for all three.
 
 ## Offline strategy (technician PWA)
 

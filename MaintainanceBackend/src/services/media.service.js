@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
-import { notFound, badRequest } from '../utils/AppError.js';
+import { notFound, badRequest, forbidden } from '../utils/AppError.js';
+import { can } from '../shared/permissions.js';
 import { sniffMime } from '../middleware/upload.js';
 import { processImage, storeRaw, deleteObject, publicUrl } from './storage.service.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
@@ -54,7 +55,9 @@ export async function updateMedia(id, data) {
   return decorateMedia(await prisma.media.update({ where: { id }, data }));
 }
 
-export async function deleteMedia(id, { hard = false } = {}) {
+/** Soft delete; `hard` removes the file and the row for good and needs cms:purge (ADMIN). */
+export async function deleteMedia(id, { hard = false, role } = {}) {
+  if (hard && !can(role, 'cms:purge')) throw forbidden('Permanent delete needs the cms:purge permission');
   const m = await prisma.media.findUnique({ where: { id } });
   if (!m) throw notFound('Media');
   if (hard) {

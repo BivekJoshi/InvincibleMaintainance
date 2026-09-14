@@ -20,6 +20,13 @@ describe('role capabilities', () => {
     expect(can('EDITOR', 'leads:read')).toBe(false);
   });
 
+  it('keeps permanent delete (cms:purge) with ADMIN alone', () => {
+    expect(can('ADMIN', 'cms:purge')).toBe(true);
+    for (const role of ['EDITOR', 'SALES', 'DISPATCHER', 'ACCOUNTANT', 'TECHNICIAN', 'SURVEYOR']) {
+      expect(can(role, 'cms:purge')).toBe(false);
+    }
+  });
+
   it('gives TECHNICIAN only their own jobs', () => {
     expect(can('TECHNICIAN', 'jobs:own')).toBe(true);
     expect(can('TECHNICIAN', 'jobs:read')).toBe(false);

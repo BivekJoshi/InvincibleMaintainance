@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
-import { notFound } from '../utils/AppError.js';
+import { forbidden, notFound } from '../utils/AppError.js';
+import { can } from '../shared/permissions.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { uniqueSlug } from '../utils/slug.js';
 import { invalidatePublic } from './cache.service.js';
@@ -107,7 +108,12 @@ export function makeCrud(opts) {
       return row;
     },
 
-    async remove(id, { hard = false } = {}) {
+    /**
+     * Soft delete, which the caller can restore. `hard` removes the row for good and
+     * needs cms:purge (ADMIN only); `role` is the caller's.
+     */
+    async remove(id, { hard = false, role } = {}) {
+      if (hard && !can(role, 'cms:purge')) throw forbidden('Permanent delete needs the cms:purge permission');
       await this.get(id);
       if (softDelete && !hard) {
         await db().update({ where: { id }, data: { deletedAt: new Date() } });

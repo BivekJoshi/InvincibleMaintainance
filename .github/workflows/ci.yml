@@ -1,0 +1,108 @@
+# Lint, unit tests, the HTTP API suite against a real Postgres, and the frontend build.
+# Runs on every push to the working branches and on pull requests into them.
+# Phase C1 adds the frontend `npm test` step; Phase F2 adds the end-to-end job.
+name: CI
+
+on:
+  push:
+    branches: [prabesh, 'admin/**', DEVELOPMENT]
+  pull_request:
+    branches: [prabesh, DEVELOPMENT]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend · lint, unit, API
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: MaintainanceBackend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: maintainance
+          POSTGRES_PASSWORD: maintainance
+          POSTGRES_DB: maintainance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U maintainance -d maintainance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Throwaway values for a database that exists only for this run. Not secrets,
+      # and never used anywhere else. The name must end in _test (tests/api/setup.js).
+      DATABASE_URL: postgresql://maintainance:maintainance@127.0.0.1:5432/maintainance_test?schema=public
+      TEST_DATABASE_URL: postgresql://maintainance:maintainance@127.0.0.1:5432/maintainance_test?schema=public
+      JWT_SECRET: ci-only-jwt-secret-0123456789abcdef0123456789abcdef
+      REFRESH_SECRET: ci-only-refresh-secret-0123456789abcdef0123456789ab
+      REDIS_URL: ''
+      SMTP_HOST: ''
+      SMS_DRIVER: console
+      TURNSTILE_SECRET: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: MaintainanceBackend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      # A fresh service database: apply the migrations and seed it, then run the
+      # HTTP suite. Not `migrate reset` — there is nothing to reset.
+      - name: Migrate test database
+        run: npx prisma migrate deploy
+
+      - name: Seed test database
+        run: npm run db:seed
+
+      - name: API tests
+        run: npm run test:api
+
+  frontend:
+    name: Frontend · lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: MaintainanceFrontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: MaintainanceFrontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

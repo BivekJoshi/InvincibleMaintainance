@@ -38,8 +38,10 @@ router.post('/invoices/:id/void', writeInv, validate({ params: idParam, body: s.
 router.post('/invoices/:id/payments', requires('payments:write'), validate({ params: idParam, body: s.paymentSchema }),
   asyncHandler(async (req, res) => created(res, await invoices.recordPayment(req.params.id, req.body, req.user.id))));
 
-router.delete('/invoices/:id/payments/:paymentId', requires('payments:write'),
-  asyncHandler(async (req, res) => { await invoices.deletePayment(req.params.id, req.params.paymentId); noContent(res); }));
+// Payments are voided, never deleted: the row stays, flagged, and the paid total ignores it.
+router.post('/invoices/:id/payments/:paymentId/void', requires('payments:write'),
+  validate({ params: s.paymentParams, body: s.paymentVoidSchema }),
+  asyncHandler(async (req, res) => ok(res, await invoices.voidPayment(req.params.id, req.params.paymentId, req.body.reason, req.user.id))));
 
 router.get('/payments', requires('payments:read'), validate({ query: s.paymentListQuery }), asyncHandler(async (req, res) => {
   const { items, meta } = await invoices.listPayments(req.validatedQuery);

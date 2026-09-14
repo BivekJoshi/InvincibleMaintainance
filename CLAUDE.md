@@ -1,6 +1,7 @@
 # CLAUDE.md — Maintenance System
 
-Working context for Claude Code. Read this first, then `docs/PLAN.md`.
+Working context for Claude Code. Read this first, then `docs/ADMIN-PLAN.md` — the current build
+order. `docs/PLAN.md` is the historical v1 blueprint.
 
 ## What we are building
 
@@ -43,10 +44,14 @@ split by route group: `(site)` public, `(admin)` staff, `(tech)` technician PWA.
 - JavaScript + JSX. No TypeScript. JSDoc for non-obvious signatures.
 - Named exports. Default export only for React components.
 - 2-space indent, single quotes, no semicolon-free style — match Prettier config.
-- Validation lives once, in `packages/shared` as zod schemas, imported by API and both SPAs.
+- Validation lives once, as zod schemas in `MaintainanceBackend/src/shared/schemas/`, mirrored for the
+  SPA in `MaintainanceFrontend/src/form/schemas/`.
 
-**API (`apps/api`)**
-- Layering: `routes/ → controllers/ → services/ → prisma`. Controllers never touch Prisma.
+**API (`MaintainanceBackend`)**
+- Layering: `routes/ → services/ → prisma`. The thin inline `asyncHandler` in a route file **is**
+  the controller (decision D5, 2026-09-14): it takes the validated request, calls a service and
+  shapes the response. Route files never call Prisma directly; business logic stays in services.
+  Raw Prisma calls still in some routers move into services when each router is next touched.
 - Every route: `validate(schema)` → `authenticate` → `authorize(...roles)` → controller.
 - Errors: `throw new AppError(status, code, message)`. One error middleware serializes them.
 - Responses: `{ data, meta }` on success, `{ error: { code, message, details } }` on failure.
@@ -109,7 +114,7 @@ Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password1
 
 ## Rules of engagement for Claude
 
-1. Work phase by phase from `docs/PLAN.md`. Finish a phase's acceptance criteria before starting the next.
+1. Work phase by phase from `docs/ADMIN-PLAN.md` (prompts in `docs/prompts/`). Finish a phase's acceptance criteria before starting the next.
 2. Before adding a model or field, update `docs/DATA-MODEL.prisma` and `docs/API.md` in the same change.
 3. New admin CRUD screens are built from the shared `<DataTable>` / `<ResourceForm>` primitives. Do not hand-roll a fifth variant of a data table.
 4. Add shadcn components with `npx shadcn@latest add <name>` — do not hand-copy them.

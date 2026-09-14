@@ -35,7 +35,15 @@ POST /public/leads                    honeypot + timing + turnstile + rate limit
                                       which sets source=booking; a closed weekday is rejected
 GET  /public/quotations/:token        customer views a quotation
 POST /public/quotations/:token/decide { decision: approve|reject, note }   once — a second is 422
+                                      a SENT quotation past validUntil is moved to EXPIRED here and
+                                      answered 422 "This quotation has expired…", whether or not
+                                      anyone opened the link first. Approval moves the lead to WON
+                                      through the state machine (NEW via CONTACTED); a lead already
+                                      WON is left alone, a LOST lead keeps its status and gets a
+                                      timeline note — the lead never fails the customer's approval
 GET  /public/invoices/:token          customer views an invoice (read-only; paid offline)
+                                      payments[] include voided ones with voidedAt set (shown struck
+                                      through); paidAmount already excludes them
 GET  /public/warranties/:token
 POST /public/warranties/:token/claim  { description }   one open claim at a time — a second is 422
 GET  /sitemap.xml   /robots.txt   /json-ld              ?origin=https://…
@@ -63,7 +71,11 @@ on its next authenticated request.
 
 Every resource below gets the same eight endpoints from one factory: `GET /`, `GET /:id`,
 `POST /`, `PUT /:id` (partial), `PATCH /:id/toggle`, `PATCH /reorder { items: [{ id, sortOrder }] }`,
-`DELETE /:id` (soft; `?hard=true` removes the row) and `PATCH /:id/restore`.
+`DELETE /:id` (soft) and `PATCH /:id/restore`.
+
+`DELETE /:id?hard=true` removes the row for good and needs **`cms:purge`**, which only ADMIN holds;
+anyone else gets 403 `FORBIDDEN` and nothing is deleted. The same applies to `DELETE /admin/media/:id?hard=true`,
+which also removes the stored file and its variants.
 
 ```
 /admin/hero-slides
@@ -85,7 +97,8 @@ Every resource below gets the same eight endpoints from one factory: `GET /`, `G
 /admin/translations             GET ?model&recordId, PUT { model, recordId, values }
 
 /admin/settings                 GET (settings:read), PATCH { values } (ADMIN only)
-/admin/media                    GET, POST (images, multipart `files`), GET /:id, PUT /:id, DELETE /:id
+/admin/media                    GET, POST (images, multipart `files`), GET /:id, PUT /:id,
+                                DELETE /:id (soft; ?hard=true needs cms:purge)
 /admin/media/documents          POST (PDFs and other files)
 /admin/media/folders            GET, POST, DELETE /:id
 ```
@@ -97,23 +110,32 @@ GET    /admin/leads                 ?status&priority&source&assignedToId&service
 POST   /admin/leads                 manual entry (phone/walk-in)
 GET    /admin/leads/sla-board       at-risk + breached
 GET    /admin/leads/export.csv
-POST   /admin/leads/merge           { primaryId, duplicateIds }
+POST   /admin/leads/merge           { primaryId, duplicateIds }   duplicates move to LOST and are soft-deleted;
+                                    422 when a duplicate is WON — make that lead the primary instead
 GET    /admin/leads/:id
 GET    /admin/leads/:id/duplicates  other leads with the same phone or email
 PUT    /admin/leads/:id
-PATCH  /admin/leads/:id/status      validated transition; LOST needs lostReason
+PATCH  /admin/leads/:id/status      validated transition; LOST needs lostReason; writes a status_change
+                                    timeline entry; the status it already has is a no-op
 PATCH  /admin/leads/:id/assign
 POST   /admin/leads/:id/notes
 POST   /admin/leads/:id/activities  logging a call stamps firstResponseAt
 POST   /admin/leads/:id/convert     { customerId?, site?, createQuotation, createInspectionJob,
                                       scheduledStart, scheduledEnd, surveyorId }
                                     -> 201 { customer, site, quotation?, job?, survey? }
-                                    assigning surveyorId schedules the visit and pre-creates its SiteSurvey
+                                    assigning surveyorId schedules the visit and pre-creates its SiteSurvey.
+                                    One transaction: any failure (e.g. an unknown surveyorId, 409) leaves no
+                                    customer, site, quotation, job, survey or lead change behind.
+                                    The quotation is priced like POST /admin/quotations (VAT included).
+                                    The lead only moves forward, one timeline entry per step:
+                                    NEW|LOST → CONTACTED → INSPECTION_SCHEDULED (job) → QUOTED (quotation)
 DELETE /admin/leads/:id             soft delete
 
 /admin/customers                    CRUD + /:id/sites CRUD + GET /:id/timeline
 /admin/rate-card                    CRUD — quotations:read / quotations:write
 /admin/quotations                   CRUD + POST /:id/send + POST /:id/revise
+PUT    /admin/quotations/:id        DRAFT only. Any other status is 422 UNPROCESSABLE ("…cannot be edited.
+                                    Create a revision to change it.") and nothing changes
 POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only
                                     { type?, title?, description?, priority?, scheduledStart?,
                                       scheduledEnd?, templateId?, technicianIds?, leadTechnicianId? }
@@ -228,14 +250,21 @@ POST   /admin/invoices/:id/void     { reason }
 POST   /admin/invoices/from-job/:jobId          once per job — a second is 422
 POST   /admin/invoices/:id/payments             payments:write · an overpayment is refused;
                                                 status (PARTIAL / PAID) follows the paid total
-DELETE /admin/invoices/:id/payments/:paymentId
+POST   /admin/invoices/:id/payments/:paymentId/void   payments:write · { reason } (3–500 chars)
+                                    -> 200 the payment, with voidedAt, voidReason, voidedById set.
+                                    Payments are never deleted (the old DELETE is gone). paidAmount is
+                                    recomputed from the payments not voided, and the status follows it
+                                    back down: PAID → PARTIAL, or → SENT / OVERDUE (past due) when none
+                                    are left. 400 no reason · 404 payment not on this invoice ·
+                                    422 already voided
 GET    /admin/payments              ?q&method&customerId&from&to    payments:read
-                                    q matches the payment reference, invoice number or customer
+                                    q matches the payment reference, invoice number or customer.
+                                    Voided payments are listed, flagged by voidedAt — never hidden
 /admin/expenses                     GET, GET /:id, POST, PUT /:id, DELETE /:id
 GET  /admin/reports/aging
 GET  /admin/reports/revenue         ?groupBy=service|month|technician
-GET  /admin/reports/collections     ?from&to   payments received, summed by method
-GET  /admin/customers/:id/statement
+GET  /admin/reports/collections     ?from&to   payments received, summed by method (voided excluded)
+GET  /admin/customers/:id/statement             ledger of invoices and payments (voided excluded)
 ```
 
 ## Admin — Aftercare (reads `ADMIN`, `DISPATCHER`, `SALES`; writes `ADMIN`, `DISPATCHER`)

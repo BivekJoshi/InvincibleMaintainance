@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  as, expectStatus, createCustomer, createCompletedJob, prisma,
+  anon, as, expectStatus, createCustomer, createCompletedJob, daysFromNow, prisma,
 } from './helpers.js';
 
 let accountant;
@@ -74,10 +74,95 @@ describe('invoices', () => {
     expectStatus(await (await as('SALES')).get('/admin/payments'), 403);
   });
 
-  it('DELETE a payment reopens the balance', async () => {
-    const payment = await prisma.payment.findFirst({ where: { invoiceId: invoice.id, method: 'BANK' } });
-    expectStatus(await accountant.delete(`/admin/invoices/${invoice.id}/payments/${payment.id}`), 204);
-    expect((await prisma.invoice.findUnique({ where: { id: invoice.id } })).status).toBe('PARTIAL');
+  describe('voiding a payment', () => {
+    const voidUrl = (invoiceId, paymentId) => `/admin/invoices/${invoiceId}/payments/${paymentId}/void`;
+    const bank = () => prisma.payment.findFirst({ where: { invoiceId: invoice.id, method: 'BANK' } });
+
+    it('the old DELETE route is gone — money records are voided, never removed', async () => {
+      const payment = await bank();
+      expectStatus(await accountant.delete(`/admin/invoices/${invoice.id}/payments/${payment.id}`), 404);
+      expect(await prisma.payment.findUnique({ where: { id: payment.id } })).toBeTruthy();
+    });
+
+    it('needs a reason', async () => {
+      const payment = await bank();
+      expectStatus(await accountant.post(voidUrl(invoice.id, payment.id)).send({}), 400);
+      expect((await prisma.payment.findUnique({ where: { id: payment.id } })).voidedAt).toBeNull();
+    });
+
+    it('SALES cannot void a payment', async () => {
+      const payment = await bank();
+      expectStatus(await (await as('SALES')).post(voidUrl(invoice.id, payment.id)).send({ reason: 'Not mine to void' }), 403);
+    });
+
+    it('on a PAID invoice: PAID → PARTIAL, paidAmount drops, the row stays and is flagged', async () => {
+      const me = expectStatus(await accountant.get('/auth/me'), 200).data;
+      const payment = await bank();
+      const voided = expectStatus(await accountant.post(voidUrl(invoice.id, payment.id)).send({ reason: 'Cheque bounced' }), 200).data;
+      expect(voided.voidedAt).toBeTruthy();
+      expect(voided.voidReason).toBe('Cheque bounced');
+      expect(voided.voidedById).toBe(me.id);
+
+      const detail = expectStatus(await accountant.get(`/admin/invoices/${invoice.id}`), 200).data;
+      expect(detail.status).toBe('PARTIAL');
+      expect(detail.paidAmount).toBe(500000);
+      expect(detail.payments).toHaveLength(2);
+      expect(detail.payments.find((p) => p.id === payment.id).voidedAt).toBeTruthy();
+
+      const listed = expectStatus(await accountant.get(`/admin/payments?customerId=${customer.id}`), 200).data;
+      expect(listed.find((p) => p.id === payment.id).voidedAt).toBeTruthy();
+    });
+
+    it('voiding the same payment twice is 422', async () => {
+      const payment = await bank();
+      expectStatus(await accountant.post(voidUrl(invoice.id, payment.id)).send({ reason: 'Again' }), 422);
+    });
+
+    it('a payment from another invoice is 404', async () => {
+      const other = await prisma.payment.findFirst({ where: { invoiceId: { not: invoice.id } } });
+      expectStatus(await accountant.post(voidUrl(invoice.id, other.id)).send({ reason: 'Wrong invoice' }), 404);
+    });
+
+    it('the balance can be paid again after a void — voided money is not counted as received', async () => {
+      // Rs 6,300 outstanding again; paying it must be accepted, not refused as an overpayment.
+      expectStatus(await accountant.post(`/admin/invoices/${invoice.id}/payments`).send({ amount: 6300, method: 'CASH' }), 201);
+      expect((await prisma.invoice.findUnique({ where: { id: invoice.id } })).status).toBe('PAID');
+    });
+
+    it('voiding every payment returns the invoice to SENT, or OVERDUE once it is past due', async () => {
+      const make = async () => {
+        const inv = expectStatus(await accountant.post('/admin/invoices').send({
+          customerId: customer.id, items: [{ description: 'Void all', qty: 1, rate: 1000 }], vatApplied: false,
+        }), 201).data;
+        expectStatus(await accountant.post(`/admin/invoices/${inv.id}/send`), 200);
+        const pay = expectStatus(await accountant.post(`/admin/invoices/${inv.id}/payments`).send({ amount: 1000, method: 'CASH' }), 201).data;
+        return { inv, pay };
+      };
+
+      const current = await make();
+      expectStatus(await accountant.post(voidUrl(current.inv.id, current.pay.id)).send({ reason: 'Recorded twice' }), 200);
+      const back = await prisma.invoice.findUnique({ where: { id: current.inv.id } });
+      expect(back).toMatchObject({ status: 'SENT', paidAmount: 0 });
+
+      const late = await make();
+      await prisma.invoice.update({ where: { id: late.inv.id }, data: { dueDate: daysFromNow(-3) } });
+      expectStatus(await accountant.post(voidUrl(late.inv.id, late.pay.id)).send({ reason: 'Recorded twice' }), 200);
+      expect(await prisma.invoice.findUnique({ where: { id: late.inv.id } })).toMatchObject({ status: 'OVERDUE', paidAmount: 0 });
+    });
+
+    it('the customer sees the voided payment struck through, and reports ignore it', async () => {
+      const payment = await prisma.payment.findFirst({ where: { invoiceId: invoice.id, method: 'BANK' } });
+      const { publicToken } = await prisma.invoice.findUnique({ where: { id: invoice.id } });
+      const pub = expectStatus(await anon().get(`/public/invoices/${publicToken}`), 200).data;
+      expect(pub.payments.filter((p) => p.voidedAt)).toHaveLength(1);
+
+      const collections = expectStatus(await accountant.get('/admin/reports/collections'), 200).data;
+      expect(collections.payments.some((p) => p.id === payment.id)).toBe(false);
+
+      const statement = expectStatus(await accountant.get(`/admin/customers/${customer.id}/statement`), 200).data;
+      const invoices = await prisma.invoice.findMany({ where: { customerId: customer.id, status: { not: 'VOID' } } });
+      expect(statement.totals.paid).toBe(invoices.reduce((s, i) => s + i.paidAmount, 0));
+    });
   });
 
   it('POST /admin/invoices/:id/void needs a reason, and a void invoice takes no payment', async () => {

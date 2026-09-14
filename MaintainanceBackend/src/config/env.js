@@ -84,7 +84,6 @@ export const env = {
 };
 
 if (required.length) {
-  // eslint-disable-next-line no-console
   console.error(
     `\n[config] Missing required environment variables: ${required.join(', ')}\n` +
       `Copy .env.example to .env and fill them in.\n`,
@@ -97,7 +96,6 @@ if (env.isProd) {
   if (env.jwtSecret.length < 32) weak.push('JWT_SECRET');
   if (env.refreshSecret.length < 32) weak.push('REFRESH_SECRET');
   if (weak.length) {
-    // eslint-disable-next-line no-console
     console.error(`[config] These secrets must be >= 32 chars in production: ${weak.join(', ')}`);
     process.exit(1);
   }

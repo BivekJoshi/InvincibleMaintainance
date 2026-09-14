@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
-import { Download, Plus, Phone, CalendarCheck } from 'lucide-react';
-import { useGetLeadsQuery } from '@/api/leadsApi';
+import { useDispatch } from 'react-redux';
+import { Download, Plus, CalendarCheck } from 'lucide-react';
+import { useGetLeadsQuery, useLazyExportLeadsCsvQuery } from '@/api/leadsApi';
 import { useListParams } from '@/hooks/useListParams';
-import { API_URL } from '@/config/env';
+import { toastError } from '@/redux/slices/uiSlice';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable } from '@/components/common/DataTable';
 import { SlaChip } from '@/components/common/SlaChip';
@@ -58,12 +59,27 @@ export default function LeadsPage() {
   const [params, setParams] = useListParams({ limit: 20 });
   const { data, isLoading, isFetching, error, refetch } = useGetLeadsQuery(params);
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const [fetchCsv, { isFetching: exporting }] = useLazyExportLeadsCsvQuery();
 
-  const exportCsv = () => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]),
-    );
-    window.open(`${API_URL}/admin/leads/export.csv?${qs}`, '_blank');
+  const exportCsv = async () => {
+    // Paging belongs to the table; the export takes every row the filters match.
+    const { page: _page, limit: _limit, ...filters } = params;
+    try {
+      const csv = await fetchCsv(filters).unwrap();
+      // res.text() drops the byte-order mark the API sends. Put it back, or Excel
+      // opens the file as ANSI and every Devanagari name turns to mojibake.
+      const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
+      const link = Object.assign(document.createElement('a'), {
+        href: url, download: `leads-${new Date().toISOString().slice(0, 10)}.csv`,
+      });
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      dispatch(toastError('Could not export leads', 'Please try again in a moment.'));
+    }
   };
 
   return (
@@ -73,7 +89,7 @@ export default function LeadsPage() {
         description="Every enquiry, with its response clock."
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={exportCsv}><Download className="h-4 w-4" /> Export</Button>
+            <Button variant="outline" size="sm" onClick={exportCsv} loading={exporting}><Download className="h-4 w-4" /> Export</Button>
             <Button size="sm"><Plus className="h-4 w-4" /> New lead</Button>
           </>
         }

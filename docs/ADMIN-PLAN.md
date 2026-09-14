@@ -74,20 +74,22 @@ Gaps against the intended business process:
 
 ## 3. Defects to fix before building on top
 
+✅ = closed, with the phase and date. Open rows are picked up by the phase named in §5.
+
 | # | Severity | Defect | Where |
 |---|---|---|---|
-| 1 | **High · money** | Lead-convert builds a quotation by hand with `vatApplied: true`, `vatRate: 13` but `vatAmount: 0` and `total = subtotal`, bypassing `documentTotals`. The customer can be sent a quote missing its VAT. | `src/services/convert.service.js:44-67` |
-| 2 | **High** | Expired quotations can still be approved. Expiry is only applied when someone GETs the quotation, and `decideByToken` checks `status === 'SENT'` only. There is no expiry cron. | `quotation.service.js:188,198` |
-| 3 | **High** | A `SENT` quotation can be edited in place. `updateQuotation` blocks only APPROVED/CONVERTED, so a customer can approve numbers different from the ones they were sent. `reviseQuotation` never supersedes the parent. | `quotation.service.js:85` |
+| ✅ 1 · A 2026-09-14 | **High · money** | Lead-convert builds a quotation by hand with `vatApplied: true`, `vatRate: 13` but `vatAmount: 0` and `total = subtotal`, bypassing `documentTotals`. The customer can be sent a quote missing its VAT. | `src/services/convert.service.js:44-67` |
+| ✅ 2 · A 2026-09-14 | **High** | Expired quotations can still be approved. Expiry is only applied when someone GETs the quotation, and `decideByToken` checks `status === 'SENT'` only. There is no expiry cron. | `quotation.service.js:188,198` |
+| ✅ 3 · A 2026-09-14 | **High** | A `SENT` quotation can be edited in place. `updateQuotation` blocks only APPROVED/CONVERTED, so a customer can approve numbers different from the ones they were sent. `reviseQuotation` never supersedes the parent. | `quotation.service.js:85` |
 | 4 | **High · security** | Access tokens and refresh cookies are almost certainly in the logs. The pino logger has no `redact`, and pino-http's default serializer logs request headers. | `src/lib/logger.js`, `src/app.js:22` |
-| 5 | **High · finance** | Payments are hard-deleted, although CLAUDE.md requires soft delete and money records must never vanish. | `invoice.service.js:243` |
-| 6 | Medium | Lead status is written past the state machine (`→ WON` with `.catch(() => {})`; `→ CONTACTED / QUOTED / INSPECTION_SCHEDULED` directly). | `quotation.service.js:218`, `convert.service.js:37,70,103` |
-| 7 | Medium | Lead-convert writes customer, lead, job and survey in separate statements, so a failure midway leaves orphans. | `convert.service.js` |
-| 8 | Medium | EDITOR can `?hard=true` permanently delete any CMS row or media file. | `crud.service.js` via `cms.routes.js` |
+| ✅ 5 · A 2026-09-14 | **High · finance** | Payments are hard-deleted, although CLAUDE.md requires soft delete and money records must never vanish. | `invoice.service.js:243` |
+| ✅ 6 · A 2026-09-14 | Medium | Lead status is written past the state machine (`→ WON` with `.catch(() => {})`; `→ CONTACTED / QUOTED / INSPECTION_SCHEDULED` directly). | `quotation.service.js:218`, `convert.service.js:37,70,103` |
+| ✅ 7 · A 2026-09-14 | Medium | Lead-convert writes customer, lead, job and survey in separate statements, so a failure midway leaves orphans. | `convert.service.js` |
+| ✅ 8 · A 2026-09-14 | Medium | EDITOR can `?hard=true` permanently delete any CMS row or media file. | `crud.service.js` via `cms.routes.js` |
 | 9 | Medium | Audit gaps: `upsert` and `createMany` are not audited (so **settings changes are unaudited**, which fails the v1 Phase 1 acceptance). There is no before-state. Rows are written outside the transaction. Public and cron writes have no actor or IP. The lead-merge audit write fails silently. | `src/lib/prisma.js:38-64` |
-| 10 | Medium | Leads CSV export always 401s. It uses `window.open`, but the API accepts only a Bearer header. | `MaintainanceFrontend/src/pages/admin/LeadsPage.jsx` |
-| 11 | Medium | The booking wizard hardcodes `elapsedMs: 60_000`, which defeats the anti-spam timing check. | `components/booking/BookingWizard/BookingWizard.jsx` |
-| 12 | Low | `npm run lint` fails: eslint 9 with no `eslint.config.js` in the frontend. | `MaintainanceFrontend/` |
+| ✅ 10 · A 2026-09-14 | Medium | Leads CSV export always 401s. It uses `window.open`, but the API accepts only a Bearer header. | `MaintainanceFrontend/src/pages/admin/LeadsPage.jsx` |
+| ✅ 11 · A 2026-09-14 | Medium | The booking wizard hardcodes `elapsedMs: 60_000`, which defeats the anti-spam timing check. | `components/booking/BookingWizard/BookingWizard.jsx` |
+| ✅ 12 · A 2026-09-14 | Low | `npm run lint` fails: eslint 9 with no `eslint.config.js` in the frontend. | `MaintainanceFrontend/` |
 | 13 | Low | Unvalidated `?sort` and `?status` reach Prisma. Sub-resource `:id` params are unvalidated in crm, ops and finance routes. Several lists are unpaginated. | routes |
 | 14 | Low | `notify()` is awaited inside the request with no retry. Crons have no leader lock, so they are unsafe on more than one instance. | `notify.service.js`, `crons/index.js` |
 | 15 | Low | Raw Prisma calls in route files (technicians, users, tech sync) break the "routes never touch Prisma" rule. | `ops.routes.js:95-129`, `platform.routes.js:87-137`, `tech.routes.js:214-283` |
@@ -115,7 +117,7 @@ Each phase ends with acceptance criteria. Estimates assume one developer working
 
 C, D, F and H each run as two prompts (C1/C2, D1/D2, F1/F2, H1/H2) so every session stays focused. Sessions branch from `prabesh`, ask the owner before every commit, and stop; the owner reviews the work, merges each phase branch into `prabesh`, and later merges `prabesh` into `DEVELOPMENT`.
 
-### Phase A — Safety fixes · ~2 days
+### Phase A — Safety fixes · ~2 days · ✅ done 2026-09-14
 
 Backend
 - #1 Route lead-convert's quotation through `createQuotation`, so `documentTotals` is the only VAT maths. Wrap convert in one transaction (#7).
@@ -135,6 +137,32 @@ CI
 - GitHub Actions on pushes to `prabesh`, phase branches and `DEVELOPMENT`, and on pull requests into `prabesh` or `DEVELOPMENT`: lint, unit tests, API tests against a Postgres service, frontend build. C1 adds frontend tests; F2 adds the end-to-end test.
 
 **Acceptance:** each fix has an API test that fails on the old code. `npm test`, `npm run test:api` and `npm run lint` are green, locally and in CI.
+
+**Deviations (Phase A, 2026-09-14)** — built differently from the plan, or beyond it:
+- **Convert atomicity (#7):** `createQuotation`, `createJob` and `findOrCreateByPhone` take an optional transaction
+  client (`createFromJob` already did). Inside a caller's transaction `createJob` does not notify; convert calls the
+  now-exported `announceAssignment` after commit. The convert transaction has a 15 s timeout (Prisma's 5 s default is
+  tight for several numbered documents plus audit writes on a CI runner).
+- **Lead funnel on convert (#6):** the lead only moves forward — NEW|LOST → CONTACTED → INSPECTION_SCHEDULED (job) →
+  QUOTED (quotation). With both a job and a quotation it now ends **QUOTED** (it used to end INSPECTION_SCHEDULED);
+  a lead already further along, or WON, is not moved back.
+- **Customer approval (#6):** NEW passes through CONTACTED to WON; WON is left alone; a LOST lead keeps its status and
+  gets a timeline note. The approval itself never fails because of the lead.
+- **Beyond the plan (#6):** `mergeLeads` closes duplicates through `transitionLead` and refuses (422) to merge away a
+  WON duplicate. `transitionLead` also takes `data` (columns written with the move, e.g. `lostReason`), and moving a
+  lead to the status it already has is a no-op. `survey.service` quoting goes through it as well.
+- **Invoice transitions (#5):** besides PAID → PARTIAL and PARTIAL → SENT, voiding the only payment needs PAID → SENT
+  and PAID → OVERDUE, so those were added too. Voided payments are also left out of the collections report and the
+  customer statement. Payment `voidedById` is a plain string like `receivedBy`, not a relation.
+- **cms:purge (#8)** guards media hard delete as well as the CRUD factory.
+- **Expiry (#2):** one `isExpired` rule shared by GET, decide and the sweep; `quotation:expire` runs hourly and once at start.
+- **Lint (#12):** it was broken in *both* apps, not only the frontend. `eslint-plugin-react-hooks` is pinned to v5
+  (v6+ brings React Compiler rules), `react/prop-types` is off (project uses JSDoc), and 25
+  `react-refresh/only-export-components` warnings are left as warnings. Real findings were fixed in files Phase A did
+  not otherwise touch: unused imports, a dead constant in `BlueprintScene`, stale disable comments, a literal BOM in
+  `crm.routes.js`, `BookingWizard`'s un-memoised `services`, and `useOfflineQueue`'s run-once effect (now a ref).
+- **CSV export (#10)** has no automated frontend test — there is no frontend test runner until C1. It was verified in
+  a headless-browser walk-through instead, including a forced 401 → refresh → retry.
 
 ### Phase B — Logging & audit backbone (backend) · ~3 days
 
@@ -348,7 +376,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 
 | Phase | Days | Cumulative | Delivers |
 |---|---|---|---|
-| A Safety fixes | 2 | 2 | Correct money, locked quotations, no hard-deleted payments, honest docs |
+| A Safety fixes ✅ 2026-09-14 | 2 | 2 | Correct money, locked quotations, no hard-deleted payments, honest docs |
 | B Logging & audit | 3 | 5 | Redacted request-id logs, complete audit with domain events |
 | C Admin UI kit (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
 | D Services & CMS (D1 + D2) | 6 | 15 | Editors run the whole public site |
@@ -378,7 +406,7 @@ v1 `PLAN.md` §7 still applies. In addition:
 
 ## 8. Documentation housekeeping
 
-_Moved into Phase A (task A11), because every later session reads CLAUDE.md and would be misled by the stale paths._
+_Moved into Phase A (task A11), because every later session reads CLAUDE.md and would be misled by the stale paths._ **✅ Done in Phase A, 2026-09-14** — every item below.
 
 - `docs/PLAN.md` still says MUI, an npm-workspace monorepo, `apps/*` and `packages/shared`. The real layout is `MaintainanceBackend` / `MaintainanceFrontend` with shadcn, and schemas mirrored in `src/shared/schemas` and `src/form/schemas`. Mark it historical.
 - `docs/DATA-MODEL.prisma` (992 lines) is an older draft of `prisma/schema.prisma` (1,390 lines). Regenerate it from the schema, or make the schema the source and replace the file with a pointer. CLAUDE.md rule 2 depends on this.

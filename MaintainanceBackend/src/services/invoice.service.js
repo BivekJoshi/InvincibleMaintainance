@@ -235,14 +235,32 @@ export async function recordPayment(invoiceId, input, userId) {
   });
 }
 
-export async function deletePayment(invoiceId, paymentId) {
+/**
+ * A payment is never deleted — a bounced cheque or a double entry is voided, and
+ * the row stays with who voided it and why. The paid total is recomputed from the
+ * payments still standing, and the invoice status follows it back down through
+ * the state machine (PAID → PARTIAL, or → SENT / OVERDUE when none are left).
+ */
+export async function voidPayment(invoiceId, paymentId, reason, userId) {
   const payment = await prisma.payment.findFirst({ where: { id: paymentId, invoiceId } });
   if (!payment) throw notFound('Payment');
+  if (payment.voidedAt) throw unprocessable('This payment has already been voided');
   const inv = await getInvoice(invoiceId);
+
   return prisma.$transaction(async (tx) => {
-    await tx.payment.delete({ where: { id: paymentId } });
-    const paidAmount = Math.max(0, inv.paidAmount - payment.amount);
-    await tx.invoice.update({ where: { id: invoiceId }, data: { paidAmount, status: deriveStatus(inv, paidAmount) } });
+    // Guarded, so two people voiding the same payment cannot both recompute the balance.
+    const { count } = await tx.payment.updateMany({
+      where: { id: paymentId, voidedAt: null },
+      data: { voidedAt: new Date(), voidReason: reason, voidedById: userId ?? null },
+    });
+    if (count === 0) throw unprocessable('This payment has already been voided');
+
+    const standing = await tx.payment.findMany({ where: { invoiceId, voidedAt: null }, select: { amount: true } });
+    const paidAmount = sum(standing.map((p) => p.amount));
+    const status = deriveStatus(inv, paidAmount);
+    assertTransition(INVOICE_TRANSITIONS, inv.status, status, 'invoice');
+    await tx.invoice.update({ where: { id: invoiceId }, data: { paidAmount, status } });
+    return tx.payment.findUnique({ where: { id: paymentId } });
   });
 }
 
@@ -282,7 +300,8 @@ export async function getByPublicToken(token) {
     include: {
       customer: { select: { name: true, phone: true, panVatNo: true } },
       items: { orderBy: { sortOrder: 'asc' } },
-      payments: { select: { amount: true, method: true, receivedAt: true } },
+      // Voided payments stay visible to the customer, marked, so the history never changes silently.
+      payments: { select: { amount: true, method: true, receivedAt: true, voidedAt: true }, orderBy: { receivedAt: 'asc' } },
     },
   });
   if (!inv) throw notFound('Invoice');

@@ -5,6 +5,8 @@
  * Capability format: "<domain>:<action>" with "*" as a wildcard.
  */
 export const PERMISSIONS = {
+  // '*' is also the only holder of cms:purge — permanent delete of CMS rows and
+  // media (`?hard=true`). Every other role's delete is a soft delete it can restore.
   ADMIN: ['*'],
   EDITOR: [
     'cms:read', 'cms:write', 'media:read', 'media:write',

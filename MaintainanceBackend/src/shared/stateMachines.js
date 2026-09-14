@@ -45,12 +45,17 @@ export const JOB_TRANSITIONS = {
   CANCELLED: [],
 };
 
+/**
+ * Payments drive PARTIAL / PAID / OVERDUE. Voiding a payment (a bounced cheque, a
+ * payment entered twice) walks the invoice back down: PAID → PARTIAL, or all the
+ * way to SENT / OVERDUE when it was the last live payment; PARTIAL → SENT likewise.
+ */
 export const INVOICE_TRANSITIONS = {
   DRAFT: ['SENT', 'VOID'],
   SENT: ['PARTIAL', 'PAID', 'OVERDUE', 'VOID'],
-  PARTIAL: ['PAID', 'OVERDUE', 'VOID'],
+  PARTIAL: ['PAID', 'OVERDUE', 'SENT', 'VOID'],
   OVERDUE: ['PARTIAL', 'PAID', 'VOID'],
-  PAID: ['VOID'],
+  PAID: ['PARTIAL', 'SENT', 'OVERDUE', 'VOID'],
   VOID: [],
 };
 

@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { cva } from 'class-variance-authority';
 import { cn } from '@/helpers/utils';
 import { STATUS_STYLES, PRIORITY_STYLES, SLA_STYLES } from '@/config/constants';

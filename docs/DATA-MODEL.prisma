@@ -1,96 +1,150 @@
-// Maintenance System — data model draft
-// Copy into apps/api/prisma/schema.prisma and migrate per phase.
-// Money is ALWAYS Int paisa (NPR x 100). Dates are UTC.
+// ─────────────────────────────────────────────────────────────────────────────
+// docs/DATA-MODEL.prisma — a MIRROR, not a draft.
+//
+// The source of truth is MaintainanceBackend/prisma/schema.prisma; migrations are
+// generated from it. This copy sits next to docs/API.md so the model can be read
+// and reviewed without opening the backend. CLAUDE.md rule 2: any schema change is
+// copied here in the same commit. Regenerate everything below the rule with
+//
+//   { sed -n '1,/^\/\/ ═══/p' docs/DATA-MODEL.prisma; cat MaintainanceBackend/prisma/schema.prisma; } \
+//     > /tmp/dm && mv /tmp/dm docs/DATA-MODEL.prisma
+//
+// Last regenerated 2026-09-14 (Phase A: Payment.voidedAt / voidReason / voidedById).
+// ═════════════════════════════════════════════════════════════════════════════
+// Maintenance System — Prisma schema
+// Money is ALWAYS Int paisa (NPR x 100). Timestamps are UTC.
+// Media references are plain String ids (no FK) to avoid ~20 back-relations on Media;
+// orphan detection is handled by the media:sweep cron.
 
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client {
+  provider = "prisma-client-js"
+}
 
-// ─────────────────────────── PHASE 1 · identity, settings, media
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
-enum Role { ADMIN EDITOR SALES DISPATCHER TECHNICIAN ACCOUNTANT SURVEYOR }
+// ═══════════════════════════ identity, settings, media
+
+enum Role {
+  ADMIN
+  EDITOR
+  SALES
+  DISPATCHER
+  TECHNICIAN
+  ACCOUNTANT
+  SURVEYOR
+}
 
 model User {
-  id            String    @id @default(cuid())
-  name          String
-  email         String    @unique
-  phone         String?
-  passwordHash  String
-  role          Role      @default(SALES)
-  avatarId      String?
-  isActive      Boolean   @default(true)
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  phone        String?
+  passwordHash String
+  role         Role      @default(SALES)
+  avatarId     String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
-  refreshTokens RefreshToken[]
-  assignedLeads Lead[]          @relation("LeadAssignee")
-  leadNotes     LeadNote[]
-  technician    Technician?
-  auditLogs     AuditLog[]
+  refreshTokens    RefreshToken[]
+  passwordResets   PasswordReset[]
+  assignedLeads    Lead[]           @relation("LeadAssignee")
+  leadNotes        LeadNote[]
+  leadActivities   LeadActivity[]
+  technician       Technician?
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  createdQuotes    Quotation[]      @relation("QuotationCreator")
+  createdJobs      Job[]            @relation("JobCreator")
+  jobEvents        JobStatusEvent[]
+  submittedSurveys SiteSurvey[]     @relation("SurveySubmitter")
+  reviewedSurveys  SiteSurvey[]     @relation("SurveyReviewer")
+
   @@index([role, isActive])
+  @@index([deletedAt])
 }
 
 model RefreshToken {
-  id         String   @id @default(cuid())
-  userId     String
-  tokenHash  String   @unique
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model PasswordReset {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model AuditLog {
   id        String   @id @default(cuid())
   actorId   String?
-  action    String   // create | update | delete | login | export
+  action    String
   model     String
   recordId  String?
-  changes   Json?    // { field: [before, after] }
+  changes   Json?
   ip        String?
   createdAt DateTime @default(now())
-  actor     User?    @relation(fields: [actorId], references: [id])
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
   @@index([model, recordId])
   @@index([createdAt])
+  @@index([actorId])
 }
 
 model Setting {
   id        String   @id @default(cuid())
-  group     String   // contact | seo | branding | sla | finance | integrations | social
+  group     String
   key       String   @unique
   value     Json
-  type      String   @default("string") // string|number|boolean|json|media|richtext
+  type      String   @default("string")
   label     String
+  hint      String?
+  sortOrder Int      @default(0)
   updatedAt DateTime @updatedAt
+
   @@index([group])
 }
 
 model MediaFolder {
-  id       String        @id @default(cuid())
-  name     String
-  parentId String?
-  parent   MediaFolder?  @relation("FolderTree", fields: [parentId], references: [id])
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  createdAt DateTime @default(now())
+
+  parent   MediaFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
   children MediaFolder[] @relation("FolderTree")
   media    Media[]
 }
 
 model Media {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   folderId   String?
-  path       String   // storage key of the original
-  variants   Json?    // { "400": "...", "800": "...", "1600": "..." } WebP
+  path       String
+  variants   Json?
   blurhash   String?
   mime       String
   size       Int
@@ -99,47 +153,54 @@ model Media {
   alt        String?
   caption    String?
   uploadedBy String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
   deletedAt  DateTime?
-  folder     MediaFolder? @relation(fields: [folderId], references: [id])
+
+  folder MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@index([folderId])
+  @@index([deletedAt])
 }
 
-// Field-level en/ne translations for any model.
 model Translation {
   id       String @id @default(cuid())
   model    String
   recordId String
   field    String
-  locale   String // "en" | "ne"
+  locale   String
   value    String
+
   @@unique([model, recordId, field, locale])
   @@index([model, recordId])
 }
 
-// ─────────────────────────── PHASE 2 · CMS
+// ═══════════════════════════ CMS
 
 model HomeSection {
   id        String  @id @default(cuid())
-  key       String  @unique // hero | services | projects | offers | gallery | why_choose | stats
-                            // | seepage | interior | construction | renovation | pre_engineered
-                            // | kitchen | pricing | other_civil | process | testimonials | cta_form
+  key       String  @unique
   title     String
   sortOrder Int     @default(0)
   isVisible Boolean @default(true)
-  settings  Json?   // per-section options: limit, layout, background, headingOverride
+  settings  Json?
+
+  @@index([sortOrder])
 }
 
 model HeroSlide {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   title     String
   subtitle  String?
   ctaLabel  String?
   ctaUrl    String?
   imageId   String?
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+
+  @@index([isActive, sortOrder])
 }
 
 model ServiceCategory {
@@ -147,76 +208,92 @@ model ServiceCategory {
   name      String
   slug      String    @unique
   icon      String?
+  imageId   String?
   sortOrder Int       @default(0)
   isActive  Boolean   @default(true)
-  services  Service[]
-  projects  Project[]
-}
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-model Service {
-  id              String   @id @default(cuid())
-  categoryId      String?
-  name            String
-  slug            String   @unique
-  excerpt         String            // short card text — must be unique copy, not boilerplate
-  body            String?           // rich text detail page
-  icon            String?
-  imageId         String?
-  type            String   @default("standard") // standard | other_civil
-  priceFrom       Int?              // paisa
-  priceTo         Int?
-  priceUnit       String?           // sq.ft | rft | nos | hour | lump
-  warrantyDays    Int?              // overrides the global default
-  isFeatured      Boolean  @default(false)
-  sortOrder       Int      @default(0)
-  isActive        Boolean  @default(true)
-  metaTitle       String?
-  metaDescription String?
-  ogImageId       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  deletedAt       DateTime?
-  category        ServiceCategory? @relation(fields: [categoryId], references: [id])
-  leads           Lead[]
-  jobTemplates    JobTemplate[]
+  services Service[]
+  projects Project[]
+
   @@index([isActive, sortOrder])
 }
 
+model Service {
+  id              String    @id @default(cuid())
+  categoryId      String?
+  name            String
+  slug            String    @unique
+  excerpt         String
+  body            String?
+  icon            String?
+  imageId         String?
+  type            String    @default("standard")
+  priceFrom       Int?
+  priceTo         Int?
+  priceUnit       String?
+  warrantyDays    Int?
+  isFeatured      Boolean   @default(false)
+  sortOrder       Int       @default(0)
+  isActive        Boolean   @default(true)
+  metaTitle       String?
+  metaDescription String?
+  ogImageId       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  category     ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  leads        Lead[]
+  jobTemplates JobTemplate[]
+  surveys      SiteSurvey[]
+  surveyItems  SurveyItem[]
+  projects     Project[]
+
+  @@index([isActive, sortOrder])
+  @@index([categoryId])
+  @@index([type])
+}
+
 model Project {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   title           String
-  slug            String   @unique
+  slug            String    @unique
   clientName      String?
   location        String?
   categoryId      String?
-  status          String   @default("completed") // ongoing | completed
+  serviceId       String?
+  jobId           String?   @unique
+  status          String    @default("completed")
   summary         String?
   body            String?
+  problem         String?
+  solution        String?
+  outcome         String?
+  durationDays    Int?
+  costBandMin     Int?
+  costBandMax     Int?
   coverId         String?
   completedAt     DateTime?
-  isFeatured      Boolean  @default(false)
-  sortOrder       Int      @default(0)
-  isActive        Boolean  @default(true)
+  publishedAt     DateTime?
+  isFeatured      Boolean   @default(false)
+  sortOrder       Int       @default(0)
+  isActive        Boolean   @default(true)
   metaTitle       String?
   metaDescription String?
-  images          ProjectImage[]
-  category        ServiceCategory? @relation(fields: [categoryId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  // Case study: a finished job, published as the proof a customer reads before booking.
-  serviceId    String?   // stronger than categoryId for "work like this"
-  jobId        String?   @unique   // provenance; also blocks publishing twice
-  problem      String?
-  solution     String?
-  outcome      String?
-  durationDays Int?
-  costBandMin  Int?      // paisa. A BAND, widened +/-20% — never the customer's contract value.
-  costBandMax  Int?
-  publishedAt  DateTime?
+  category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  service  Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  job      Job?             @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  images   ProjectImage[]
+  gallery  GalleryImage[]
 
-  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  job     Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
-
+  @@index([isActive, sortOrder])
   @@index([serviceId, isActive])
 }
 
@@ -226,15 +303,18 @@ model ProjectImage {
   mediaId   String
   caption   String?
   sortOrder Int     @default(0)
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sortOrder])
 }
 
 model Offer {
   id          String    @id @default(cuid())
   title       String
   description String?
-  bullets     Json?     // string[]
-  badge       String?   // "Limited Time"
+  bullets     Json?
+  badge       String?
   priceMin    Int?
   priceMax    Int?
   startsAt    DateTime?
@@ -244,112 +324,164 @@ model Offer {
   imageId     String?
   sortOrder   Int       @default(0)
   isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([isActive, sortOrder])
 }
 
 model PricingPlan {
-  id          String  @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
-  badge       String? // Popular | Professional
+  badge       String?
   description String?
   priceMin    Int?
   priceMax    Int?
-  unit        String? // /sq.ft
-  inclusions  Json?   // string[]
-  sortOrder   Int     @default(0)
-  isActive    Boolean @default(true)
+  unit        String?
+  inclusions  Json?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([isActive, sortOrder])
 }
 
-// Reusable card blocks: group = why_choose | construction | pre_engineered | kitchen ...
 model Feature {
-  id          String  @id @default(cuid())
+  id          String    @id @default(cuid())
   group       String
   icon        String?
   imageId     String?
   title       String
   description String?
-  sortOrder   Int     @default(0)
-  isActive    Boolean @default(true)
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
   @@index([group, sortOrder])
 }
 
-// Numbered lists: group = renovation_reasons | kitchen_steps | seepage_checkpoints ...
 model ListItem {
-  id        String  @id @default(cuid())
+  id        String    @id @default(cuid())
   group     String
   position  Int
   text      String
-  isActive  Boolean @default(true)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
   @@index([group, position])
 }
 
 model ContentBlock {
-  id         String  @id @default(cuid())
-  key        String  @unique // seepage_explainer | interior_design | ...
+  id         String    @id @default(cuid())
+  key        String    @unique
   heading    String?
   subheading String?
   body       String?
   bullets    Json?
   imageId    String?
-  cta        Json?   // { label, url }
-  isActive   Boolean @default(true)
+  cta        Json?
+  sortOrder  Int       @default(0)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
 }
 
 model ProcessStep {
-  id          String @id @default(cuid())
+  id          String    @id @default(cuid())
   stepNo      Int
   title       String
   description String?
   icon        String?
-  sortOrder   Int    @default(0)
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([sortOrder])
 }
 
 model Testimonial {
-  id         String  @id @default(cuid())
+  id         String    @id @default(cuid())
   quote      String
   author     String
   location   String?
-  rating     Int     @default(5)
+  rating     Int       @default(5)
   photoId    String?
-  locale     String  @default("en")
-  jobId      String? // when it came from a post-job rating
-  isApproved Boolean @default(false)
-  sortOrder  Int     @default(0)
-  createdAt  DateTime @default(now())
+  locale     String    @default("en")
+  jobId      String?
+  isApproved Boolean   @default(false)
+  sortOrder  Int       @default(0)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  @@index([isApproved, sortOrder])
 }
 
 model GalleryImage {
-  id        String  @id @default(cuid())
+  id        String    @id @default(cuid())
   mediaId   String
   caption   String?
   projectId String?
-  sortOrder Int     @default(0)
-  isActive  Boolean @default(true)
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, sortOrder])
 }
 
 model Faq {
-  id        String  @id @default(cuid())
+  id        String    @id @default(cuid())
   question  String
   answer    String
-  group     String? // general | pricing | warranty | service slug
-  sortOrder Int     @default(0)
-  isActive  Boolean @default(true)
+  group     String?
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([group, sortOrder])
 }
 
 model Page {
-  id              String  @id @default(cuid())
-  slug            String  @unique
+  id              String    @id @default(cuid())
+  slug            String    @unique
   title           String
   body            String?
   metaTitle       String?
   metaDescription String?
-  isActive        Boolean @default(true)
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 }
 
 model PostCategory {
-  id    String @id @default(cuid())
-  name  String
-  slug  String @unique
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
   posts Post[]
 }
 
@@ -365,15 +497,34 @@ model Post {
   publishedAt     DateTime?
   metaTitle       String?
   metaDescription String?
+  sortOrder       Int       @default(0)
   isActive        Boolean   @default(true)
-  category        PostCategory? @relation(fields: [categoryId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
+
+  category PostCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([publishedAt])
 }
 
-// ─────────────────────────── PHASE 4 · leads
+// ═══════════════════════════ CRM
 
-enum LeadStatus { NEW CONTACTED INSPECTION_SCHEDULED QUOTED WON LOST }
-enum Priority   { LOW NORMAL HIGH URGENT }
+enum LeadStatus {
+  NEW
+  CONTACTED
+  INSPECTION_SCHEDULED
+  QUOTED
+  WON
+  LOST
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
 
 model Lead {
   id              String     @id @default(cuid())
@@ -385,10 +536,10 @@ model Lead {
   area            String?
   serviceId       String?
   message         String?
-  estimatedAmount Int?       // from the public estimator
-  estimatePayload Json?      // { sqft, service, rate } for reproducibility
-  preferredAt     DateTime?  // online booking: the day the customer wants the visit
-  preferredSlot   String?    // morning | afternoon | evening (Asia/Kathmandu windows)
+  estimatedAmount Int?
+  estimatePayload Json?
+  preferredAt     DateTime?
+  preferredSlot   String?
   source          String     @default("web_form")
   sourcePage      String?
   utmSource       String?
@@ -398,6 +549,7 @@ model Lead {
   priority        Priority   @default(NORMAL)
   assignedToId    String?
   slaDueAt        DateTime?
+  slaBreached     Boolean    @default(false)
   firstResponseAt DateTime?
   closedAt        DateTime?
   lostReason      String?
@@ -408,16 +560,19 @@ model Lead {
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
 
-  service    Service?   @relation(fields: [serviceId], references: [id])
-  assignedTo User?      @relation("LeadAssignee", fields: [assignedToId], references: [id])
-  customer   Customer?  @relation(fields: [customerId], references: [id])
+  service    Service?       @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  assignedTo User?          @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  customer   Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   notes      LeadNote[]
   activities LeadActivity[]
   quotations Quotation[]
   jobs       Job[]
+  surveys    SiteSurvey[]
+
   @@index([status, createdAt])
   @@index([phone])
-  @@index([slaDueAt])
+  @@index([slaDueAt, firstResponseAt])
+  @@index([assignedToId])
 }
 
 model LeadNote {
@@ -426,77 +581,113 @@ model LeadNote {
   userId    String
   note      String
   createdAt DateTime @default(now())
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
 }
 
 model LeadActivity {
   id        String   @id @default(cuid())
   leadId    String
   userId    String?
-  type      String   // call | sms | email | whatsapp | visit | status_change | assignment
+  type      String
   summary   String
   meta      Json?
   createdAt DateTime @default(now())
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   @@index([leadId, createdAt])
 }
 
-// ─────────────────────────── PHASE 5 · customers, rate card, quotations
-
 model Customer {
-  id         String   @id @default(cuid())
-  type       String   @default("individual") // individual | company
-  name       String
-  phone      String
-  altPhone   String?
-  email      String?
-  panVatNo   String?
-  notes      String?
-  tags       Json?
-  createdAt  DateTime @default(now())
-  deletedAt  DateTime?
+  id        String    @id @default(cuid())
+  type      String    @default("individual")
+  name      String
+  phone     String
+  altPhone  String?
+  email     String?
+  panVatNo  String?
+  notes     String?
+  tags      Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
   sites      CustomerSite[]
   leads      Lead[]
   quotations Quotation[]
   jobs       Job[]
   invoices   Invoice[]
   contracts  AmcContract[]
+  warranties Warranty[]
+  reminders  ServiceReminder[]
+  surveys    SiteSurvey[]
+
   @@index([phone])
+  @@index([deletedAt])
 }
 
 model CustomerSite {
-  id          String  @id @default(cuid())
+  id          String    @id @default(cuid())
   customerId  String
-  label       String  // "Home — Ekantakuna"
+  label       String
   address     String
   area        String?
   lat         Float?
   lng         Float?
   accessNotes String?
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  jobs        Job[]
-  contracts   AmcContract[]
+  isPrimary   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  jobs       Job[]
+  contracts  AmcContract[]
+  quotations Quotation[]
+  surveys    SiteSurvey[]
+
+  @@index([customerId])
 }
 
 model RateCardItem {
-  id        String  @id @default(cuid())
-  code      String  @unique
-  name      String
-  category  String?
-  unit      String  // sq.ft | rft | nos | hour | lump
-  rate      Int     // paisa
-  isActive  Boolean @default(true)
-  sortOrder Int     @default(0)
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  description String?
+  category    String?
+  unit        String
+  rate        Int
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  quotationItems QuotationItem[]
+  surveyItems    SurveyItem[]
+
+  @@index([isActive, sortOrder])
 }
 
-enum QuotationStatus { DRAFT SENT APPROVED REJECTED EXPIRED CONVERTED }
+enum QuotationStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
 
 model Quotation {
   id           String          @id @default(cuid())
-  number       String          @unique // QT-2082-0001
+  number       String          @unique
   version      Int             @default(1)
-  parentId     String?         // previous version
+  parentId     String?
   customerId   String
   siteId       String?
   leadId       String?
@@ -505,6 +696,7 @@ model Quotation {
   subtotal     Int             @default(0)
   discount     Int             @default(0)
   vatApplied   Boolean         @default(true)
+  vatRate      Int             @default(13)
   vatAmount    Int             @default(0)
   total        Int             @default(0)
   terms        String?
@@ -513,124 +705,191 @@ model Quotation {
   sentAt       DateTime?
   decidedAt    DateTime?
   decidedIp    String?
+  decisionNote String?
   createdById  String?
   createdAt    DateTime        @default(now())
-  items        QuotationItem[]
-  customer     Customer        @relation(fields: [customerId], references: [id])
-  lead         Lead?           @relation(fields: [leadId], references: [id])
-  jobs         Job[]
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+
+  customer  Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site      CustomerSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead      Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdBy User?           @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  parent    Quotation?      @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
+  revisions Quotation[]     @relation("QuotationVersions")
+  items     QuotationItem[]
+  jobs      Job[]
+  invoices  Invoice[]
+  survey    SiteSurvey?
+
+  @@index([status, createdAt])
+  @@index([customerId])
 }
 
 model QuotationItem {
-  id             String @id @default(cuid())
+  id             String  @id @default(cuid())
   quotationId    String
   rateCardItemId String?
   description    String
   unit           String?
-  qty            Float  @default(1)
+  qty            Float   @default(1)
   rate           Int
   amount         Int
-  sortOrder      Int    @default(0)
-  quotation      Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  sortOrder      Int     @default(0)
+
+  quotation    Quotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  rateCardItem RateCardItem? @relation(fields: [rateCardItemId], references: [id], onDelete: SetNull)
+
+  @@index([quotationId, sortOrder])
 }
 
-// ─────────────────────────── PHASE 6 · jobs & technicians
+// ═══════════════════════════ Operations
 
-enum JobType   { INSPECTION REPAIR INSTALLATION RENOVATION AMC_VISIT WARRANTY }
-enum JobStatus { DRAFT SCHEDULED ASSIGNED EN_ROUTE IN_PROGRESS ON_HOLD COMPLETED VERIFIED CANCELLED }
+enum JobType {
+  INSPECTION
+  REPAIR
+  INSTALLATION
+  RENOVATION
+  AMC_VISIT
+  WARRANTY
+}
+
+enum JobStatus {
+  DRAFT
+  SCHEDULED
+  ASSIGNED
+  EN_ROUTE
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  VERIFIED
+  CANCELLED
+}
 
 model Technician {
-  id            String  @id @default(cuid())
-  userId        String  @unique
-  employeeCode  String? @unique
-  skills        Json?   // string[] of service category slugs
-  certifications Json?
-  serviceAreas  Json?
-  hourlyRate    Int?    // paisa, for costing
-  dailyCapacity Int     @default(4)
-  rating        Float   @default(0)
-  isAvailable   Boolean @default(true)
-  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assignments   JobAssignment[]
-  timeLogs      TimeLog[]
-}
-
-model JobTemplate {
-  id        String @id @default(cuid())
-  serviceId String?
-  name      String
-  tasks     Json   // [{ title, description }]
-  service   Service? @relation(fields: [serviceId], references: [id])
-}
-
-model Job {
   id             String    @id @default(cuid())
-  number         String    @unique // JOB-2082-0001
-  type           JobType   @default(REPAIR)
-  customerId     String
-  siteId         String?
-  leadId         String?
-  quotationId    String?
-  parentJobId    String?   // warranty/rework parent
-  title          String
-  description    String?
-  priority       Priority  @default(NORMAL)
-  status         JobStatus @default(DRAFT)
-  scheduledStart DateTime?
-  scheduledEnd   DateTime?
-  actualStart    DateTime?
-  actualEnd      DateTime?
-  completionNote String?
-  signatureId    String?
-  customerRating Int?
-  customerFeedback String?
-  createdById    String?
+  userId         String    @unique
+  employeeCode   String?   @unique
+  skills         Json?
+  certifications Json?
+  serviceAreas   Json?
+  hourlyRate     Int?
+  dailyCapacity  Int       @default(4)
+  rating         Float     @default(0)
+  ratingCount    Int       @default(0)
+  isAvailable    Boolean   @default(true)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  customer    Customer      @relation(fields: [customerId], references: [id])
-  site        CustomerSite? @relation(fields: [siteId], references: [id])
-  lead        Lead?         @relation(fields: [leadId], references: [id])
-  quotation   Quotation?    @relation(fields: [quotationId], references: [id])
-  tasks       JobTask[]
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments JobAssignment[]
-  events      JobStatusEvent[]
-  photos      JobPhoto[]
   timeLogs    TimeLog[]
-  materials   JobMaterial[]
+  surveys     SiteSurvey[]
+}
+
+model JobTemplate {
+  id          String    @id @default(cuid())
+  serviceId   String?
+  name        String
+  description String?
+  tasks       Json
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+}
+
+model Job {
+  id               String    @id @default(cuid())
+  number           String    @unique
+  type             JobType   @default(REPAIR)
+  customerId       String
+  siteId           String?
+  leadId           String?
+  quotationId      String?
+  parentJobId      String?
+  title            String
+  description      String?
+  priority         Priority  @default(NORMAL)
+  status           JobStatus @default(DRAFT)
+  scheduledStart   DateTime?
+  scheduledEnd     DateTime?
+  actualStart      DateTime?
+  actualEnd        DateTime?
+  holdReason       String?
+  cancelReason     String?
+  completionNote   String?
+  signatureId      String?
+  customerRating   Int?
+  customerFeedback String?
+  isBillable       Boolean   @default(true)
+  invoicedAt       DateTime?
+  createdById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site         CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead         Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  quotation    Quotation?       @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  createdBy    User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  parentJob    Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
+  childJobs    Job[]            @relation("JobRework")
+  tasks        JobTask[]
+  assignments  JobAssignment[]
+  events       JobStatusEvent[]
+  photos       JobPhoto[]
+  timeLogs     TimeLog[]
+  materials    JobMaterial[]
   invoiceItems InvoiceItem[]
-  warranty    Warranty?
+  expenses     Expense[]
+  warranty     Warranty?
+  amcVisit     AmcVisit?
+  survey       SiteSurvey?
+  project      Project?
+
   @@index([status, scheduledStart])
   @@index([customerId])
+  @@index([type, status])
 }
 
 model JobTask {
-  id        String  @id @default(cuid())
+  id        String    @id @default(cuid())
   jobId     String
   title     String
   note      String?
-  isDone    Boolean @default(false)
-  isSkipped Boolean @default(false)
+  isDone    Boolean   @default(false)
+  isSkipped Boolean   @default(false)
   doneAt    DateTime?
-  sortOrder Int     @default(0)
-  job       Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sortOrder Int       @default(0)
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, sortOrder])
 }
 
 model JobAssignment {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   jobId        String
   technicianId String
-  isLead       Boolean  @default(false)
+  isLead       Boolean   @default(false)
   acceptedAt   DateTime?
   declinedAt   DateTime?
-  job          Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  technician   Technician @relation(fields: [technicianId], references: [id])
+  createdAt    DateTime  @default(now())
+
+  job        Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  technician Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+
   @@unique([jobId, technicianId])
+  @@index([technicianId])
 }
 
 model JobStatusEvent {
-  id        String    @id @default(cuid())
+  id        String     @id @default(cuid())
   jobId     String
   from      JobStatus?
   to        JobStatus
@@ -638,8 +897,11 @@ model JobStatusEvent {
   note      String?
   lat       Float?
   lng       Float?
-  createdAt DateTime  @default(now())
-  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  job   Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
   @@index([jobId, createdAt])
 }
 
@@ -647,10 +909,13 @@ model JobPhoto {
   id        String   @id @default(cuid())
   jobId     String
   mediaId   String
-  kind      String   // BEFORE | DURING | AFTER | ISSUE | SIGNATURE
+  kind      String
   caption   String?
   createdAt DateTime @default(now())
-  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, kind])
 }
 
 model TimeLog {
@@ -661,35 +926,53 @@ model TimeLog {
   endedAt      DateTime?
   minutes      Int?
   note         String?
-  job          Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  technician   Technician @relation(fields: [technicianId], references: [id])
+
+  job        Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  technician Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([technicianId, startedAt])
 }
 
-// ─────────────────────────── site surveys
+// ═══════════════════════════ Site surveys
 //
-// The visit is a Job of type INSPECTION; this is the report the surveyor fills in on
-// site. QUANTITIES ONLY — no rate, no amount, no price snapshot. Pricing happens once,
-// at review time, in survey.service.js#priceSurvey.
+// The visit itself is a Job of type INSPECTION — this is the report the surveyor
+// fills in while standing on the site. It carries QUANTITIES ONLY: no rate, no
+// amount, no price snapshot anywhere below. Pricing happens once, at review time,
+// in survey.service.js#priceSurvey against the rate card and material sell rates.
 
-enum SurveyStatus   { DRAFT SUBMITTED IN_REVIEW RETURNED QUOTED CANCELLED }
-enum SurveyItemKind { LABOUR MATERIAL SERVICE OTHER }
+enum SurveyStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  RETURNED
+  QUOTED
+  CANCELLED
+}
+
+enum SurveyItemKind {
+  LABOUR
+  MATERIAL
+  SERVICE
+  OTHER
+}
 
 model SiteSurvey {
   id             String       @id @default(cuid())
-  number         String       @unique       // SRV-2083-0001
-  jobId          String       @unique       // the INSPECTION job; also makes create idempotent
+  number         String       @unique
+  jobId          String       @unique
   leadId         String?
   customerId     String
   siteId         String?
   serviceId      String?
-  surveyorId     String?                    // Technician.id
+  surveyorId     String?
   status         SurveyStatus @default(DRAFT)
-  problemSummary String?                    // what the customer reports
-  diagnosis      String?                    // what the surveyor found — cause, not symptom
+  problemSummary String?
+  diagnosis      String?
   recommendation String?
-  accessNotes    String?                    // scaffolding, parking, water point, stairs
+  accessNotes    String?
   riskNotes      String?
-  areaValue      Float?                     // headline measured quantity
+  areaValue      Float?
   areaUnit       String?
   estimatedDays  Float?
   urgency        Priority     @default(NORMAL)
@@ -699,29 +982,39 @@ model SiteSurvey {
   reviewedById   String?
   reviewNote     String?
   returnedReason String?
-  quotationId    String?      @unique       // the priced document this became
+  quotationId    String?      @unique
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
 
   job         Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  lead        Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
   customer    Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site        CustomerSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  service     Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   surveyor    Technician?     @relation(fields: [surveyorId], references: [id], onDelete: SetNull)
+  submittedBy User?           @relation("SurveySubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  reviewedBy  User?           @relation("SurveyReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   quotation   Quotation?      @relation(fields: [quotationId], references: [id], onDelete: SetNull)
   readings    SurveyReading[]
   items       SurveyItem[]
 
   @@index([status, submittedAt])
   @@index([surveyorId, status])
+  @@index([customerId])
+  @@index([deletedAt])
 }
 
-// A moisture meter gives 18.4; "is there a DPC?" gives "none visible". Numeric AND text,
-// not a Json blob — `value` is what the review screen thresholds on.
+// A moisture meter gives 18.4; "is there a DPC?" gives "none visible". Both are
+// readings, so both a numeric and a text column — not a Json blob, because `value`
+// is what the review screen thresholds on and what reports group by.
 model SurveyReading {
   id        String   @id @default(cuid())
   surveyId  String
-  label     String                    // "Ground floor west wall"
-  metric    String                    // moisture | crack_width | slope | free text
+  label     String
+  metric    String
   value     Float?
-  unit      String?                   // % | mm | mm/m
+  unit      String?
   textValue String?
   location  String?
   mediaId   String?
@@ -731,6 +1024,8 @@ model SurveyReading {
   sortOrder Int      @default(0)
 
   survey SiteSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId, sortOrder])
 }
 
 model SurveyItem {
@@ -740,88 +1035,126 @@ model SurveyItem {
   materialId     String?
   rateCardItemId String?
   serviceId      String?
-  description    String         // required even when a catalogue row is linked — the FKs
-                                // are SetNull, so a soft-deleted material must not blank the line
+  description    String
   unit           String
-  qty            Float          // the only number the surveyor owns
-  wastagePct     Float          @default(0)  // site judgement (cutting loss), not commercial
+  qty            Float
+  wastagePct     Float          @default(0)
   isOptional     Boolean        @default(false)
   note           String?
   sortOrder      Int            @default(0)
+  createdAt      DateTime       @default(now())
 
-  survey SiteSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  survey       SiteSurvey    @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  material     Material?     @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  rateCardItem RateCardItem? @relation(fields: [rateCardItemId], references: [id], onDelete: SetNull)
+  service      Service?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
   @@index([surveyId, sortOrder])
+  @@index([materialId])
+  @@index([rateCardItemId])
 }
 
-// ─────────────────────────── PHASE 7 · materials
+// ═══════════════════════════ Materials
 
 model Supplier {
-  id        String @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   phone     String?
   email     String?
   address   String?
+  notes     String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
   materials Material[]
 }
 
 model MaterialCategory {
-  id        String     @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
-  sortOrder Int        @default(0)
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
   materials Material[]
 }
 
 model Material {
-  id            String  @id @default(cuid())
-  categoryId    String?
-  supplierId    String?
-  code          String  @unique
-  name          String
-  unit          String
-  purchaseRate  Int     // paisa
-  sellRate      Int
-  reorderLevel  Float   @default(0)
-  isActive      Boolean @default(true)
-  category      MaterialCategory? @relation(fields: [categoryId], references: [id])
-  supplier      Supplier?         @relation(fields: [supplierId], references: [id])
-  movements     StockMovement[]
-  jobMaterials  JobMaterial[]
+  id           String    @id @default(cuid())
+  categoryId   String?
+  supplierId   String?
+  code         String    @unique
+  name         String
+  unit         String
+  purchaseRate Int       @default(0)
+  sellRate     Int       @default(0)
+  reorderLevel Float     @default(0)
+  isActive     Boolean   @default(true)
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  category     MaterialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  supplier     Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  movements    StockMovement[]
+  jobMaterials JobMaterial[]
+  surveyItems  SurveyItem[]
+
+  @@index([isActive, sortOrder])
 }
 
 model StockMovement {
   id         String   @id @default(cuid())
   materialId String
-  type       String   // PURCHASE | ISSUE_TO_JOB | RETURN | ADJUSTMENT | WASTAGE
-  qty        Float    // signed
+  type       String
+  qty        Float
   rate       Int?
   jobId      String?
   reference  String?
   note       String?
   actorId    String?
   createdAt  DateTime @default(now())
-  material   Material @relation(fields: [materialId], references: [id])
+
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
   @@index([materialId, createdAt])
+  @@index([jobId])
 }
 
 model JobMaterial {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   jobId      String
   materialId String
   qty        Float
-  rate       Int     // captured at issue time
-  isBillable Boolean @default(true)
-  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  material   Material @relation(fields: [materialId], references: [id])
+  rate       Int
+  isBillable Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  job      Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([jobId])
 }
 
-// ─────────────────────────── PHASE 8 · finance
+// ═══════════════════════════ Finance
 
-enum InvoiceStatus { DRAFT SENT PARTIAL PAID OVERDUE VOID }
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+  OVERDUE
+  VOID
+}
 
 model Invoice {
   id          String        @id @default(cuid())
-  number      String        @unique // INV-2082-0001
+  number      String        @unique
   customerId  String
   quotationId String?
   status      InvoiceStatus @default(DRAFT)
@@ -830,163 +1163,245 @@ model Invoice {
   subtotal    Int           @default(0)
   discount    Int           @default(0)
   vatApplied  Boolean       @default(true)
+  vatRate     Int           @default(13)
   vatAmount   Int           @default(0)
   total       Int           @default(0)
   paidAmount  Int           @default(0)
   note        String?
+  terms       String?
   publicToken String?       @unique
-  customer    Customer      @relation(fields: [customerId], references: [id])
-  items       InvoiceItem[]
-  payments    Payment[]
+  sentAt      DateTime?
+  voidReason  String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  customer  Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  quotation Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  items     InvoiceItem[]
+  payments  Payment[]
+
   @@index([status, dueDate])
+  @@index([customerId])
 }
 
 model InvoiceItem {
-  id          String @id @default(cuid())
+  id          String  @id @default(cuid())
   invoiceId   String
   jobId       String?
   description String
   unit        String?
-  qty         Float  @default(1)
+  qty         Float   @default(1)
   rate        Int
   amount      Int
-  sortOrder   Int    @default(0)
-  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  job         Job?    @relation(fields: [jobId], references: [id])
+  sortOrder   Int     @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  job     Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId, sortOrder])
 }
 
 model Payment {
   id         String   @id @default(cuid())
   invoiceId  String
   amount     Int
-  method     String   // CASH | BANK | ESEWA | KHALTI | FONEPAY | CHEQUE
+  method     String
   reference  String?
   receivedAt DateTime @default(now())
   receivedBy String?
   note       String?
-  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  // A payment is never deleted. Voiding keeps the row, and every paid total ignores it.
+  voidedAt   DateTime?
+  voidReason String?
+  voidedById String?
+  createdAt  DateTime  @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([receivedAt])
 }
 
 model Expense {
-  id         String   @id @default(cuid())
-  category   String
-  amount     Int
-  jobId      String?
-  vendor     String?
+  id          String    @id @default(cuid())
+  category    String
+  amount      Int
+  jobId       String?
+  vendor      String?
   billMediaId String?
-  spentAt    DateTime @default(now())
-  approvedBy String?
-  note       String?
+  spentAt     DateTime  @default(now())
+  approvedBy  String?
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  job Job? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([spentAt])
+  @@index([jobId])
 }
 
-// ─────────────────────────── PHASE 9 · aftercare
+// ═══════════════════════════ Aftercare
 
-enum WarrantyStatus { ACTIVE EXPIRED VOID CLAIMED }
+enum WarrantyStatus {
+  ACTIVE
+  EXPIRED
+  VOID
+  CLAIMED
+}
 
 model Warranty {
-  id          String         @id @default(cuid())
-  jobId       String         @unique
-  customerId  String
-  scope       String?
-  startsAt    DateTime
-  endsAt      DateTime
-  status      WarrantyStatus @default(ACTIVE)
+  id            String         @id @default(cuid())
+  jobId         String         @unique
+  customerId    String
+  scope         String?
+  startsAt      DateTime
+  endsAt        DateTime
+  status        WarrantyStatus @default(ACTIVE)
   certificateId String?
-  publicToken String?        @unique
-  job         Job            @relation(fields: [jobId], references: [id])
-  claims      WarrantyClaim[]
+  publicToken   String?        @unique
+  voidReason    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  job      Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  claims   WarrantyClaim[]
+
   @@index([endsAt, status])
 }
 
 model WarrantyClaim {
-  id          String   @id @default(cuid())
-  warrantyId  String
-  description String
-  status      String   @default("open") // open | accepted | rejected | resolved
+  id            String    @id @default(cuid())
+  warrantyId    String
+  description   String
+  status        String    @default("open")
   resolvedJobId String?
-  createdAt   DateTime @default(now())
-  resolvedAt  DateTime?
-  warranty    Warranty @relation(fields: [warrantyId], references: [id], onDelete: Cascade)
+  rejectReason  String?
+  createdAt     DateTime  @default(now())
+  resolvedAt    DateTime?
+
+  warranty Warranty @relation(fields: [warrantyId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
 }
 
 model AmcContract {
-  id            String   @id @default(cuid())
-  number        String   @unique // AMC-2082-0001
-  customerId    String
-  siteId        String?
-  planName      String
+  id              String    @id @default(cuid())
+  number          String    @unique
+  customerId      String
+  siteId          String?
+  planName        String
   coveredServices Json?
-  startDate     DateTime
-  endDate       DateTime
-  visitsPerYear Int      @default(4)
-  amount        Int
-  billingCycle  String   @default("annual") // annual | quarterly | monthly
-  status        String   @default("active") // active | expired | cancelled
-  customer      Customer      @relation(fields: [customerId], references: [id])
-  site          CustomerSite? @relation(fields: [siteId], references: [id])
-  visits        AmcVisit[]
+  startDate       DateTime
+  endDate         DateTime
+  visitsPerYear   Int       @default(4)
+  amount          Int
+  billingCycle    String    @default("annual")
+  status          String    @default("active")
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  customer Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site     CustomerSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  visits   AmcVisit[]
+
   @@index([endDate, status])
+  @@index([customerId])
 }
 
 model AmcVisit {
   id         String   @id @default(cuid())
   contractId String
   dueDate    DateTime
-  jobId      String?
-  status     String   @default("pending") // pending | scheduled | done | missed
-  contract   AmcContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  jobId      String?  @unique
+  status     String   @default("pending")
+  note       String?
+  createdAt  DateTime @default(now())
+
+  contract AmcContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  job      Job?        @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([dueDate, status])
 }
 
 model ServiceReminder {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   customerId String
   jobId      String?
   serviceId  String?
   dueAt      DateTime
-  channel    String   @default("sms")
+  channel    String    @default("sms")
   message    String
   sentAt     DateTime?
-  status     String   @default("pending")
+  status     String    @default("pending")
+  createdAt  DateTime  @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
   @@index([dueAt, status])
 }
 
-// ─────────────────────────── PHASE 11 · comms
+// ═══════════════════════════ Comms
 
 model MessageTemplate {
-  id       String  @id @default(cuid())
-  key      String  @unique // lead_new_sms | sla_breach_email | job_complete_sms | invoice_overdue
-  channel  String  // sms | email | inapp
-  locale   String  @default("en")
-  subject  String?
-  body     String  // supports {{variables}}
-  isActive Boolean @default(true)
+  id        String   @id @default(cuid())
+  key       String
+  channel   String
+  locale    String   @default("en")
+  subject   String?
+  body      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, channel, locale])
 }
 
 model MessageLog {
-  id         String   @id @default(cuid())
-  channel    String
-  templateKey String?
-  toAddress  String
-  subject    String?
-  body       String
-  provider   String?
-  providerId String?
-  status     String   @default("queued") // queued | sent | failed | delivered
-  error      String?
+  id           String   @id @default(cuid())
+  channel      String
+  templateKey  String?
+  toAddress    String
+  subject      String?
+  body         String
+  provider     String?
+  providerId   String?
+  status       String   @default("queued")
+  error        String?
   relatedModel String?
-  relatedId  String?
-  createdAt  DateTime @default(now())
+  relatedId    String?
+  createdAt    DateTime @default(now())
+
   @@index([status, createdAt])
+  @@index([relatedModel, relatedId])
 }
 
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   type      String
   title     String
   body      String?
   link      String?
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, readAt])
+}
+
+model Counter {
+  id        String   @id @default(cuid())
+  scope     String
+  year      Int
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([scope, year])
 }

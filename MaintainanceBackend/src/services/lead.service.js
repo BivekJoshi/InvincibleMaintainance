@@ -1,10 +1,10 @@
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
-import { badRequest, notFound, conflict } from '../utils/AppError.js';
+import { badRequest, notFound, conflict, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.js';
 import { toPaisa } from '../utils/money.js';
 import { normalizePhone } from '../utils/phone.js';
-import { LEAD_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
+import { LEAD_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
 import { BOOKING_SLOTS } from '../shared/enums.js';
 import { local } from '../utils/dates.js';
 import { computeSlaDueAt, decorateSla, slaWhere } from './sla.service.js';
@@ -285,30 +285,56 @@ export async function addNote(leadId, note, userId) {
   return row;
 }
 
+/**
+ * The one way a lead's status changes — staff, convert, customer approval, survey
+ * quoting and merge all come through here. Asserts the transition, stamps closedAt
+ * on WON/LOST (clearing it on a reopen) and writes the status_change timeline entry,
+ * all through the client it is given, so it commits or rolls back with the caller.
+ *
+ * Moving a lead to the status it already has is a no-op: no write, no entry.
+ *
+ * @param {import('@prisma/client').Prisma.TransactionClient} tx  a transaction client, or prisma
+ * @param {string} leadId
+ * @param {string} to
+ * @param {{ actorId?: string|null, note?: string, data?: object }} [opts]  data: columns written with the move
+ * @returns {Promise<object>} the lead row after the move
+ */
+export async function transitionLead(tx, leadId, to, { actorId, note, data = {} } = {}) {
+  const lead = await tx.lead.findFirst({ where: { id: leadId, deletedAt: null } });
+  if (!lead) throw notFound('Lead');
+  if (lead.status === to) return lead;
+  assertTransition(LEAD_TRANSITIONS, lead.status, to, 'lead');
+
+  // Guarded on the status just read, so two writers racing cannot both apply a move.
+  const { count } = await tx.lead.updateMany({
+    where: { id: leadId, status: lead.status },
+    data: { ...data, status: to, closedAt: ['WON', 'LOST'].includes(to) ? new Date() : null },
+  });
+  if (count === 0) throw conflict('This lead changed a moment ago. Reload and try again.');
+
+  await tx.leadActivity.create({
+    data: {
+      leadId, userId: actorId ?? null, type: 'status_change',
+      summary: `${lead.status} → ${to}${note ? ` · ${note}` : ''}`,
+      meta: { from: lead.status, to },
+    },
+  });
+  return tx.lead.findUnique({ where: { id: leadId } });
+}
+
 export async function changeStatus(id, { status, lostReason, note }, userId) {
   const lead = await prisma.lead.findFirst({ where: { id, deletedAt: null } });
   if (!lead) throw notFound('Lead');
-  assertTransition(LEAD_TRANSITIONS, lead.status, status, 'lead');
 
-  const closing = ['WON', 'LOST'].includes(status);
-  const updated = await prisma.lead.update({
-    where: { id },
+  await prisma.$transaction((tx) => transitionLead(tx, id, status, {
+    actorId: userId,
+    note,
     data: {
-      status,
       lostReason: status === 'LOST' ? lostReason : null,
-      closedAt: closing ? new Date() : null,
       firstResponseAt: lead.firstResponseAt ?? (status !== 'NEW' ? new Date() : null),
     },
-    include: LEAD_INCLUDE,
-  });
-  await prisma.leadActivity.create({
-    data: {
-      leadId: id, userId: userId ?? null, type: 'status_change',
-      summary: `${lead.status} → ${status}${note ? ` · ${note}` : ''}`,
-      meta: { from: lead.status, to: status },
-    },
-  });
-  return decorateSla(updated);
+  }));
+  return decorateSla(await prisma.lead.findUnique({ where: { id }, include: LEAD_INCLUDE }));
 }
 
 export async function assignLead(id, { assignedToId, note }, actorId) {
@@ -345,16 +371,31 @@ export async function mergeLeads({ primaryId, duplicateIds }, actorId) {
   const primary = await prisma.lead.findFirst({ where: { id: primaryId, deletedAt: null } });
   if (!primary) throw notFound('Primary lead');
 
-  await prisma.$transaction([
-    prisma.leadNote.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } }),
-    prisma.leadActivity.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } }),
-    prisma.quotation.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } }),
-    prisma.job.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } }),
-    prisma.lead.updateMany({ where: { id: { in: ids } }, data: { deletedAt: new Date(), status: 'LOST', lostReason: `Merged into ${primary.id}` } }),
-    prisma.leadActivity.create({
+  const duplicates = await prisma.lead.findMany({
+    where: { id: { in: ids }, deletedAt: null }, select: { id: true, name: true, status: true },
+  });
+  // A merged duplicate is closed as LOST. A WON lead carries the customer's yes,
+  // and burying it would erase that — it has to be the primary instead.
+  const stuck = duplicates.find((d) => !canTransition(LEAD_TRANSITIONS, d.status, 'LOST'));
+  if (stuck) {
+    throw unprocessable(`The lead for ${stuck.name} is ${stuck.status} and cannot be merged away. Make it the primary lead instead.`);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.leadNote.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } });
+    await tx.leadActivity.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } });
+    await tx.quotation.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } });
+    await tx.job.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } });
+    for (const d of duplicates) {
+      await transitionLead(tx, d.id, 'LOST', {
+        actorId, note: `Merged into ${primary.id}`, data: { lostReason: `Merged into ${primary.id}` },
+      });
+    }
+    await tx.lead.updateMany({ where: { id: { in: ids } }, data: { deletedAt: new Date() } });
+    await tx.leadActivity.create({
       data: { leadId: primaryId, userId: actorId ?? null, type: 'note', summary: `Merged ${ids.length} duplicate lead(s)` },
-    }),
-  ]);
+    });
+  });
   return getLead(primaryId);
 }
 

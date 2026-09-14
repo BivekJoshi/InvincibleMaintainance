@@ -1,5 +1,12 @@
 # Maintenance System — Master Build Plan
 
+> **Historical — the v1 blueprint (2026-09-01).** Kept for the reasoning behind the product.
+> Its technical layout no longer applies: there is no MUI (the UI is shadcn/ui + Tailwind), no
+> npm-workspace monorepo, no `apps/*` and no `packages/shared`. The code lives in
+> `MaintainanceBackend/` and `MaintainanceFrontend/` (one Vite app on :5400), with zod schemas in
+> `MaintainanceBackend/src/shared/schemas/` mirrored to `MaintainanceFrontend/src/form/schemas/`.
+> **The current build order is [`docs/ADMIN-PLAN.md`](ADMIN-PLAN.md).**
+
 **Version:** 1.0 · **Date:** 2026-09-01
 **Basis:** `homeplexdynamicsystemfindings.md` (site study of homeplexnepal.com)
 **Stack:** Vite + React + MUI · Node/Express + Prisma + PostgreSQL · single-tenant · full field-service ops

@@ -251,6 +251,10 @@ export const paymentSchema = z.object({
 
 export const invoiceVoidSchema = z.object({ reason: z.string().trim().min(3).max(500) });
 
+/** A payment is never deleted; voiding it keeps the row and says why. */
+export const paymentVoidSchema = z.object({ reason: z.string().trim().min(3).max(500) });
+export const paymentParams = z.object({ id: z.string().min(1), paymentId: z.string().min(1) });
+
 export const expenseSchema = z.object({
   category: z.string().trim().min(2).max(80),
   amount: rupees,

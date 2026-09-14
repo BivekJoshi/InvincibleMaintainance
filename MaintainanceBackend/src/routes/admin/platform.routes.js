@@ -76,7 +76,10 @@ router.get('/media/:id', requires('media:read'), validate({ params: idParam }),
 router.put('/media/:id', requires('media:write'), validate({ params: idParam, body: mediaUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await media.updateMedia(req.params.id, req.body))));
 router.delete('/media/:id', requires('media:write'), validate({ params: idParam }),
-  asyncHandler(async (req, res) => { await media.deleteMedia(req.params.id, { hard: req.query.hard === 'true' }); noContent(res); }));
+  asyncHandler(async (req, res) => {
+    await media.deleteMedia(req.params.id, { hard: req.query.hard === 'true', role: req.user.role });
+    noContent(res);
+  }));
 
 // ── settings
 router.get('/settings', requires('settings:read'), asyncHandler(async (_req, res) => ok(res, await settings.groupedSettings())));

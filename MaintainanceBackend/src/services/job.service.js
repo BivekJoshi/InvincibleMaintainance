@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 import { notFound, badRequest, forbidden, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
-import { toPaisa, sum } from '../utils/money.js';
+import { sum } from '../utils/money.js';
 import { addDays, startOfDay, endOfDay } from '../utils/dates.js';
 import { JOB_TRANSITIONS, QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
@@ -67,17 +67,25 @@ async function recordEvent(tx, { jobId, from, to, actorId, note, lat, lng }) {
   });
 }
 
-export async function createJob(input, userId) {
+/**
+ * @param {object} input
+ * @param {string} [userId]
+ * @param {import('@prisma/client').Prisma.TransactionClient} [client]  the caller's transaction
+ *   (lead convert). The job is then written inside it and the technicians are NOT
+ *   notified — the caller runs announceAssignment() once its transaction commits.
+ */
+export async function createJob(input, userId, client = prisma) {
   const { technicianIds = [], leadTechnicianId, templateId, ...rest } = input;
+  const inCallerTx = client !== prisma;
 
-  const customer = await prisma.customer.findFirst({ where: { id: rest.customerId, deletedAt: null } });
+  const customer = await client.customer.findFirst({ where: { id: rest.customerId, deletedAt: null } });
   if (!customer) throw badRequest('That customer does not exist');
   if (rest.siteId) {
-    const site = await prisma.customerSite.findFirst({ where: { id: rest.siteId, customerId: rest.customerId, deletedAt: null } });
+    const site = await client.customerSite.findFirst({ where: { id: rest.siteId, customerId: rest.customerId, deletedAt: null } });
     if (!site) throw badRequest('That site does not belong to this customer');
   }
   if (rest.quotationId) {
-    const quotation = await prisma.quotation.findFirst({ where: { id: rest.quotationId, deletedAt: null } });
+    const quotation = await client.quotation.findFirst({ where: { id: rest.quotationId, deletedAt: null } });
     if (!quotation) throw badRequest('That quotation does not exist');
     if (quotation.customerId !== rest.customerId) throw badRequest('That quotation belongs to another customer');
     // Only approved work becomes a job. Without this, a job pointing at a draft
@@ -87,14 +95,14 @@ export async function createJob(input, userId) {
 
   let tasks = [];
   if (templateId) {
-    const tpl = await prisma.jobTemplate.findFirst({ where: { id: templateId, deletedAt: null } });
+    const tpl = await client.jobTemplate.findFirst({ where: { id: templateId, deletedAt: null } });
     if (!tpl) throw badRequest('That job template does not exist');
     tasks = (tpl.tasks ?? []).map((t, i) => ({ title: t.title, note: t.description ?? null, sortOrder: i }));
   }
 
   const status = technicianIds.length ? 'ASSIGNED' : rest.scheduledStart ? 'SCHEDULED' : 'DRAFT';
 
-  const job = await prisma.$transaction(async (tx) => {
+  const run = async (tx) => {
     const number = await nextNumber(tx, 'JOB');
     const created = await tx.job.create({
       data: {
@@ -119,8 +127,10 @@ export async function createJob(input, userId) {
     await recordEvent(tx, { jobId: created.id, from: null, to: status, actorId: userId, note: 'Job created' });
     if (rest.quotationId) await markConverted(rest.quotationId, tx);
     return created;
-  });
+  };
 
+  if (inCallerTx) return run(client);
+  const job = await prisma.$transaction(run);
   if (technicianIds.length) await announceAssignment(job, technicianIds);
   return job;
 }
@@ -154,7 +164,8 @@ export async function createJobFromQuotation(quotationId, input, userId) {
   }, userId);
 }
 
-async function announceAssignment(job, technicianIds) {
+/** Notifies each assigned technician in-app and by SMS. Call only after the job has committed. */
+export async function announceAssignment(job, technicianIds) {
   const techs = await prisma.technician.findMany({
     where: { id: { in: technicianIds } },
     include: { user: { select: { id: true, name: true, phone: true } } },

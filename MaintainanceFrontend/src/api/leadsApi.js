@@ -66,6 +66,14 @@ export const leadsApi = apiSlice.injectEndpoints({
         'LeadBoard', 'Dashboard',
       ],
     }),
+    // Text, not a Blob: the cache holds only serialisable values. The page turns
+    // it into a file. Lazy, and dropped from the cache as soon as nothing reads it.
+    // Going through baseQuery is the point — it carries the Bearer token and
+    // survives a 401 → refresh → retry, which window.open never could.
+    exportLeadsCsv: build.query({
+      query: (params = {}) => ({ url: '/admin/leads/export.csv', params, responseHandler: (res) => res.text() }),
+      keepUnusedDataFor: 0,
+    }),
     mergeLeads: build.mutation({
       query: (body) => ({ url: '/admin/leads/merge', method: 'POST', body }),
       invalidatesTags: [{ type: 'Lead', id: 'LIST' }, 'LeadBoard'],
@@ -81,5 +89,5 @@ export const {
   useGetLeadsQuery, useGetSlaBoardQuery, useGetLeadQuery, useGetLeadDuplicatesQuery,
   useCreateLeadMutation, useUpdateLeadMutation, useSetLeadStatusMutation, useAssignLeadMutation,
   useAddLeadNoteMutation, useAddLeadActivityMutation, useConvertLeadMutation, useGetTechniciansQuery,
-  useMergeLeadsMutation, useDeleteLeadMutation,
+  useMergeLeadsMutation, useDeleteLeadMutation, useLazyExportLeadsCsvQuery,
 } = leadsApi;

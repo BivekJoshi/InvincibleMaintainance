@@ -7,6 +7,7 @@ import { nextNumber } from '../utils/numbering.js';
 import { SURVEY_TRANSITIONS, LEAD_TRANSITIONS, JOB_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
 import * as jobs from './job.service.js';
 import { createQuotation } from './quotation.service.js';
+import { transitionLead } from './lead.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 
 /**
@@ -512,9 +513,10 @@ export async function buildQuotationFromSurvey(id, input = {}, userId) {
   }
 
   if (survey.leadId) {
-    const lead = await prisma.lead.findUnique({ where: { id: survey.leadId }, select: { status: true } });
+    const lead = await prisma.lead.findFirst({ where: { id: survey.leadId, deletedAt: null }, select: { status: true } });
+    // Only forward: a lead already WON or LOST keeps its status and just gets the note below.
     if (lead && canTransition(LEAD_TRANSITIONS, lead.status, 'QUOTED')) {
-      await prisma.lead.update({ where: { id: survey.leadId }, data: { status: 'QUOTED' } });
+      await transitionLead(prisma, survey.leadId, 'QUOTED', { actorId: userId, note: `Quotation ${quotation.number}` });
     }
     await prisma.leadActivity.create({
       data: {

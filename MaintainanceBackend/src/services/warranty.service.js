@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
-import { notFound, badRequest, unprocessable } from '../utils/AppError.js';
+import { notFound, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
 import { addDays } from '../utils/dates.js';
