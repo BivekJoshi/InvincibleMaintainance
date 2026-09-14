@@ -119,8 +119,10 @@ Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password1
 2. Before adding a model or field, update `docs/DATA-MODEL.prisma` and `docs/API.md` in the same change.
 3. New admin CRUD screens are built from the admin kit in `MaintainanceFrontend/src/components/common/`:
    **DataTable v2** (filters, row and bulk actions, page size, trash, reorder) and **`<ResourceForm>`** (declarative
-   fields, server-error mapping, unsaved-changes guard), with `LocaleTabs`, `MediaPicker` and `useConfirm`. The
-   resource registry that turns these into config files arrives in Phase C2. Do not hand-roll another table or form.
+   fields, server-error mapping, unsaved-changes guard), with `LocaleTabs`, `MediaPicker` and `useConfirm`. A CMS
+   resource screen is a **registry entry** — one file in `MaintainanceFrontend/src/config/admin/resources/`,
+   registered in `resourceRegistry.js` with a nav item in `adminNav.js` — rendered by the generic
+   `ResourceListPage` / `ResourceEditPage`. Do not hand-roll another table, form or per-resource CMS page.
 4. Add shadcn components with `npx shadcn@latest add <name>` — do not hand-copy them.
 5. Money, phone numbers, and Nepali text are the three things that break. Test them.
 6. No secrets in the repo. Everything through `.env` with a matching `.env.example` entry.

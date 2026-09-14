@@ -124,7 +124,10 @@ export function makeCrud(opts) {
      */
     async remove(id, { hard = false, role } = {}) {
       if (hard && !can(role, 'cms:purge')) throw forbidden('Permanent delete needs the cms:purge permission');
-      const row = await this.get(id);
+      // A purge usually comes from the Trash view, so it must find a row that is already soft-deleted;
+      // a soft delete still needs a live one.
+      const row = hard ? await db().findUnique({ where: { id }, ...(include ? { include } : {}) }) : await this.get(id);
+      if (!row) throw notFound(label);
       const purge = hard || !softDelete;
       await prisma.$transaction(async (tx) => {
         if (purge) await tx[model].delete({ where: { id } });

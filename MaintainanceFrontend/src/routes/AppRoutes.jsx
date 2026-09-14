@@ -5,12 +5,13 @@ import { RouteFallback } from './PageOutlet';
 import {
   HomePage, ServicesPage, ServiceDetailPage, PricingPage, ContactPage, BookingPage,
   ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage,
-  LoginPage, DashboardPage, LeadsPage, SlaBoardPage, LeadDetailPage, SurveysPage,
-  SurveyReviewPage, QuotationsPage, QuotationBuilderPage,
+  LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, SurveysPage,
+  SurveyReviewPage, QuotationsPage, QuotationBuilderPage, ResourceListPage, ResourceEditPage,
   TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, NotFoundPage,
 } from './routeModules';
+import { AdminHome, ContentHome } from './AdminLanding';
 import { SiteLayout } from '@/components/layout/SiteLayout';
-import { AdminLayout } from '@/components/layout/AdminLayout';
+import { AdminLayout } from '@/components/layout/AdminLayout/AdminLayout';
 import { TechLayout } from '@/components/layout/TechLayout';
 import { FIELD_ROLES, OFFICE_ROLES } from '@/config/constants';
 
@@ -50,7 +51,7 @@ export function AppRoutes() {
         {/* Back office — every role except the field app's */}
         <Route element={<RequireAuth roles={OFFICE_ROLES} />}>
           <Route element={<AdminLayout />}>
-            <Route path="/admin" element={<DashboardPage />} />
+            <Route path="/admin" element={<AdminHome />} />
             <Route element={<RequireAuth capability="leads:read" />}>
               <Route path="/admin/leads" element={<LeadsPage />} />
               <Route path="/admin/leads/:id" element={<LeadDetailPage />} />
@@ -63,6 +64,13 @@ export function AppRoutes() {
             <Route element={<RequireAuth capability="quotations:read" />}>
               <Route path="/admin/quotations" element={<QuotationsPage />} />
               <Route path="/admin/quotations/:id" element={<QuotationBuilderPage />} />
+            </Route>
+            {/* CMS resources from config/admin/resourceRegistry.js; each page checks its entry's own capability */}
+            <Route element={<RequireAuth capability="cms:read" />}>
+              <Route path="/admin/content" element={<ContentHome />} />
+              <Route path="/admin/content/:resource" element={<ResourceListPage />} />
+              <Route path="/admin/content/:resource/new" element={<ResourceEditPage />} />
+              <Route path="/admin/content/:resource/:id" element={<ResourceEditPage />} />
             </Route>
           </Route>
         </Route>

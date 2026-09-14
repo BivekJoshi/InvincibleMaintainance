@@ -35,7 +35,7 @@ router.get('/availability', cached(30, 'availability'), asyncHandler(async (req,
 router.get('/pricing', cached(TTL, 'pricing'), asyncHandler(async (req, res) => ok(res, await pub.pricing(locale(req)))));
 router.get('/gallery', cached(TTL, 'gallery'), asyncHandler(async (_req, res) => ok(res, await pub.listGallery())));
 router.get('/testimonials', cached(TTL, 'testimonials'), asyncHandler(async (req, res) => ok(res, await pub.listTestimonials(locale(req)))));
-router.get('/faqs', cached(TTL, 'faqs'), asyncHandler(async (req, res) => ok(res, { items: await pub.listFaqs(req.query.group) })));
+router.get('/faqs', cached(TTL, 'faqs'), asyncHandler(async (req, res) => ok(res, { items: await pub.listFaqs(req.query.group, locale(req)) })));
 router.get('/posts', cached(TTL, 'posts'), asyncHandler(async (req, res) => ok(res, await pub.listPosts(req.query))));
 router.get('/posts/:slug', cached(TTL, 'posts'), validate({ params: slugParam }), asyncHandler(async (req, res) => ok(res, await pub.getPost(req.params.slug))));
 router.get('/pages/:slug', cached(TTL, 'pages'), validate({ params: slugParam }), asyncHandler(async (req, res) => ok(res, await pub.getPage(req.params.slug))));

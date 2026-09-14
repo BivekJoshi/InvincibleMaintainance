@@ -164,7 +164,7 @@ export async function getService(slug, locale = 'en') {
         where: { ...ACTIVE, categoryId: service.categoryId, serviceId: null },
         ...RELATED_SELECT,
       });
-  return withMedia({ service: localized, related, faqs });
+  return withMedia({ service: localized, related, faqs: await withLocale('faq', faqs, locale) });
 }
 
 export async function listProjects(query = {}, locale = 'en') {
@@ -239,8 +239,8 @@ export const listTestimonials = async (locale = 'en') =>
     locale,
   });
 
-export const listFaqs = (group) =>
-  prisma.faq.findMany({ where: { ...ACTIVE, ...(group ? { group } : {}) }, orderBy: BY_SORT });
+export const listFaqs = async (group, locale = 'en') =>
+  withLocale('faq', await prisma.faq.findMany({ where: { ...ACTIVE, ...(group ? { group } : {}) }, orderBy: BY_SORT }), locale);
 
 export async function listPosts(query = {}) {
   const rows = await prisma.post.findMany({

@@ -229,7 +229,7 @@ rows and Phase F needs domain events.
   it). The `TechSync` idempotency rows are unchanged and carry no `requestId`; the mutations they replay are
   audited normally. #14 stays open — Phase B added task logging, not retries or a cron leader lock (J2).
 
-### Phase C — Admin UI kit · ~4 days · C1 ✅ done 2026-09-14
+### Phase C — Admin UI kit · ~4 days · ✅ done 2026-09-14 (C1 + C2)
 
 Every later screen is built from this, so it is the highest-leverage phase.
 
@@ -289,6 +289,52 @@ Every later screen is built from this, so it is the highest-leverage phase.
   first failing field once the form is enabled again.
 - **Not browser-tested yet:** ResourceForm, LocaleTabs and MediaPicker have no screen until C2; they are covered by
   component tests. Lint warnings went 25 → 26 (the generated `toggle.jsx` exports its variants).
+
+**Deviations (Phase C2, 2026-09-14)** — built differently from the plan, or beyond it. C2 closed none of the §3 defects
+(none were assigned to it).
+- **Beyond the plan (backend):** the public site never showed a Nepali FAQ — `getService` and `GET /public/faqs`
+  returned FAQs without `withLocale`, so the NE translation the acceptance asks for could be saved but not seen.
+  Both now overlay `faq` translations (`/public/faqs` takes `?locale`), with an API test. Translations must be saved
+  under the Prisma client model name (`faq`, `processStep`), which is what `withLocale` reads; the older API test
+  saves `Faq`, which stores fine but never reaches the site.
+- **Registry layer:** kept in `config/admin/resources/*.jsx`. `resourceRegistry.js` is imported only by the two lazy
+  generic pages, so the entries stay out of the main bundle (checked in the build output). Because the route table
+  cannot import the registry, the routes are guarded by `cms:read` and each page checks its entry's own capability
+  through `hooks/useResourceEntry`. The entry shape adds `model` (translations), `labelPlural`, `description`,
+  `writeCapability`, `titleOf` and list copy to the planned keys.
+- **Nav as data:** `config/admin/adminNav.js` holds the groups plus `navForRole`, `landingPathFor`, `contentHomeFor` and
+  `breadcrumbsFor`, so all of it is unit-tested. `AdminLayout` became the folder `components/layout/AdminLayout/`
+  (breadcrumb, notification panel, `notificationLinks.js`). Items added as `soon`: Dispatch board, Expenses,
+  Services, Projects, Media library, Users, Audit log. The Media library item needs `cms:read`, not `media:read`,
+  which SALES and DISPATCHER hold for job photos. Users and Audit log use `users:read` / `audit:read`, which only
+  ADMIN's `*` satisfies (both API routes are ADMIN-only). The EDITOR's Dashboard item is hidden, since `/admin`
+  redirects it to Content.
+- **List page behaviour every entry gets:** an On site switch column, row actions (Edit, View on site, Hide/Show,
+  Delete with confirm), bulk Delete, Trash with Restore, and Delete forever for `cms:purge` (ADMIN).
+- **FAQ group:** a free-text field (default `general`) and an enum filter over the three seeded groups. The public
+  service page lists group = its slug or `general`; `pricing` and `warranty` show on no page, so their "View on site"
+  is hidden. A picker offering "general + each service" needs a relation with a static option — D2.
+- **FAQ answer** is a `textarea`, not `prose`: `FaqList` renders the answer as one `<dd>` paragraph.
+- **Process steps:** `sortable: false`, because the site orders them by `stepNo` and Reorder would change nothing a
+  visitor sees; the step number is a field instead. `icon` is free text (a `DataIcon` name).
+- **Notifications:** links are normalised in the SPA (`/leads/:id` → `/admin/leads/:id`, absolute app URLs → paths,
+  `/tech/…` and token pages kept). Phase E still normalises them in the API.
+- **cmsApi** writes also invalidate the `Public` tag, so the SPA's cached copy of the site follows an edit.
+- **cms.schema.js** mirrors all 16 CMS schemas (and `FEATURE_GROUPS`/`LIST_GROUPS`), not only FAQ's.
+- **Cleanup:** `config/config.js`, `helpers/helpers.js` and `hooks/hooks.js` had zero importers and were removed.
+- **Second resource timing:** `process-steps` (entry, registry line, nav item) took under 1 minute to write, with the
+  registry test green 40 s after starting; the browser walk-through of its screens is recorded in `STATUS.md`.
+- **Found by the browser walk-through, fixed:**
+  - *Backend:* "Delete forever" in Trash could never work. The CRUD factory's `remove` looked the row up with
+    `get()`, which excludes soft-deleted rows, so `DELETE ?hard=true` on a trashed row answered 404 for all 16 CMS
+    resources. The existing test only purged a live row. A purge now finds the row including Trash; a new
+    per-resource API test failed on the old code (404 for every resource) and passes now.
+  - *C1 kit:* in reorder mode dnd-kit's screen-reader announcer (a `<div>`) rendered inside `<table>`
+    (`validateDOMNesting`); it is portalled to `<body>` now.
+  - *C2:* deleting from an edit page refetched the just-deleted record (one 404); the page stops that query and shows
+    a snapshot until it navigates.
+- **Known, not changed:** a mirrored `optionalText` turns an emptied optional text into `undefined`, so a PUT cannot
+  clear it (e.g. a process step's description) — the API schema's behaviour, left for D1.
 
 ### Phase D — Service listing & CMS · ~6 days
 
@@ -441,7 +487,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 |---|---|---|---|
 | A Safety fixes ✅ 2026-09-14 | 2 | 2 | Correct money, locked quotations, no hard-deleted payments, honest docs |
 | B Logging & audit ✅ 2026-09-14 | 3 | 5 | Redacted request-id logs, complete audit with domain events |
-| C Admin UI kit (C1 ✅ 2026-09-14 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
+| C Admin UI kit ✅ 2026-09-14 (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
 | D Services & CMS (D1 + D2) | 6 | 15 | Editors run the whole public site |
 | E Leads & CRM | 5 | 20 | Sales works entirely in the UI |
 | F Quotation approval (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |

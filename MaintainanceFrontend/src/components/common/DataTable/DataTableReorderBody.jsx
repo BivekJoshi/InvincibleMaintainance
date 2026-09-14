@@ -84,7 +84,13 @@ export function DataTableReorderBody({ rows, getRowId, columns, onMove, rowLabel
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+    // dnd-kit's screen-reader announcer is a <div>; portalled to <body>, it is not an invalid child of <table>.
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+      accessibility={{ container: typeof document === 'undefined' ? undefined : document.body }}
+    >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <TableBody>
           {rows.map((row, i) => (

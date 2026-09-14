@@ -74,6 +74,18 @@ describe.each(Object.entries(RESOURCES))('/admin/%s', (path, body) => {
     expectStatus(await (await as('ADMIN')).delete(`/admin/${path}/${id}?hard=true`), 204);
     expectStatus(await editor.patch(`/admin/${path}/${id}/restore`), 404);
   });
+
+  it('DELETE ?hard=true purges a row that is already in Trash (the Trash view’s "Delete forever")', async () => {
+    const trashedId = expectStatus(await editor.post(`/admin/${path}`).send(body()), 201).data.id;
+    expectStatus(await editor.delete(`/admin/${path}/${trashedId}`), 204);
+    expectStatus(await editor.delete(`/admin/${path}/${trashedId}?hard=true`), 403);
+    expectStatus(await (await as('ADMIN')).delete(`/admin/${path}/${trashedId}?hard=true`), 204);
+    expectStatus(await editor.patch(`/admin/${path}/${trashedId}/restore`), 404);
+    const trash = expectStatus(await editor.get(`/admin/${path}?deleted=true&limit=100&sort=-createdAt`), 200).data;
+    expect(trash.map((r) => r.id)).not.toContain(trashedId);
+    // A soft delete still needs a live row.
+    expectStatus(await editor.delete(`/admin/${path}/${trashedId}`), 404);
+  });
 });
 
 describe('resource specifics', () => {
@@ -155,6 +167,24 @@ describe('translations', () => {
     expectStatus(await editor.put('/admin/translations').send({ model: 'Faq', recordId: faq.id, values }), 200);
     const body = expectStatus(await editor.get(`/admin/translations?model=Faq&recordId=${faq.id}`), 200);
     expect(JSON.stringify(body.data)).toContain('के यो परीक्षण हो?');
+  });
+
+  it('a Nepali FAQ shows on the public service page and /public/faqs with ?locale=ne', async () => {
+    const faq = expectStatus(await editor.post('/admin/faqs').send({ ...RESOURCES.faqs(), group: 'general' }), 201).data;
+    const question = `नेपाली प्रश्न ${uid()}?`;
+    expectStatus(await editor.put('/admin/translations').send({ model: 'faq', recordId: faq.id, values: { question: { ne: question } } }), 200);
+    const slug = expectStatus(await anon().get('/public/services'), 200).data.items[0].slug;
+    const find = (items) => items.find((f) => f.id === faq.id);
+
+    const en = find(expectStatus(await anon().get(`/public/services/${slug}`), 200).data.faqs);
+    expect(en.question).toBe(faq.question);
+
+    const ne = find(expectStatus(await anon().get(`/public/services/${slug}?locale=ne`), 200).data.faqs);
+    expect(ne.question).toBe(question);
+    expect(ne.answer).toBe(faq.answer); // an untranslated field falls back to English
+
+    const listed = find(expectStatus(await anon().get('/public/faqs?group=general&locale=ne'), 200).data.items);
+    expect(listed.question).toBe(question);
   });
 });
 

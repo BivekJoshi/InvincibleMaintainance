@@ -1,0 +1,142 @@
+import {
+  Briefcase, Building2, CalendarDays, ClipboardCheck, Contact, FileText, HelpCircle, Image, LayoutDashboard,
+  ListOrdered, Package, Receipt, ScrollText, Settings, ShieldCheck, Timer, UserCog, Users, Wallet, Wrench,
+} from 'lucide-react';
+import { can } from '@/helpers/permissions';
+
+/**
+ * The back office's navigation, grouped by what the business does. Filtered by
+ * capability — the same map the API enforces — and pure, so it is tested without a DOM.
+ *
+ * `soon` marks a module whose API exists but whose screen does not. It renders as
+ * plainly unavailable rather than as a link, because a nav item that bounces you back
+ * to the dashboard reads as a broken app, not as an unbuilt one.
+ *
+ * A built content item points at `/admin/content/<resource>` and must have an entry in
+ * `resourceRegistry.js` with the same capability; the registry test enforces both ways.
+ *
+ * @typedef {{ to: string, label: string, icon: import('react').ElementType, capability?: string, end?: boolean, soon?: boolean }} NavItem
+ * @typedef {{ key: string, label: string, items: NavItem[] }} NavGroup
+ */
+
+/** @type {NavGroup[]} */
+export const ADMIN_NAV = [
+  {
+    key: 'overview',
+    label: 'Overview',
+    items: [{ to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true }],
+  },
+  {
+    key: 'sales',
+    label: 'Sales',
+    items: [
+      { to: '/admin/sla', label: 'SLA board', icon: Timer, capability: 'leads:read' },
+      { to: '/admin/leads', label: 'Leads', icon: Users, capability: 'leads:read' },
+      { to: '/admin/customers', label: 'Customers', icon: Contact, capability: 'customers:read', soon: true },
+      { to: '/admin/surveys', label: 'Site surveys', icon: ClipboardCheck, capability: 'surveys:read' },
+      { to: '/admin/quotations', label: 'Quotations', icon: FileText, capability: 'quotations:read' },
+    ],
+  },
+  {
+    key: 'operations',
+    label: 'Operations',
+    items: [
+      { to: '/admin/jobs', label: 'Jobs', icon: Briefcase, capability: 'jobs:read', soon: true },
+      { to: '/admin/dispatch', label: 'Dispatch board', icon: CalendarDays, capability: 'jobs:dispatch', soon: true },
+      { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', soon: true },
+    ],
+  },
+  {
+    key: 'finance',
+    label: 'Finance',
+    items: [
+      { to: '/admin/invoices', label: 'Invoices', icon: Receipt, capability: 'invoices:read', soon: true },
+      { to: '/admin/expenses', label: 'Expenses', icon: Wallet, capability: 'expenses:read', soon: true },
+    ],
+  },
+  {
+    key: 'aftercare',
+    label: 'Aftercare',
+    items: [
+      { to: '/admin/warranties', label: 'Warranty & AMC', icon: ShieldCheck, capability: 'jobs:read', soon: true },
+    ],
+  },
+  {
+    key: 'content',
+    label: 'Content',
+    items: [
+      { to: '/admin/content/faqs', label: 'FAQs', icon: HelpCircle, capability: 'cms:read' },
+      { to: '/admin/content/process-steps', label: 'Process steps', icon: ListOrdered, capability: 'cms:read' },
+      { to: '/admin/content/services', label: 'Services', icon: Wrench, capability: 'cms:read', soon: true },
+      { to: '/admin/content/projects', label: 'Projects', icon: Building2, capability: 'cms:read', soon: true },
+      // media:read is also held by SALES and DISPATCHER for job photos; the library screen is an editor's.
+      { to: '/admin/media', label: 'Media library', icon: Image, capability: 'cms:read', soon: true },
+    ],
+  },
+  {
+    key: 'platform',
+    label: 'Platform',
+    items: [
+      // Users and the audit log are ADMIN-only routes; no other role holds these capabilities.
+      { to: '/admin/users', label: 'Users', icon: UserCog, capability: 'users:read', soon: true },
+      { to: '/admin/audit-log', label: 'Audit log', icon: ScrollText, capability: 'audit:read', soon: true },
+      { to: '/admin/settings', label: 'Settings', icon: Settings, capability: 'settings:read', soon: true },
+    ],
+  },
+];
+
+/** A role whose whole job is one group starts there — an empty dashboard is not a welcome. */
+const LANDING = { EDITOR: '/admin/content' };
+
+/** Where `/admin` sends a role. `/admin` itself means the dashboard. */
+export const landingPathFor = (role) => LANDING[role] ?? '/admin';
+
+/**
+ * The groups and items a role sees, empty groups dropped. The dashboard is hidden from a
+ * role that lands elsewhere, because `/admin` would only redirect it.
+ *
+ * @param {string|null} role
+ * @returns {NavGroup[]}
+ */
+export function navForRole(role) {
+  const landing = landingPathFor(role);
+  return ADMIN_NAV
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => (
+        (!item.capability || can(role, item.capability)) && !(item.to === '/admin' && landing !== '/admin')
+      )),
+    }))
+    .filter((group) => group.items.length);
+}
+
+/** `/admin/content` → the first built content screen this role can open, else `/admin`. */
+export function contentHomeFor(role) {
+  const content = navForRole(role).find((g) => g.key === 'content');
+  return content?.items.find((item) => !item.soon)?.to ?? '/admin';
+}
+
+/**
+ * The trail for an admin path, derived from the nav: group › screen › New | Edit | Details.
+ * The last crumb is the current page; a screen crumb before it carries `to`.
+ *
+ * @param {string} pathname
+ * @returns {{ label: string, to?: string }[]}
+ */
+export function breadcrumbsFor(pathname) {
+  const path = pathname.replace(/\/+$/, '') || '/';
+  let best = null;
+  for (const group of ADMIN_NAV) {
+    for (const item of group.items) {
+      if (item.soon) continue;
+      const matches = item.end ? path === item.to : path === item.to || path.startsWith(`${item.to}/`);
+      if (matches && (!best || item.to.length > best.item.to.length)) best = { group, item };
+    }
+  }
+  if (!best) return path === '/admin/content' || path.startsWith('/admin/content/') ? [{ label: 'Content' }] : [];
+
+  const crumbs = [{ label: best.group.label }, { label: best.item.label, to: best.item.to }];
+  const [next] = path.slice(best.item.to.length).split('/').filter(Boolean);
+  if (next) crumbs.push({ label: next === 'new' ? 'New' : best.group.key === 'content' ? 'Edit' : 'Details' });
+  return crumbs;
+}

@@ -23,14 +23,15 @@ Content endpoints take `?locale=en|ne`.
 GET  /public/bootstrap              ⚡ settings + nav + home sections + booking rules in one call
 GET  /public/home                   ⚡ every visible home section, hydrated, in order
 GET  /public/services               ⚡ ?category&featured
-GET  /public/services/:slug         ⚡ + related projects, faqs
+GET  /public/services/:slug         ⚡ + related projects, faqs (group = this slug or `general`; with
+                                      ?locale=ne each FAQ carries its Nepali question/answer where one exists)
 GET  /public/projects               ⚡ ?service=<slug>&category=<slug>   case studies
 GET  /public/projects/:slug         ⚡
 GET  /public/offers                   active window only, cached 30s
 GET  /public/pricing                ⚡ pricing plans + rate card + priced services
 GET  /public/gallery                ⚡
 GET  /public/testimonials           ⚡ approved only
-GET  /public/faqs                   ⚡ ?group
+GET  /public/faqs                   ⚡ ?group&locale   -> { items }   Nepali overlaid like the service page
 GET  /public/posts  /posts/:slug    ⚡
 GET  /public/pages/:slug            ⚡
 POST /public/estimate                 { serviceId | pricingPlanId, qty } -> { min, max, breakdown }
@@ -82,7 +83,8 @@ Every resource below gets the same eight endpoints from one factory: `GET /`, `G
 `DELETE /:id` (soft) and `PATCH /:id/restore`.
 
 `DELETE /:id?hard=true` removes the row for good and needs **`cms:purge`**, which only ADMIN holds;
-anyone else gets 403 `FORBIDDEN` and nothing is deleted. The same applies to `DELETE /admin/media/:id?hard=true`,
+anyone else gets 403 `FORBIDDEN` and nothing is deleted. It purges a live row or one already in Trash (the trash
+view's "Delete forever"); an id that does not exist is 404. A plain `DELETE /:id` of a row already in Trash is 404. The same applies to `DELETE /admin/media/:id?hard=true`,
 which also removes the stored file and its variants.
 
 `GET /?deleted=true` is the **trash view**: only soft-deleted rows, paginated, sorted and searchable like the normal

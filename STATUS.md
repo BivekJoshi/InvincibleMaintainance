@@ -22,11 +22,13 @@ Updated 2026-09-14. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLA
 | **v2 · A Safety fixes** | Convert priced by `documentTotals` and atomic, quotation expiry at decide time + `quotation:expire`, DRAFT-only edits, payment void (no hard delete), `transitionLead`, `cms:purge`, CSV export via RTK Query, real booking timing, ESLint in both apps, GitHub Actions CI, doc housekeeping | ✅ 2026-09-14 |
 | **v2 · B Logging & audit** | Request context (AsyncLocalStorage) and `X-Request-Id`; pino redaction, phone masking, context mixin, `LOG_FILE` via pino-roll, optional Sentry; `AuditLog` gains `requestId` / `userAgent` / `actorType` / `event` / `before` / `after`; audit rows written inside the caller's transaction for all 7 write operations, one row per id on bulk writes; 38 named domain events (`AUDIT_EVENTS`, 7 more reserved for F); `GET /admin/audit-logs` filters | ✅ 2026-09-14 |
 | **v2 · C1 Admin UI primitives** | shadcn sheet/alert-dialog/textarea/popover/calendar/command/breadcrumb/scroll-area/radio-group/accordion/collapsible/progress/toggle-group; Vitest + Testing Library as `npm test` (in CI); DataTable v2 (row and bulk actions, page size, URL-synced filter bar, trash via `?deleted=true`, dnd-kit reorder with move buttons); `<ResourceForm>` with 16 field types, server-error mapping and an unsaved-changes guard (data router); `LocaleTabs`; `MediaPicker` with alt-required upload; `ConfirmDialog` / `useConfirm`; Devanagari slug fix in the API | ✅ 2026-09-14 |
+| **v2 · C2 Registry, shell & first resources** | Resource registry (`config/admin/resources/`) rendered by generic `ResourceListPage` / `ResourceEditPage` under `/admin/content/:resource`; `cmsApi` (8 parameterised endpoints, `Cms` tags); `cms.schema.js` mirroring all CMS schemas; FAQs and process steps managed from registry entries alone; admin nav regrouped Overview · Sales · Operations · Finance · Aftercare · Content · Platform, capability-filtered, EDITOR lands on Content; route breadcrumb, brand from settings, notification panel; public FAQs localised (`?locale=ne`); purge from Trash fixed in the CRUD factory; dead barrels removed | ✅ 2026-09-14 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, leads (list + detail), the site-survey inbox and review screen, the
 quotation builder, the field app for technicians and surveyors, and the admin UI kit every later
-screen is built from (DataTable v2, ResourceForm, LocaleTabs, MediaPicker, useConfirm).
+screen is built from (DataTable v2, ResourceForm, LocaleTabs, MediaPicker, useConfirm). CMS screens are
+registry entries: FAQs and process steps are managed end to end, including Nepali copy, from a config file each.
 
 ## Site surveys — how the business actually runs
 
@@ -97,7 +99,8 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A, B and C1 are done; next is **Phase C2 — resource registry, admin shell & first resource** (`docs/prompts/PHASE-C2-registry-shell.md`).
+Phases A, B and C (C1 + C2) are done; next is **Phase D1** of Services & CMS (`docs/prompts/`), built as registry
+entries on the C2 pattern.
 
 ## Verification
 
@@ -125,6 +128,30 @@ Phases A, B and C1 are done; next is **Phase C2 — resource registry, admin she
   Surveys page, sort and search; the Leads status, response, source and received-date filters write the URL, survive
   a reload and Back from a lead's detail page, and "Clear filters" empties them; `?limit=2` shows 2 rows over 3 pages,
   Next goes to page 2, and choosing 10 rows per page shows all 5 on one page; no console errors.
+- Phase C2 (2026-09-14): backend unit 92 (unchanged), API 399 → **416** — public FAQs in Nepali on the service page and
+  `/public/faqs` (1), and "Delete forever" of a row already in Trash for each of the 16 CMS resources (16), which failed
+  on the old CRUD factory with 404 for every resource. Frontend 40 → **61 tests in 10 files**: the registry guard (every
+  entry has capability, schema, columns, fields in its schema, a path the API mounts, a matching nav item), `cmsApi`
+  store tests with mocked fetch (create → list; update and delete → list + that record; reorder → list; never another
+  resource), nav per role (ADMIN, EDITOR, SALES), landing and breadcrumbs, notification links. `npm run lint`: 0 errors
+  in both apps (26 `react-refresh` warnings in the frontend, unchanged); `npm run build` succeeds, and the registry
+  lands in its own admin chunk, not the main bundle.
+- Phase C2 browser walk-through (headless Chrome, dev servers). As `editor@gharjatan.com.np`: lands on Content → FAQs
+  (no Dashboard or Sales in the nav; breadcrumb Content › FAQs; brand "Ghar Jatan" from settings); the group filter and
+  search write the URL; New FAQ refuses an empty form, creates, and opens its edit page; its Nepali question saved; the
+  public service page shows it in English and, after switching the site to नेपाली, in Nepali; reordered to the top with
+  Move up (the admin list, `/public/faqs` and the service page agree); switched off — gone from the site; deleted — in
+  Trash; restored and switched on — back on the site with its Nepali copy; `/admin/content/nope` renders the 404 page.
+  Process steps: 5 rows in step order and no Reorder; a Nepali title reaches `/public/home?locale=ne` and was removed
+  again; a new step refuses an empty step number, creates, shows last on the home page, and deletes from its edit page;
+  the FAQ list at 400px has no page overflow. As `sales@gharjatan.com.np`: no Content group; `/admin/content/faqs`
+  returns to the dashboard; the bell showed 3 unread, the first opened `/admin/leads/:id` (the API wrote `/leads/:id`),
+  and Mark all as read cleared the badge (those 3 demo notifications are now read). As `admin@gharjatan.com.np`: all
+  seven groups; "Delete forever" in Trash purged a row. No console errors for any role. The walk-through's records
+  were purged afterwards. The walk-through found three bugs, fixed before this record: purge from Trash (API), the
+  reorder announcer inside `<table>` (C1 kit), and a 404 refetch after deleting from an edit page.
+- Phase C2 second resource: `process-steps` (entry + registry line + nav item) was written in under a minute, with
+  its registry test green 40 s after starting; its screens passed the browser walk-through above unchanged.
 - Phase A browser walk-through (headless Chrome against the dev servers): signed in as
   `sales@gharjatan.com.np`, exported leads filtered to NEW — the first export call was forced to 401, the page
   refreshed once and retried, both calls carried the Bearer token, and the file (UTF-8 BOM) held exactly the 2
