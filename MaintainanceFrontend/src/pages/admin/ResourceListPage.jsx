@@ -2,9 +2,10 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { ExternalLink, Eye, EyeOff, Info, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
-  useDeleteResourceMutation, useListResourceQuery, useReorderResourceMutation,
+  cmsApi, useDeleteResourceMutation, useListResourceQuery, useReorderResourceMutation,
   useRestoreResourceMutation, useToggleResourceMutation,
 } from '@/api/cmsApi';
+import { useAuth } from '@/hooks/useAuth';
 import { useResourceEntry } from '@/hooks/useResourceEntry';
 import { useListParams } from '@/hooks/useListParams';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -24,7 +25,8 @@ const messageOf = (err) => err?.data?.error?.message;
  * `/admin/content/:resource` (or an entry's own `basePath`) — the list screen of every
  * registry entry. The entry supplies columns, filters and copy; this page adds what every
  * CMS list has: the on/off switch, Edit / View on site / Hide / Delete, bulk delete,
- * Reorder, and Trash.
+ * Reorder, and Trash. An entry may add row actions of its own (`rowActions`), open on a
+ * filter (`defaultValue`), and allow Reorder only within one filter (`reorderWithin`).
  *
  * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
  */
@@ -40,8 +42,14 @@ function ResourceList({ entry, canWrite }) {
   const { resource, label } = entry;
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const { can } = useAuth();
   const [confirm, confirmDialog] = useConfirm();
-  const [params, setParams] = useListParams({ limit: 20 });
+  const filterDefaults = Object.fromEntries(
+    (entry.filters ?? []).filter((f) => f.defaultValue != null).map((f) => [f.key, f.defaultValue]),
+  );
+  const [params, setParams] = useListParams({
+    limit: 20, ...(entry.defaultSort ? { sort: entry.defaultSort } : {}), ...filterDefaults,
+  });
   const { data, isLoading, isFetching, error, refetch } = useListResourceQuery({ resource, params });
   const [toggle] = useToggleResourceMutation();
   const [reorder] = useReorderResourceMutation();
@@ -97,6 +105,18 @@ function ResourceList({ entry, canWrite }) {
     }
   };
 
+  const runAction = async (action) => {
+    try {
+      await dispatch(cmsApi.endpoints[action.endpoint].initiate(action.arg)).unwrap();
+      dispatch(toastSuccess(action.done));
+    } catch (err) {
+      dispatch(toastError(`Could not ${action.label.toLowerCase()}`, messageOf(err)));
+    }
+  };
+
+  const reorderScoped = !entry.reorderWithin || Boolean(params[entry.reorderWithin]);
+  const canReorder = Boolean(entry.sortable) && canWrite;
+
   const onReorder = (items) => reorder({ resource, items }).unwrap().catch((err) => {
     dispatch(toastError('The new order was not saved', messageOf(err)));
     throw err;
@@ -121,9 +141,13 @@ function ResourceList({ entry, canWrite }) {
 
   const rowActions = (row) => {
     const href = entry.publicHref?.(row);
+    const extra = (entry.rowActions?.(row) ?? [])
+      .filter((a) => !a.capability || can(a.capability))
+      .map((a) => ({ label: a.label, icon: a.icon, onSelect: () => runAction(a) }));
     return [
       { label: 'Edit', icon: Pencil, onSelect: () => navigate(editHref(row)) },
       ...(href ? [{ label: 'View on site', icon: ExternalLink, onSelect: () => window.open(href, '_blank', 'noopener') }] : []),
+      ...extra,
       ...(canWrite ? [
         row.isActive
           ? { label: copy.turnOff, icon: EyeOff, onSelect: () => onToggle(row) }
@@ -169,7 +193,8 @@ function ResourceList({ entry, canWrite }) {
         rowActions={rowActions}
         bulkActions={canWrite ? [{ label: 'Delete', icon: Trash2, destructive: true, onSelect: onDelete }] : undefined}
         trash={canWrite ? { onRestore, onPurge } : undefined}
-        reorderable={Boolean(entry.sortable) && canWrite}
+        reorderable={canReorder && reorderScoped}
+        reorderDisabledReason={canReorder && !reorderScoped ? entry.reorderHint : undefined}
         onReorder={onReorder}
       />
       {confirmDialog}

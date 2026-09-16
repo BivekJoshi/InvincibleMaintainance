@@ -5,15 +5,63 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { FormField } from '../FormField';
 
-const toRows = (object) => Object.entries(object ?? {}).map(([key, value]) => ({ key, value: value == null ? '' : String(value) }));
+const text = (value) => (value == null ? '' : String(value));
+const toRows = (object, keys) => (keys
+  ? keys.map((key) => ({ key, value: text(object?.[key]) }))
+  : Object.entries(object ?? {}).map(([key, value]) => ({ key, value: text(value) })));
 
 /**
  * `{ type: 'keyValue', keyLabel?, valueLabel? }` — a flat JSON object of string
  * values (specifications, per-section settings). Rows are edited locally, so a row
  * with no key yet or a duplicate key is not lost mid-typing; the form value is the
  * object built from rows that have a key, and a later duplicate wins.
+ *
+ * `keys: ['label', 'url']` (with optional `keyLabels`, `placeholders`) fixes the rows
+ * instead: one per key, the key shown as the row's label, nothing to add or remove. The
+ * value then always carries every key, empty ones as `''`.
  */
 export function KeyValueField({ field, id }) {
+  if (field.keys) return <FixedKeysField field={field} id={id} />;
+  return <FreeKeysField field={field} id={id} />;
+}
+
+function FixedKeysField({ field, id }) {
+  const { field: input, fieldState } = useController({ name: field.name });
+  const values = input.value ?? {};
+  const errorOf = (key) => fieldState.error?.[key]?.message;
+
+  return (
+    <FormField id={id} field={field} error={fieldState.error?.message ? fieldState.error : undefined} as="fieldset">
+      {() => (
+        <div className="grid gap-2 sm:grid-cols-[auto_1fr] sm:items-center sm:gap-x-3">
+          {field.keys.map((key, i) => {
+            const rowId = `${id}-${key}`;
+            return (
+              <div key={key} className="contents">
+                <label htmlFor={rowId} className="text-sm text-muted-foreground">{field.keyLabels?.[key] ?? key}</label>
+                <div className="space-y-1">
+                  <Input
+                    id={rowId}
+                    ref={i === 0 ? input.ref : undefined}
+                    value={text(values[key])}
+                    disabled={field.disabled}
+                    placeholder={field.placeholders?.[key]}
+                    aria-invalid={errorOf(key) ? true : undefined}
+                    onChange={(e) => input.onChange({ ...Object.fromEntries(field.keys.map((k) => [k, text(values[k])])), [key]: e.target.value })}
+                    onBlur={input.onBlur}
+                  />
+                  {errorOf(key) ? <p className="text-xs font-medium text-destructive">{errorOf(key)}</p> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </FormField>
+  );
+}
+
+function FreeKeysField({ field, id }) {
   const { field: input, fieldState } = useController({ name: field.name });
   const [rows, setRows] = useState(() => toRows(input.value));
   const emitted = useRef(input.value);

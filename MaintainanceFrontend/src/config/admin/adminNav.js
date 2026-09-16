@@ -1,7 +1,8 @@
 import {
-  Briefcase, Building2, CalendarDays, ClipboardCheck, Contact, FileText, GalleryHorizontal, HelpCircle, Home, Image,
-  LayoutDashboard, LayoutGrid, ListOrdered, Package, Receipt, Ruler, ScrollText, Settings, ShieldCheck, Timer,
-  UserCog, Users, Wallet, Wrench,
+  Blocks, Briefcase, Building2, CalendarDays, ClipboardCheck, Coins, Contact, File, FileText, GalleryHorizontal,
+  HelpCircle, Home, Image, Images, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, MessageSquareQuote,
+  Newspaper, Package, Receipt, Ruler, ScrollText, Settings, ShieldCheck, Sparkles, Tag, Tags, Timer, UserCog, Users,
+  Wallet, Wrench,
 } from 'lucide-react';
 import { can } from '@/helpers/permissions';
 
@@ -13,10 +14,10 @@ import { can } from '@/helpers/permissions';
  * plainly unavailable rather than as a link, because a nav item that bounces you back
  * to the dashboard reads as a broken app, not as an unbuilt one.
  *
- * A built content item points at `/admin/content/<resource>` and must have an entry in
- * `resourceRegistry.js` with the same capability, unless it is one of the bespoke content
- * pages (`BESPOKE_CONTENT`); an entry with its own `basePath` has an item at that path in
- * whichever group it belongs to. The registry test enforces all of it.
+ * A built item at `/admin/content/<resource>` — in Content, Page blocks or Blog & pages —
+ * must have an entry in `resourceRegistry.js` with the same capability, unless it is one of
+ * the bespoke content pages (`BESPOKE_CONTENT`); an entry with its own `basePath` has an item
+ * at that path in whichever group it belongs to. The registry test enforces all of it.
  *
  * `editLabel` names the last crumb under an item (`Edit` for content, `Details` elsewhere).
  *
@@ -75,11 +76,34 @@ export const ADMIN_NAV = [
       { to: '/admin/content/hero-slides', label: 'Hero slides', icon: GalleryHorizontal, capability: 'cms:read' },
       { to: '/admin/content/services', label: 'Services', icon: Wrench, capability: 'cms:read' },
       { to: '/admin/content/service-categories', label: 'Service categories', icon: LayoutGrid, capability: 'cms:read' },
-      { to: '/admin/content/projects', label: 'Projects', icon: Building2, capability: 'cms:read', soon: true },
+      { to: '/admin/content/projects', label: 'Projects', icon: Building2, capability: 'cms:read' },
+      { to: '/admin/content/offers', label: 'Offers', icon: Tag, capability: 'cms:read' },
+      { to: '/admin/content/pricing-plans', label: 'Pricing plans', icon: Coins, capability: 'cms:read' },
+      { to: '/admin/content/testimonials', label: 'Testimonials', icon: MessageSquareQuote, capability: 'cms:read' },
       { to: '/admin/content/faqs', label: 'FAQs', icon: HelpCircle, capability: 'cms:read' },
-      { to: '/admin/content/process-steps', label: 'Process steps', icon: ListOrdered, capability: 'cms:read' },
+      { to: '/admin/content/gallery', label: 'Gallery', icon: Images, capability: 'cms:read' },
       // media:read is also held by SALES and DISPATCHER for job photos; the library screen is an editor's.
       { to: '/admin/content/media', label: 'Media library', icon: Image, capability: 'cms:read' },
+    ],
+  },
+  {
+    // The smaller pieces the home page's bands are made of.
+    key: 'blocks',
+    label: 'Page blocks',
+    items: [
+      { to: '/admin/content/features', label: 'Features', icon: Sparkles, capability: 'cms:read' },
+      { to: '/admin/content/list-items', label: 'List items', icon: ListChecks, capability: 'cms:read' },
+      { to: '/admin/content/content-blocks', label: 'Content blocks', icon: Blocks, capability: 'cms:read' },
+      { to: '/admin/content/process-steps', label: 'Process steps', icon: ListOrdered, capability: 'cms:read' },
+    ],
+  },
+  {
+    key: 'publishing',
+    label: 'Blog & pages',
+    items: [
+      { to: '/admin/content/posts', label: 'Posts', icon: Newspaper, capability: 'cms:read' },
+      { to: '/admin/content/post-categories', label: 'Post categories', icon: Tags, capability: 'cms:read' },
+      { to: '/admin/content/pages', label: 'Pages', icon: File, capability: 'cms:read' },
     ],
   },
   {
@@ -89,7 +113,8 @@ export const ADMIN_NAV = [
       // Users and the audit log are ADMIN-only routes; no other role holds these capabilities.
       { to: '/admin/users', label: 'Users', icon: UserCog, capability: 'users:read', soon: true },
       { to: '/admin/audit-log', label: 'Audit log', icon: ScrollText, capability: 'audit:read', soon: true },
-      { to: '/admin/settings', label: 'Settings', icon: Settings, capability: 'settings:read', soon: true },
+      // EDITOR reads the settings; only ADMIN saves them (settings:write is held by ADMIN's `*` alone).
+      { to: '/admin/platform/settings', label: 'Settings', icon: Settings, capability: 'settings:read' },
     ],
   },
 ];
@@ -149,6 +174,7 @@ export function breadcrumbsFor(pathname) {
 
   const crumbs = [{ label: best.group.label }, { label: best.item.label, to: best.item.to }];
   const [next] = path.slice(best.item.to.length).split('/').filter(Boolean);
-  if (next) crumbs.push({ label: next === 'new' ? 'New' : best.item.editLabel ?? (best.group.key === 'content' ? 'Edit' : 'Details') });
+  const isContent = best.item.to.startsWith('/admin/content/');
+  if (next) crumbs.push({ label: next === 'new' ? 'New' : best.item.editLabel ?? (isContent ? 'Edit' : 'Details') });
   return crumbs;
 }

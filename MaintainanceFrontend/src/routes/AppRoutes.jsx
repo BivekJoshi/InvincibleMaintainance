@@ -5,6 +5,7 @@ import { RouteFallback } from './PageOutlet';
 import {
   HomePage, ServicesPage, ServiceDetailPage, PricingPage, ContactPage, BookingPage,
   ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage,
+  BlogPage, BlogPostPage, GenericPage, SettingsPage,
   LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, SurveysPage,
   SurveyReviewPage, QuotationsPage, QuotationBuilderPage, ResourceListPage, ResourceEditPage,
   HomeComposerPage, MediaLibraryPage,
@@ -45,6 +46,11 @@ export function AppRoutes() {
           <Route path="/quotation/:token" element={<QuotationPublicPage />} />
           <Route path="/invoice/:token" element={<InvoicePublicPage />} />
           <Route path="/warranty/:token" element={<WarrantyPublicPage />} />
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blog/:slug" element={<BlogPostPage />} />
+          {/* A CMS page, e.g. /about. Last: a static public route of the same name wins, and
+              an address with no page behind it renders the not-found page. */}
+          <Route path="/:slug" element={<GenericPage />} />
         </Route>
 
         <Route path="/login" element={<LoginPage />} />
@@ -79,6 +85,10 @@ export function AppRoutes() {
               <Route path="/admin/content/:resource" element={<ResourceListPage />} />
               <Route path="/admin/content/:resource/new" element={<ResourceEditPage />} />
               <Route path="/admin/content/:resource/:id" element={<ResourceEditPage />} />
+            </Route>
+            {/* Anyone with settings:read sees the values; only ADMIN may save them (the API's rule) */}
+            <Route element={<RequireAuth capability="settings:read" />}>
+              <Route path="/admin/platform/settings" element={<SettingsPage />} />
             </Route>
           </Route>
         </Route>

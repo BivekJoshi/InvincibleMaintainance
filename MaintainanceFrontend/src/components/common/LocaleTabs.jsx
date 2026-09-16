@@ -101,33 +101,51 @@ function TranslationForm({ model, recordId, fields, sourceValues }) {
  * switching tabs never discards unsaved edits; the Nepali panel is `lang="ne"`,
  * which gives it the Devanagari font stack.
  *
+ * `extraTabs` adds panels after the languages (a project's Gallery). With no
+ * translatable `fields` there is no Nepali tab, and the first tab is "Details".
+ *
  * @param {object} props
  * @param {string} props.model            Prisma model name, e.g. 'faq', 'service'
  * @param {string} [props.recordId]
  * @param {object[]} props.fields         field specs of the translatable fields
  * @param {object} [props.sourceValues]   the English record, for reference
+ * @param {{ value: string, label: string, content: import('react').ReactNode, disabled?: boolean }[]} [props.extraTabs]
  * @param {import('react').ReactNode} props.children
  */
-export function LocaleTabs({ model, recordId, fields, sourceValues, children, className }) {
+export function LocaleTabs({ model, recordId, fields = [], sourceValues, extraTabs = [], children, className }) {
   const [tab, setTab] = useState('en');
-  const canTranslate = Boolean(recordId);
-  const active = canTranslate ? tab : 'en';
+  const hasRecord = Boolean(recordId);
+  const translates = fields.length > 0;
+  const available = new Set(['en', ...(translates && hasRecord ? ['ne'] : []), ...extraTabs.filter((t) => !t.disabled).map((t) => t.value)]);
+  const active = available.has(tab) ? tab : 'en';
 
   return (
     <Tabs value={active} onValueChange={setTab} className={className}>
       <div className="flex flex-wrap items-center gap-3">
-        <TabsList aria-label="Language">
-          <TabsTrigger value="en">English</TabsTrigger>
-          <TabsTrigger value="ne" disabled={!canTranslate}>
-            <span lang="ne">नेपाली</span>
-          </TabsTrigger>
+        <TabsList aria-label={translates ? 'Language' : 'Sections'}>
+          <TabsTrigger value="en">{translates ? 'English' : 'Details'}</TabsTrigger>
+          {translates ? (
+            <TabsTrigger value="ne" disabled={!hasRecord}>
+              <span lang="ne">नेपाली</span>
+            </TabsTrigger>
+          ) : null}
+          {extraTabs.map((t) => <TabsTrigger key={t.value} value={t.value} disabled={t.disabled}>{t.label}</TabsTrigger>)}
         </TabsList>
-        {!canTranslate ? <p className="text-xs text-muted-foreground">Save this first, then add its Nepali version.</p> : null}
+        {!hasRecord ? (
+          <p className="text-xs text-muted-foreground">
+            {translates ? 'Save this first, then add its Nepali version.' : 'Save this first to open the other tabs.'}
+          </p>
+        ) : null}
       </div>
       <TabsContent value="en" forceMount className="data-[state=inactive]:hidden">{children}</TabsContent>
-      <TabsContent value="ne" forceMount lang="ne" className="data-[state=inactive]:hidden">
-        {canTranslate ? <TranslationForm model={model} recordId={recordId} fields={fields} sourceValues={sourceValues} /> : null}
-      </TabsContent>
+      {translates ? (
+        <TabsContent value="ne" forceMount lang="ne" className="data-[state=inactive]:hidden">
+          {hasRecord ? <TranslationForm model={model} recordId={recordId} fields={fields} sourceValues={sourceValues} /> : null}
+        </TabsContent>
+      ) : null}
+      {extraTabs.map((t) => (
+        <TabsContent key={t.value} value={t.value} className="pt-4">{t.content}</TabsContent>
+      ))}
     </Tabs>
   );
 }

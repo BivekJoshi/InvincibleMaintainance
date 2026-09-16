@@ -6,20 +6,26 @@ const navOf = (role) => Object.fromEntries(navForRole(role).map((g) => [g.label,
 
 describe('admin nav', () => {
   it('shows ADMIN every group, in business order', () => {
-    expect(Object.keys(navOf('ADMIN'))).toEqual(['Overview', 'Sales', 'Operations', 'Finance', 'Aftercare', 'Content', 'Platform']);
+    expect(Object.keys(navOf('ADMIN'))).toEqual([
+      'Overview', 'Sales', 'Operations', 'Finance', 'Aftercare', 'Content', 'Page blocks', 'Blog & pages', 'Platform',
+    ]);
     expect(navOf('ADMIN').Platform).toEqual(['Users', 'Audit log', 'Settings']);
     expect(landingPathFor('ADMIN')).toBe('/admin');
   });
 
   it('shows EDITOR Content and settings only, and lands it on Content rather than the dashboard', () => {
     const nav = navOf('EDITOR');
-    expect(Object.keys(nav)).toEqual(['Content', 'Platform']);
-    expect(nav.Content).toContain('FAQs');
+    expect(Object.keys(nav)).toEqual(['Content', 'Page blocks', 'Blog & pages', 'Platform']);
     expect(nav.Platform).toEqual(['Settings']);
     expect(landingPathFor('EDITOR')).toBe('/admin/content');
     expect(nav.Content).toEqual([
-      'Home page', 'Hero slides', 'Services', 'Service categories', 'Projects', 'FAQs', 'Process steps', 'Media library',
+      'Home page', 'Hero slides', 'Services', 'Service categories', 'Projects', 'Offers', 'Pricing plans',
+      'Testimonials', 'FAQs', 'Gallery', 'Media library',
     ]);
+    expect(nav['Page blocks']).toEqual(['Features', 'List items', 'Content blocks', 'Process steps']);
+    expect(nav['Blog & pages']).toEqual(['Posts', 'Post categories', 'Pages']);
+    // Every content screen is built now.
+    expect(navForRole('EDITOR').flatMap((g) => g.items).filter((i) => i.soon)).toEqual([]);
     expect(nav.Sales).toBeUndefined();
     expect(contentHomeFor('EDITOR')).toBe('/admin/content/home');
   });
@@ -27,6 +33,11 @@ describe('admin nav', () => {
   it('shows ACCOUNTANT the rate card, read-only by capability', () => {
     expect(navOf('ACCOUNTANT').Sales).toContain('Rate card');
     expect(navOf('ACCOUNTANT').Content).toBeUndefined();
+  });
+
+  it('shows Settings (read-only) to EDITOR and ADMIN only', () => {
+    for (const role of ['SALES', 'DISPATCHER', 'ACCOUNTANT']) expect(navOf(role).Platform).toBeUndefined();
+    expect(navOf('ADMIN').Platform).toContain('Settings');
   });
 
   it('hides Content, Finance and Platform from SALES', () => {
@@ -55,6 +66,13 @@ describe('admin nav', () => {
     expect(breadcrumbsFor('/admin/rate-card/cl123')).toEqual([{ label: 'Sales' }, { label: 'Rate card', to: '/admin/rate-card' }, { label: 'Edit' }]);
     expect(breadcrumbsFor('/admin/content/services/new')).toEqual([
       { label: 'Content' }, { label: 'Services', to: '/admin/content/services' }, { label: 'New' },
+    ]);
+    expect(breadcrumbsFor('/admin/content/list-items/cl123')).toEqual([
+      { label: 'Page blocks' }, { label: 'List items', to: '/admin/content/list-items' }, { label: 'Edit' },
+    ]);
+    expect(breadcrumbsFor('/admin/content/posts/new').slice(0, 1)).toEqual([{ label: 'Blog & pages' }]);
+    expect(breadcrumbsFor('/admin/platform/settings')).toEqual([
+      { label: 'Platform' }, { label: 'Settings', to: '/admin/platform/settings' },
     ]);
     expect(breadcrumbsFor('/tech')).toEqual([]);
   });

@@ -35,9 +35,11 @@ export function Offers({ section, media, tone }) {
                   {offer.priceMin ? (
                     <span className="text-right leading-none">
                       <span className="text-[15px] font-bold tabular-nums">{formatNpr(offer.priceMin, { compact: true })}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {' – '}{formatNpr(offer.priceMax, { compact: true, symbol: false })}
-                      </span>
+                      {offer.priceMax && offer.priceMax !== offer.priceMin ? (
+                        <span className="text-xs text-muted-foreground">
+                          {' – '}{formatNpr(offer.priceMax, { compact: true, symbol: false })}
+                        </span>
+                      ) : null}
                     </span>
                   ) : null}
                 </CardHeader>

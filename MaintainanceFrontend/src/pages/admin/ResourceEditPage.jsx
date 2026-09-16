@@ -7,7 +7,8 @@ import {
 } from '@/api/cmsApi';
 import { useResourceEntry } from '@/hooks/useResourceEntry';
 import { useConfirm } from '@/hooks/useConfirm';
-import { activeCopyOf, screenPathOf } from '@/config/admin/resourceRegistry';
+import { activeCopyOf, schemaOf, screenPathOf } from '@/config/admin/resourceRegistry';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { LocaleTabs } from '@/components/common/LocaleTabs';
@@ -19,11 +20,18 @@ import { PageTransition } from '@/three/motion/motionKit';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import NotFoundPage from '@/pages/NotFoundPage';
 
+/** Field specs with `lockedOnEdit` fields disabled, groups included. */
+const lockFields = (fields) => fields.map((f) => (f.type === 'group'
+  ? { ...f, fields: lockFields(f.fields) }
+  : f.lockedOnEdit ? { ...f, disabled: true } : f));
+
 /**
  * `/admin/content/:resource/new` and `/admin/content/:resource/:id` (or under an entry's
  * own `basePath`) — the create/edit screen of every registry entry: the entry's fields in a
- * `ResourceForm`, inside `LocaleTabs` when it has translatable fields. A new record opens
- * its own edit page once saved, which is where its Nepali tab becomes available.
+ * `ResourceForm`, inside `LocaleTabs` when it has translatable fields or tabs of its own. A
+ * new record opens its own edit page once saved, which is where its Nepali tab and any
+ * other tab (a project's Gallery) become available. A field marked `lockedOnEdit` is
+ * read-only once the record exists; `intro(record)` shows read-only facts above the form.
  *
  * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
  */
@@ -52,6 +60,10 @@ function ResourceEditor({ entry, canWrite }) {
   const [remove, { isLoading: deleting }] = useDeleteResourceMutation();
 
   const listHref = screenPathOf(entry);
+  const { pageSlugs } = useSiteSettings();
+  const pageSlugsKey = pageSlugs.join('/');
+  const schema = useMemo(() => schemaOf(entry, { pageSlugs: pageSlugsKey ? pageSlugsKey.split('/') : [] }), [entry, pageSlugsKey]);
+  const fields = useMemo(() => (isNew ? entry.fields : lockFields(entry.fields)), [entry, isNew]);
   const readOnlyNew = isNew && !canWrite;
   const translatableFields = useMemo(
     () => flattenFields(entry.fields).filter((f) => entry.translatable?.includes(f.name)),
@@ -102,18 +114,25 @@ function ResourceEditor({ entry, canWrite }) {
   } else {
     const form = (
       <ResourceForm
-        schema={entry.schema}
-        fields={entry.fields}
+        schema={schema}
+        fields={fields}
+        intro={!isNew && entry.intro ? entry.intro(record) : undefined}
         defaultValues={isNew ? entry.defaultValues : record}
         onSubmit={onSubmit}
         submitLabel={isNew ? `Create ${label}` : 'Save changes'}
         readOnly={!canWrite}
         onCancel={() => navigate(listHref)}
-        className={translatableFields.length ? 'pt-4' : undefined}
+        className={translatableFields.length || entry.tabs?.length ? 'pt-4' : undefined}
       />
     );
-    body = translatableFields.length ? (
-      <LocaleTabs model={entry.model} recordId={record?.id} fields={translatableFields} sourceValues={record}>
+    const extraTabs = (entry.tabs ?? []).map(({ value, label, component: Tab }) => ({
+      value,
+      label,
+      disabled: isNew,
+      content: record ? <Tab record={record} canWrite={canWrite} /> : null,
+    }));
+    body = translatableFields.length || extraTabs.length ? (
+      <LocaleTabs model={entry.model} recordId={record?.id} fields={translatableFields} sourceValues={record} extraTabs={extraTabs}>
         {form}
       </LocaleTabs>
     ) : form;

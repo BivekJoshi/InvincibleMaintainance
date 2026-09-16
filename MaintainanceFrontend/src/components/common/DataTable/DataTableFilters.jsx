@@ -16,14 +16,21 @@ const filterKeys = (filter) => (filter.type === 'dateRange'
   ? [filter.fromKey ?? 'from', filter.toKey ?? 'to']
   : [filter.key]);
 
+/**
+ * A filter with a `defaultValue` always has a value (the list opens on it, and the
+ * page puts it in the list params), so it offers no "all" of its own — an explicit
+ * option such as `{ value: 'all', label: 'All' }` does that job.
+ */
 function ChoiceFilter({ filter, value, onChange, options, allLabel }) {
+  const hasDefault = filter.defaultValue != null;
+  const current = value ?? filter.defaultValue;
   return (
-    <Select value={value == null ? ALL : String(value)} onValueChange={(v) => onChange({ [filter.key]: v === ALL ? undefined : v })}>
+    <Select value={current == null ? ALL : String(current)} onValueChange={(v) => onChange({ [filter.key]: v === ALL ? undefined : v })}>
       <SelectTrigger className={cn('w-[160px]', filter.className)} aria-label={filter.label}>
         <SelectValue placeholder={filter.label} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ALL}>{filter.allLabel ?? allLabel}</SelectItem>
+        {hasDefault ? null : <SelectItem value={ALL}>{filter.allLabel ?? allLabel}</SelectItem>}
         {options.map((o) => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}
       </SelectContent>
     </Select>
@@ -73,14 +80,19 @@ function DateRangeFilter({ filter, params, onChange }) {
  * writes a patch back, so every filter lives in the URL through `useListParams`.
  *
  * @param {object} props
+ * A filter's `defaultValue` is where the list starts (the testimonial queue opens on
+ * "Waiting for approval"); "Clear filters" returns to it, and it does not count as a
+ * filter someone applied.
+ *
  * @param {{ key: string, label: string, type: 'enum'|'relation'|'dateRange'|'boolean',
- *   options?: { value: string, label: string }[], relation?: object, allLabel?: string,
+ *   options?: { value: string, label: string }[], relation?: object, allLabel?: string, defaultValue?: string,
  *   trueLabel?: string, falseLabel?: string, fromKey?: string, toKey?: string, className?: string }[]} props.filters
  * @param {object} props.params
  * @param {(patch: object) => void} props.onChange
  */
 export function DataTableFilters({ filters, params, onChange }) {
-  const active = filters.some((f) => filterKeys(f).some((k) => params[k] != null && params[k] !== ''));
+  const isSet = (f, k) => params[k] != null && params[k] !== '' && String(params[k]) !== String(f.defaultValue ?? '');
+  const active = filters.some((f) => filterKeys(f).some((k) => isSet(f, k)));
 
   return (
     <>

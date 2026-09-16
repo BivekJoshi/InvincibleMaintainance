@@ -9,8 +9,8 @@ Updated 2026-09-16. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLA
 |---|---|---|
 | 0 Foundations | Two apps, config validation, error/response contract, CI-ready scripts | ✅ |
 | 1 Identity & media | Auth, RBAC, audit, settings, media pipeline, admin shell | ✅ |
-| 2 CMS models | All 20 sections modelled, CRUD factory, home composer, i18n | ✅ backend · admin UI pending |
-| 3 Public site | Storefront: search, catalogue, service pages, pricing, estimator, online booking, SEO | ✅ |
+| 2 CMS models | All 20 sections modelled, CRUD factory, home composer, i18n | ✅ backend · ✅ admin UI (v2 C–D) |
+| 3 Public site | Storefront: search, catalogue, service pages, pricing, estimator, online booking, SEO; blog and generic pages (v2 D2) | ✅ |
 | 4 Lead CRM + SLA | Capture, spam defence, SLA engine, board, pipeline, notifications, export | ✅ |
 | 5 Customers & quotes | Customers, sites, rate card, quotations, public approval | ✅ backend · UI pending |
 | 6 Jobs & dispatch | Work orders, templates, assignment, dispatch board, technician flow, offline sync | ✅ backend · `/tech` today screen built |
@@ -24,14 +24,15 @@ Updated 2026-09-16. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLA
 | **v2 · C1 Admin UI primitives** | shadcn sheet/alert-dialog/textarea/popover/calendar/command/breadcrumb/scroll-area/radio-group/accordion/collapsible/progress/toggle-group; Vitest + Testing Library as `npm test` (in CI); DataTable v2 (row and bulk actions, page size, URL-synced filter bar, trash via `?deleted=true`, dnd-kit reorder with move buttons); `<ResourceForm>` with 16 field types, server-error mapping and an unsaved-changes guard (data router); `LocaleTabs`; `MediaPicker` with alt-required upload; `ConfirmDialog` / `useConfirm`; Devanagari slug fix in the API | ✅ 2026-09-14 |
 | **v2 · C2 Registry, shell & first resources** | Resource registry (`config/admin/resources/`) rendered by generic `ResourceListPage` / `ResourceEditPage` under `/admin/content/:resource`; `cmsApi` (8 parameterised endpoints, `Cms` tags); `cms.schema.js` mirroring all CMS schemas; FAQs and process steps managed from registry entries alone; admin nav regrouped Overview · Sales · Operations · Finance · Aftercare · Content · Platform, capability-filtered, EDITOR lands on Content; route breadcrumb, brand from settings, notification panel; public FAQs localised (`?locale=ne`); purge from Trash fixed in the CRUD factory; dead barrels removed | ✅ 2026-09-14 |
 | **v2 · D1 Services, rate card, media & home page** | Registry screens for service categories (icon picker, Nepali name), services (category/type/featured filters, price range in rupees, unit, warranty, image, SEO, Nepali name/card text/page text, View on site) and hero slides (CTA link checked against the site's routes); the rate card as a registry entry under Sales at `/admin/rate-card` (`basePath`, quotations:read/write, read-only for ACCOUNTANT, "In use"/Retire); bespoke home composer (`/admin/content/home`: drag or Move up/down, visibility, item limit, Save/Discard, empty-section flag) and media library (`/admin/content/media`: folder tree, search, drag-and-drop upload with required alt, dimensions and WebP variants, copy URL, alt/caption/folder edit, soft delete, Delete forever for ADMIN). API: the four missing rate-card endpoints, upper-case codes; service excerpt 40–200 and the price range checked on partial updates; home `limit` 1–50; non-empty media alt; validated folders, subfolders block a folder delete. Kit fixes: clean form after a save, toasts no longer close sheets | ✅ 2026-09-16 |
+| **v2 · D2 Projects, content, blog & settings** | Registry screens for projects (story, cost band in rupees, client-name consent note, SEO, linked job number read-only, and a **Gallery** tab: add from the library or upload, drag or Move earlier/later, remove), offers (Nepali-ready title, bullets, price range, start/end in Nepal time with a Live / Scheduled / Ended column), pricing plans, testimonials (a moderation queue that opens on "Waiting for approval", Approve / Withdraw for `testimonials:moderate`), gallery, features and list items (by band; list items reorder one list at a time), content blocks (key fixed once saved, bullets, a label + link button), posts (draft / scheduled / published), post categories and pages (reserved addresses refused); the nav gains **Page blocks** and **Blog & pages**. Bespoke **site settings** at `/admin/platform/settings`: a card per group, inputs by setting type, Nepali phone rule, weekday checkboxes, editable badge and counter rows; ADMIN saves only what changed, EDITOR reads. Public **`/blog`**, **`/blog/:slug`** and a catch-all **`/:slug`** page; Blog in the nav once a post is published; CMS links may point at a live page. API: list-item positions count from 1 after a reorder, projects carry their job number, `ogImageId` no longer 500s on projects/pages/posts, Nepali copy on the home page's grouped sections and on posts and pages, `nav.blog` / `nav.pages` in bootstrap, blog and pages in the sitemap, a seeded blog and About page. Fixes: public pages ignore an empty SEO title, one session restore per page load in dev | ✅ 2026-09-16 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, leads (list + detail), the site-survey inbox and review screen, the
 quotation builder, the field app for technicians and surveyors, and the admin UI kit every later
-screen is built from (DataTable v2, ResourceForm, LocaleTabs, MediaPicker, useConfirm). CMS screens are
-registry entries: FAQs, process steps, service categories, services and hero slides are managed end to end,
-including Nepali copy, from a config file each, and so is the rate card under Sales. The home page order and the
-media library have screens of their own.
+screen is built from (DataTable v2, ResourceForm, LocaleTabs, MediaPicker, useConfirm). **Every CMS resource in
+`docs/API.md` has a screen**: sixteen are registry entries — a config file each, Nepali copy included where the site
+reads it — plus the rate card under Sales. The home page order, the media library and the site settings have screens
+of their own. An EDITOR runs the whole public site, blog included, without a code change.
 
 ## Site surveys — how the business actually runs
 
@@ -86,6 +87,12 @@ visit online. Single company still — no vendors, no `tenantId`.
   offers open days. It creates a normal `Lead` with `preferredAt` / `preferredSlot` and
   `source=booking`, so a booking enters the same SLA clock, assignment and pipeline as any
   other enquiry, and shows in the admin leads table under "Requested visit".
+- **Blog and pages** (`/blog`, `/blog/:slug`, `/:slug`) — published posts newest first with a category filter in
+  the URL, an article page with an `Article` JSON-LD block, and editor-written pages such as `/about` at their own
+  address. The generic page route sits after every other public route, so an address nothing else claims asks the API
+  and renders the not-found page when there is no live page. "Blog" joins the header, drawer and footer only while a
+  post is published (`nav.blog` from `/public/bootstrap`), and a CMS button may link to a live page. Posts and pages
+  follow the Nepali switch like the rest of the site.
 - **Vocabulary** — `src/components/site/` holds `SectionShell`, `SectionHeading`, `PageHero`,
   `ServiceCard`, `CategoryTile`, `PriceTag`, `DataIcon`. Every public page is assembled from
   these, so a price or a booking link can never be presented one way in one place and
@@ -102,9 +109,9 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A, B, C (C1 + C2) and D1 are done; next is **Phase D2** — projects with their gallery, the remaining content
-(offers, pricing plans, features, list items, content blocks, gallery, testimonials with moderation), pages and posts
-with their public routes, and the site settings editor (`docs/prompts/PHASE-D2-content-settings.md`).
+Phases A, B, C (C1 + C2) and D (D1 + D2) are done; next is **Phase E — Lead management & CRM**: the new-lead dialog,
+bulk assign, saved filters, the pipeline board, lead detail actions, customers and sites
+(`docs/prompts/PHASE-E-leads-crm.md`).
 
 ## Verification
 
@@ -186,6 +193,43 @@ with their public routes, and the site settings editor (`docs/prompts/PHASE-D2-c
   translations. Console: only the missing `/favicon.ico` and the deliberate "folder is not empty" 400. The walk found
   five bugs, fixed before this record (see ADMIN-PLAN D1 deviations). Everything it created was purged afterwards and
   the home order, the rate and the hero slide order were put back.
+- Phase D2 (2026-09-16): backend unit 113 (unchanged), API 426 → **435** — list-item reorder numbering from 1 and the
+  site's order, a project's job number and a dropped `ogImageId`, withdrawing an approval (and SALES refused), Nepali on
+  the home page's grouped sections, published / draft / scheduled / hidden / deleted posts on the list and the article
+  (404s), bootstrap `nav.blog` and `nav.pages`, hidden / deleted / unknown pages (404s), posts and pages in Nepali, the
+  sitemap. Run against the old code, 7 of the 9 fail; the other two guard behaviour that already worked. The API suite
+  ran twice in a row with no reset, both green (the `_test` database was reseeded with `node prisma/seed.js`, not
+  reset). Frontend 105 → **162 tests in 24 files** — the offer window and publish state at Kathmandu midnight (the
+  prompt's test), CMS links to live pages, the Blog nav item, the settings form (inputs by type, phone rule, only
+  changed keys, jsonb key order, blank badge rows), the settings page as ADMIN and EDITOR, the testimonial queue and
+  Approve, list-item Reorder waiting for a list, a locked block key and half a button, an offer in Nepali with rupees,
+  a project's job and gallery (reorder, remove), a live page as a hero link, a reserved page address, the new field
+  types, the approve and gallery cache tags, the blog index / article / generic page with their 404s, an empty SEO
+  title, and one session restore under StrictMode (the last two failed before their fixes). `npm run lint`: 0 errors in
+  both apps (26 warnings in the frontend, unchanged); `npm run build` succeeds, and the registry entries and the
+  settings form stay out of the main bundle.
+- Phase D2 browser walk-through (headless Chrome, dev servers, dev database; **38/38 checks**). As
+  `editor@gharjatan.com.np`, in one sitting: lands on Content › Home page with Page blocks, Blog & pages and Settings in
+  the nav and nothing marked Soon; moved "How it works" up two places and saved — the public order follows; a hero
+  slide linking to `/about` is refused while there is no such page, created with `/pricing` and put first — the site
+  shows it; a service at Rs 450–900 is stored as 45000–90000 paisa and has its page; a project refuses a reversed cost
+  band, keeps its Gallery tab closed until saved, then takes **three pictures uploaded through the picker** (alt text
+  each), one moved later — `/public/projects/:slug` and `/projects/:slug` show 3 pictures in that order, the band and
+  "6 days on site"; an **offer titled in Nepali ending tomorrow** gets 23:59 as its end, reads "Live · Ends tomorrow at
+  23:59" in the list and shows on the home page; a pending Nepali testimonial is in the queue, **approved from the row
+  menu**, leaves the queue and shows on the home page; a **post published today** reads "Published today", appears at
+  `/blog` with Blog in the header, and `/blog/:slug` renders its Devanagari paragraph under its own title; a page
+  titled "Contact" is refused, **a page at `/about`** renders, and an unknown address shows the not-found page inside
+  the site; the hero slide then links to `/about` and the home page's button goes there; list items offer Reorder only
+  after a list is picked; an existing content block's key is read-only; settings are read-only. No page overflow at
+  400px on the offers and testimonials lists, a project's edit page, settings and `/blog`. As `admin@gharjatan.com.np`:
+  a primary phone of `12345` is refused; `01-5550199` and Sunday closed are saved — bootstrap has both, **the site header
+  shows the new number**, and the `settings.changed` audit row lists exactly those two keys; then put back through the
+  screen. The audit log has rows for the slide, the service, the project and its three pictures, the offer, the
+  testimonial, the post, the page and the home sections. No unexpected console errors. Everything the walk created was
+  purged afterwards, and the home order, the slide order and the settings were put back. The walk found three bugs,
+  fixed before this record (see ADMIN-PLAN D2 deviations): the empty-SEO-title fallback, a dev-only sign-out on reload,
+  and untouched counters counted as a settings change.
 - Phase A browser walk-through (headless Chrome against the dev servers): signed in as
   `sales@gharjatan.com.np`, exported leads filtered to NEW — the first export call was forced to 401, the page
   refreshed once and retried, both calls carried the Bearer token, and the file (UTF-8 BOM) held exactly the 2
@@ -227,8 +271,13 @@ Gaps filled: `POST /admin/quotations/:id/convert-to-job`, `POST|DELETE /admin/jo
   rather than naming the surveyor — the convert rolls back correctly, the message is just unhelpful.
 
 - The public estimator prices from each service's own range, not the rate card (see ADMIN-PLAN D1 deviations).
-- The hero band shows the first active slide's words but never its image; the seeded third slide links to `/about`,
-  which the site does not serve.
+- The hero band shows the first active slide's words but never its image. The seeded third slide links to `/about`;
+  a fresh seed now creates that page, but a database seeded before D2 has none until an editor adds it.
+- A content block's key is fixed in the screen only; `PUT /admin/content-blocks/:id` still accepts a new key.
+  `about_intro` and `cta_banner` blocks are rendered nowhere. Block bullets have no Nepali version.
+- An SEO title or description emptied in the editor is stored as `''` (the site now falls back past it).
+- The storefront's popular searches and the feature-row headings are still in code (D2.5, optional, not done).
+- `branding.logoId` can be set in settings, but the header still draws the company's initial.
 - A money or number field emptied in a form is left out of the request (`ResourceForm` sends `undefined`), so a saved
   service price range cannot be cleared back to "priced on inspection" from the editor.
 - Media has no Trash view: a soft-deleted file can only be restored through the database.

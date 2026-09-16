@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { DataIcon } from '@/components/site/DataIcon';
 import { LocaleSwitch } from '@/components/common/LocaleSwitch';
 import { ThemeModeSwitch } from '@/components/theme/ThemeModeSwitch';
-import { SITE_NAV } from '@/config/site/siteNav';
 import { cn } from '@/helpers/utils';
 import { HeaderSearch } from './HeaderSearch';
 
@@ -17,7 +16,7 @@ import { HeaderSearch } from './HeaderSearch';
  * the drawer is a place to put them, not their owner.
  */
 export function MobileDrawer({
-  reduced, focusSearch, query, categories, company, phone, mobile,
+  reduced, focusSearch, query, categories, nav, company, phone, mobile,
   isAuthenticated, appHome, activeTo, onSearch, onClose,
 }) {
   const list = {
@@ -30,7 +29,7 @@ export function MobileDrawer({
   };
 
   const links = [
-    ...SITE_NAV,
+    ...nav,
     {
       to: isAuthenticated ? appHome : '/login',
       label: isAuthenticated ? 'Dashboard' : 'Staff login',

@@ -34,6 +34,9 @@ export const ProjectDetailPage = route(() => import('@/pages/public/ProjectDetai
 export const QuotationPublicPage = route(() => import('@/pages/public/QuotationPublicPage/QuotationPublicPage'));
 export const InvoicePublicPage = route(() => import('@/pages/public/InvoicePublicPage/InvoicePublicPage'));
 export const WarrantyPublicPage = route(() => import('@/pages/public/WarrantyPublicPage/WarrantyPublicPage'));
+export const BlogPage = route(() => import('@/pages/public/BlogPage/BlogPage'));
+export const BlogPostPage = route(() => import('@/pages/public/BlogPostPage/BlogPostPage'));
+export const GenericPage = route(() => import('@/pages/public/GenericPage/GenericPage'));
 
 export const LoginPage = route(() => import('@/pages/public/LoginPage/LoginPage'));
 
@@ -50,6 +53,7 @@ export const ResourceListPage = route(() => import('@/pages/admin/ResourceListPa
 export const ResourceEditPage = route(() => import('@/pages/admin/ResourceEditPage'));
 export const HomeComposerPage = route(() => import('@/pages/admin/HomeComposerPage'));
 export const MediaLibraryPage = route(() => import('@/pages/admin/MediaLibraryPage'));
+export const SettingsPage = route(() => import('@/pages/admin/SettingsPage'));
 
 // Field app
 export const TechTodayPage = route(() => import('@/pages/tech/TechTodayPage'));
@@ -65,10 +69,10 @@ export const NotFoundPage = route(() => import('@/pages/NotFoundPage'));
  * chunks worth having stays intact.
  */
 const GROUPS = {
-  public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage],
+  public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage, BlogPage],
   admin: [
     LeadsPage, LeadDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
-    HomeComposerPage, MediaLibraryPage,
+    HomeComposerPage, MediaLibraryPage, SettingsPage,
   ],
   tech: [TechJobPage, SurveyListPage, SurveyFormPage],
 };
@@ -81,6 +85,7 @@ const BY_PATH = {
   '/contact': ContactPage,
   '/book': BookingPage,
   '/projects': ProjectsPage,
+  '/blog': BlogPage,
   '/login': LoginPage,
 };
 
@@ -91,6 +96,7 @@ export function preloadGroup(name) {
 
 /** Starts the chunk behind a path — call it on hover or focus of a link. */
 export function preloadPath(path) {
-  const page = BY_PATH[path] ?? (path?.startsWith('/services/') ? ServiceDetailPage : undefined);
+  const page = BY_PATH[path]
+    ?? (path?.startsWith('/services/') ? ServiceDetailPage : path?.startsWith('/blog/') ? BlogPostPage : undefined);
   page?.preload();
 }

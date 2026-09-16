@@ -1,19 +1,15 @@
 import { heroSlideSchema } from '@/form/schemas/cms.schema';
-import { siteHref } from '@/helpers/links';
+import { linkIssue } from '@/helpers/links';
 import { formatDate } from '@/helpers/format';
 
 /**
  * The site sends any CTA link it does not serve to the booking page (`siteHref`), so a
- * typo would quietly change where the button goes. The form refuses it instead.
+ * typo would quietly change where the button goes. The form refuses it instead; a live
+ * page (`/about`) is a link the site serves.
  */
-const schema = heroSlideSchema.superRefine((v, ctx) => {
-  if (v.ctaUrl && siteHref(v.ctaUrl, null) !== v.ctaUrl) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['ctaUrl'],
-      message: 'Use a page of this site (/book, /services/…, /pricing) or a full https://, tel: or mailto: link',
-    });
-  }
+const schema = ({ pageSlugs }) => heroSlideSchema.superRefine((v, ctx) => {
+  const issue = linkIssue(v.ctaUrl, pageSlugs);
+  if (issue) ctx.addIssue({ code: 'custom', path: ['ctaUrl'], message: issue });
 });
 
 /** @type {import('../resourceRegistry').ResourceEntry} */
@@ -64,7 +60,7 @@ export const heroSlides = {
     { name: 'ctaLabel', type: 'text', label: 'Button text', span: 'half', maxLength: 60, placeholder: 'Book a free inspection' },
     {
       name: 'ctaUrl', type: 'text', label: 'Button link', span: 'half', maxLength: 500, placeholder: '/book',
-      description: 'A page of this site, e.g. /book or /services/seepage-treatment.',
+      description: 'A page of this site, e.g. /book, /services/seepage-treatment or a page such as /about.',
     },
     {
       name: 'imageId', type: 'media', label: 'Image',

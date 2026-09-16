@@ -4,6 +4,17 @@ import { heroSlides } from './resources/heroSlides';
 import { serviceCategories } from './resources/serviceCategories';
 import { services } from './resources/services';
 import { rateCard } from './resources/rateCard';
+import { projects } from './resources/projects';
+import { offers } from './resources/offers';
+import { pricingPlans } from './resources/pricingPlans';
+import { testimonials } from './resources/testimonials';
+import { galleryImages } from './resources/galleryImages';
+import { features } from './resources/features';
+import { listItems } from './resources/listItems';
+import { contentBlocks } from './resources/contentBlocks';
+import { posts } from './resources/posts';
+import { postCategories } from './resources/postCategories';
+import { pages } from './resources/pages';
 
 /**
  * Every CMS resource the back office manages through the generic pages
@@ -29,7 +40,17 @@ import { rateCard } from './resources/rateCard';
  * @property {object[]} columns       DataTable columns; the page appends the Active switch
  * @property {object[]} [filters]     DataTable filters
  * @property {object[]} fields        ResourceForm fields
- * @property {import('zod').ZodTypeAny} schema  from `form/schemas/cms.schema.js`
+ * @property {import('zod').ZodTypeAny | ((ctx: SchemaContext) => import('zod').ZodTypeAny)} schema
+ *                                    from `form/schemas/cms.schema.js`; a function when a rule needs what the
+ *                                    site currently has (a CMS link may point at a live page). Read it through `schemaOf`
+ * @property {string} [defaultSort]   the list's first order (`-publishedAt`), when it is not the manual one
+ * @property {string} [reorderWithin] Reorder is offered only while this filter is set — the order column is
+ *                                    per group (list items)
+ * @property {string} [reorderHint]   says so beside the disabled Reorder button
+ * @property {(record: object) => import('react').ReactNode} [intro] read-only facts above an existing record's form
+ * @property {{ value: string, label: string, component: import('react').ComponentType<{ record: object, canWrite: boolean }> }[]} [tabs]
+ *                                    panels beside the form on an existing record (a project's Gallery)
+ * @property {(record: object) => RowAction[]} [rowActions] extra list actions that call a `cmsApi` mutation
  * @property {object} [defaultValues] a new record, in API shape
  * @property {boolean} [sortable]     offers Reorder (`PATCH /reorder`); false when the site orders by another column
  * @property {string[]} [translatable] field names with a Nepali tab
@@ -38,6 +59,19 @@ import { rateCard } from './resources/rateCard';
  * @property {string} [searchPlaceholder]
  * @property {string} [emptyTitle]
  * @property {string} [emptyDescription]
+ *
+ * Field specs may also say `lockedOnEdit: true`: editable on a new record, read-only once saved
+ * (a content block's key, which the site looks blocks up by).
+ *
+ * @typedef {{ pageSlugs: string[] }} SchemaContext
+ *
+ * @typedef {object} RowAction
+ * @property {string} label
+ * @property {import('react').ElementType} [icon]
+ * @property {string} [capability]   hidden without it (the list's write capability is not implied)
+ * @property {string} endpoint       a `cmsApi` mutation, e.g. 'approveTestimonial'
+ * @property {object} arg            its argument
+ * @property {string} done           the success toast
  *
  * @typedef {object} ActiveCopy
  * @property {string} column       the switch column's header
@@ -64,7 +98,10 @@ const WEBSITE_COPY = {
 
 /** @type {Record<string, ResourceEntry>} */
 export const RESOURCES = Object.fromEntries(
-  [serviceCategories, services, heroSlides, faqs, processSteps, rateCard].map((entry) => [entry.resource, entry]),
+  [
+    serviceCategories, services, heroSlides, projects, offers, pricingPlans, testimonials, faqs, galleryImages,
+    features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard,
+  ].map((entry) => [entry.resource, entry]),
 );
 
 /**
@@ -74,6 +111,16 @@ export const RESOURCES = Object.fromEntries(
 export function getResourceEntry(resource) {
   return resource && Object.hasOwn(RESOURCES, resource) ? RESOURCES[resource] : undefined;
 }
+
+/**
+ * The entry's form schema.
+ *
+ * @param {ResourceEntry} entry
+ * @param {Partial<SchemaContext>} [ctx]
+ */
+export const schemaOf = (entry, ctx = {}) => (typeof entry.schema === 'function'
+  ? entry.schema({ pageSlugs: [], ...ctx })
+  : entry.schema);
 
 /** Where an entry's screens live: its list, `…/new` and `…/:id`. */
 export const screenPathOf = (entry) => entry.basePath ?? `/admin/content/${entry.resource}`;

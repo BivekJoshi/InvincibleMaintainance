@@ -143,4 +143,37 @@ describe('cmsApi', () => {
     expect(JSON.parse(put.body)).toEqual({ items });
     expect(await refetched()).toEqual(['/admin/home-sections', '/public/bootstrap']);
   });
+
+  it('approving a testimonial sends the decision and refetches the queue, that testimonial and the site', async () => {
+    const store = await primedStore();
+    await store.dispatch(cmsApi.endpoints.listResource.initiate({ resource: 'testimonials', params: { approved: 'false' } }));
+    await store.dispatch(cmsApi.endpoints.getResource.initiate({ resource: 'testimonials', id: 't1' }));
+    calls.length = 0;
+    await store.dispatch(cmsApi.endpoints.approveTestimonial.initiate({ id: 't1' })).unwrap();
+    const patch = calls.find((c) => c.method === 'PATCH');
+    expect(patch.path).toBe('/admin/testimonials/t1/approve');
+    expect(JSON.parse(patch.body)).toEqual({ isApproved: true });
+    expect((await refetched()).filter((p) => p !== '/admin/faqs')).toEqual(['/admin/testimonials', '/admin/testimonials/t1', '/public/bootstrap']);
+
+    calls.length = 0;
+    await store.dispatch(cmsApi.endpoints.approveTestimonial.initiate({ id: 't1', isApproved: false })).unwrap();
+    expect(JSON.parse(calls.find((c) => c.method === 'PATCH').body)).toEqual({ isApproved: false });
+  });
+
+  it('a gallery change refetches the project and the projects list, not other resources', async () => {
+    const store = await primedStore();
+    await store.dispatch(cmsApi.endpoints.getResource.initiate({ resource: 'projects', id: 'p1' }));
+    calls.length = 0;
+    await store.dispatch(cmsApi.endpoints.addProjectImage.initiate({ projectId: 'p1', mediaId: 'm1', sortOrder: 0 })).unwrap();
+    await store.dispatch(cmsApi.endpoints.reorderProjectImages.initiate({ projectId: 'p1', items: [{ id: 'i1', sortOrder: 0 }] })).unwrap();
+    await store.dispatch(cmsApi.endpoints.removeProjectImage.initiate({ projectId: 'p1', imageId: 'i1' })).unwrap();
+    const writes = calls.filter((c) => c.method !== 'GET');
+    expect(writes.map((c) => `${c.method} ${c.path}`)).toEqual([
+      'POST /admin/projects/p1/images',
+      'PATCH /admin/projects/p1/images/reorder',
+      'DELETE /admin/projects/p1/images/i1',
+    ]);
+    expect(JSON.parse(writes[0].body)).toEqual({ mediaId: 'm1', sortOrder: 0 });
+    expect([...new Set(await refetched())]).toEqual(['/admin/projects/p1', '/public/bootstrap']);
+  });
 });

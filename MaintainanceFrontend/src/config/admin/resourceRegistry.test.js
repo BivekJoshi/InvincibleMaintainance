@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cwd } from 'node:process';
 import { describe, it, expect } from 'vitest';
-import { RESOURCES, getResourceEntry, screenPathOf } from '@/config/admin/resourceRegistry';
+import { RESOURCES, getResourceEntry, schemaOf, screenPathOf } from '@/config/admin/resourceRegistry';
+import { cmsApi } from '@/api/cmsApi';
 import { ADMIN_NAV, BESPOKE_CONTENT } from '@/config/admin/adminNav';
 import { flattenFields } from '@/components/common/ResourceForm/formValues';
 import { PERMISSIONS } from '@/helpers/permissions';
@@ -33,8 +34,9 @@ function shapeOf(schema) {
   return s?.shape;
 }
 
-const contentItems = ADMIN_NAV.find((g) => g.key === 'content').items;
 const allItems = ADMIN_NAV.flatMap((g) => g.items);
+/** Every screen under /admin/content, whichever group lists it (Content, Page blocks, Blog & pages). */
+const contentItems = allItems.filter((i) => i.to.startsWith('/admin/content'));
 const entries = Object.values(RESOURCES);
 
 describe('resource registry', () => {
@@ -57,8 +59,9 @@ describe('resource registry', () => {
     expect(typeof entry.titleOf).toBe('function');
     expect(typeof entry.sortable).toBe('boolean');
 
-    expect(typeof entry.schema?.safeParse).toBe('function');
-    const shape = shapeOf(entry.schema);
+    const schema = schemaOf(entry, { pageSlugs: ['about'] });
+    expect(typeof schema?.safeParse).toBe('function');
+    const shape = shapeOf(schema);
     expect(shape).toBeTruthy();
 
     expect(entry.columns.length).toBeGreaterThan(0);
@@ -79,6 +82,31 @@ describe('resource registry', () => {
     }
     for (const filter of entry.filters ?? []) {
       expect(['enum', 'boolean', 'relation', 'dateRange']).toContain(filter.type);
+      if (filter.defaultValue != null) expect(filter.options.map((o) => o.value)).toContain(filter.defaultValue);
+    }
+    if (entry.reorderWithin) {
+      expect(entry.sortable).toBe(true);
+      expect(entry.filters.map((f) => f.key)).toContain(entry.reorderWithin);
+      expect(entry.reorderHint).toBeTruthy();
+    }
+    for (const field of fields.filter((f) => f.lockedOnEdit)) expect(field.disabled).toBeFalsy();
+    for (const tab of entry.tabs ?? []) {
+      expect(tab.value).toMatch(/^[a-z-]+$/);
+      expect(['en', 'ne']).not.toContain(tab.value);
+      expect(typeof tab.component).toBe('function');
+    }
+  });
+
+  it('points every extra row action at a cmsApi mutation and a known capability', () => {
+    const sample = { id: 'x', isApproved: false, isActive: true };
+    for (const entry of entries.filter((e) => e.rowActions)) {
+      for (const row of [sample, { ...sample, isApproved: true }]) {
+        for (const action of entry.rowActions(row)) {
+          expect(cmsApi.endpoints[action.endpoint], `${entry.resource}: ${action.endpoint}`).toBeTruthy();
+          expect(action.label && action.done).toBeTruthy();
+          if (action.capability) expect(CAPABILITIES.has(action.capability)).toBe(true);
+        }
+      }
     }
   });
 
@@ -91,7 +119,7 @@ describe('resource registry', () => {
     }
   });
 
-  it('has an entry behind every built Content nav item', () => {
+  it('has an entry behind every built content nav item, in any group', () => {
     for (const item of contentItems.filter((i) => !i.soon && i.to.startsWith('/admin/content/'))) {
       if (BESPOKE_CONTENT.includes(item.to)) continue;
       const entry = getResourceEntry(item.to.split('/')[3]);

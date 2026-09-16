@@ -20,6 +20,16 @@ import { API_URL } from '@/config/env';
  * genuinely need a settled session — `RequireAuth` and the login page — wait
  * for `useAuth().isReady` themselves.
  */
+/**
+ * The page's one restore. The refresh token rotates on every use, so two requests with the
+ * same cookie race: the second is refused, and if its 401 lands last it signs the user out.
+ * React's StrictMode runs this effect twice on mount in development, which did exactly that
+ * on an occasional reload.
+ *
+ * @type {Promise<object>|null}
+ */
+let restoring = null;
+
 export function SessionEffect() {
   const dispatch = useDispatch();
   const status = useSelector(selectAuthStatus);
@@ -27,11 +37,11 @@ export function SessionEffect() {
   useEffect(() => {
     if (status !== 'idle') return;
     dispatch(bootstrapping());
-    fetch(`${API_URL}/auth/refresh`, {
+    restoring ??= fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
-    })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+    }).then((r) => (r.ok ? r.json() : Promise.reject(r)));
+    restoring
       .then((json) => dispatch(setCredentials(json.data)))
       .catch(() => dispatch(anonymous()));
   }, [dispatch, status]);

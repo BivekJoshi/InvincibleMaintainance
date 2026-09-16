@@ -46,7 +46,7 @@ const LEAVE = {
  *
  * Field types: text, textarea, prose (alias markdown), number, money, switch,
  * select/enum, relation, date, datetime, slug, stringList, keyValue, media,
- * mediaList, and `group` for collapsible sections. See `FieldRenderer.jsx`.
+ * mediaList, weekdays, objectList, and `group` for sections. See `FieldRenderer.jsx`.
  *
  * @param {object} props
  * @param {import('zod').ZodTypeAny} props.schema          validates the form values (money in rupees)
@@ -64,6 +64,7 @@ const LEAVE = {
  * @param {import('react').ReactNode} [props.extraActions] more buttons beside Save
  * @param {boolean} [props.readOnly]                      shows the values with every control disabled and no Save
  * @param {import('react').ReactNode} [props.intro]       shown above the fields, e.g. a record's preview in a sheet
+ * @param {boolean} [props.stickyActions]                 page mode: keep Save in view at the bottom of a long form
  */
 export function ResourceForm({
   schema,
@@ -83,6 +84,7 @@ export function ResourceForm({
   className,
   readOnly = false,
   intro,
+  stickyActions = false,
 }) {
   const formId = `form-${useId().replace(/[^\w-]/g, '')}`;
   const initial = useMemo(() => toFormValues(fields, defaultValues), [fields, defaultValues]);
@@ -154,7 +156,12 @@ export function ResourceForm({
           <FieldGrid fields={fields} idPrefix={formId} />
         </fieldset>
         {mode === 'page' ? (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+          <div
+            className={cn(
+              'flex flex-wrap items-center justify-end gap-2 border-t pt-4',
+              stickyActions && 'sticky bottom-0 z-10 -mx-1 bg-background/95 px-1 pb-4 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+            )}
+          >
             {extraActions}
             {onCancel ? <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>{readOnly ? 'Back' : cancelLabel}</Button> : null}
             {saveButton}

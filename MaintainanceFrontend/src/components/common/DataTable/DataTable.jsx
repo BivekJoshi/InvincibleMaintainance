@@ -51,6 +51,8 @@ const rowIdOf = (row) => row.id;
  * @param {object[]} [props.filters] see `DataTableFilters`
  * @param {{ onRestore: (row: object) => void, onPurge?: (row: object) => void, canPurge?: boolean }} [props.trash]
  * @param {boolean} [props.reorderable]
+ * @param {string} [props.reorderDisabledReason] when set and the table is not reorderable, a disabled
+ *   Reorder button says why (list items reorder one group at a time)
  * @param {(items: { id: string, sortOrder: number }[]) => Promise<unknown>|void} [props.onReorder]
  *   the new order of this page, offset by the rows on earlier pages — the body `PATCH /reorder` takes
  * @param {(row: object, index: number) => string} [props.rowLabel] names a row for screen readers in reorder mode
@@ -78,6 +80,7 @@ export function DataTable({
   filters,
   trash,
   reorderable = false,
+  reorderDisabledReason,
   onReorder,
   rowLabel,
 }) {
@@ -101,6 +104,9 @@ export function DataTable({
       return next.size === prev.size ? prev : next;
     });
   }, [data, getRowId]);
+
+  // Reorder mode ends if the table stops being reorderable (a required filter went away).
+  useEffect(() => { if (!reorderable) setReordering(false); }, [reorderable]);
 
   const paramsKey = JSON.stringify(params);
   useEffect(() => { setSelected(new Set()); }, [paramsKey]);
@@ -217,6 +223,14 @@ export function DataTable({
             <Button type="button" variant={reordering ? 'default' : 'outline'} size="sm" onClick={toggleReorder} aria-pressed={reordering}>
               <ArrowUpDown aria-hidden /> {reordering ? 'Done reordering' : 'Reorder'}
             </Button>
+          ) : null}
+          {!reorderable && reorderDisabledReason && !inTrash ? (
+            <span className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" disabled aria-describedby="reorder-disabled-reason">
+                <ArrowUpDown aria-hidden /> Reorder
+              </Button>
+              <span id="reorder-disabled-reason" className="text-xs text-muted-foreground">{reorderDisabledReason}</span>
+            </span>
           ) : null}
           {trash ? (
             <Button type="button" variant={inTrash ? 'secondary' : 'outline'} size="sm" onClick={toggleTrash} aria-pressed={inTrash}>

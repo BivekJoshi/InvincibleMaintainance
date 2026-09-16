@@ -24,6 +24,8 @@ const alsoFor = (resource) => ALSO_READ_AS[resource] ?? [];
 /** The list and one record, plus the site's cache. */
 const listAndRecord = (result, error, { resource, id }) => [listTag(resource), itemTag(resource, id), 'Public', ...alsoFor(resource)];
 
+const projectTags = (projectId) => [listTag('projects'), itemTag('projects', projectId), 'Public'];
+
 export const cmsApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({
     listResource: build.query({
@@ -71,6 +73,29 @@ export const cmsApi = apiSlice.injectEndpoints({
       invalidatesTags: listAndRecord,
     }),
 
+    /** `isApproved: false` takes a testimonial off the site again. Needs `testimonials:moderate`. */
+    approveTestimonial: build.mutation({
+      query: ({ id, isApproved = true }) => ({ url: `/admin/testimonials/${id}/approve`, method: 'PATCH', body: { isApproved } }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, { id }) => [listTag('testimonials'), itemTag('testimonials', id), 'Public'],
+    }),
+
+    /** A project's gallery. Each call changes the project record, so it refetches. */
+    addProjectImage: build.mutation({
+      query: ({ projectId, ...body }) => ({ url: `/admin/projects/${projectId}/images`, method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, { projectId }) => projectTags(projectId),
+    }),
+    /** `items` is `[{ id, sortOrder }]` of the project's images. */
+    reorderProjectImages: build.mutation({
+      query: ({ projectId, items }) => ({ url: `/admin/projects/${projectId}/images/reorder`, method: 'PATCH', body: { items } }),
+      invalidatesTags: (result, error, { projectId }) => projectTags(projectId),
+    }),
+    removeProjectImage: build.mutation({
+      query: ({ projectId, imageId }) => ({ url: `/admin/projects/${projectId}/images/${imageId}`, method: 'DELETE' }),
+      invalidatesTags: (result, error, { projectId }) => projectTags(projectId),
+    }),
+
     /** The home page composer: every section in order, with its visibility and settings. */
     getHomeSections: build.query({
       query: () => '/admin/home-sections',
@@ -91,4 +116,6 @@ export const {
   useListResourceQuery, useGetResourceQuery,
   useCreateResourceMutation, useUpdateResourceMutation, useToggleResourceMutation,
   useReorderResourceMutation, useDeleteResourceMutation, useRestoreResourceMutation,
+  useApproveTestimonialMutation,
+  useAddProjectImageMutation, useReorderProjectImagesMutation, useRemoveProjectImageMutation,
 } = cmsApi;

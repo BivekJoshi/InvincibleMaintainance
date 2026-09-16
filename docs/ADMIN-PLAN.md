@@ -336,7 +336,7 @@ Every later screen is built from this, so it is the highest-leverage phase.
 - **Known, not changed:** a mirrored `optionalText` turns an emptied optional text into `undefined`, so a PUT cannot
   clear it (e.g. a process step's description) — the API schema's behaviour, left for D1.
 
-### Phase D — Service listing & CMS · ~6 days · D1 ✅ done 2026-09-16 · D2 open
+### Phase D — Service listing & CMS · ~6 days · ✅ done 2026-09-16 (D1 + D2)
 
 This is v1 Phase 2's missing admin half. In order of business value:
 
@@ -401,6 +401,74 @@ input", which otherwise stays open.
     without asking. It is now a `ResourceForm` sheet (with the new `intro` slot), which asks first.
 - **Beyond the plan:** `ResourceForm` gained `intro` (content above the fields) and `readOnly`; `MediaGrid`/`MediaPager` were split out of `MediaPicker` and are shared with
   the library; `cmsApi` writes to the rate card also refetch the quotation builder's rate list (`ALSO_READ_AS`).
+
+**Deviations (Phase D2, 2026-09-16)** — built differently from the plan, or beyond it. D2 closed none of the §3 defects
+(none were assigned to it).
+- **Nav.** Content would have held 18 items, so it is three groups under `/admin/content/…`: **Content** (home page, hero
+  slides, services, categories, projects, offers, pricing plans, testimonials, FAQs, gallery, media library), **Page
+  blocks** (features, list items, content blocks, process steps) and **Blog & pages** (posts, post categories, pages).
+  The admin nav has nine groups, not seven. Settings moved from the `soon` item at `/admin/settings` to
+  `/admin/platform/settings`, as the D2 prompt asks.
+- **Site settings are the one bespoke D2 screen**, and still built from the kit: `config/admin/settingsForm.js` turns
+  the `Setting` rows into card groups of `ResourceForm` fields by `type` (`string`, `number`, `boolean`, `richtext`,
+  `media`, `json`), with key rules on top — the Nepali phone rule on the five phone keys, email and `https://` checks,
+  weekday checkboxes for `booking.closedWeekdays`, editable rows for `badges.items` and `stats.items`, a JSON textarea
+  for any other JSON setting, and ranges on the numbers. Save sends only the keys whose stored value changes, compared
+  with sorted keys, because jsonb stores object keys in its own order. `branding.logoId` is editable but the site does
+  not show a logo yet (the field says so).
+- **Kit additions, all generic:** registry entries may give `schema` as a function of `{ pageSlugs }` (read through
+  `schemaOf`), `tabs` (a project's Gallery), `intro(record)` (the linked job), `rowActions` (a `cmsApi` mutation, e.g.
+  Approve), `reorderWithin` + `reorderHint`, and `defaultSort`; a filter may have a `defaultValue`; a field may be
+  `lockedOnEdit`. New field types `weekdays` and `objectList`; `keyValue` with fixed `keys`; `group` with
+  `variant: 'card'`; `ResourceForm stickyActions`; `LocaleTabs extraTabs` (and no Nepali tab when nothing is
+  translatable); a null value in a column the form does not edit is dropped instead of failing the schema (a
+  testimonial's `jobId`). New shared pieces: `common/StateBadge`, `media/MediaCell`, `projects/ProjectGalleryTab`,
+  `projects/ProjectName`, `helpers/schedule.js` (`offerWindow`, `publishState`), `api/settingsApi.js`.
+- **Backend, beyond the listed changes** (each with an API test; 7 of the 9 new tests fail on the old code):
+  - *List-item reorder:* Phase A's `orderField` mapping stored the table's 0-based index in `position`, which the site
+    prints — the first item read "0". The CRUD factory has `orderBase` (list items: 1). The screen offers Reorder only
+    once a list is picked, because positions are per list.
+  - *Projects* now carry `job: { id, number }`, which the edit page shows read-only.
+  - *`ogImageId`* is no longer accepted for projects, pages and posts. None of those tables has the column, so sending
+    one answered 500. Services keep it.
+  - *Nepali copy the site never showed:* the home page's grouped sections (kitchen cards and steps, seepage block and
+    checklist, the interior block) now overlay translations, and `/public/posts`, `/posts/:slug` and `/pages/:slug` take
+    `?locale`. That is what makes the Nepali tabs on features, list items, content blocks, posts and pages honest.
+  - *`/public/bootstrap`* adds `nav.blog` (a published post exists) and `nav.pages` (live pages), for the Blog link and
+    for CMS links. `/public/posts` also returns the `categories` that hold a published post. The sitemap lists `/blog`,
+    posts and pages.
+  - *Seed:* two published posts in two categories and an About page at `/about` — the seeded third hero slide linked
+    there, and the site sent it to `/book`.
+- **CMS links to pages.** `siteHref` accepts `/blog`, `/blog/…` and a single-segment address that is a live page; the hero
+  slide, offer and content-block forms check links against the live pages (a link to `/about` is refused until the page
+  exists). Page addresses the app already routes (`/contact`, `/admin`, …) are refused in the page form.
+- **Testimonials** have no Nepali tab (they are published as written, with a language field that sets the typeface).
+  Approve / Withdraw approval is a row action for `testimonials:moderate`, not a form field, and the list opens on
+  "Waiting for approval".
+- **Content blocks.** The key is a select over the four `CONTENT_BLOCK_KEYS` (only `seepage_explainer` and
+  `interior_design` show on the site; the other two are labelled "not shown yet"), locked once saved — in the screen
+  only; the API still accepts a key change. The button is `{ label, url }`; both empty means no button, and the site
+  now draws a block's button only when both are set. Bullets are English only (a JSON list has no translation).
+- **Form-only rules** (stricter than the API): an offer's and a plan's "to" price and a project's cost band top must be
+  at least the lower figure. An offer's picked end day ends at 23:59 and its start day begins at 00:00, Kathmandu time.
+- **Posts** have no manual order (the blog is newest first); the list sorts by publish time and shows Draft / Scheduled /
+  Published. "View on site" appears only for a published post.
+- **Public site, small fixes:** an offer or a package with only a "from" price no longer prints "– 0", and a package with
+  no price reads "On inspection". `/:slug` with no page renders the not-found page inside the site's shell.
+- **Found by the browser walk-through, fixed:**
+  - Every public detail page fell back to its own title with `??`, but an SEO field left empty in the admin is saved as
+    `''` — so a post, a page, and D1's service and project pages kept the site's default `<title>`. They use `||` now
+    (a test failed before).
+  - *Dev only, pre-existing:* React StrictMode ran `SessionEffect` twice, so every reload sent two refreshes with one
+    rotating cookie; when the refused one answered last, the user was signed out (about one reload in eight). The page
+    now shares one restore (a test failed before).
+  - The settings screen reported `stats.items` as changed when nobody touched it (jsonb key order) — fixed as above.
+- **Tests and harness:** `src/test/mockApi.js` is the shared fetch mock for new screen tests; `test/setup.js` stubs
+  `IntersectionObserver`. The service-reminder API test now lists `?sort=-createdAt`: after repeated runs without a
+  reset, the reminder it creates fell off the first page (a test-only change).
+- **Not done:** D2.5 (optional) — the storefront's popular searches and the feature-row headings are still in code.
+  The `about_intro` and `cta_banner` blocks are rendered nowhere. In the walk-through the new hero slide was moved
+  first through the API (the Reorder screen itself was walked in D1).
 
 ### Phase E — Lead management & CRM · ~5 days
 
@@ -538,7 +606,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | A Safety fixes ✅ 2026-09-14 | 2 | 2 | Correct money, locked quotations, no hard-deleted payments, honest docs |
 | B Logging & audit ✅ 2026-09-14 | 3 | 5 | Redacted request-id logs, complete audit with domain events |
 | C Admin UI kit ✅ 2026-09-14 (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
-| D Services & CMS (D1 ✅ 2026-09-16 + D2) | 6 | 15 | Editors run the whole public site |
+| D Services & CMS ✅ 2026-09-16 (D1 + D2) | 6 | 15 | Editors run the whole public site |
 | E Leads & CRM | 5 | 20 | Sales works entirely in the UI |
 | F Quotation approval (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
 | G Audit & platform UI | 3 | 28 | Traceability, users, templates |

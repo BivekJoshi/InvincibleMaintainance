@@ -26,6 +26,9 @@ const seoFields = {
   ogImageId: z.string().optional(),
 };
 
+/** Projects, pages and posts have no sharing-image column; the API drops `ogImageId` for them. */
+const { ogImageId: _ogImageId, ...pageSeoFields } = seoFields;
+
 const title = z.string().trim().min(2).max(250);
 const optionalImage = z.string().optional();
 const slug = z.string().trim().max(140).optional();
@@ -105,7 +108,7 @@ export const projectSchema = z.object({
   isFeatured: z.coerce.boolean().default(false),
   sortOrder,
   isActive,
-  ...seoFields,
+  ...pageSeoFields,
 });
 
 export const offerSchema = z.object({
@@ -209,7 +212,7 @@ export const pageSchema = z.object({
   slug,
   title,
   body: optionalText,
-  ...seoFields,
+  ...pageSeoFields,
   sortOrder,
   isActive,
 });
@@ -229,7 +232,7 @@ export const postSchema = z.object({
   body: z.string().trim().min(20),
   coverId: optionalImage,
   publishedAt: z.coerce.date().optional(),
-  ...seoFields,
+  ...pageSeoFields,
   sortOrder,
   isActive,
 });

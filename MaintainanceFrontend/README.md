@@ -127,27 +127,32 @@ New primitives come from `npx shadcn@latest add <name>` (configured for JSX in
 
 **Public site** — home assembled from the API's ordered, visible sections (change the order in
 the admin, the page changes); services list and per-service detail with JSON-LD; pricing with
-the live cost estimator; contact; and the customer self-service pages for quotation approval
+the live cost estimator; contact; projects; the blog (`/blog`, `/blog/:slug`) and editor-written pages at their own
+address (`/about`); and the customer self-service pages for quotation approval
 and warranty claims, both opened from an SMS link with no login.
 
 **Back office** — login, role-aware dashboard, the SLA response board, and the leads table with
 status/response/source/received-date filters, URL-persisted, CSV export.
 
-**Admin kit (Phase C1)** — DataTable v2, `<ResourceForm>` with 16 field types, `LocaleTabs`, `MediaPicker`,
+**Admin kit (Phase C1)** — DataTable v2, `<ResourceForm>` with 18 field types, `LocaleTabs`, `MediaPicker`,
 `ConfirmDialog` / `useConfirm`. See `src/STRUCTURE.md` → "The admin kit".
 
 **Content and prices (Phases C2, D1)** — registry screens for FAQs, process steps, service categories, services
 (price range, SEO, Nepali name/card text/page text) and hero slides; the rate card under Sales (SALES writes,
 ACCOUNTANT reads); the home page composer (order, visibility, item limits); the media library (folders,
-drag-and-drop upload with required alt text, variants, copy URL). See `src/STRUCTURE.md` → "Which screen is which".
+drag-and-drop upload with required alt text, variants, copy URL).
+
+**The rest of the content, and settings (Phase D2)** — registry screens for projects (with a Gallery tab), offers
+(Live / Scheduled / Ended), pricing plans, testimonials (an approval queue), gallery, features, list items, content
+blocks, posts, post categories and pages — every CMS resource in the API has a screen — and the site settings at
+`/admin/platform/settings` (ADMIN saves, EDITOR reads). See `src/STRUCTURE.md` → "Which screen is which".
 
 **Technician** — mobile-first `/tech` with today's jobs, tap-to-call, tap-to-navigate, and
 one-tap status advance.
 
 **Not yet built** (backend endpoints exist and are documented in `../docs/API.md`): lead detail
 drawer, customers, quotation builder, job detail + dispatch board, materials, invoices, warranty
-and AMC screens, the remaining CMS editors (projects, offers, pricing plans, features, list items, content blocks,
-gallery, testimonials, pages, posts, site settings — Phase D2), and the offline sync queue for the technician PWA.
+and AMC screens, and the offline sync queue for the technician PWA.
 
 ---
 

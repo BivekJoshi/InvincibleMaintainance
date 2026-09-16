@@ -169,4 +169,90 @@ describe('ResourceForm', () => {
     await user.type(screen.getByLabelText(/^Title/), ' Updated');
     expect(screen.getByLabelText('Slug')).toHaveValue('is-it-real');
   });
+
+  it('drops a null value the form does not edit, so an invisible column cannot block a save', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue({});
+    const withJob = schema.extend({ jobId: z.string().optional() });
+    renderWithProviders(<ResourceForm schema={withJob} fields={fields} defaultValues={{ ...record, jobId: null }} onSubmit={onSubmit} />);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('jobId');
+  });
+});
+
+describe('ResourceForm field types added in D2', () => {
+  const kitSchema = z.object({
+    closed: z.array(z.number()).refine((d) => d.length < 7, 'Leave a day open'),
+    // An objectList schema drops blank rows before checking them, as `config/admin/settingsForm.js` does.
+    badges: z.preprocess(
+      (rows) => rows.filter((r) => r.icon || r.label),
+      z.array(z.object({ icon: z.string().min(1, 'Pick an icon'), label: z.string().min(1, 'Write the text') })),
+    ),
+    cta: z.object({ label: z.string(), url: z.string() }),
+    code: z.string().optional(),
+  });
+  const kitFields = [
+    {
+      type: 'group', variant: 'card', label: 'Booking', description: 'What the calendar offers.',
+      fields: [{ name: 'closed', type: 'weekdays', label: 'Closed days' }],
+    },
+    {
+      name: 'badges', type: 'objectList', label: 'Badges', itemLabel: 'Badge',
+      itemFields: [{ name: 'icon', label: 'Icon' }, { name: 'label', label: 'Text' }],
+    },
+    { name: 'cta', type: 'keyValue', label: 'Button', keys: ['label', 'url'], keyLabels: { label: 'Button text', url: 'Button link' } },
+    { name: 'code', type: 'text', label: 'Code', disabled: true },
+  ];
+  const kitRecord = {
+    closed: [6], badges: [{ icon: 'gift', label: 'नि:शुल्क परामर्श' }], cta: { label: 'Book', url: '/book' }, code: 'X',
+  };
+
+  it('edits weekdays, rows of objects and fixed keys, and submits them in shape', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(<ResourceForm schema={kitSchema} fields={kitFields} defaultValues={kitRecord} onSubmit={onSubmit} />);
+
+    expect(screen.getByRole('region', { name: 'Booking' })).toHaveTextContent('What the calendar offers.');
+    expect(screen.getByRole('checkbox', { name: 'Saturday' })).toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: 'Monday' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Sunday' }));
+
+    expect(screen.getByLabelText('Text 1')).toHaveValue('नि:शुल्क परामर्श');
+    await user.click(screen.getByRole('button', { name: 'Add badge' }));
+    await user.type(screen.getByLabelText('Icon 2'), 'clock');
+    await user.type(screen.getByLabelText('Text 2'), '२ घण्टामा जवाफ');
+    await user.click(screen.getByRole('button', { name: 'Move badge 2 up' }));
+    // A row left completely empty is dropped.
+    await user.click(screen.getByRole('button', { name: 'Add badge' }));
+
+    expect(screen.queryByRole('button', { name: /Add row/ })).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Button link'));
+    await user.type(screen.getByLabelText('Button link'), '/about');
+    expect(screen.getByLabelText('Code')).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({
+      closed: [0, 1, 6],
+      badges: [{ icon: 'clock', label: '२ घण्टामा जवाफ' }, { icon: 'gift', label: 'नि:शुल्क परामर्श' }],
+      cta: { label: 'Book', url: '/about' },
+    });
+  });
+
+  it('shows a row cell’s error beside that cell and a list error under the field', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderWithProviders(
+      <ResourceForm schema={kitSchema} fields={kitFields} defaultValues={{ ...kitRecord, closed: [0, 1, 2, 3, 4, 5] }} onSubmit={onSubmit} />,
+    );
+    await user.click(screen.getByRole('checkbox', { name: 'Saturday' }));
+    await user.clear(screen.getByLabelText('Text 1'));
+    await user.type(screen.getByLabelText('Icon 1'), 'x');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Leave a day open')).toBeInTheDocument();
+    expect(screen.getByText('Write the text')).toBeInTheDocument();
+    expect(screen.getByLabelText('Text 1')).toHaveAttribute('aria-invalid', 'true');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

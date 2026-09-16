@@ -15,6 +15,8 @@ import { KeyValueField } from './fields/KeyValueField';
 import { MediaField } from './fields/MediaField';
 import { MediaListField } from './fields/MediaListField';
 import { GroupField } from './fields/GroupField';
+import { WeekdaysField } from './fields/WeekdaysField';
+import { ObjectListField } from './fields/ObjectListField';
 
 /**
  * Field type → component. `markdown` is an alias of `prose`: the public site renders
@@ -39,6 +41,8 @@ const FIELD_TYPES = {
   keyValue: KeyValueField,
   media: MediaField,
   mediaList: MediaListField,
+  weekdays: WeekdaysField,
+  objectList: ObjectListField,
 };
 
 /** A safe DOM id for a field, from the form's `useId()` prefix and the field name. */

@@ -51,7 +51,7 @@ export function ContentBlock({ section, media, tone }) {
             </StaggerOnView>
           ) : null}
 
-          {block.cta ? (
+          {block.cta?.label && block.cta?.url ? (
             <Cta href={block.cta.url} className="mt-8">{block.cta.label}</Cta>
           ) : null}
         </Reveal>
