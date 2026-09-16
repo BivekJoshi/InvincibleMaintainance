@@ -7,6 +7,7 @@ import {
   ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage,
   LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, SurveysPage,
   SurveyReviewPage, QuotationsPage, QuotationBuilderPage, ResourceListPage, ResourceEditPage,
+  HomeComposerPage, MediaLibraryPage,
   TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, NotFoundPage,
 } from './routeModules';
 import { AdminHome, ContentHome } from './AdminLanding';
@@ -64,10 +65,17 @@ export function AppRoutes() {
             <Route element={<RequireAuth capability="quotations:read" />}>
               <Route path="/admin/quotations" element={<QuotationsPage />} />
               <Route path="/admin/quotations/:id" element={<QuotationBuilderPage />} />
+              {/* The rate card is a registry entry with its own address (see its entry's basePath) */}
+              <Route path="/admin/rate-card" element={<ResourceListPage resource="rate-card" />} />
+              <Route path="/admin/rate-card/new" element={<ResourceEditPage resource="rate-card" />} />
+              <Route path="/admin/rate-card/:id" element={<ResourceEditPage resource="rate-card" />} />
             </Route>
             {/* CMS resources from config/admin/resourceRegistry.js; each page checks its entry's own capability */}
             <Route element={<RequireAuth capability="cms:read" />}>
               <Route path="/admin/content" element={<ContentHome />} />
+              {/* Bespoke content screens; a static segment outranks :resource */}
+              <Route path="/admin/content/home" element={<HomeComposerPage />} />
+              <Route path="/admin/content/media" element={<MediaLibraryPage />} />
               <Route path="/admin/content/:resource" element={<ResourceListPage />} />
               <Route path="/admin/content/:resource/new" element={<ResourceEditPage />} />
               <Route path="/admin/content/:resource/:id" element={<ResourceEditPage />} />

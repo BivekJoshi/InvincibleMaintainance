@@ -14,8 +14,10 @@ import { cn } from '@/helpers/utils';
  * @param {object} props
  * @param {string} [props.folderId]                   folder new uploads go into
  * @param {(media: object) => void} props.onUploaded  called with each stored media row
+ * @param {{ id: number, files: File[] }} [props.incoming]  files dropped somewhere else (the library screen), added once per id
+ * @param {string} [props.doneLabel]                  shown on a finished upload
  */
-export function MediaUpload({ folderId, onUploaded }) {
+export function MediaUpload({ folderId, onUploaded, incoming, doneLabel = 'Uploaded and selected' }) {
   const [items, setItems] = useState([]);
   const [dragging, setDragging] = useState(false);
   const [upload] = useUploadMediaMutation();
@@ -37,6 +39,15 @@ export function MediaUpload({ folderId, onUploaded }) {
       error: null,
     }))]);
   };
+
+  const seenIncoming = useRef(null);
+  const addRef = useRef(add);
+  addRef.current = add;
+  useEffect(() => {
+    if (!incoming || seenIncoming.current === incoming.id) return;
+    seenIncoming.current = incoming.id;
+    addRef.current(incoming.files);
+  }, [incoming]);
 
   const patch = (key, next) => setItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...next } : i)));
 
@@ -100,7 +111,7 @@ export function MediaUpload({ folderId, onUploaded }) {
                   <p className="truncate text-xs text-muted-foreground">{item.file.name}</p>
                   {item.status === 'done' ? (
                     <p className="flex items-center gap-1.5 text-sm text-success">
-                      <CheckCircle2 className="h-4 w-4" aria-hidden /> Uploaded and selected
+                      <CheckCircle2 className="h-4 w-4" aria-hidden /> {doneLabel}
                     </p>
                   ) : (
                     <>

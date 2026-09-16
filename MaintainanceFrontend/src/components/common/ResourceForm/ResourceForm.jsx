@@ -62,6 +62,8 @@ const LEAVE = {
  * @param {string} [props.description]                    sheet mode
  * @param {boolean} [props.guard]
  * @param {import('react').ReactNode} [props.extraActions] more buttons beside Save
+ * @param {boolean} [props.readOnly]                      shows the values with every control disabled and no Save
+ * @param {import('react').ReactNode} [props.intro]       shown above the fields, e.g. a record's preview in a sheet
  */
 export function ResourceForm({
   schema,
@@ -79,6 +81,8 @@ export function ResourceForm({
   guard = true,
   extraActions,
   className,
+  readOnly = false,
+  intro,
 }) {
   const formId = `form-${useId().replace(/[^\w-]/g, '')}`;
   const initial = useMemo(() => toFormValues(fields, defaultValues), [fields, defaultValues]);
@@ -108,7 +112,9 @@ export function ResourceForm({
     setBypass(true);
     try {
       await onSubmit(toRequestValues(fields, values), { values, form });
-      reset(values);
+      // The inputs' own values become the saved state. `values` is the schema's output, where a
+      // transform (an empty optional text → undefined) would leave the form dirty after a save.
+      reset(form.getValues());
     } catch (err) {
       setFormError(applyServerErrors(err, setError, flattenFields(fields).map((f) => f.name)));
     } finally {
@@ -137,19 +143,20 @@ export function ResourceForm({
     </div>
   ) : null;
 
-  const saveButton = <Button type="submit" form={formId} loading={isSubmitting}>{submitLabel}</Button>;
+  const saveButton = readOnly ? null : <Button type="submit" form={formId} loading={isSubmitting}>{submitLabel}</Button>;
 
   const body = (
     <FormProvider {...form}>
       <form id={formId} onSubmit={submit} noValidate className={cn('space-y-6', className)}>
+        {intro}
         {errorAlert}
-        <fieldset disabled={isSubmitting} className="min-w-0">
+        <fieldset disabled={isSubmitting || readOnly} className="min-w-0">
           <FieldGrid fields={fields} idPrefix={formId} />
         </fieldset>
         {mode === 'page' ? (
           <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
             {extraActions}
-            {onCancel ? <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>{cancelLabel}</Button> : null}
+            {onCancel ? <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>{readOnly ? 'Back' : cancelLabel}</Button> : null}
             {saveButton}
           </div>
         ) : null}
@@ -181,7 +188,7 @@ export function ResourceForm({
             <div className="flex-1 overflow-y-auto px-6 py-5">{body}</div>
             <SheetFooter className="gap-2 border-t px-6 py-4">
               {extraActions}
-              <Button type="button" variant="outline" onClick={closeSheet} disabled={isSubmitting}>{cancelLabel}</Button>
+              <Button type="button" variant="outline" onClick={closeSheet} disabled={isSubmitting}>{readOnly ? 'Close' : cancelLabel}</Button>
               {saveButton}
             </SheetFooter>
           </SheetContent>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, ImageOff, Search } from 'lucide-react';
+import { Check, Search } from 'lucide-react';
 import { useGetMediaFoldersQuery, useGetMediaListQuery } from '@/api/mediaApi';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -8,13 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import { EmptyState } from '@/components/common/EmptyState';
-import { ErrorState } from '@/components/common/ErrorState';
 import { useAuth } from '@/hooks/useAuth';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { cn } from '@/helpers/utils';
-import { MediaThumb } from './MediaThumb';
+import { MediaGrid, MediaPager } from './MediaGrid';
 import { MediaUpload } from './MediaUpload';
 
 const ALL = '__all';
@@ -110,65 +106,25 @@ export function MediaPicker({ open, onOpenChange, multiple = false, selected = [
               </Select>
             </div>
 
-            {error ? (
-              <ErrorState error={error} onRetry={refetch} />
-            ) : isLoading ? (
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6" aria-hidden>
-                {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="aspect-square" />)}
-              </div>
-            ) : !items.length ? (
-              <EmptyState
-                icon={ImageOff}
-                title={debouncedQ || folderId !== ALL ? 'No images match' : 'The library is empty'}
-                description={can('media:write') ? 'Upload one from the Upload tab.' : undefined}
-              />
-            ) : (
-              <ul className={cn('grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6', isFetching && 'opacity-60')}>
-                {items.map((media) => {
-                  const chosen = isPicked(media.id);
-                  return (
-                    <li key={media.id}>
-                      <button
-                        type="button"
-                        onClick={() => toggle(media)}
-                        onDoubleClick={() => { if (!multiple) { onSelect([media.id], [media]); onOpenChange(false); } }}
-                        aria-pressed={chosen}
-                        aria-label={media.alt || 'Image without alt text'}
-                        title={media.alt || undefined}
-                        className={cn(
-                          'relative block aspect-square w-full overflow-hidden rounded-md border-2 transition-colors',
-                          chosen ? 'border-primary' : 'border-transparent hover:border-border',
-                        )}
-                      >
-                        <MediaThumb media={media} alt="" />
-                        {chosen ? (
-                          <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
-                            <Check className="h-3 w-3" aria-hidden />
-                          </span>
-                        ) : null}
-                        {!media.alt ? (
-                          <span className="surface-warning absolute inset-x-1 bottom-1 truncate rounded px-1 text-[10px] font-medium">No alt text</span>
-                        ) : null}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            <MediaGrid
+              items={items}
+              isLoading={isLoading}
+              isFetching={isFetching}
+              error={error}
+              refetch={refetch}
+              onSelect={toggle}
+              onDoubleSelect={multiple ? undefined : (media) => { onSelect([media.id], [media]); onOpenChange(false); }}
+              isSelected={(media) => isPicked(media.id)}
+              badge={(media) => (isPicked(media.id) ? (
+                <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+                  <Check className="h-3 w-3" aria-hidden />
+                </span>
+              ) : null)}
+              emptyTitle={debouncedQ || folderId !== ALL ? 'No images match' : 'The library is empty'}
+              emptyDescription={can('media:write') ? 'Upload one from the Upload tab.' : undefined}
+            />
 
-            {pages > 1 ? (
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">Page {page} of {pages}</p>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-                    <ChevronLeft aria-hidden /> Previous
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>
-                    Next <ChevronRight aria-hidden />
-                  </Button>
-                </div>
-              </div>
-            ) : null}
+            <MediaPager page={page} pages={pages} onPageChange={setPage} />
           </TabsContent>
 
           {can('media:write') ? (

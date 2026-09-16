@@ -69,7 +69,8 @@ export function QuotationLineEditor({ lines, onChange, rateCard = [], disabled }
                     <SelectTrigger className="h-8"><SelectValue placeholder="—" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Custom line</SelectItem>
-                      {rateCard.map((r) => (
+                      {/* A retired rate is not offered again, but a line that already uses it still shows it. */}
+                      {rateCard.filter((r) => r.isActive !== false || r.id === line.rateCardItemId).map((r) => (
                         <SelectItem key={r.id} value={r.id}>{r.code} · {r.name}</SelectItem>
                       ))}
                     </SelectContent>

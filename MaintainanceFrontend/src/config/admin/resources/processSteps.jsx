@@ -1,6 +1,7 @@
 import { DataIcon } from '@/components/site/DataIcon';
 import { processStepSchema } from '@/form/schemas/cms.schema';
 import { formatDate } from '@/helpers/format';
+import { ICON_OPTIONS } from './iconOptions';
 
 /** @type {import('../resourceRegistry').ResourceEntry} */
 export const processSteps = {
@@ -47,10 +48,7 @@ export const processSteps = {
 
   fields: [
     { name: 'stepNo', type: 'number', label: 'Step number', required: true, min: 1, max: 50, step: 1, span: 'half' },
-    {
-      name: 'icon', type: 'text', label: 'Icon', span: 'half', maxLength: 60, placeholder: 'phone',
-      description: 'A lucide icon name: phone, search, file-text, hammer, shield-check…',
-    },
+    { name: 'icon', type: 'select', label: 'Icon', span: 'half', options: ICON_OPTIONS, noneLabel: 'Default icon' },
     { name: 'title', type: 'text', label: 'Title', required: true, maxLength: 250 },
     { name: 'description', type: 'textarea', label: 'Description', rows: 3 },
     { name: 'isActive', type: 'switch', label: 'Show on the website' },

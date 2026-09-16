@@ -17,8 +17,12 @@ const listTag = (resource) => ({ type: 'Cms', id: resource });
 const itemTag = (resource, id) => ({ type: 'Cms', id: `${resource}:${id}` });
 const base = (resource) => `/admin/${resource}`;
 
+/** Other screens that read a resource through their own endpoint (the quotation builder reads the rate card). */
+const ALSO_READ_AS = { 'rate-card': [{ type: 'RateCard', id: 'LIST' }] };
+const alsoFor = (resource) => ALSO_READ_AS[resource] ?? [];
+
 /** The list and one record, plus the site's cache. */
-const listAndRecord = (result, error, { resource, id }) => [listTag(resource), itemTag(resource, id), 'Public'];
+const listAndRecord = (result, error, { resource, id }) => [listTag(resource), itemTag(resource, id), 'Public', ...alsoFor(resource)];
 
 export const cmsApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({
@@ -35,7 +39,7 @@ export const cmsApi = apiSlice.injectEndpoints({
     createResource: build.mutation({
       query: ({ resource, body }) => ({ url: base(resource), method: 'POST', body }),
       transformResponse: (r) => r.data,
-      invalidatesTags: (result, error, { resource }) => [listTag(resource), 'Public'],
+      invalidatesTags: (result, error, { resource }) => [listTag(resource), 'Public', ...alsoFor(resource)],
     }),
     updateResource: build.mutation({
       query: ({ resource, id, body }) => ({ url: `${base(resource)}/${id}`, method: 'PUT', body }),
@@ -50,7 +54,7 @@ export const cmsApi = apiSlice.injectEndpoints({
     /** `items` is `[{ id, sortOrder }]` — what DataTable's reorder mode hands over. */
     reorderResource: build.mutation({
       query: ({ resource, items }) => ({ url: `${base(resource)}/reorder`, method: 'PATCH', body: { items } }),
-      invalidatesTags: (result, error, { resource }) => [listTag(resource), 'Public'],
+      invalidatesTags: (result, error, { resource }) => [listTag(resource), 'Public', ...alsoFor(resource)],
     }),
     /** Soft delete; `hard: true` removes the row for good and needs `cms:purge`. */
     deleteResource: build.mutation({
@@ -66,10 +70,24 @@ export const cmsApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       invalidatesTags: listAndRecord,
     }),
+
+    /** The home page composer: every section in order, with its visibility and settings. */
+    getHomeSections: build.query({
+      query: () => '/admin/home-sections',
+      transformResponse: (r) => r.data,
+      providesTags: [listTag('home-sections')],
+    }),
+    /** `items` is every section as `{ key, sortOrder, isVisible, settings? }`; answers the saved list. */
+    updateHomeSections: build.mutation({
+      query: (items) => ({ url: '/admin/home-sections', method: 'PUT', body: { items } }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: [listTag('home-sections'), 'Public'],
+    }),
   }),
 });
 
 export const {
+  useGetHomeSectionsQuery, useUpdateHomeSectionsMutation,
   useListResourceQuery, useGetResourceQuery,
   useCreateResourceMutation, useUpdateResourceMutation, useToggleResourceMutation,
   useReorderResourceMutation, useDeleteResourceMutation, useRestoreResourceMutation,

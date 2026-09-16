@@ -136,12 +136,18 @@ status/response/source/received-date filters, URL-persisted, CSV export.
 **Admin kit (Phase C1)** — DataTable v2, `<ResourceForm>` with 16 field types, `LocaleTabs`, `MediaPicker`,
 `ConfirmDialog` / `useConfirm`. See `src/STRUCTURE.md` → "The admin kit".
 
+**Content and prices (Phases C2, D1)** — registry screens for FAQs, process steps, service categories, services
+(price range, SEO, Nepali name/card text/page text) and hero slides; the rate card under Sales (SALES writes,
+ACCOUNTANT reads); the home page composer (order, visibility, item limits); the media library (folders,
+drag-and-drop upload with required alt text, variants, copy URL). See `src/STRUCTURE.md` → "Which screen is which".
+
 **Technician** — mobile-first `/tech` with today's jobs, tap-to-call, tap-to-navigate, and
 one-tap status advance.
 
 **Not yet built** (backend endpoints exist and are documented in `../docs/API.md`): lead detail
 drawer, customers, quotation builder, job detail + dispatch board, materials, invoices, warranty
-and AMC screens, the CMS editors, and the offline sync queue for the technician PWA.
+and AMC screens, the remaining CMS editors (projects, offers, pricing plans, features, list items, content blocks,
+gallery, testimonials, pages, posts, site settings — Phase D2), and the offline sync queue for the technician PWA.
 
 ---
 

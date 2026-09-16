@@ -1,6 +1,6 @@
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ExternalLink, Eye, EyeOff, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, Info, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   useDeleteResourceMutation, useListResourceQuery, useReorderResourceMutation,
   useRestoreResourceMutation, useToggleResourceMutation,
@@ -8,6 +8,7 @@ import {
 import { useResourceEntry } from '@/hooks/useResourceEntry';
 import { useListParams } from '@/hooks/useListParams';
 import { useConfirm } from '@/hooks/useConfirm';
+import { activeCopyOf, screenPathOf } from '@/config/admin/resourceRegistry';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable } from '@/components/common/DataTable/DataTable';
 import { Button } from '@/components/ui/button';
@@ -20,12 +21,15 @@ import NotFoundPage from '@/pages/NotFoundPage';
 const messageOf = (err) => err?.data?.error?.message;
 
 /**
- * `/admin/content/:resource` — the list screen of every registry entry. The entry
- * supplies columns, filters and copy; this page adds what every CMS list has: the
- * on-site switch, Edit / View on site / Hide / Delete, bulk delete, Reorder, and Trash.
+ * `/admin/content/:resource` (or an entry's own `basePath`) — the list screen of every
+ * registry entry. The entry supplies columns, filters and copy; this page adds what every
+ * CMS list has: the on/off switch, Edit / View on site / Hide / Delete, bulk delete,
+ * Reorder, and Trash.
+ *
+ * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
  */
-export default function ResourceListPage() {
-  const { status, entry, canWrite } = useResourceEntry();
+export default function ResourceListPage({ resource }) {
+  const { status, entry, canWrite } = useResourceEntry(resource);
   if (status === 'unknown') return <NotFoundPage />;
   if (status === 'forbidden') return <Navigate to="/admin" replace />;
   // Keyed, so moving between two resources never carries one's state into the other.
@@ -45,13 +49,15 @@ function ResourceList({ entry, canWrite }) {
   const [restore] = useRestoreResourceMutation();
 
   const inTrash = params.deleted === 'true';
-  const editHref = (row) => `/admin/content/${resource}/${row.id}`;
+  const screenPath = screenPathOf(entry);
+  const copy = activeCopyOf(entry);
+  const editHref = (row) => `${screenPath}/${row.id}`;
   const nameOf = (row) => entry.titleOf(row);
 
   const onToggle = async (row) => {
     try {
       const updated = await toggle({ resource, id: row.id }).unwrap();
-      dispatch(toastSuccess(updated.isActive ? `${label} is on the website` : `${label} is hidden from the website`));
+      dispatch(toastSuccess(`${label} ${updated.isActive ? copy.turnedOn : copy.turnedOff}`));
     } catch (err) {
       dispatch(toastError(`Could not change this ${label}`, messageOf(err)));
     }
@@ -61,7 +67,7 @@ function ResourceList({ entry, canWrite }) {
     const one = rows.length === 1;
     const ok = await confirm({
       title: one ? `Delete this ${label}?` : `Delete ${rows.length} ${entry.labelPlural}?`,
-      description: `${one ? 'It leaves' : 'They leave'} the website at once. Trash keeps ${one ? 'it' : 'them'}, and ${one ? 'it' : 'they'} can be restored from there.`,
+      description: `${one ? copy.deleteOne : copy.deleteMany} Trash keeps ${one ? 'it' : 'them'}, and ${one ? 'it' : 'they'} can be restored from there.`,
       confirmLabel: 'Delete',
       destructive: true,
     });
@@ -76,7 +82,7 @@ function ResourceList({ entry, canWrite }) {
   const onRestore = async (row) => {
     try {
       await restore({ resource, id: row.id }).unwrap();
-      dispatch(toastSuccess(`${label} restored`, 'It is back in the list, with the on-site setting it had.'));
+      dispatch(toastSuccess(`${label} restored`, 'It is back in the list, switched on or off as it was.'));
     } catch (err) {
       dispatch(toastError(`Could not restore this ${label}`, messageOf(err)));
     }
@@ -98,7 +104,7 @@ function ResourceList({ entry, canWrite }) {
 
   const activeColumn = {
     key: 'isActive',
-    header: 'On site',
+    header: copy.column,
     sortable: true,
     className: 'w-20',
     cell: (row) => (
@@ -107,7 +113,7 @@ function ResourceList({ entry, canWrite }) {
           checked={Boolean(row.isActive)}
           disabled={!canWrite || inTrash}
           onCheckedChange={() => onToggle(row)}
-          aria-label={`Show “${nameOf(row)}” on the website`}
+          aria-label={`${copy.switchLabel} “${nameOf(row)}”`}
         />
       </span>
     ),
@@ -120,8 +126,8 @@ function ResourceList({ entry, canWrite }) {
       ...(href ? [{ label: 'View on site', icon: ExternalLink, onSelect: () => window.open(href, '_blank', 'noopener') }] : []),
       ...(canWrite ? [
         row.isActive
-          ? { label: 'Hide from website', icon: EyeOff, onSelect: () => onToggle(row) }
-          : { label: 'Show on website', icon: Eye, onSelect: () => onToggle(row) },
+          ? { label: copy.turnOff, icon: EyeOff, onSelect: () => onToggle(row) }
+          : { label: copy.turnOn, icon: Eye, onSelect: () => onToggle(row) },
         { label: 'Delete', icon: Trash2, destructive: true, onSelect: () => onDelete([row]) },
       ] : []),
     ];
@@ -134,10 +140,16 @@ function ResourceList({ entry, canWrite }) {
         description={entry.description}
         actions={canWrite ? (
           <Button asChild>
-            <Link to={`/admin/content/${resource}/new`}><Plus aria-hidden /> New {label}</Link>
+            <Link to={`${screenPath}/new`}><Plus aria-hidden /> New {label}</Link>
           </Button>
         ) : null}
       />
+      {entry.notice ? (
+        <p className="mb-4 flex max-w-3xl gap-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <span>{entry.notice}</span>
+        </p>
+      ) : null}
       <DataTable
         columns={[...entry.columns, activeColumn]}
         data={data?.items}

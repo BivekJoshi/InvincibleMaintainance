@@ -2,14 +2,26 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cwd } from 'node:process';
 import { describe, it, expect } from 'vitest';
-import { RESOURCES, getResourceEntry } from '@/config/admin/resourceRegistry';
-import { ADMIN_NAV } from '@/config/admin/adminNav';
+import { RESOURCES, getResourceEntry, screenPathOf } from '@/config/admin/resourceRegistry';
+import { ADMIN_NAV, BESPOKE_CONTENT } from '@/config/admin/adminNav';
 import { flattenFields } from '@/components/common/ResourceForm/formValues';
 import { PERMISSIONS } from '@/helpers/permissions';
 
-/** The resources the API's CRUD factory mounts, read from the route file itself (tests run from MaintainanceFrontend/). */
-const cmsRoutes = readFileSync(resolve(cwd(),'../MaintainanceBackend/src/routes/admin/cms.routes.js'), 'utf8');
+/** The resources the API's CRUD factory mounts, read from the route files themselves (tests run from MaintainanceFrontend/). */
+const readApi = (file) => readFileSync(resolve(cwd(), '../MaintainanceBackend/src/routes/admin', file), 'utf8');
+const cmsRoutes = readApi('cms.routes.js');
 const MOUNTED = new Set([...cmsRoutes.matchAll(/mountResource\(router, '([a-z-]+)'/g)].map((m) => m[1]));
+
+/**
+ * The same eight endpoints, mounted by hand outside cms.routes.js (the rate card). Each
+ * must answer every call the generic screens make.
+ */
+const HAND_MOUNTED = { 'rate-card': readApi('crm.routes.js') };
+const GENERIC_CALLS = (r) => [
+  `router.get('/${r}'`, `router.post('/${r}'`, `router.patch('/${r}/reorder'`, `router.get('/${r}/:id'`,
+  `router.put('/${r}/:id'`, `router.patch('/${r}/:id/toggle'`, `router.patch('/${r}/:id/restore'`, `router.delete('/${r}/:id'`,
+];
+const isMounted = (r) => MOUNTED.has(r) || Boolean(HAND_MOUNTED[r] && GENERIC_CALLS(r).every((c) => HAND_MOUNTED[r].includes(c)));
 
 const CAPABILITIES = new Set([...Object.values(PERMISSIONS).flat(), 'cms:purge']);
 const TEXT_TYPES = new Set(['text', 'textarea', 'prose', 'markdown']);
@@ -22,6 +34,7 @@ function shapeOf(schema) {
 }
 
 const contentItems = ADMIN_NAV.find((g) => g.key === 'content').items;
+const allItems = ADMIN_NAV.flatMap((g) => g.items);
 const entries = Object.values(RESOURCES);
 
 describe('resource registry', () => {
@@ -33,7 +46,7 @@ describe('resource registry', () => {
   it.each(entries.map((e) => [e.resource, e]))('%s is a complete, valid entry', (resource, entry) => {
     expect(resource).toMatch(/^[a-z][a-z-]*$/);
     expect(entry.path).toBe(`/admin/${resource}`);
-    expect(MOUNTED.has(resource), `${resource} is not mounted in cms.routes.js`).toBe(true);
+    expect(isMounted(resource), `${resource} is not mounted with all eight endpoints`).toBe(true);
     expect(getResourceEntry(resource)).toBe(entry);
 
     expect(CAPABILITIES.has(entry.capability), `unknown capability ${entry.capability}`).toBe(true);
@@ -69,9 +82,9 @@ describe('resource registry', () => {
     }
   });
 
-  it('gives every entry a built Content nav item with the same capability', () => {
+  it('gives every entry a built nav item at its screen path with the same capability', () => {
     for (const entry of entries) {
-      const item = contentItems.find((i) => i.to === `/admin/content/${entry.resource}`);
+      const item = allItems.find((i) => i.to === screenPathOf(entry));
       expect(item, `no nav item for ${entry.resource}`).toBeTruthy();
       expect(item.soon).toBeFalsy();
       expect(item.capability).toBe(entry.capability);
@@ -80,7 +93,25 @@ describe('resource registry', () => {
 
   it('has an entry behind every built Content nav item', () => {
     for (const item of contentItems.filter((i) => !i.soon && i.to.startsWith('/admin/content/'))) {
-      expect(getResourceEntry(item.to.split('/')[3]), `no registry entry for ${item.to}`).toBeTruthy();
+      if (BESPOKE_CONTENT.includes(item.to)) continue;
+      const entry = getResourceEntry(item.to.split('/')[3]);
+      expect(entry, `no registry entry for ${item.to}`).toBeTruthy();
+      expect(screenPathOf(entry)).toBe(item.to);
+    }
+  });
+
+  it('keeps entries with their own address out of Content, and bespoke pages out of the registry', () => {
+    expect(screenPathOf(RESOURCES['rate-card'])).toBe('/admin/rate-card');
+    for (const path of BESPOKE_CONTENT) expect(getResourceEntry(path.split('/')[3])).toBeUndefined();
+  });
+
+  it('offers only icons the site can draw', async () => {
+    const { ICON_NAMES } = await import('@/components/site/DataIcon');
+    for (const entry of entries) {
+      const icon = flattenFields(entry.fields).find((f) => f.name === 'icon');
+      if (!icon) continue;
+      expect(icon.type, `${entry.resource} icon is not a picker`).toBe('select');
+      expect(icon.options.map((o) => o.value)).toEqual(ICON_NAMES);
     }
   });
 

@@ -7,6 +7,7 @@ import {
 } from '@/api/cmsApi';
 import { useResourceEntry } from '@/hooks/useResourceEntry';
 import { useConfirm } from '@/hooks/useConfirm';
+import { activeCopyOf, screenPathOf } from '@/config/admin/resourceRegistry';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { LocaleTabs } from '@/components/common/LocaleTabs';
@@ -19,13 +20,15 @@ import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import NotFoundPage from '@/pages/NotFoundPage';
 
 /**
- * `/admin/content/:resource/new` and `/admin/content/:resource/:id` — the create/edit
- * screen of every registry entry: the entry's fields in a `ResourceForm`, inside
- * `LocaleTabs` when it has translatable fields. A new record opens its own edit page
- * once saved, which is where its Nepali tab becomes available.
+ * `/admin/content/:resource/new` and `/admin/content/:resource/:id` (or under an entry's
+ * own `basePath`) — the create/edit screen of every registry entry: the entry's fields in a
+ * `ResourceForm`, inside `LocaleTabs` when it has translatable fields. A new record opens
+ * its own edit page once saved, which is where its Nepali tab becomes available.
+ *
+ * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
  */
-export default function ResourceEditPage() {
-  const { status, entry, canWrite } = useResourceEntry();
+export default function ResourceEditPage({ resource }) {
+  const { status, entry, canWrite } = useResourceEntry(resource);
   if (status === 'unknown') return <NotFoundPage />;
   if (status === 'forbidden') return <Navigate to="/admin" replace />;
   return <ResourceEditor key={entry.resource} entry={entry} canWrite={canWrite} />;
@@ -48,7 +51,8 @@ function ResourceEditor({ entry, canWrite }) {
   const [update] = useUpdateResourceMutation();
   const [remove, { isLoading: deleting }] = useDeleteResourceMutation();
 
-  const listHref = `/admin/content/${resource}`;
+  const listHref = screenPathOf(entry);
+  const readOnlyNew = isNew && !canWrite;
   const translatableFields = useMemo(
     () => flattenFields(entry.fields).filter((f) => entry.translatable?.includes(f.name)),
     [entry],
@@ -68,7 +72,7 @@ function ResourceEditor({ entry, canWrite }) {
   const onDelete = async () => {
     const ok = await confirm({
       title: `Delete this ${label}?`,
-      description: 'It leaves the website at once. Trash keeps it, and it can be restored from there.',
+      description: `${activeCopyOf(entry).deleteOne} Trash keeps it, and it can be restored from there.`,
       confirmLabel: 'Delete',
       destructive: true,
     });
@@ -88,6 +92,9 @@ function ResourceEditor({ entry, canWrite }) {
   const title = isNew ? `New ${label}` : record ? entry.titleOf(record) : label;
 
   let body;
+  if (readOnlyNew) {
+    return <Navigate to={listHref} replace />;
+  }
   if (error) {
     body = <ErrorState error={error} onRetry={refetch} />;
   } else if (!isNew && (isLoading || !record)) {
@@ -100,6 +107,7 @@ function ResourceEditor({ entry, canWrite }) {
         defaultValues={isNew ? entry.defaultValues : record}
         onSubmit={onSubmit}
         submitLabel={isNew ? `Create ${label}` : 'Save changes'}
+        readOnly={!canWrite}
         onCancel={() => navigate(listHref)}
         className={translatableFields.length ? 'pt-4' : undefined}
       />

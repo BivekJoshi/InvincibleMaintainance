@@ -48,6 +48,8 @@ export const QuotationsPage = route(() => import('@/pages/admin/QuotationsPage')
 export const QuotationBuilderPage = route(() => import('@/pages/admin/QuotationBuilderPage'));
 export const ResourceListPage = route(() => import('@/pages/admin/ResourceListPage'));
 export const ResourceEditPage = route(() => import('@/pages/admin/ResourceEditPage'));
+export const HomeComposerPage = route(() => import('@/pages/admin/HomeComposerPage'));
+export const MediaLibraryPage = route(() => import('@/pages/admin/MediaLibraryPage'));
 
 // Field app
 export const TechTodayPage = route(() => import('@/pages/tech/TechTodayPage'));
@@ -64,7 +66,10 @@ export const NotFoundPage = route(() => import('@/pages/NotFoundPage'));
  */
 const GROUPS = {
   public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage],
-  admin: [LeadsPage, LeadDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage],
+  admin: [
+    LeadsPage, LeadDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
+    HomeComposerPage, MediaLibraryPage,
+  ],
   tech: [TechJobPage, SurveyListPage, SurveyFormPage],
 };
 

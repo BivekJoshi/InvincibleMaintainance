@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-14. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-16. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -23,12 +23,15 @@ Updated 2026-09-14. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLA
 | **v2 · B Logging & audit** | Request context (AsyncLocalStorage) and `X-Request-Id`; pino redaction, phone masking, context mixin, `LOG_FILE` via pino-roll, optional Sentry; `AuditLog` gains `requestId` / `userAgent` / `actorType` / `event` / `before` / `after`; audit rows written inside the caller's transaction for all 7 write operations, one row per id on bulk writes; 38 named domain events (`AUDIT_EVENTS`, 7 more reserved for F); `GET /admin/audit-logs` filters | ✅ 2026-09-14 |
 | **v2 · C1 Admin UI primitives** | shadcn sheet/alert-dialog/textarea/popover/calendar/command/breadcrumb/scroll-area/radio-group/accordion/collapsible/progress/toggle-group; Vitest + Testing Library as `npm test` (in CI); DataTable v2 (row and bulk actions, page size, URL-synced filter bar, trash via `?deleted=true`, dnd-kit reorder with move buttons); `<ResourceForm>` with 16 field types, server-error mapping and an unsaved-changes guard (data router); `LocaleTabs`; `MediaPicker` with alt-required upload; `ConfirmDialog` / `useConfirm`; Devanagari slug fix in the API | ✅ 2026-09-14 |
 | **v2 · C2 Registry, shell & first resources** | Resource registry (`config/admin/resources/`) rendered by generic `ResourceListPage` / `ResourceEditPage` under `/admin/content/:resource`; `cmsApi` (8 parameterised endpoints, `Cms` tags); `cms.schema.js` mirroring all CMS schemas; FAQs and process steps managed from registry entries alone; admin nav regrouped Overview · Sales · Operations · Finance · Aftercare · Content · Platform, capability-filtered, EDITOR lands on Content; route breadcrumb, brand from settings, notification panel; public FAQs localised (`?locale=ne`); purge from Trash fixed in the CRUD factory; dead barrels removed | ✅ 2026-09-14 |
+| **v2 · D1 Services, rate card, media & home page** | Registry screens for service categories (icon picker, Nepali name), services (category/type/featured filters, price range in rupees, unit, warranty, image, SEO, Nepali name/card text/page text, View on site) and hero slides (CTA link checked against the site's routes); the rate card as a registry entry under Sales at `/admin/rate-card` (`basePath`, quotations:read/write, read-only for ACCOUNTANT, "In use"/Retire); bespoke home composer (`/admin/content/home`: drag or Move up/down, visibility, item limit, Save/Discard, empty-section flag) and media library (`/admin/content/media`: folder tree, search, drag-and-drop upload with required alt, dimensions and WebP variants, copy URL, alt/caption/folder edit, soft delete, Delete forever for ADMIN). API: the four missing rate-card endpoints, upper-case codes; service excerpt 40–200 and the price range checked on partial updates; home `limit` 1–50; non-empty media alt; validated folders, subfolders block a folder delete. Kit fixes: clean form after a save, toasts no longer close sheets | ✅ 2026-09-16 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, leads (list + detail), the site-survey inbox and review screen, the
 quotation builder, the field app for technicians and surveyors, and the admin UI kit every later
 screen is built from (DataTable v2, ResourceForm, LocaleTabs, MediaPicker, useConfirm). CMS screens are
-registry entries: FAQs and process steps are managed end to end, including Nepali copy, from a config file each.
+registry entries: FAQs, process steps, service categories, services and hero slides are managed end to end,
+including Nepali copy, from a config file each, and so is the rate card under Sales. The home page order and the
+media library have screens of their own.
 
 ## Site surveys — how the business actually runs
 
@@ -99,8 +102,9 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A, B and C (C1 + C2) are done; next is **Phase D1** of Services & CMS (`docs/prompts/`), built as registry
-entries on the C2 pattern.
+Phases A, B, C (C1 + C2) and D1 are done; next is **Phase D2** — projects with their gallery, the remaining content
+(offers, pricing plans, features, list items, content blocks, gallery, testimonials with moderation), pages and posts
+with their public routes, and the site settings editor (`docs/prompts/PHASE-D2-content-settings.md`).
 
 ## Verification
 
@@ -152,6 +156,36 @@ entries on the C2 pattern.
   reorder announcer inside `<table>` (C1 kit), and a 404 refetch after deleting from an edit page.
 - Phase C2 second resource: `process-steps` (entry + registry line + nav item) was written in under a minute, with
   its registry test green 40 s after starting; its screens passed the browser walk-through above unchanged.
+- Phase D1 (2026-09-16): backend unit 92 → **113** (the 20 shared service-schema cases, the long-excerpt case), API
+  416 → **426** — rate card surface (get, toggle, reorder, trash, restore, purge needs cms:purge), upper-case codes,
+  a rate change on `/public/pricing`, excerpt 40–200, price range on create and on partial updates, home reorder with a
+  limit, home limit/key refusal, a Nepali hero slide on `/public/home?locale=ne`, non-empty alt, folder rules. Run
+  against the old code, 7 of them fail (the rest guard behaviour that already worked). The API suite ran three times
+  in a row with no reset, all green. Frontend 61 → **105 tests in 15 files** — the service schema mirror on the API's
+  own cases, units against the API's list, the rate-card store tags and the home save, the folder tree, the home
+  composer (Move up, visibility, save payload, a refused limit, read-only for SALES), the rate card screens as SALES
+  and ACCOUNTANT and not under `/admin/content`, a clean form after a transforming save, a toast press keeping a sheet
+  open (the last two failed before their fixes). `npm run lint`: 0 errors in both apps (26 warnings in the frontend,
+  unchanged); `npm run build` succeeds, and the registry entries stay in the admin chunk.
+- Phase D1 browser walk-through (headless Chrome, dev servers, dev database; **57/57 checks**). As
+  `editor@gharjatan.com.np`: lands on Content › Home page; moved "How it works" to the top and hid "Popular services";
+  leaving unsaved asked first; saved — `/public/home` and the reloaded `/` agree. New hero slide: a `/nowhere` link is
+  refused; an image uploaded through the picker (Upload stays disabled until alt text is typed); Nepali headline saved;
+  moved first with Reorder → the public headline and `/public/home?locale=ne` show it. New category with the
+  `droplets` icon; new service in it: the boilerplate card text and a To below From are refused; Rs 500–1,250 per
+  sq.ft stored as 50000–125000 paisa; Nepali name saved; it appears at `/services`, at `/services/:slug` with the
+  range, and in Nepali after the language switch; the services list filters by that category from the URL. Media
+  library: created a folder, uploaded into it, dimensions 900 × 600 and 400w/800w shown, Copy URL put the address on
+  the clipboard, an empty alt is refused, alt and a Devanagari caption saved, closing with an unsaved caption asked
+  first and kept the saved one, the non-empty folder was not deleted, the file was soft-deleted, and EDITOR was not
+  offered Delete forever. No page overflow at 400px on the media library, the composer and the services list. As
+  `sales@gharjatan.com.np`: Rate card in Sales and no Content; the banner; a rate changed by Rs 11 → `/public/pricing`
+  and `/pricing` show it; `/admin/content/faqs` returns to the dashboard; breadcrumb Sales › Rate card › Edit. As
+  `accounts@gharjatan.com.np`: the rate is read-only with no Save. As ADMIN: audit rows exist for the slide, the
+  service, the category, the rate (with before/after), the image (`cms.deleted`), the home sections and the
+  translations. Console: only the missing `/favicon.ico` and the deliberate "folder is not empty" 400. The walk found
+  five bugs, fixed before this record (see ADMIN-PLAN D1 deviations). Everything it created was purged afterwards and
+  the home order, the rate and the hero slide order were put back.
 - Phase A browser walk-through (headless Chrome against the dev servers): signed in as
   `sales@gharjatan.com.np`, exported leads filtered to NEW — the first export call was forced to 401, the page
   refreshed once and retried, both calls carried the Bearer token, and the file (UTF-8 BOM) held exactly the 2
@@ -191,6 +225,15 @@ Gaps filled: `POST /admin/quotations/:id/convert-to-job`, `POST|DELETE /admin/jo
 - A quotation whose `validUntil` has already passed can still be sent.
 - Converting a lead with an unknown `surveyorId` answers 409 `FK_CONSTRAINT` ("referenced by other records")
   rather than naming the surveyor — the convert rolls back correctly, the message is just unhelpful.
+
+- The public estimator prices from each service's own range, not the rate card (see ADMIN-PLAN D1 deviations).
+- The hero band shows the first active slide's words but never its image; the seeded third slide links to `/about`,
+  which the site does not serve.
+- A money or number field emptied in a form is left out of the request (`ResourceForm` sends `undefined`), so a saved
+  service price range cannot be cleared back to "priced on inspection" from the editor.
+- Media has no Trash view: a soft-deleted file can only be restored through the database.
+- `/public/home` treats a visible section with no content as absent, so the composer can only flag it for sections the
+  site was already told to show.
 
 - Quotation/invoice PDFs are not generated; the public token pages render the document in HTML
   and print cleanly. Add Puppeteer if a real PDF file is required.

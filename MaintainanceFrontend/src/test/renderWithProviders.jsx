@@ -25,12 +25,13 @@ export const signedInAs = (role) => ({
  * uses, and the only kind `useBlocker` works in.
  *
  * @param {import('react').ReactElement} ui
- * @param {{ path?: string, routes?: object[], preloadedState?: object }} [options]
- *   `routes` adds sibling routes to navigate to, e.g. `{ path: '/elsewhere', element: <p>Elsewhere</p> }`
+ * @param {{ path?: string, routes?: object[], preloadedState?: object, initialPath?: string }} [options]
+ *   `routes` adds sibling routes to navigate to, e.g. `{ path: '/elsewhere', element: <p>Elsewhere</p> }`;
+ *   `initialPath` starts somewhere other than `path` (with `path: '*'` and `<Routes>` inside `ui`)
  */
-export function renderWithProviders(ui, { path = '/', routes = [], preloadedState } = {}) {
+export function renderWithProviders(ui, { path = '/', routes = [], preloadedState, initialPath = path } = {}) {
   const store = makeStore(preloadedState);
-  const router = createMemoryRouter([{ path, element: ui }, ...routes], { initialEntries: [path] });
+  const router = createMemoryRouter([{ path, element: ui }, ...routes], { initialEntries: [initialPath] });
   const result = render(
     <Provider store={store}>
       <RouterProvider router={router} />

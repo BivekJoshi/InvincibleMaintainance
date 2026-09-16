@@ -53,6 +53,7 @@ export const serviceCategorySchema = z.object({
   isActive,
 });
 
+/** The templated card copy the old site shipped on every service ("Professional … with expert tools and results."). */
 const BOILERPLATE = /^professional .+ with expert tools and results\.?$/i;
 
 export const serviceSchema = z.object({
@@ -62,8 +63,8 @@ export const serviceSchema = z.object({
   excerpt: z
     .string()
     .trim()
-    .min(20, 'Write at least 20 characters — this is the card text customers read')
-    .max(400)
+    .min(40, 'Write at least 40 characters — this is the card text customers read')
+    .max(200, 'Keep it to 200 characters — the service card shows about two lines')
     .refine((v) => !BOILERPLATE.test(v), 'Replace the placeholder copy with a real description of this service'),
   body: optionalText,
   icon: z.string().trim().max(60).optional(),
@@ -231,4 +232,17 @@ export const postSchema = z.object({
   ...seoFields,
   sortOrder,
   isActive,
+});
+
+/** Mirrors `mediaUpdateSchema`: alt text can change but never be emptied. */
+export const mediaUpdateSchema = z.object({
+  alt: z.string().trim().min(1, 'Describe the picture — alt text cannot be empty').max(300),
+  caption: z.string().trim().max(500).optional(),
+  folderId: z.string().nullable().optional(),
+});
+
+/** Mirrors `mediaFolderSchema`. */
+export const mediaFolderSchema = z.object({
+  name: z.string().trim().min(1, 'Folder name is required').max(80),
+  parentId: z.string().min(1).nullable().optional(),
 });

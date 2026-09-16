@@ -120,6 +120,35 @@ describe('ResourceForm', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
+  it('is clean after a save, even when the schema transforms a value (an empty optional text, an upper-cased code)', async () => {
+    const user = userEvent.setup();
+    const transforming = z.object({
+      code: z.string().transform((v) => v.toUpperCase()),
+      note: z.string().optional().or(z.literal('')).transform((v) => v || undefined),
+    });
+    const specs = [
+      { name: 'code', type: 'text', label: 'Code' },
+      { name: 'note', type: 'textarea', label: 'Note' },
+    ];
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <>
+        <ResourceForm schema={transforming} fields={specs} defaultValues={{ code: 'WP' }} onSubmit={onSubmit} />
+        <Link to="/elsewhere">Go elsewhere</Link>
+      </>,
+      { path: '/edit', routes: [elsewhere] },
+    );
+
+    await user.type(screen.getByLabelText('Code'), '-x');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ code: 'WP-X' });
+
+    await user.click(screen.getByRole('link', { name: 'Go elsewhere' }));
+    expect(await screen.findByText('Elsewhere')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
   it('fills the slug from a Devanagari title on a new record, until the slug is edited', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ResourceForm schema={schema} fields={fields} onSubmit={vi.fn()} />);

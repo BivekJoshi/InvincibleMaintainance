@@ -20,6 +20,9 @@ const ICONS = {
   timer: Timer, umbrella: Umbrella, wallet: Wallet, wrench: Wrench, zap: Zap,
 };
 
+/** Every name a content row may use — the back office offers exactly these. */
+export const ICON_NAMES = Object.keys(ICONS);
+
 /** Renders the icon a content row asked for, falling back to a neutral mark. */
 export function DataIcon({ name, className }) {
   const Icon = ICONS[name] ?? Compass;

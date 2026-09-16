@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmsApi } from '@/api/cmsApi';
 import { publicApi } from '@/api/publicApi';
+import { quotationsApi } from '@/api/quotationsApi';
 import { makeStore, signedInAs } from '@/test/renderWithProviders';
 
 /**
@@ -38,7 +39,8 @@ beforeEach(() => {
     if (request.method === 'DELETE' || path.endsWith('/reorder')) return new Response(null, { status: 204 });
     if (request.method === 'POST') return json({ data: { id: 'f2' } }, 201);
     if (request.method !== 'GET') return json({ data: { id: path.split('/')[3], isActive: false } });
-    if (path === '/admin/faqs' || path === '/admin/process-steps') {
+    if (path === '/admin/home-sections') return json({ data: [{ key: 'hero', sortOrder: 0, isVisible: true }] });
+    if (path === '/admin/faqs' || path === '/admin/process-steps' || path === '/admin/rate-card') {
       return json({ data: [{ id: 'f1' }], meta: { page: 1, limit: 20, total: 1, pages: 1 } });
     }
     if (path === '/public/bootstrap') return json({ data: { settings: {} } });
@@ -115,5 +117,30 @@ describe('cmsApi', () => {
     const store = await primedStore();
     await store.dispatch(cmsApi.endpoints.reorderResource.initiate({ resource: 'faqs', items: [{ id: 'f1', sortOrder: 3 }] })).unwrap();
     expect(await refetched()).toEqual(['/admin/faqs', '/public/bootstrap']);
+  });
+
+  it('a rate card write also refetches the quotation builder’s rate card; an FAQ write does not', async () => {
+    const store = await primedStore();
+    await store.dispatch(quotationsApi.endpoints.getRateCard.initiate({ limit: 100 }));
+    calls.length = 0;
+    await store.dispatch(cmsApi.endpoints.updateResource.initiate({ resource: 'rate-card', id: 'r1', body: { rate: 12 } })).unwrap();
+    expect(calls.find((c) => c.method === 'PUT').path).toBe('/admin/rate-card/r1');
+    expect(await refetched()).toEqual(['/admin/rate-card', '/public/bootstrap']);
+
+    calls.length = 0;
+    await store.dispatch(cmsApi.endpoints.updateResource.initiate({ resource: 'faqs', id: 'f1', body: {} })).unwrap();
+    expect(await refetched()).not.toContain('/admin/rate-card');
+  });
+
+  it('saving the home page sends every section and refetches the composer and the site', async () => {
+    const store = await primedStore();
+    await store.dispatch(cmsApi.endpoints.getHomeSections.initiate());
+    calls.length = 0;
+    const items = [{ key: 'hero', sortOrder: 0, isVisible: false }];
+    await store.dispatch(cmsApi.endpoints.updateHomeSections.initiate(items)).unwrap();
+    const put = calls.find((c) => c.method === 'PUT');
+    expect(put.path).toBe('/admin/home-sections');
+    expect(JSON.parse(put.body)).toEqual({ items });
+    expect(await refetched()).toEqual(['/admin/home-sections', '/public/bootstrap']);
   });
 });

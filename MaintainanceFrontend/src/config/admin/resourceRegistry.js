@@ -1,5 +1,9 @@
 import { faqs } from './resources/faqs';
 import { processSteps } from './resources/processSteps';
+import { heroSlides } from './resources/heroSlides';
+import { serviceCategories } from './resources/serviceCategories';
+import { services } from './resources/services';
+import { rateCard } from './resources/rateCard';
 
 /**
  * Every CMS resource the back office manages through the generic pages
@@ -12,6 +16,10 @@ import { processSteps } from './resources/processSteps';
  * @typedef {object} ResourceEntry
  * @property {string} resource        URL segment in `/admin/content/:resource`, the API segment and the Cms tag id
  * @property {string} path            API collection path, always `/admin/<resource>`
+ * @property {string} [basePath]      the screen's own address when it is not content (`/admin/rate-card`); it
+ *                                    then needs a fixed route in `AppRoutes` and is unknown under `/admin/content`
+ * @property {string} [notice]        a standing note above the list, e.g. what else reads this data
+ * @property {Partial<ActiveCopy>} [activeCopy] words for `isActive` when it does not mean "on the website"
  * @property {string} model           Prisma model name for `/admin/translations` (`faq`, `processStep`)
  * @property {string} label           one record, e.g. 'FAQ'
  * @property {string} labelPlural     the list, e.g. 'FAQs'
@@ -30,10 +38,34 @@ import { processSteps } from './resources/processSteps';
  * @property {string} [searchPlaceholder]
  * @property {string} [emptyTitle]
  * @property {string} [emptyDescription]
+ *
+ * @typedef {object} ActiveCopy
+ * @property {string} column       the switch column's header
+ * @property {string} switchLabel  the switch's accessible name, before the record's title
+ * @property {string} turnOn       row action
+ * @property {string} turnOff      row action
+ * @property {string} turnedOn     toast, after the label
+ * @property {string} turnedOff    toast, after the label
+ * @property {string} deleteOne    first sentence of the delete confirmation, one record
+ * @property {string} deleteMany   the same, several records
  */
 
+/** @type {ActiveCopy} */
+const WEBSITE_COPY = {
+  column: 'On site',
+  switchLabel: 'Show on the website:',
+  turnOn: 'Show on website',
+  turnOff: 'Hide from website',
+  turnedOn: 'is on the website',
+  turnedOff: 'is hidden from the website',
+  deleteOne: 'It leaves the website at once.',
+  deleteMany: 'They leave the website at once.',
+};
+
 /** @type {Record<string, ResourceEntry>} */
-export const RESOURCES = Object.fromEntries([faqs, processSteps].map((entry) => [entry.resource, entry]));
+export const RESOURCES = Object.fromEntries(
+  [serviceCategories, services, heroSlides, faqs, processSteps, rateCard].map((entry) => [entry.resource, entry]),
+);
 
 /**
  * @param {string|undefined} resource
@@ -42,3 +74,9 @@ export const RESOURCES = Object.fromEntries([faqs, processSteps].map((entry) => 
 export function getResourceEntry(resource) {
   return resource && Object.hasOwn(RESOURCES, resource) ? RESOURCES[resource] : undefined;
 }
+
+/** Where an entry's screens live: its list, `…/new` and `…/:id`. */
+export const screenPathOf = (entry) => entry.basePath ?? `/admin/content/${entry.resource}`;
+
+/** @returns {ActiveCopy} */
+export const activeCopyOf = (entry) => ({ ...WEBSITE_COPY, ...entry.activeCopy });

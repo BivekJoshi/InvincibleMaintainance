@@ -146,3 +146,11 @@ export function imageUrl(media, width = 800) {
   if (typeof media === 'string') return media;
   return media.variants?.[String(width)] ?? media.variants?.['800'] ?? media.url ?? null;
 }
+
+/** 1 234 567 → "1.2 MB". */
+export function formatBytes(bytes) {
+  if (bytes == null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

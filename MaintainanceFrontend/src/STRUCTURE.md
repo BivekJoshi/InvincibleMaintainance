@@ -45,7 +45,11 @@ Import them directly — `import { useGetLeadsQuery } from '@/api/leadsApi'`.
 (`hard: true` for purge) and `restoreResource`, each taking `{ resource, … }` (`'faqs'`, `'process-steps'`).
 A list is tagged `{ type: 'Cms', id: resource }`, a record `{ type: 'Cms', id: 'resource:id' }`. Create and
 reorder invalidate the list; update, toggle, delete and restore invalidate the list and that record. Every
-write also invalidates `Public`, so the site's cached pages in the same tab follow the change.
+write also invalidates `Public`, so the site's cached pages in the same tab follow the change — and whatever
+`ALSO_READ_AS` lists for that resource (`rate-card` → the quotation builder's `RateCard` list). It also holds the
+home composer's `getHomeSections` / `updateHomeSections` (tag `{ type: 'Cms', id: 'home-sections' }`).
+`mediaApi.js` has the picker's reads and upload plus the library's `updateMedia`, `deleteMedia`,
+`createMediaFolder` and `deleteMediaFolder`.
 
 ## components/
 
@@ -57,6 +61,8 @@ write also invalidates `Public`, so the site's cached pages in the same tab foll
 | `layout/` | The three shells — `SiteLayout`, `AdminLayout/`, `TechLayout` — plus what the public one is made of: `SiteHeader/`, `SiteFooter`, `MobileCallBar`. |
 | `site/` | Marketing presentation, **one component per file**: `ServiceCard`, `ProjectCard`, `CategoryTile`, `PageHero`, `SectionShell`, `SectionHeading`, `Media`, `Breadcrumb`, `PromiseList`, `FaqList`, `FilterChip`, `PriceTag`, `Cta`, `Eyebrow`, `Stars`, `DataIcon`, `ProseBody` (long CMS copy — shared with the admin's prose preview). |
 | `documents/` | The customer-facing sheet a token link opens: `DocumentShell`, `DocumentHeader`, `LineItemsTable`, `TotalsList`, `DocumentNotice`. Shared by the quotation, invoice and warranty pages. |
+| `media/` | The media library screen's own parts: `MediaFolderTree` (folders as an indented tree) and `MediaDetailsSheet` (one file's facts, URL and alt/caption/folder form — a `ResourceForm` sheet). |
+| `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
 | `public/`, `booking/`, `leads/`, `quotations/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. |
 
 A component used by exactly one page can live beside its domain here; a component
@@ -101,13 +107,17 @@ Server-side paging, sorting and search over `?page&limit&sort&q`, with the param
 ### `common/ResourceForm/ResourceForm.jsx` — a form described by data
 
 `<ResourceForm schema fields defaultValues onSubmit submitLabel mode="page|sheet" />`, plus `onCancel`,
-`open` / `onOpenChange` / `title` / `description` for a sheet, `guard`, `extraActions`.
+`open` / `onOpenChange` / `title` / `description` for a sheet, `guard`, `extraActions`, `readOnly` (every control
+disabled, no Save — for a role that may read but not write) and `intro` (content above the fields, e.g. the
+media sheet's preview).
 
 - `defaultValues` is a record **as the API returns it** (money in paisa). `formValues.js` converts it for
   the form and back into a request body (money stays in rupees — requests send rupees).
 - `onSubmit(body)` returns the mutation's `unwrap()`. A rejection's `error.details` lands on the named
   fields (`serverErrors.js` — both the `[{ path, message }]` and the `['field']` DUPLICATE shape); anything
   unplaced shows in an alert above the form, and the first failing field takes focus.
+- After a save the form is clean: its baseline becomes the inputs' own values, not the schema's output (a
+  transform such as "empty optional text → undefined" would otherwise leave it dirty and trip the leave guard).
 - Controls are disabled while saving. Leaving with unsaved changes — a link, Back, closing the tab or
   the sheet — asks first (`hooks/useUnsavedChangesGuard`). One guard per page: `guard={false}` on any second form.
 - Render it once the record has loaded, so a saved slug is known to be saved.
@@ -122,7 +132,7 @@ One file per field type under `fields/`. Every spec has `name`, `type`, `label`,
 | `number` | number | `min`, `max`, `step` |
 | `money` | **rupees** (typed with grouping, `1,23,45,678.90`); the record's paisa converted on load | — |
 | `switch` | boolean | — |
-| `select` / `enum` | string; optional fields get "None" | `options` (values or `{ value, label }`), `noneLabel` |
+| `select` / `enum` | string; optional fields get "None" | `options` (values or `{ value, label }` — a plain value is title-cased, so pass `{ value, label }` for units and codes; a label may be JSX, as the icon picker's are), `noneLabel` |
 | `relation` | id, or null to unlink | `relation: { path, labelKey?, valueKey?, params? }` |
 | `date` | UTC ISO of the start of that day in Kathmandu | — |
 | `datetime` | UTC ISO; shown and typed in Kathmandu time | `defaultTime` |
@@ -143,7 +153,11 @@ One file per field type under `fields/`. Every spec has `name`, `type`, `label`,
 - **`common/MediaPicker/MediaPicker.jsx`** — `<MediaPicker open onOpenChange multiple selected onSelect(ids, rows)>`.
   Library tab: search, folder filter, 24 per page. Upload tab (`media:write` only): alt text is required per
   picture, one file per request; a finished upload is selected. `MediaThumb` shows the stored blurhash, then the
-  400px variant. Endpoints in `api/mediaApi.js`.
+  400px variant. `MediaGrid` / `MediaPager` are the grid and pager the picker and the library screen share;
+  `MediaUpload` also takes `incoming` (files dropped elsewhere on a page). Endpoints in `api/mediaApi.js`.
+- **Overlays and toasts** — `ui/sheet.jsx` and `ui/dialog.jsx` ignore a press on a toast (`helpers/overlay.js`,
+  `[data-toaster]` on the Toaster). Toasts sit bottom-right, over a sheet's Save button, and pressing one must not
+  close the form underneath.
 - **`common/ConfirmDialog.jsx` + `hooks/useConfirm.jsx`** — `const [confirm, confirmDialog] = useConfirm()`,
   then `await confirm({ title, description, confirmLabel, destructive })` → true / false. The caller renders
   `confirmDialog`; there is deliberately no app-wide provider, so alert-dialog stays out of the marketing bundle.
@@ -152,6 +166,27 @@ One file per field type under `fields/`. Every spec has `name`, `type`, `label`,
   queries (`searchRecords`, `getRecord`).
 
 ## The resource registry
+
+### Which screen is which (Phase D1)
+
+| Resource | Screen | Address · capability (read / write) | Nav group | Public page it feeds |
+|---|---|---|---|---|
+| FAQs | registry `faqs` | `/admin/content/faqs` · cms | Content | service pages |
+| Process steps | registry `process-steps` | `/admin/content/process-steps` · cms | Content | home "How it works" |
+| Service categories | registry `service-categories` | `/admin/content/service-categories` · cms | Content | header rail, home tiles, `/services` filter |
+| Services | registry `services` | `/admin/content/services` · cms | Content | `/services`, `/services/:slug`, home, `/pricing`, estimator |
+| Hero slides | registry `hero-slides` | `/admin/content/hero-slides` · cms | Content | home hero (the first active slide's words) |
+| Rate card | registry `rate-card`, own `basePath` | `/admin/rate-card` · quotations:read / quotations:write | Sales | quotation lines, survey pricing, `/pricing` rate table |
+| Home page | **bespoke** `pages/admin/HomeComposerPage` | `/admin/content/home` · cms | Content | `/` section order and visibility |
+| Media library | **bespoke** `pages/admin/MediaLibraryPage` | `/admin/content/media` · cms:read to open, media:write to change | Content | every image |
+
+Why two are bespoke: the **home composer** edits a fixed set of 19 sections with no create or delete, saved
+together in one `PUT /admin/home-sections` — a draft with Save / Discard, not a list of records. The **media
+library** is a grid of files with folders, drag-and-drop upload and a details sheet, not rows and a form. Both
+are listed in `BESPOKE_CONTENT` in `adminNav.js`, and the registry test checks they have no entry. Their static
+routes outrank `/admin/content/:resource`.
+
+### How a registry screen works
 
 A CMS resource screen is **a config file, not a page**. `config/admin/resources/<resource>.jsx` describes the
 resource; `config/admin/resourceRegistry.js` lists the entries; two generic pages render any of them:
@@ -182,6 +217,14 @@ An entry holds:
 | `translatable` | field names edited on the Nepali tab (text fields only) |
 | `titleOf(record)`, `publicHref(record)` | names a record; where it shows on the site, or `null` when it shows nowhere |
 | `searchPlaceholder`, `emptyTitle`, `emptyDescription` | list copy |
+| `basePath` | the screen's own address when it is not content (`/admin/rate-card`). It needs fixed routes in `AppRoutes` that pass `resource` to the generic pages, is unknown under `/admin/content/…`, and has its nav item in its own group. `screenPathOf(entry)` answers either way |
+| `notice` | a standing note above the list — what else reads this data |
+| `activeCopy` | words for `isActive` when it does not mean "on the website" (the rate card: **In use** / Retire). `activeCopyOf(entry)` fills in the defaults |
+
+A role with `capability` but not `writeCapability` (ACCOUNTANT on the rate card) sees the list with disabled
+switches and no New, and the edit page read-only (`ResourceForm readOnly`); `…/new` sends it back to the list.
+
+Icons are picked, not typed: `resources/iconOptions.jsx` offers exactly `DataIcon`'s `ICON_NAMES`, each drawn.
 
 ### Worked example: adding a resource
 
@@ -214,7 +257,11 @@ An entry holds:
 4. **Give it a nav item** — `{ to: '/admin/content/process-steps', label: 'Process steps', icon, capability: 'cms:read' }`
    in the Content group of `config/admin/adminNav.js` (or turn a `soon` item into a built one).
 5. `npm test` — `resourceRegistry.test.js` fails until the path is mounted in the API, every field is in the schema,
-   every translatable field is a text field, and the nav item and the entry agree on the capability.
+   every translatable field is a text field, and the nav item and the entry agree on the capability. A resource
+   mounted by hand outside `cms.routes.js` (the rate card, in `crm.routes.js`) is listed in the test's
+   `HAND_MOUNTED` and must mount all eight endpoints.
+6. When another screen reads the same data through its own endpoint, add its tag to `ALSO_READ_AS` in
+   `api/cmsApi.js` (the rate card also invalidates the quotation builder's `RateCard` list).
 
 Check before step 2 how the **public site** reads the model: its order column (`sortable`), where a record shows
 (`publicHref`), and whether the public query overlays translations (`withLocale`) — a Nepali tab the site never
@@ -231,9 +278,10 @@ without a DOM in `adminNav.test.js`):
 - **`navForRole(role)`** — the items the role's capabilities allow, empty groups dropped. The same map the API
   enforces (`helpers/permissions.js`); the nav only hides, the API refuses.
 - **`landingPathFor(role)`** — where `/admin` sends a role. An EDITOR lands on Content (`/admin/content` →
-  FAQs), and the Dashboard item is hidden from a role that lands elsewhere. `routes/AdminLanding.jsx` does the redirect.
+  Home page), and the Dashboard item is hidden from a role that lands elsewhere. `routes/AdminLanding.jsx` does the redirect.
 - **`contentHomeFor(role)`** — the first built Content screen the role can open.
-- **`breadcrumbsFor(pathname)`** — group › screen › New / Edit / Details, from the nav; `AdminBreadcrumb` shows it
+- **`breadcrumbsFor(pathname)`** — group › screen › New / Edit / Details, from the nav (an item's `editLabel`
+  overrides the last word — the rate card says Edit although it is in Sales); `AdminBreadcrumb` shows it
   in the header, so no page sets its own.
 
 The header's brand comes from `useSiteSettings` (the company name in settings). The bell is `NotificationPanel`:
@@ -365,7 +413,11 @@ deliberate copy of one rule; change them together.
 `schemas/fields.js` holds field-level building blocks (`nepaliPhone`, `personName`,
 `rupees`); the `*.schema.js` files compose them. These mirror the backend's zod
 schemas — when an API rule changes, change it here in the same commit. `cms.schema.js` mirrors the
-whole of the API's `shared/schemas/cms.js`, one schema per CMS resource, for the registry entries.
+whole of the API's `shared/schemas/cms.js`, one schema per CMS resource, for the registry entries, plus
+`mediaUpdateSchema` and `mediaFolderSchema`; `rateCard.schema.js` mirrors `rateCardItemSchema` from the API's
+`shared/schemas/crm.js`. `cms.schema.test.js` runs the API's own service cases
+(`MaintainanceBackend/tests/fixtures/serviceSchemaCases.js`) against the mirror, and checks `UNITS` against the
+API's `shared/enums.js` — the one test import that is a relative path, because the fixture is outside `src/`.
 There is no `formKit.js`-style barrel for it: import the schema you need.
 
 `useZodForm(schema, options)` is the only place `zodResolver` is imported.
@@ -379,22 +431,24 @@ modes and how one resolves), and `site/` — the storefront's own copy: `siteNav
 (the nav, and the paths a CMS link is validated against), `promises.js` (free
 inspection / 2-hour response / 1-month warranty, in one place), `company.js` (the
 settings keys, and what the header shows before `/public/bootstrap` answers). `admin/` is the back
-office's own: `adminNav.js` (the grouped nav, landing, breadcrumbs), `resourceRegistry.js` and
-`resources/` (one entry per CMS resource — see "The resource registry").
+office's own: `adminNav.js` (the grouped nav, landing, breadcrumbs, `BESPOKE_CONTENT`), `resourceRegistry.js` and
+`resources/` (one entry per CMS resource — see "The resource registry"), and `homeSections.js` (what each home
+section shows, where its content is edited, which ones take a `limit`, and `toSectionItems`).
 
 `helpers/` is behaviour with no state: `format.js` (money — `rupeesToPaisa`, `parseRupees`,
 `formatRupees` — dates, Kathmandu time and `toKathmanduParts` / `fromKathmanduParts` for inputs),
 `slug.js` (a copy of the API's `slugify` — change both together), `prose.js` (`splitParagraphs`),
 `links.js` (`siteHref` — an editor's typo must not become a dead CTA),
 `permissions.js` (`can(role, capability)` — navigation only; the API is the authority),
-`utils.js` (`cn`), `offlineQueue.js` (IndexedDB queue for the field app).
+`utils.js` (`cn`), `offlineQueue.js` (IndexedDB queue for the field app), `mediaFolders.js`
+(`flattenFolderTree`), `overlay.js` (`ignoreToastInteraction`). `format.js` also has `formatBytes`.
 
 `config/`, `helpers/` and `hooks/` have no barrel files (`config.js`, `helpers.js` and `hooks.js` had no importers
 and were removed in C2) — import the module itself.
 
 `hooks/` also holds the admin kit's behaviour: `useConfirm`, `useUnsavedChangesGuard`,
 `useDebouncedValue`, `useListParams` (whose `defaults` are compared by value), and `useResourceEntry`
-(the registry entry behind `/admin/content/:resource`, with the capability check).
+(the registry entry behind `/admin/content/:resource` — or a fixed route's `resource` — with the capability check).
 
 `hooks/useSiteSettings.js` sits between the two: it reads the cached bootstrap
 query once and hands back the company's name, numbers and address with the
@@ -415,7 +469,8 @@ every new form.
 3. **Add shadcn components with the CLI**, never by hand-copying.
 4. New admin screens are built from the admin kit — `DataTable` and `ResourceForm`
    in `components/common/`. Do not hand-roll another table or form. A CMS resource screen is
-   a **registry entry** in `config/admin/resources/`, never a page of its own.
+   a **registry entry** in `config/admin/resources/`, never a page of its own — the exceptions are
+   screens that are not a list and a form (the home composer, the media library; see the table above).
 5. Colours come from the CSS variables in `styles/globals.css`. No hardcoded hex,
    and no raw Tailwind palette either — `bg-emerald-50 dark:bg-emerald-950` is a
    fourth palette that no theme switch can follow. Use the semantic tokens:

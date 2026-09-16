@@ -1,6 +1,7 @@
 import {
-  Briefcase, Building2, CalendarDays, ClipboardCheck, Contact, FileText, HelpCircle, Image, LayoutDashboard,
-  ListOrdered, Package, Receipt, ScrollText, Settings, ShieldCheck, Timer, UserCog, Users, Wallet, Wrench,
+  Briefcase, Building2, CalendarDays, ClipboardCheck, Contact, FileText, GalleryHorizontal, HelpCircle, Home, Image,
+  LayoutDashboard, LayoutGrid, ListOrdered, Package, Receipt, Ruler, ScrollText, Settings, ShieldCheck, Timer,
+  UserCog, Users, Wallet, Wrench,
 } from 'lucide-react';
 import { can } from '@/helpers/permissions';
 
@@ -13,9 +14,13 @@ import { can } from '@/helpers/permissions';
  * to the dashboard reads as a broken app, not as an unbuilt one.
  *
  * A built content item points at `/admin/content/<resource>` and must have an entry in
- * `resourceRegistry.js` with the same capability; the registry test enforces both ways.
+ * `resourceRegistry.js` with the same capability, unless it is one of the bespoke content
+ * pages (`BESPOKE_CONTENT`); an entry with its own `basePath` has an item at that path in
+ * whichever group it belongs to. The registry test enforces all of it.
  *
- * @typedef {{ to: string, label: string, icon: import('react').ElementType, capability?: string, end?: boolean, soon?: boolean }} NavItem
+ * `editLabel` names the last crumb under an item (`Edit` for content, `Details` elsewhere).
+ *
+ * @typedef {{ to: string, label: string, icon: import('react').ElementType, capability?: string, end?: boolean, soon?: boolean, editLabel?: string }} NavItem
  * @typedef {{ key: string, label: string, items: NavItem[] }} NavGroup
  */
 
@@ -35,6 +40,7 @@ export const ADMIN_NAV = [
       { to: '/admin/customers', label: 'Customers', icon: Contact, capability: 'customers:read', soon: true },
       { to: '/admin/surveys', label: 'Site surveys', icon: ClipboardCheck, capability: 'surveys:read' },
       { to: '/admin/quotations', label: 'Quotations', icon: FileText, capability: 'quotations:read' },
+      { to: '/admin/rate-card', label: 'Rate card', icon: Ruler, capability: 'quotations:read', editLabel: 'Edit' },
     ],
   },
   {
@@ -65,12 +71,15 @@ export const ADMIN_NAV = [
     key: 'content',
     label: 'Content',
     items: [
+      { to: '/admin/content/home', label: 'Home page', icon: Home, capability: 'cms:read' },
+      { to: '/admin/content/hero-slides', label: 'Hero slides', icon: GalleryHorizontal, capability: 'cms:read' },
+      { to: '/admin/content/services', label: 'Services', icon: Wrench, capability: 'cms:read' },
+      { to: '/admin/content/service-categories', label: 'Service categories', icon: LayoutGrid, capability: 'cms:read' },
+      { to: '/admin/content/projects', label: 'Projects', icon: Building2, capability: 'cms:read', soon: true },
       { to: '/admin/content/faqs', label: 'FAQs', icon: HelpCircle, capability: 'cms:read' },
       { to: '/admin/content/process-steps', label: 'Process steps', icon: ListOrdered, capability: 'cms:read' },
-      { to: '/admin/content/services', label: 'Services', icon: Wrench, capability: 'cms:read', soon: true },
-      { to: '/admin/content/projects', label: 'Projects', icon: Building2, capability: 'cms:read', soon: true },
       // media:read is also held by SALES and DISPATCHER for job photos; the library screen is an editor's.
-      { to: '/admin/media', label: 'Media library', icon: Image, capability: 'cms:read', soon: true },
+      { to: '/admin/content/media', label: 'Media library', icon: Image, capability: 'cms:read' },
     ],
   },
   {
@@ -84,6 +93,9 @@ export const ADMIN_NAV = [
     ],
   },
 ];
+
+/** Content screens that are pages of their own rather than registry entries. */
+export const BESPOKE_CONTENT = ['/admin/content/home', '/admin/content/media'];
 
 /** A role whose whole job is one group starts there — an empty dashboard is not a welcome. */
 const LANDING = { EDITOR: '/admin/content' };
@@ -137,6 +149,6 @@ export function breadcrumbsFor(pathname) {
 
   const crumbs = [{ label: best.group.label }, { label: best.item.label, to: best.item.to }];
   const [next] = path.slice(best.item.to.length).split('/').filter(Boolean);
-  if (next) crumbs.push({ label: next === 'new' ? 'New' : best.group.key === 'content' ? 'Edit' : 'Details' });
+  if (next) crumbs.push({ label: next === 'new' ? 'New' : best.item.editLabel ?? (best.group.key === 'content' ? 'Edit' : 'Details') });
   return crumbs;
 }

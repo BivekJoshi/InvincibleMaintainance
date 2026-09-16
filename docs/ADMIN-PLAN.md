@@ -336,7 +336,7 @@ Every later screen is built from this, so it is the highest-leverage phase.
 - **Known, not changed:** a mirrored `optionalText` turns an emptied optional text into `undefined`, so a PUT cannot
   clear it (e.g. a process step's description) — the API schema's behaviour, left for D1.
 
-### Phase D — Service listing & CMS · ~6 days
+### Phase D — Service listing & CMS · ~6 days · D1 ✅ done 2026-09-16 · D2 open
 
 This is v1 Phase 2's missing admin half. In order of business value:
 
@@ -351,6 +351,56 @@ This is v1 Phase 2's missing admin half. In order of business value:
 9. Optionally move the hardcoded storefront copy (`HomePage/sections/FeatureRow.jsx` `COPY`, `StorefrontHero` popular searches) into content blocks.
 
 **Acceptance (v1 Phase 2):** an EDITOR reorders the home page, adds a hero slide, a service, a project with a gallery and an offer in Nepali, with zero code changes, sees it live on the next request, and every step appears in the audit log.
+
+**Deviations (Phase D1, 2026-09-16)** — built differently from the plan, or beyond it. D1 closed none of the §3
+defects (none were assigned to it); the media folder body is now validated, a small part of #13's "unvalidated
+input", which otherwise stays open.
+- **The rate card does not feed the estimator.** Items 2 above and the D1 prompt say it does; `estimate.service.js`
+  prices from the service's (or pricing plan's) own `priceFrom`/`priceTo`. The rate card feeds quotation lines,
+  survey pricing and the rate table on `/pricing`. The screen's banner says so, and the prompt's manual check 4 was
+  run against `/pricing` only. Making the estimator read the rate card is a pricing decision, left open.
+- **The hero shows words only.** `StorefrontHero` renders the first active slide's title, subtitle and button, never
+  its image (the WebGL scene is the picture). The slide keeps an image field, labelled as such, and the list says
+  that the first switched-on slide is the one shown. The seeded third slide links to `/about`, which the site does
+  not serve (it falls back to `/book`); the form now flags that link when the slide is saved.
+- **Rate card as a registry entry with its own address.** SALES has no `cms:read`, so the rate card cannot live under
+  `/admin/content`. Entries gained `basePath` (fixed routes under `quotations:read` pass `resource` to the generic
+  pages), `notice` (a standing banner) and `activeCopy` ("In use" / Retire instead of "On site"). The four endpoints
+  the generic screens need and the API lacked were added to `crm.routes.js` (`GET /:id`, `/toggle`, `/restore`,
+  `/reorder`), and `DELETE ?hard=true` now reaches the factory (cms:purge). Codes are stored upper-case. A retired
+  rate is not offered for a new quotation line, but a line already using it still shows it.
+- **Read-only generic screens.** ACCOUNTANT reads the rate card: the list has no New and disabled switches, the edit
+  page is `ResourceForm readOnly`, `…/new` returns to the list. Before D1 every registry reader was also a writer.
+- **Service rules.** The excerpt limit was 20–400 in both schemas; it is now 40–200 (every seeded excerpt is
+  112–136). Both schemas already had the boilerplate and price-range refinements, but `PUT` used the unrefined
+  partial schema, so `priceTo < priceFrom` passed on an update — the service's `update` now checks the range against
+  the stored price the body leaves out. The service and SPA schemas run the same fixture file
+  (`MaintainanceBackend/tests/fixtures/serviceSchemaCases.js`, 20 cases).
+- **Featured.** `isFeatured` is edited and filterable, but no public page treats featured services differently; the
+  field says so. The API reads any `?featured` value as "featured only", so the filter offers only that choice.
+- **Home composer.** Per-section settings are the one key the site reads, `limit` (services, projects, gallery,
+  testimonials), not a free key/value editor — other keys would do nothing. The API now validates `limit` (1–50).
+  Each row says what the section shows and links to where its content is edited; a visible section the site skips
+  for having no content is flagged. Save / Discard with a leave guard, rather than saving on every drag.
+- **Media library backend.** `PUT /admin/media/:id` refuses an empty alt; `POST /admin/media/folders` is
+  zod-validated and checks the parent exists; a folder with subfolders is not deleted (they used to jump to the top
+  level). Media has no Trash view — a soft-deleted file leaves the library, and ADMIN's "Delete forever" is offered
+  on a live file. Drag-and-drop works anywhere on the page and opens the upload panel; each file still needs alt text.
+- **Icon picker.** Icons are a select over `DataIcon`'s names (exported as `ICON_NAMES`), drawn in the options; the
+  process-steps entry switched from free text to it.
+- **Found by the browser walk-through, fixed (kit-wide):**
+  - `ResourceForm` was dirty right after a save whenever the schema transformed a value (an empty optional text
+    becomes `undefined`), so leaving the page after saving raised the unsaved-changes prompt. It now resets to the
+    inputs' own values. Covered by a test that failed before.
+  - Pressing a toast closed an open sheet or dialog (Radix treats it as outside). Toasts sit bottom-right, over a
+    sheet's Save button. `ui/sheet.jsx` and `ui/dialog.jsx` now ignore presses on `[data-toaster]`. Covered by a test
+    that failed before.
+  - The select field title-cased plain options, so units read "Sq.Ft", "Rft"; units are passed as `{ value, label }`.
+  - A badge (a `<div>`) inside a `<p>` in the composer and the services list (React DOM-nesting warning).
+  - The first media details sheet wrapped a page-mode form in its own sheet, so closing it dropped unsaved alt text
+    without asking. It is now a `ResourceForm` sheet (with the new `intro` slot), which asks first.
+- **Beyond the plan:** `ResourceForm` gained `intro` (content above the fields) and `readOnly`; `MediaGrid`/`MediaPager` were split out of `MediaPicker` and are shared with
+  the library; `cmsApi` writes to the rate card also refetch the quotation builder's rate list (`ALSO_READ_AS`).
 
 ### Phase E — Lead management & CRM · ~5 days
 
@@ -488,7 +538,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | A Safety fixes ✅ 2026-09-14 | 2 | 2 | Correct money, locked quotations, no hard-deleted payments, honest docs |
 | B Logging & audit ✅ 2026-09-14 | 3 | 5 | Redacted request-id logs, complete audit with domain events |
 | C Admin UI kit ✅ 2026-09-14 (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
-| D Services & CMS (D1 + D2) | 6 | 15 | Editors run the whole public site |
+| D Services & CMS (D1 ✅ 2026-09-16 + D2) | 6 | 15 | Editors run the whole public site |
 | E Leads & CRM | 5 | 20 | Sales works entirely in the UI |
 | F Quotation approval (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
 | G Audit & platform UI | 3 | 28 | Traceability, users, templates |
