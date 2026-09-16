@@ -19,6 +19,9 @@ import { recordEvent } from './audit.service.js';
  * @param {string} [opts.orderField]     That column — `sortOrder` unless the model numbers its rows
  *                                      another way (ListItem uses `position`). The reorder body is
  *                                      always `{ id, sortOrder }`; this maps it onto the column.
+ * @param {number} [opts.orderBase]      Added to each reorder index before it is stored. A list whose order
+ *                                      column is the number a visitor reads (ListItem) counts from 1, while
+ *                                      the admin table's reorder body counts from 0.
  * @param {boolean} [opts.slugFrom]      Field to derive a unique slug from
  * @param {string[]} [opts.moneyFields]  Fields submitted in rupees, stored as paisa
  * @param {object} [opts.include]        Default Prisma include
@@ -33,6 +36,7 @@ export function makeCrud(opts) {
     softDelete = true,
     sortable = true,
     orderField = 'sortOrder',
+    orderBase = 0,
     slugFrom = null,
     moneyFields = [],
     include,
@@ -160,7 +164,7 @@ export function makeCrud(opts) {
     async reorder(items) {
       if (!sortable) return;
       await prisma.$transaction(
-        items.map((i) => db().update({ where: { id: i.id }, data: { [orderField]: i.sortOrder } })),
+        items.map((i) => db().update({ where: { id: i.id }, data: { [orderField]: i.sortOrder + orderBase } })),
       );
       await invalidatePublic();
     },

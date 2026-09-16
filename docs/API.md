@@ -21,7 +21,12 @@ Content endpoints take `?locale=en|ne`.
 
 ```
 GET  /public/bootstrap              ⚡ settings + nav + home sections + booking rules in one call
-GET  /public/home                   ⚡ every visible home section, hydrated, in order
+                                      nav: { categories, blog, pages } — `blog` is true while at least one
+                                      post is published; `pages` is [{ slug, title }] of the live generic
+                                      pages (title in the requested locale), which the site serves at /:slug
+GET  /public/home                   ⚡ every visible home section, hydrated, in order; with ?locale=ne every
+                                      section overlays its Nepali copy, the grouped ones too (kitchen cards and
+                                      steps, seepage block and checkpoints, the interior block)
 GET  /public/services               ⚡ ?category&featured
 GET  /public/services/:slug         ⚡ + related projects, faqs (group = this slug or `general`; with
                                       ?locale=ne each FAQ carries its Nepali question/answer where one exists)
@@ -32,8 +37,15 @@ GET  /public/pricing                ⚡ pricing plans + rate card + priced servi
 GET  /public/gallery                ⚡
 GET  /public/testimonials           ⚡ approved only
 GET  /public/faqs                   ⚡ ?group&locale   -> { items }   Nepali overlaid like the service page
-GET  /public/posts  /posts/:slug    ⚡
-GET  /public/pages/:slug            ⚡
+GET  /public/posts                  ⚡ ?category=<slug>&limit (default 24, max 100)&locale
+                                      -> { items: [{ id, title, slug, excerpt, coverId, publishedAt,
+                                      category }], categories: [{ id, name, slug }], media }
+                                      newest first; only posts switched on, not deleted, with publishedAt
+                                      in the past (a draft has none; a scheduled post's is in the future).
+                                      `categories` are the live ones holding a published post
+GET  /public/posts/:slug            ⚡ ?locale -> { post (with category), media }; 404 NOT_FOUND for a
+                                      draft, scheduled, hidden, deleted or unknown post
+GET  /public/pages/:slug            ⚡ ?locale -> { page }; 404 NOT_FOUND for a hidden, deleted or unknown page
 POST /public/estimate                 { serviceId | pricingPlanId, qty } -> { min, max, breakdown }
 GET  /public/availability             ?from&days  free survey capacity per day and slot
                                       demand = scheduled INSPECTION jobs + booking leads still
@@ -56,10 +68,18 @@ GET  /public/invoices/:token          customer views an invoice (read-only; paid
 GET  /public/warranties/:token
 POST /public/warranties/:token/claim  { description }   one open claim at a time — a second is 422
 GET  /sitemap.xml   /robots.txt   /json-ld              ?origin=https://…
+                                      the sitemap lists /blog (while it has a published post), every
+                                      published post at /blog/:slug and every live page at /:slug
 ```
 
 A CMS write (create, update, toggle, reorder, delete, restore) invalidates the public cache, so
 the change is visible on the next request rather than after the TTL.
+
+**As the SPA consumes them:** `/blog` reads `GET /public/posts?locale&category` (the category is in the page's URL),
+`/blog/:slug` reads `GET /public/posts/:slug?locale`, and `/:slug` — the last public route, so only an address no other
+route claims — reads `GET /public/pages/:slug?locale`. A 404 from either renders the site's not-found page. The header,
+drawer and footer show "Blog" while `bootstrap.nav.blog` is true, and a CMS button link to `/<slug>` is followed only
+while that slug is in `bootstrap.nav.pages` (otherwise it goes to `/book`).
 
 ## Auth
 
@@ -98,22 +118,39 @@ A slug derived from a title (`slugFrom`) keeps Devanagari as-is, vowel signs and
 /admin/hero-slides
 /admin/service-categories
 /admin/services
-/admin/projects                 + POST /:id/images, PATCH /:id/images/reorder, DELETE /:id/images/:imageId
+/admin/projects                 + POST /:id/images { mediaId, caption?, sortOrder? } -> 201 the image,
+                                  PATCH /:id/images/reorder { items: [{ id, sortOrder }] } -> 204,
+                                  DELETE /:id/images/:imageId -> 204 (400 when the image is not this project's)
+                                  ?categoryId&serviceId&status; every read carries `job: { id, number } | null`
+                                  (the job a case study was published from) and `images` in order
 /admin/offers
 /admin/pricing-plans
 /admin/features                 ?group=
-/admin/list-items               ?group=   ordered by `position` — reorder maps sortOrder onto it
+/admin/list-items               ?group=   ordered by `position` — reorder stores sortOrder + 1 there, so
+                                  the admin table's 0-based body numbers the list 1, 2, 3… (the number the site
+                                  prints). Reorder one group at a time: positions are per group
 /admin/content-blocks
 /admin/process-steps
-/admin/testimonials             + PATCH /:id/approve   (testimonials:moderate)
+/admin/testimonials             ?approved=true|false (anything else: all)
+                                  + PATCH /:id/approve { isApproved?: boolean = true }   (testimonials:moderate —
+                                  ADMIN, EDITOR; 403 otherwise) -> the testimonial. Only approved ones are public
 /admin/gallery
 /admin/faqs
 /admin/pages  /admin/posts  /admin/post-categories
+                                  posts: ?categoryId; a post is public once `publishedAt` has passed — leave it
+                                  empty for a draft
 
 /admin/home-sections            GET, PUT { items: [{ key, sortOrder, isVisible, settings? }] }
 /admin/translations             GET ?model&recordId, PUT { model, recordId, values }
 
-/admin/settings                 GET (settings:read), PATCH { values } (ADMIN only)
+/admin/settings                 GET (settings:read — ADMIN, EDITOR) -> { [group]: Setting[] } with
+                                  { key, group, label, type, value, hint, sortOrder }, each group by sortOrder;
+                                  `type` is string | number | boolean | richtext | media | json.
+                                  PATCH { values: { [key]: value } } (ADMIN only; 403 otherwise) -> the flat key → value
+                                  map. Values are stored as sent (JSON); an unknown key is created in group `custom`.
+                                  One `settings.changed` audit event lists the keys whose value moved. The settings
+                                  screen sends only changed keys and checks phones (Nepali rule), emails, https links,
+                                  number ranges and `booking.closedWeekdays` (at least one open day) before it does
 /admin/media                    GET ?folderId&q, POST (images, multipart `files`), GET /:id, PUT /:id,
                                 DELETE /:id (soft; ?hard=true needs cms:purge)
 /admin/media/documents          POST (PDFs and other files)
@@ -125,6 +162,10 @@ A slug derived from a title (`slugFrom`) keeps Devanagari as-is, vowel signs and
 - `excerpt` is the old site's template, `Professional … with expert tools and results.` (any case, full stop optional);
 - `priceTo` < `priceFrom` (`path: 'priceTo'`). `PUT` is partial, so a body carrying only one of the two prices is
   checked against the stored other one; equal prices are allowed, and so is a `priceFrom` with no `priceTo`.
+
+**SEO fields** — services take `metaTitle`, `metaDescription` and `ogImageId`. Projects, pages and posts take
+`metaTitle` and `metaDescription` only: they have no sharing-image column, so an `ogImageId` sent to them is dropped
+(it used to reach the database and answer 500).
 
 **Home sections** — `key` is one of the 19 `HOME_SECTION_KEYS`; `settings.limit`, when sent, is an integer 1–50 (how
 many items the services, projects, gallery and testimonials sections show); other `settings` keys are kept as sent.

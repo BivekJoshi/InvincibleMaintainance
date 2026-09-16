@@ -57,6 +57,8 @@ export const projects = makeCrud({
   include: {
     category: { select: { id: true, name: true, slug: true } },
     service: { select: { id: true, name: true, slug: true } },
+    // A case study published from a job keeps the link; the edit screen shows its number.
+    job: { select: { id: true, number: true } },
     images: { orderBy: { sortOrder: 'asc' } },
   },
   filter: (q) => ({
@@ -69,8 +71,12 @@ export const projects = makeCrud({
 export const offers = makeCrud({ model: 'offer', label: 'Offer', searchFields: ['title', 'description'], moneyFields: ['priceMin', 'priceMax'] });
 export const pricingPlans = makeCrud({ model: 'pricingPlan', label: 'Pricing plan', searchFields: ['title', 'description'], moneyFields: ['priceMin', 'priceMax'] });
 export const features = makeCrud({ model: 'feature', label: 'Feature', searchFields: ['title', 'description'], filter: (q) => (q.group ? { group: q.group } : {}) });
-// A numbered list: the order IS the number a visitor reads, so it lives in `position`.
-export const listItems = makeCrud({ model: 'listItem', label: 'List item', searchFields: ['text'], orderField: 'position', filter: (q) => (q.group ? { group: q.group } : {}) });
+// A numbered list: the order IS the number a visitor reads, so it lives in `position`, counted from 1 —
+// the reorder body counts from 0, and the site would otherwise print "0" beside the first item.
+export const listItems = makeCrud({
+  model: 'listItem', label: 'List item', searchFields: ['text'], orderField: 'position', orderBase: 1,
+  filter: (q) => (q.group ? { group: q.group } : {}),
+});
 export const contentBlocks = makeCrud({ model: 'contentBlock', label: 'Content block', searchFields: ['key', 'heading', 'body'] });
 export const processSteps = makeCrud({ model: 'processStep', label: 'Process step', searchFields: ['title', 'description'], defaultSort: 'stepNo' });
 export const galleryImages = makeCrud({ model: 'galleryImage', label: 'Gallery image', searchFields: ['caption'], filter: (q) => (q.projectId ? { projectId: q.projectId } : {}) });

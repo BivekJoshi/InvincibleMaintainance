@@ -38,7 +38,7 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 | `hari@gharjatan.com.np` | TECHNICIAN | only jobs assigned to them |
 
 The seed builds a browsable demo: 18 services, 3 projects, a rate card, 10 materials with
-opening stock, and a complete pipeline — leads (one already SLA-breached, one at risk) →
+opening stock, a blog (2 published posts in 2 categories), an About page at `/about`, and a complete pipeline — leads (one already SLA-breached, one at risk) →
 customer → approved quotation → completed job → warranty → part-paid invoice → AMC contract.
 
 ## Commands

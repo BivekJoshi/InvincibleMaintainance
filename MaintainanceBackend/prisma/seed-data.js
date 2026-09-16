@@ -349,6 +349,44 @@ export const HERO_SLIDES = [
   { title: 'One month warranty on every technical solution', subtitle: 'You receive a certificate and a claim link. A valid claim is attended free, at high priority.', ctaLabel: 'How it works', ctaUrl: '/about', sortOrder: 2 },
 ];
 
+/** The blog: advice a homeowner searches for, which is what brings them to the service pages. */
+export const POST_CATEGORIES = [
+  { name: 'Damp & waterproofing', slug: 'damp-and-waterproofing', sortOrder: 0 },
+  { name: 'Home care', slug: 'home-care', sortOrder: 1 },
+];
+
+export const POSTS = [
+  {
+    category: 'damp-and-waterproofing',
+    title: 'Rising damp or a leaking terrace? How to tell before you repaint',
+    slug: 'rising-damp-or-leaking-terrace',
+    excerpt: 'Three kinds of damp look identical on a painted wall. Where the stain starts, and when it appears, tells you which one you have.',
+    body: 'A damp patch low on a ground-floor wall, with white salt on the plaster, is almost always rising damp: water drawn up from the ground because the damp-proof course has failed or was never laid.\n\nA patch high on a top-floor wall or ceiling that appears a day after heavy rain is the roof. On a flat terrace the cause is usually ponding — water that does not drain toward the outlet and finds its way through a crack instead.\n\nA patch in the middle of a wall that shares a surface with a bathroom or a neighbour\'s house is lateral seepage, and the source is on the other side.\n\nRepainting treats none of these. Before you spend on paint, have the wall read with a moisture meter: the pattern of readings shows where the water is coming from, and that decides the repair.',
+    publishedDaysAgo: 12,
+    metaTitle: 'Rising damp or roof leak? How to tell | Kathmandu homes',
+    metaDescription: 'Three kinds of damp look the same on a painted wall. How to tell rising damp, terrace leaks and lateral seepage apart before you repaint.',
+  },
+  {
+    category: 'home-care',
+    title: 'Five checks to make before the monsoon',
+    slug: 'five-checks-before-the-monsoon',
+    excerpt: 'An hour on the roof in May saves a ceiling in July. What to look at, and what each problem costs to fix early.',
+    body: 'Clear every terrace outlet and pour a bucket of water toward it. If the water sits for more than a few minutes, the slope needs correcting.\n\nLook along the parapet for hairline cracks where the wall meets the slab. That joint moves, and it is where most terrace leaks begin.\n\nCheck the overhead tank lid and its overflow pipe. A blocked overflow soaks the slab beneath it all season.\n\nOpen the cupboard under the kitchen sink and feel the back wall. A cold, damp patch there is a concealed pipe, not rain.\n\nFinally, photograph any existing stains with a date. If one grows during the monsoon, you will know it is active.',
+    publishedDaysAgo: 30,
+  },
+];
+
+export const PAGES = [
+  {
+    // The seeded third hero slide links here.
+    slug: 'about',
+    title: 'About Ghar Jatan',
+    body: 'Ghar Jatan is a team of certified civil and electrical engineers and our own trained crews, working across Kathmandu, Lalitpur and Bhaktapur.\n\nWe started because homeowners kept paying twice for the same repair: once for a quick fix that did not address the cause, and again when the problem came back. So we diagnose first, with instruments, and quote against a published rate card.\n\nEvery enquiry is answered within two hours, every inspection is free, and every technical solution carries a written one-month warranty.',
+    metaTitle: 'About us — certified engineers for home repair in Kathmandu',
+    metaDescription: 'Certified engineers and our own crews for seepage, waterproofing, renovation and interiors across Kathmandu Valley. Free inspection, two-hour response.',
+  },
+];
+
 export const MESSAGE_TEMPLATES = [
   { key: 'lead_new', channel: 'sms', locale: 'en', body: 'NEW LEAD: {{leadName}}, {{phone}}. Service: {{service}}. Respond within the 2-hour window. {{link}}' },
   { key: 'lead_new', channel: 'email', locale: 'en', subject: 'New lead: {{leadName}} ({{phone}})',

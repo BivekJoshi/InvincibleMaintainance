@@ -161,6 +161,23 @@ async function main() {
   await prisma.faq.deleteMany({});
   await prisma.faq.createMany({ data: D.FAQS });
 
+  // ── blog and pages
+  const postCats = {};
+  for (const c of D.POST_CATEGORIES) {
+    postCats[c.slug] = await prisma.postCategory.upsert({ where: { slug: c.slug }, create: c, update: { name: c.name } });
+  }
+  for (const { category, publishedDaysAgo, ...post } of D.POSTS) {
+    await prisma.post.upsert({
+      where: { slug: post.slug },
+      create: { ...post, categoryId: postCats[category].id, publishedAt: days(-publishedDaysAgo) },
+      update: { title: post.title, excerpt: post.excerpt, body: post.body },
+    });
+  }
+  for (const page of D.PAGES) {
+    await prisma.page.upsert({ where: { slug: page.slug }, create: page, update: { title: page.title, body: page.body } });
+  }
+  console.log(`  posts: ${D.POSTS.length}, pages: ${D.PAGES.length}`);
+
   // ── projects
   for (const p of D.PROJECTS) {
     const { category, ...rest } = p;

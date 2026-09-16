@@ -139,6 +139,71 @@ describe('resource specifics', () => {
     expect(expectStatus(await editor.patch(`/admin/testimonials/${t.id}/approve`), 200).data.isApproved).toBe(true);
   });
 
+  it('PATCH /admin/testimonials/:id/approve { isApproved: false } takes a testimonial off the site again', async () => {
+    const t = expectStatus(await editor.post('/admin/testimonials').send({ ...RESOURCES.testimonials(), quote: `Approved then withdrawn ${uid()}` }), 201).data;
+    const onSite = async () => expectStatus(await anon().get('/public/testimonials'), 200).data.items.some((x) => x.id === t.id);
+    expect(await onSite()).toBe(false);
+    expectStatus(await editor.patch(`/admin/testimonials/${t.id}/approve`), 200);
+    expect(await onSite()).toBe(true);
+    expect(expectStatus(await editor.patch(`/admin/testimonials/${t.id}/approve`).send({ isApproved: false }), 200).data.isApproved).toBe(false);
+    expect(await onSite()).toBe(false);
+    // Waiting for approval is the moderation queue's default filter.
+    const queue = expectStatus(await editor.get('/admin/testimonials?approved=false&limit=100'), 200).data;
+    expect(queue.map((x) => x.id)).toContain(t.id);
+    expect(queue.every((x) => x.isApproved === false)).toBe(true);
+    // Only a role with testimonials:moderate approves.
+    expectStatus(await (await as('SALES')).patch(`/admin/testimonials/${t.id}/approve`), 403);
+  });
+
+  it('list items: reorder numbers a group from 1, and the site lists the group in that order', async () => {
+    const group = 'renovation_reasons';
+    const list = async () => expectStatus(await editor.get(`/admin/list-items?group=${group}&limit=100`), 200).data;
+    const existing = await list();
+    const a = expectStatus(await editor.post('/admin/list-items').send({ group, position: 1, text: `First ${uid()}` }), 201).data;
+    const b = expectStatus(await editor.post('/admin/list-items').send({ group, position: 2, text: `Second ${uid()}` }), 201).data;
+    try {
+      // B, A, then the rest — the admin table sends each row's index, counted from 0.
+      const order = [b, a, ...existing];
+      expectStatus(await editor.patch('/admin/list-items/reorder').send({
+        items: order.map((r, i) => ({ id: r.id, sortOrder: i })),
+      }), 204);
+      const listed = await list();
+      expect(listed.map((r) => r.id)).toEqual(order.map((r) => r.id));
+      // The number a visitor reads is `position`: 1, 2, 3… never 0.
+      expect(listed.map((r) => r.position)).toEqual(order.map((_, i) => i + 1));
+
+      const home = expectStatus(await anon().get('/public/home'), 200).data.sections.find((x) => x.key === 'renovation');
+      if (home) {
+        expect(home.data.map((r) => r.id)).toEqual(order.map((r) => r.id));
+        expect(home.data[0].position).toBe(1);
+      }
+    } finally {
+      const admin = await as('ADMIN');
+      for (const r of [a, b]) expectStatus(await admin.delete(`/admin/list-items/${r.id}?hard=true`), 204);
+      if (existing.length) {
+        expectStatus(await editor.patch('/admin/list-items/reorder').send({
+          items: existing.map((r) => ({ id: r.id, sortOrder: Math.max(0, r.position - 1) })),
+        }), 204);
+      }
+    }
+  });
+
+  it('a project carries its linked job number, and a sharing image is ignored rather than a 500', async () => {
+    const linked = await prisma.project.findFirst({ where: { jobId: { not: null }, deletedAt: null }, include: { job: true } });
+    if (linked) {
+      const read = expectStatus(await editor.get(`/admin/projects/${linked.id}`), 200).data;
+      expect(read.job).toEqual({ id: linked.jobId, number: linked.job.number });
+      const listed = expectStatus(await editor.get(`/admin/projects?limit=100&q=${encodeURIComponent(linked.title)}`), 200).data;
+      expect(listed.find((p) => p.id === linked.id).job.number).toBe(linked.job.number);
+    }
+    const p = expectStatus(await editor.post('/admin/projects').send({ ...RESOURCES.projects(), ogImageId: mediaId }), 201).data;
+    expect(p.job).toBeNull();
+    expect(p).not.toHaveProperty('ogImageId');
+    expectStatus(await editor.put(`/admin/projects/${p.id}`).send({ ogImageId: mediaId, metaTitle: 'Shared title' }), 200);
+    expectStatus(await editor.post('/admin/pages').send({ ...RESOURCES.pages(), ogImageId: mediaId }), 201);
+    expectStatus(await editor.post('/admin/posts').send({ ...RESOURCES.posts(), ogImageId: mediaId }), 201);
+  });
+
   it('project images: add, reorder, remove', async () => {
     const p = expectStatus(await editor.post('/admin/projects').send(RESOURCES.projects()), 201).data;
     const img = expectStatus(await editor.post(`/admin/projects/${p.id}/images`).send({ mediaId, caption: 'Before' }), 201).data;
@@ -278,6 +343,54 @@ describe('translations', () => {
 
     const listed = find(expectStatus(await anon().get('/public/faqs?group=general&locale=ne'), 200).data.items);
     expect(listed.question).toBe(question);
+  });
+});
+
+describe('Nepali copy in the home page\'s grouped sections', () => {
+  it('kitchen, seepage and interior overlay their translations with ?locale=ne', async () => {
+    const [checkpoint, step, card] = await Promise.all([
+      prisma.listItem.findFirst({ where: { group: 'seepage_checkpoints', isActive: true, deletedAt: null }, orderBy: { position: 'asc' } }),
+      prisma.listItem.findFirst({ where: { group: 'kitchen_steps', isActive: true, deletedAt: null }, orderBy: { position: 'asc' } }),
+      prisma.feature.findFirst({ where: { group: 'kitchen', isActive: true, deletedAt: null }, orderBy: { sortOrder: 'asc' } }),
+    ]);
+    const block = await prisma.contentBlock.findFirst({ where: { key: 'interior_design', isActive: true, deletedAt: null } });
+    const seepage = await prisma.contentBlock.findFirst({ where: { key: 'seepage_explainer', isActive: true, deletedAt: null } });
+    const put = (model, recordId, values) => editor.put('/admin/translations').send({ model, recordId, values });
+    const saved = [
+      checkpoint && ['listItem', checkpoint.id, { text: 'भित्तामा पानीको दाग' }],
+      step && ['listItem', step.id, { text: 'भान्साको नाप लिनुहोस्' }],
+      card && ['feature', card.id, { title: 'मोड्युलर भान्सा' }],
+      block && ['contentBlock', block.id, { heading: 'भित्री सजावट' }],
+      seepage && ['contentBlock', seepage.id, { heading: 'सिपेज र चिरा' }],
+    ].filter(Boolean);
+    try {
+      for (const [model, id, values] of saved) {
+        expectStatus(await put(model, id, Object.fromEntries(Object.entries(values).map(([k, v]) => [k, { ne: v }]))), 200);
+      }
+      const byKey = (home) => Object.fromEntries(home.sections.map((x) => [x.key, x.data]));
+      const ne = byKey(expectStatus(await anon().get('/public/home?locale=ne'), 200).data);
+      const en = byKey(expectStatus(await anon().get('/public/home'), 200).data);
+      if (ne.seepage && checkpoint) {
+        expect(ne.seepage.checkpoints.find((c) => c.id === checkpoint.id).text).toBe('भित्तामा पानीको दाग');
+        expect(en.seepage.checkpoints.find((c) => c.id === checkpoint.id).text).toBe(checkpoint.text);
+      }
+      if (ne.seepage && seepage) expect(ne.seepage.block.heading).toBe('सिपेज र चिरा');
+      if (ne.kitchen && step) expect(ne.kitchen.steps.find((c) => c.id === step.id).text).toBe('भान्साको नाप लिनुहोस्');
+      if (ne.kitchen && card) {
+        const localized = ne.kitchen.cards.find((c) => c.id === card.id);
+        expect(localized.title).toBe('मोड्युलर भान्सा');
+        expect(localized.description).toBe(card.description); // untranslated → English
+      }
+      if (ne.interior && block) {
+        expect(ne.interior.heading).toBe('भित्री सजावट');
+        expect(en.interior.heading).toBe(block.heading);
+      }
+    } finally {
+      // An empty string deletes a translation.
+      for (const [model, id, values] of saved) {
+        await put(model, id, Object.fromEntries(Object.keys(values).map((k) => [k, { ne: '' }])));
+      }
+    }
   });
 });
 

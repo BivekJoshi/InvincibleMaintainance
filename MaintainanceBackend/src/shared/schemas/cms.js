@@ -5,6 +5,12 @@ import {
 import { FEATURE_GROUPS, HOME_SECTION_KEYS, LIST_GROUPS } from '../enums.js';
 
 const title = z.string().trim().min(2).max(250);
+
+/**
+ * Projects, pages and posts have a meta title and description but no sharing-image column,
+ * so `ogImageId` is not accepted there (zod strips it) — it used to reach Prisma and fail with a 500.
+ */
+const { ogImageId: _ogImageId, ...pageSeoFields } = seoFields;
 const optionalImage = z.string().optional();
 
 export const heroSlideSchema = z.object({
@@ -80,7 +86,7 @@ export const projectSchema = z.object({
   isFeatured: z.coerce.boolean().default(false),
   sortOrder,
   isActive,
-  ...seoFields,
+  ...pageSeoFields,
 });
 
 /** POST /admin/jobs/:id/publish-case-study — everything is optional but the title. */
@@ -205,7 +211,7 @@ export const pageSchema = z.object({
   slug: z.string().trim().max(140).optional(),
   title,
   body: optionalText,
-  ...seoFields,
+  ...pageSeoFields,
   sortOrder,
   isActive,
 });
@@ -225,7 +231,7 @@ export const postSchema = z.object({
   body: z.string().trim().min(20),
   coverId: optionalImage,
   publishedAt: z.coerce.date().optional(),
-  ...seoFields,
+  ...pageSeoFields,
   sortOrder,
   isActive,
 });
