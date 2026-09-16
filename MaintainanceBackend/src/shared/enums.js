@@ -15,6 +15,10 @@ export const BOOKING_SLOTS = [
 export const BOOKING_SLOT_KEYS = BOOKING_SLOTS.map((s) => s.key);
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 export const ACTIVITY_TYPES = ['call', 'sms', 'email', 'whatsapp', 'visit', 'note', 'status_change', 'assignment'];
+/** Activities staff log by hand. Every one but `note` is contact, and stamps firstResponseAt. */
+export const LOGGABLE_ACTIVITY_TYPES = ['call', 'sms', 'whatsapp', 'email', 'visit', 'note'];
+export const CONTACT_ACTIVITY_TYPES = ['call', 'sms', 'whatsapp', 'email', 'visit'];
+export const CUSTOMER_TYPES = ['individual', 'company'];
 
 export const SURVEY_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'RETURNED', 'QUOTED', 'CANCELLED'];
 export const SURVEY_ITEM_KINDS = ['LABOUR', 'MATERIAL', 'SERVICE', 'OTHER'];
@@ -61,6 +65,9 @@ export const AUDIT_EVENTS = Object.freeze({
   LEAD_ASSIGNED: 'lead.assigned',
   LEAD_MERGED: 'lead.merged',
   LEAD_CONVERTED: 'lead.converted',
+  LEAD_ACTIVITY_LOGGED: 'lead.activity_logged',
+
+  CUSTOMER_EMAIL_CONFIRMED: 'customer.email_confirmed',
 
   QUOTATION_CREATED: 'quotation.created',
   QUOTATION_SENT: 'quotation.sent',

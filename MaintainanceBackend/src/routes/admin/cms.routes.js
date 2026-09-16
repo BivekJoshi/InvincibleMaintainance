@@ -11,8 +11,8 @@ import * as schemas from '../../shared/schemas/cms.js';
  * Mounts the standard 8 endpoints for a CRUD service. Every CMS resource in the
  * system is registered through this function — there is no second pattern.
  */
-function mountResource(router, path, service, schema, { capability = 'cms', extra } = {}) {
-  const read = requires(`${capability}:read`);
+function mountResource(router, path, service, schema, { capability = 'cms', readAlso = [], extra } = {}) {
+  const read = requires(`${capability}:read`, ...readAlso);
   const write = requires(`${capability}:write`);
 
   router.get(`/${path}`, read, validate({ query: listQuery.passthrough() }),
@@ -52,7 +52,8 @@ const router = Router();
 
 mountResource(router, 'hero-slides', cms.heroSlides, schemas.heroSlideSchema);
 mountResource(router, 'service-categories', cms.serviceCategories, schemas.serviceCategorySchema);
-mountResource(router, 'services', cms.services, schemas.serviceSchema);
+// services:read (SALES) reads the catalogue to put a service on a lead; it changes nothing.
+mountResource(router, 'services', cms.services, schemas.serviceSchema, { readAlso: ['services:read'] });
 mountResource(router, 'offers', cms.offers, schemas.offerSchema);
 mountResource(router, 'pricing-plans', cms.pricingPlans, schemas.pricingPlanSchema);
 mountResource(router, 'features', cms.features, schemas.featureSchema);

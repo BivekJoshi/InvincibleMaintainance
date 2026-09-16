@@ -12,8 +12,10 @@ export const PERMISSIONS = {
     'cms:read', 'cms:write', 'media:read', 'media:write',
     'settings:read', 'testimonials:moderate', 'dashboard:read',
   ],
+  // *:history reads a record's own audit trail (who changed what). The people who work
+  // leads and customers hold it; a dispatcher reads a lead to plan a visit, not its trail.
   SALES: [
-    'leads:read', 'leads:write', 'customers:read', 'customers:write',
+    'leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history',
     'quotations:read', 'quotations:write', 'jobs:read', 'services:read',
     'surveys:read', 'surveys:write', 'technicians:read',
     'media:read', 'dashboard:read', 'reports:sales',

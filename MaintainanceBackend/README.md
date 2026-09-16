@@ -106,7 +106,8 @@ src/
   routes/              public · auth · tech · admin/{cms,crm,ops,finance,aftercare,platform}
   queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders
 prisma/                schema.prisma · seed.js · seed-data.js
-tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging
+tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging,
+                       notification links (a source scan: staff links are /admin/…, field links /tech/…)
 tests/api/             every route over supertest, against a database whose name ends in _test
 tests/fixtures/        plain-data cases shared with the SPA's tests (the service schema's valid/invalid inputs)
 ```

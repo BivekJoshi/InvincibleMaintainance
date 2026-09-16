@@ -10,9 +10,10 @@ import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { addDays } from '../utils/dates.js';
 import { recordEvent } from './audit.service.js';
+import { webUrl } from '../utils/links.js';
 
 const INCLUDE = {
-  customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true } },
+  customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true, preferredLocale: true } },
   items: { orderBy: { sortOrder: 'asc' } },
   payments: { orderBy: { receivedAt: 'desc' } },
   quotation: { select: { id: true, number: true } },
@@ -191,22 +192,21 @@ export async function sendInvoice(id) {
     return row;
   });
 
-  const webOrigin = env.corsOrigins[0] ?? env.appUrl;
   const vars = {
     customerName: inv.customer.name, number: inv.number, total: formatNpr(inv.total),
     dueDate: inv.dueDate?.toISOString().slice(0, 10) ?? '-',
-    link: `${webOrigin}/invoice/${token}`, appName: env.appName,
+    link: webUrl(`/invoice/${token}`), appName: env.appName,
   };
   if (inv.customer.email) {
     await notify({
-      templateKey: 'invoice_sent', channel: 'email', to: inv.customer.email, vars,
+      templateKey: 'invoice_sent', channel: 'email', to: inv.customer.email, vars, locale: inv.customer.preferredLocale,
       related: { model: 'Invoice', id },
       fallbackSubject: 'Invoice {{number}} from {{appName}}',
       fallbackBody: 'Dear {{customerName}},\n\nInvoice {{number}} for {{total}} is due on {{dueDate}}.\n{{link}}',
     });
   }
   await notify({
-    templateKey: 'invoice_sent', channel: 'sms', to: inv.customer.phone, vars,
+    templateKey: 'invoice_sent', channel: 'sms', to: inv.customer.phone, vars, locale: inv.customer.preferredLocale,
     related: { model: 'Invoice', id },
     fallbackBody: 'Invoice {{number}}: {{total}}, due {{dueDate}}. {{link}} - {{appName}}',
   });
@@ -343,7 +343,7 @@ export async function sweepOverdue() {
   const now = new Date();
   const due = await prisma.invoice.findMany({
     where: { deletedAt: null, status: { in: ['SENT', 'PARTIAL'] }, dueDate: { lt: now } },
-    include: { customer: { select: { name: true, phone: true, email: true } } },
+    include: { customer: { select: { name: true, phone: true, email: true, preferredLocale: true } } },
     take: 500,
   });
   for (const inv of due) {
@@ -351,7 +351,7 @@ export async function sweepOverdue() {
     const days = Math.floor((now - new Date(inv.dueDate)) / 86400000);
     if ([1, 7, 15].includes(days) || days % 30 === 0) {
       await notify({
-        templateKey: 'invoice_overdue', channel: 'sms', to: inv.customer.phone,
+        templateKey: 'invoice_overdue', channel: 'sms', to: inv.customer.phone, locale: inv.customer.preferredLocale,
         vars: {
           customerName: inv.customer.name, number: inv.number,
           outstanding: formatNpr(inv.total - inv.paidAmount), days, appName: env.appName,
@@ -363,7 +363,7 @@ export async function sweepOverdue() {
   }
   if (due.length) {
     await notifyRoles(['ACCOUNTANT', 'ADMIN'], {
-      type: 'invoices_overdue', title: `${due.length} invoice(s) went overdue`, link: '/invoices?overdueOnly=true',
+      type: 'invoices_overdue', title: `${due.length} invoice(s) went overdue`, link: '/admin/invoices?overdueOnly=true',
     });
   }
   return { marked: due.length };

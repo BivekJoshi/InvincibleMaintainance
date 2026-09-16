@@ -109,7 +109,7 @@ async function checkReorder(material) {
       type: 'stock_low',
       title: `Low stock — ${material.name}`,
       body: `${balance} ${material.unit} left (reorder at ${material.reorderLevel})`,
-      link: `/materials/${material.id}`,
+      link: `/admin/materials/${material.id}`,
     });
   }
 }

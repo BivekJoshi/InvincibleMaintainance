@@ -99,11 +99,14 @@ export function renderTemplate(body, vars = {}) {
   });
 }
 
-async function loadTemplate(key, channel, locale = 'en') {
-  return (
-    (await prisma.messageTemplate.findFirst({ where: { key, channel, locale, isActive: true } })) ??
-    (await prisma.messageTemplate.findFirst({ where: { key, channel, isActive: true } }))
-  );
+/**
+ * The template for this language, else the English one, else none (the caller's
+ * fallback text). A Nepali template missing is normal — they are added one by one —
+ * and must never leave a customer without their message.
+ */
+export async function loadTemplate(key, channel, locale = 'en') {
+  const find = (lang) => prisma.messageTemplate.findFirst({ where: { key, channel, locale: lang, isActive: true } });
+  return (await find(locale)) ?? (locale === 'en' ? null : await find('en'));
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -111,12 +114,16 @@ async function loadTemplate(key, channel, locale = 'en') {
 /**
  * Sends a templated message and records it in MessageLog. Never throws into the
  * caller's request — delivery failures are logged and surfaced via MessageLog.
+ *
+ * A message to a customer or a lead passes `locale`: that record's `preferredLocale`.
+ * Staff messages stay English (the back office is English — decision D7).
  * @param {{templateKey:string, channel:'sms'|'email'|'inapp', to:string, vars?:object,
  *          locale?:string, userId?:string, related?:{model:string,id:string},
  *          fallbackBody?:string, fallbackSubject?:string}} opts
  */
 export async function notify(opts) {
-  const { templateKey, channel, to, vars = {}, locale = 'en', userId, related } = opts;
+  const { templateKey, channel, to, vars = {}, userId, related } = opts;
+  const locale = opts.locale === 'ne' ? 'ne' : 'en';
 
   const tpl = await loadTemplate(templateKey, channel, locale);
   const body = renderTemplate(tpl?.body ?? opts.fallbackBody ?? '', vars);

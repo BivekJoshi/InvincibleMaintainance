@@ -58,4 +58,14 @@ describe('role capabilities', () => {
     expect(can('ACCOUNTANT', 'invoices:write')).toBe(true);
     expect(can('ACCOUNTANT', 'jobs:write')).toBe(false);
   });
+
+  it('gives record history to the people who work the record, not to every reader', () => {
+    expect(can('SALES', 'leads:history')).toBe(true);
+    expect(can('SALES', 'customers:history')).toBe(true);
+    // DISPATCHER reads a lead to plan the visit and ACCOUNTANT reads a customer to bill it;
+    // neither reads who changed what.
+    expect(can('DISPATCHER', 'leads:read')).toBe(true);
+    expect(can('DISPATCHER', 'leads:history')).toBe(false);
+    expect(can('ACCOUNTANT', 'customers:history')).toBe(false);
+  });
 });

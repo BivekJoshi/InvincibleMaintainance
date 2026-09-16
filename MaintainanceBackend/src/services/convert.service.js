@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js';
-import { notFound, unprocessable } from '../utils/AppError.js';
+import { AppError, notFound, unprocessable } from '../utils/AppError.js';
 import { toRupees } from '../utils/money.js';
-import { findOrCreateByPhone } from './customer.service.js';
+import { customersWithPhone, siteForConvert } from './customer.service.js';
 import { createJob, announceAssignment } from './job.service.js';
 import { createFromJob } from './survey.service.js';
 import { createQuotation } from './quotation.service.js';
@@ -12,6 +12,81 @@ import { recordEvent } from './audit.service.js';
 const FUNNEL = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON'];
 // Converting a LOST lead means it is being worked again, so it starts from the top.
 const funnelRank = (status) => (status === 'LOST' ? 0 : FUNNEL.indexOf(status));
+
+/**
+ * Existing customers this lead could be — same phone — for the convert dialogs.
+ * @returns {Promise<object[]>} see `customersWithPhone`
+ */
+export async function customerMatches(leadId) {
+  const lead = await prisma.lead.findFirst({ where: { id: leadId, deletedAt: null } });
+  if (!lead) throw notFound('Lead');
+  return customersWithPhone([lead.phone, lead.altPhone].filter(Boolean));
+}
+
+/**
+ * Which customer the lead becomes, inside the convert transaction.
+ *
+ * A phone number is shared (families, tenants) and recycled, so it is never enough
+ * to pick a customer on its own:
+ * - a lead already linked keeps its customer (a second convert adds a visit or a quote);
+ * - `customerId` is staff saying "same person";
+ * - `createNewCustomer` is staff saying "different person" — a new customer, even with
+ *   the same phone;
+ * - neither, and a customer has this phone: 409 CUSTOMER_MATCH with the candidates;
+ * - neither, and nobody has it: a new customer.
+ *
+ * The lead's email lands on an existing customer only with `confirmEmail`, and then as
+ * the audited `customer.email_confirmed`. A new customer takes the lead's email and language.
+ */
+async function resolveCustomer(tx, lead, input) {
+  const linkedId = !input.customerId && !input.createNewCustomer ? lead.customerId : null;
+  const existingId = input.customerId ?? linkedId;
+
+  if (existingId) {
+    let customer = await tx.customer.findFirst({ where: { id: existingId, deletedAt: null } });
+    if (!customer) throw notFound('Customer');
+    const patch = {};
+    if (input.preferredLocale && input.preferredLocale !== customer.preferredLocale) {
+      patch.preferredLocale = input.preferredLocale;
+    }
+    const newEmail = input.confirmEmail && lead.email && lead.email !== customer.email ? lead.email : null;
+    if (newEmail) patch.email = newEmail;
+    if (Object.keys(patch).length) {
+      const before = customer;
+      customer = await tx.customer.update({ where: { id: customer.id }, data: patch });
+      if (newEmail) {
+        await recordEvent('customer.email_confirmed', {
+          model: 'Customer',
+          recordId: customer.id,
+          before: { email: before.email },
+          after: { email: newEmail },
+          meta: { leadId: lead.id },
+        }, tx);
+      }
+    }
+    return { customer, created: false };
+  }
+
+  if (!input.createNewCustomer) {
+    const candidates = await customersWithPhone([lead.phone, lead.altPhone].filter(Boolean), tx);
+    if (candidates.length) {
+      throw new AppError(409, 'CUSTOMER_MATCH',
+        'A customer already has this phone number. Choose whether this is the same person or a different one.',
+        { candidates });
+    }
+  }
+
+  const customer = await tx.customer.create({
+    data: {
+      name: lead.name,
+      phone: lead.phone,
+      altPhone: lead.altPhone ?? null,
+      email: lead.email ?? null,
+      preferredLocale: input.preferredLocale ?? lead.preferredLocale ?? 'en',
+    },
+  });
+  return { customer, created: true };
+}
 
 /**
  * Lead -> Customer (+ Site) -> optionally a draft Quotation and/or an inspection Job
@@ -33,30 +108,19 @@ export async function convertLead(leadId, input, userId) {
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    let customer;
-    let site;
-
-    if (input.customerId) {
-      customer = await tx.customer.findFirst({ where: { id: input.customerId, deletedAt: null } });
-      if (!customer) throw notFound('Customer');
-      site = await tx.customerSite.findFirst({ where: { customerId: customer.id, deletedAt: null, isPrimary: true } });
-    } else {
-      ({ customer, site } = await findOrCreateByPhone({
-        name: lead.name,
-        phone: lead.phone,
-        email: lead.email,
-        address: input.site?.address ?? lead.address,
-        area: input.site?.area ?? lead.area,
-        siteLabel: input.site?.label,
-      }, tx));
-    }
+    const { customer, created } = await resolveCustomer(tx, lead, input);
+    // The visit goes where staff said: an address typed here that the customer has no
+    // site for becomes a site. With no address typed, the primary site (or the lead's address).
+    const site = await siteForConvert(tx, customer.id, input.site
+      ? { ...input.site, explicit: true }
+      : { address: lead.address, area: lead.area, explicit: false });
 
     await tx.lead.update({
       where: { id: leadId },
       data: { customerId: customer.id, firstResponseAt: lead.firstResponseAt ?? new Date() },
     });
 
-    const out = { customer, site, quotation: null, job: null, survey: null };
+    const out = { customer, customerCreated: created, site, quotation: null, job: null, survey: null };
 
     if (input.createQuotation) {
       // Through createQuotation, so documentTotals stays the only place VAT is worked out.

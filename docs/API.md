@@ -54,6 +54,9 @@ GET  /public/availability             ?from&days  free survey capacity per day a
 POST /public/leads                    honeypot + timing + turnstile + rate limit -> creates Lead
                                       online booking adds { preferredAt, preferredSlot },
                                       which sets source=booking; a closed weekday is rejected
+                                      { name, phone, email? (optional; stored trimmed, lower-case),
+                                        preferredLocale? en|ne (the site's language — the acknowledgement
+                                        SMS and every later message use it), address?, serviceId?, message?… }
 GET  /public/quotations/:token        customer views a quotation
 POST /public/quotations/:token/decide { decision: approve|reject, note }   once — a second is 422
                                       a SENT quotation past validUntil is moved to EXPIRED here and
@@ -101,6 +104,10 @@ on its next authenticated request.
 Every resource below gets the same eight endpoints from one factory: `GET /`, `GET /:id`,
 `POST /`, `PUT /:id` (partial), `PATCH /:id/toggle`, `PATCH /reorder { items: [{ id, sortOrder }] }`,
 `DELETE /:id` (soft) and `PATCH /:id/restore`.
+
+Reads need `cms:read`, writes `cms:write`. One exception: `GET /admin/services` and `GET /admin/services/:id`
+also accept **`services:read`** (SALES), so a salesperson can put a service on a lead; every services write
+stays `cms:write` (403 for SALES).
 
 `DELETE /:id?hard=true` removes the row for good and needs **`cms:purge`**, which only ADMIN holds;
 anyone else gets 403 `FORBIDDEN` and nothing is deleted. It purges a live row or one already in Trash (the trash
@@ -179,33 +186,108 @@ or any subfolder — only an empty folder is deleted.
 
 ## Admin — CRM (`ADMIN`, `SALES`)
 
+Capabilities: leads — `leads:read` (SALES, DISPATCHER), `leads:write` (SALES); customers — `customers:read`
+(SALES, DISPATCHER, ACCOUNTANT), `customers:write` (SALES); history — `leads:history` / `customers:history`
+(SALES). ADMIN holds all of them.
+
+A lead and a customer carry `preferredLocale` (`en` | `ne`, default `en`): the language every SMS and email to
+that person uses (a missing `ne` template falls back to the `en` one). `email` is stored trimmed and lower-case
+wherever it is accepted.
+
 ```
-GET    /admin/leads                 ?status&priority&source&assignedToId&serviceId&slaRisk&from&to&q
-POST   /admin/leads                 manual entry (phone/walk-in)
-GET    /admin/leads/sla-board       at-risk + breached
-GET    /admin/leads/export.csv
-POST   /admin/leads/merge           { primaryId, duplicateIds }   duplicates move to LOST and are soft-deleted;
-                                    422 when a duplicate is WON — make that lead the primary instead
+GET    /admin/leads                 leads:read · ?status&priority&source&assignedToId&serviceId&slaRisk
+                                     &requestedVisit=true|false&from&to&q&page&limit&sort
+                                    assignedToId: a user id, `me` (the caller — the "My leads" view) or
+                                    `none` (unassigned). requestedVisit: the lead names a visit day
+                                    (preferredAt set — online bookings, and bookings folded onto an enquiry)
+POST   /admin/leads                 leads:write · manual entry (call, walk-in, WhatsApp…)
+                                    { name, phone, altPhone?, email?, address?, area?, serviceId?, message?,
+                                      source (default call), priority, assignedToId? (default: the caller),
+                                      estimatedAmount? (rupees), preferredLocale? (default en) }
+GET    /admin/leads/sla-board       leads:read · at-risk + breached
+GET    /admin/leads/export.csv      leads:read · the list filters (every page, up to 10,000 rows), or
+                                    ?ids=a,b,c (≤100) for the rows picked in the table
+POST   /admin/leads/merge           leads:write · { primaryId, duplicateIds }   duplicates move to LOST and are
+                                    soft-deleted; 422 when a duplicate is WON — make that lead the primary instead
+POST   /admin/leads/bulk-assign     leads:write · { ids (1–100), assignedToId | null, note? }
+                                    -> { assigned, unchanged }. One transaction, all or nothing (an unknown
+                                    id is 404 and nothing moves). Each lead gets its timeline entry and its
+                                    lead.assigned event; the assignee gets ONE notification for the batch.
+                                    Leads already with that owner are left alone
+GET    /admin/leads/assignees       leads:read · ?q&limit — active SALES and ADMIN users { id, name, email, role }:
+                                    who a lead can be assigned to (/admin/users is ADMIN's)
+GET    /admin/leads/assignees/:id   leads:read · one of them; 404 for anyone else
 GET    /admin/leads/:id
-GET    /admin/leads/:id/duplicates  other leads with the same phone or email
-PUT    /admin/leads/:id
+GET    /admin/leads/:id/duplicates  leads:read · other live leads sharing the phone / alt phone, or the email
+                                    (any case). Each row adds `matchedOn` (phone | email), `sla` and
+                                    `_count { notes, activities, quotations, jobs }` — what a merge would move
+GET    /admin/leads/:id/customer-matches  leads:read · live customers with the lead's phone or alt phone:
+                                    [{ id, name, phone, altPhone, email, type, preferredLocale, jobCount,
+                                       lastVisitAt, primaryAddress, createdAt }]
+GET    /admin/leads/:id/history     leads:history · see "Record history" below
+PUT    /admin/leads/:id             leads:write · partial; leaving preferredLocale out keeps it
 PATCH  /admin/leads/:id/status      validated transition; LOST needs lostReason; writes a status_change
                                     timeline entry; the status it already has is a no-op
-PATCH  /admin/leads/:id/assign
+PATCH  /admin/leads/:id/assign      leads:write · { assignedToId | null, note? } — the assignee must be an
+                                    active SALES or ADMIN user (400 otherwise); notified unless unchanged
 POST   /admin/leads/:id/notes
-POST   /admin/leads/:id/activities  logging a call stamps firstResponseAt
-POST   /admin/leads/:id/convert     { customerId?, site?, createQuotation, createInspectionJob,
-                                      scheduledStart, scheduledEnd, surveyorId }
-                                    -> 201 { customer, site, quotation?, job?, survey? }
-                                    assigning surveyorId schedules the visit and pre-creates its SiteSurvey.
+POST   /admin/leads/:id/activities  leads:write · { type: call|sms|whatsapp|email|visit|note, summary, meta? }
+                                    (status_change and assignment are the system's — 400). Any type but
+                                    note stamps firstResponseAt the first time. Writes lead.activity_logged.
+                                    -> 201 { …activity, user, firstResponse: bool, sla: { state, … } }
+POST   /admin/leads/:id/convert     leads:write · { customerId? | createNewCustomer?, confirmEmail? (false),
+                                      preferredLocale?, site? { label, address, area },
+                                      createQuotation, createInspectionJob, scheduledStart, scheduledEnd,
+                                      surveyorId }
+                                    -> 201 { customer, customerCreated, site, quotation?, job?, survey? }
+                                    Which customer — a phone is shared and recycled, so it is never enough:
+                                      · a lead already linked keeps its customer (a second convert adds a
+                                        visit or a quotation);
+                                      · customerId — "same person": link to it. confirmEmail also saves the
+                                        lead's email on it (customer.email_confirmed, actor = the caller);
+                                        without it the customer's email is untouched;
+                                      · createNewCustomer — "different person": a new customer with this phone
+                                        and the lead's email, even though another customer has the phone;
+                                      · neither, and a customer has the phone (or alt phone): 409
+                                        CUSTOMER_MATCH { details: { candidates: [ as customer-matches ] } },
+                                        nothing written;
+                                      · neither, and nobody has it: a new customer.
+                                    Both customerId and createNewCustomer: 400.
+                                    A new customer takes the lead's email and preferredLocale (or the one
+                                    given); an existing customer keeps its language unless preferredLocale
+                                    is given.
+                                    Site: an address typed in `site` is used — an existing site of the
+                                    customer with that address, else a new site (primary only if the customer
+                                    has none). With no `site`: the primary site, or one made from the lead's
+                                    address for a customer with no site.
+                                    Assigning surveyorId schedules the visit and pre-creates its SiteSurvey.
                                     One transaction: any failure (e.g. an unknown surveyorId, 409) leaves no
                                     customer, site, quotation, job, survey or lead change behind.
                                     The quotation is priced like POST /admin/quotations (VAT included).
                                     The lead only moves forward, one timeline entry per step:
                                     NEW|LOST → CONTACTED → INSPECTION_SCHEDULED (job) → QUOTED (quotation)
-DELETE /admin/leads/:id             soft delete
+DELETE /admin/leads/:id             soft delete; 404 for an unknown or deleted lead
 
-/admin/customers                    CRUD + /:id/sites CRUD + GET /:id/timeline
+GET    /admin/customers             customers:read · ?q (name, phone, alt phone, email, PAN)&type=individual|company
+                                     &tag&page&limit&sort. Each row adds sites, siteCount, openJobs, invoiceCount,
+                                    quotationCount — and balanceDue (paisa, unpaid invoices' total − paid) only
+                                    for a caller with invoices:read (ACCOUNTANT, ADMIN)
+POST   /admin/customers             customers:write · { type, name, phone, altPhone?, email?, panVatNo?, notes?,
+                                      tags?: string[], preferredLocale? } — a phone another customer has is
+                                    allowed (shared phones are real); the screen warns
+GET    /admin/customers/:id         customers:read · with sites (primary first), contracts and _count
+PUT    /admin/customers/:id         customers:write · partial. The one place staff change a customer's email;
+                                    it is the audited model change (before → after)
+DELETE /admin/customers/:id         customers:write · soft; 400 while the customer has open jobs
+GET    /admin/customers/:id/timeline  customers:read · leads, quotations, jobs, invoices, warranties, newest first
+GET    /admin/customers/:id/history customers:history · see "Record history" below
+GET    /admin/customers/:id/sites   customers:read
+POST   /admin/customers/:id/sites   customers:write · { label, address, area?, lat?, lng?, accessNotes?, isPrimary? }
+PUT    /admin/customers/:id/sites/:siteId     partial; 404 when the site is not that customer's
+DELETE /admin/customers/:id/sites/:siteId     soft; 400 while jobs use the site
+                                    Exactly one primary site: the first site is primary whatever was sent; a site
+                                    marked primary takes the flag from the others; unmarking the primary is 422
+                                    (mark another instead); deleting the primary passes it to the oldest site left
 /admin/rate-card                    GET (?q searches code, name, category; ?deleted=true is Trash), GET /:id,
                                     POST, PUT /:id (partial), PATCH /:id/toggle, PATCH /reorder { items },
                                     PATCH /:id/restore, DELETE /:id (soft) — read: quotations:read,
@@ -226,6 +308,25 @@ POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only
                                     -> 201 job. Customer, site and lead come from the quotation, which
                                     becomes CONVERTED. SALES can win the work but not schedule it.
 ```
+
+### Record history
+
+```
+GET /admin/leads/:id/history        leads:history
+GET /admin/customers/:id/history    customers:history
+                                    ?page&limit (≤100) · newest first · 404 for an unknown record (a
+                                    soft-deleted record's history stays readable)
+                                    row: { id, event, action, model, recordId, actorType, requestId,
+                                           before, after, changes, createdAt,
+                                           actor: { id, name, role } | null }
+                                    — an AuditLog row without ip and userAgent (those stay in the audit log)
+```
+
+What belongs to a record: a lead — its own `Lead` rows and events (`lead.*`) and its notes' `LeadNote` rows;
+a customer — its own `Customer` rows and events (`customer.email_confirmed`) and its sites' `CustomerSite`
+rows. A child row is matched by the parent id in its before/after snapshot. Timeline entries (`LeadActivity`)
+are not audited row by row; staff-logged ones arrive as `lead.activity_logged`. Scopes live in
+`services/history.service.js` (`HISTORY_SCOPES`); a later detail page adds a scope, not an endpoint shape.
 
 ## Admin — Site surveys (`ADMIN`, `SALES`; `DISPATCHER` reads)
 
@@ -383,6 +484,15 @@ GET   /admin/audit-logs             ADMIN · paginated, newest first
 /admin/message-templates            ADMIN · GET, POST, PUT /:id, DELETE /:id
 GET   /admin/message-logs           ADMIN · ?status&channel
 GET   /admin/notifications          own only · ?unreadOnly · meta.unread
+                                    `link` is an SPA path the panel opens as it is: `/admin/...` for office
+                                    staff (`/admin/leads/:id`, `/admin/quotations/:id`, `/admin/surveys/:id`,
+                                    `/admin/jobs/:id`, `/admin/materials/:id`, `/admin/warranty-claims/:id`,
+                                    `/admin/leads`, `/admin/invoices?overdueOnly=true`,
+                                    `/admin/amc-contracts?renewals=true`), `/tech/...` for technicians and
+                                    surveyors (`/tech/jobs/:id`, `/tech/surveys/:id`). A link in an SMS or
+                                    email is absolute on the web origin (PUBLIC_WEB_ORIGIN), never APP_URL.
+                                    Types include lead_new, lead_assigned, lead_sla_warn, lead_sla_breach,
+                                    quotation_approved, quotation_rejected, survey_submitted, job_completed…
 PATCH /admin/notifications/:id/read  ·  PATCH /admin/notifications/read-all
 GET   /admin/dashboard              every role · role-aware widget payload
 GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
@@ -414,6 +524,8 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `lead.assigned` | `PATCH /admin/leads/:id/assign` | assignedToId → assignedToId · note |
 | `lead.merged` | `POST /admin/leads/merge`, on the primary lead | · duplicateIds |
 | `lead.converted` | `POST /admin/leads/:id/convert` | customerId → customerId · quotationId, jobId, surveyId |
+| `lead.activity_logged` | `POST /admin/leads/:id/activities` | firstResponseAt null → the time, when this entry stopped the clock · activityId, type, summary |
+| `customer.email_confirmed` | convert with `confirmEmail` puts the lead's email on an existing customer (actor = the staff member) | email → email · leadId |
 | `quotation.created` | a quotation is created (admin, convert, survey quote) | → number, status, total, customerId, leadId |
 | `quotation.sent` | `POST /admin/quotations/:id/send` | status → SENT |
 | `quotation.customer_approved` | the customer approves by link (`public`) | SENT → APPROVED · note |

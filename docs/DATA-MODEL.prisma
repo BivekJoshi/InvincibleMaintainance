@@ -9,7 +9,7 @@
 //   { sed -n '1,/^\/\/ ═══/p' docs/DATA-MODEL.prisma; cat MaintainanceBackend/prisma/schema.prisma; } \
 //     > /tmp/dm && mv /tmp/dm docs/DATA-MODEL.prisma
 //
-// Last regenerated 2026-09-14 (Phase B: AuditLog actorType / event / before / after / requestId / userAgent).
+// Last regenerated 2026-09-16 (Phase E: Lead.preferredLocale, Customer.preferredLocale).
 // ═════════════════════════════════════════════════════════════════════════════
 // Maintenance System — Prisma schema
 // Money is ALWAYS Int paisa (NPR x 100). Timestamps are UTC.
@@ -570,6 +570,8 @@ model Lead {
   closedAt        DateTime?
   lostReason      String?
   customerId      String?
+  /// en | ne — the language customer SMS and email use (the site's language when they enquired)
+  preferredLocale String     @default("en")
   ip              String?
   userAgent       String?
   createdAt       DateTime   @default(now())
@@ -620,18 +622,20 @@ model LeadActivity {
 }
 
 model Customer {
-  id        String    @id @default(cuid())
-  type      String    @default("individual")
-  name      String
-  phone     String
-  altPhone  String?
-  email     String?
-  panVatNo  String?
-  notes     String?
-  tags      Json?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id              String    @id @default(cuid())
+  type            String    @default("individual")
+  name            String
+  phone           String
+  altPhone        String?
+  email           String?
+  panVatNo        String?
+  notes           String?
+  tags            Json?
+  /// en | ne — the language customer SMS and email use
+  preferredLocale String    @default("en")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
   sites      CustomerSite[]
   leads      Lead[]
@@ -1219,12 +1223,12 @@ model InvoiceItem {
 }
 
 model Payment {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   invoiceId  String
   amount     Int
   method     String
   reference  String?
-  receivedAt DateTime @default(now())
+  receivedAt DateTime  @default(now())
   receivedBy String?
   note       String?
   // A payment is never deleted. Voiding keeps the row, and every paid total ignores it.

@@ -5,7 +5,8 @@ import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.j
 import { toPaisa } from '../utils/money.js';
 import { normalizePhone } from '../utils/phone.js';
 import { LEAD_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
-import { BOOKING_SLOTS } from '../shared/enums.js';
+import { BOOKING_SLOTS, CONTACT_ACTIVITY_TYPES } from '../shared/enums.js';
+import { adminLeadPath, webUrl } from '../utils/links.js';
 import { local } from '../utils/dates.js';
 import { computeSlaDueAt, decorateSla, slaWhere } from './sla.service.js';
 import { isSlotFull } from './availability.service.js';
@@ -13,6 +14,9 @@ import { notify, notifyRoles } from './notify.service.js';
 import { getSetting } from './settings.service.js';
 import { logger } from '../lib/logger.js';
 import { recordEvent } from './audit.service.js';
+
+/** Who a lead can be assigned to — the people who work the pipeline. */
+export const ASSIGNABLE_ROLES = ['SALES', 'ADMIN'];
 
 const LEAD_INCLUDE = {
   service: { select: { id: true, name: true, slug: true } },
@@ -172,7 +176,7 @@ async function announceNewLead(lead) {
     leadName: lead.name, phone: lead.phone, address: lead.address ?? '-',
     service: lead.service?.name ?? 'General enquiry', message: lead.message ?? '-',
     requested: describeRequestedVisit(lead),
-    link: `${env.appUrl}/leads/${lead.id}`, appName: env.appName,
+    link: webUrl(adminLeadPath(lead.id)), appName: env.appName,
   };
 
   await notifyRoles(['ADMIN', 'SALES'], {
@@ -180,7 +184,7 @@ async function announceNewLead(lead) {
     title: lead.preferredAt ? `New booking — ${lead.name}` : `New lead — ${lead.name}`,
     body: [lead.phone, lead.service?.name ?? 'General enquiry', lead.preferredAt ? vars.requested : null]
       .filter(Boolean).join(' · '),
-    link: `/leads/${lead.id}`,
+    link: adminLeadPath(lead.id),
   });
 
   if (onCall) {
@@ -202,7 +206,7 @@ async function announceNewLead(lead) {
 
   // Acknowledge to the customer — this is what makes the "we respond fast" promise visible.
   await notify({
-    templateKey: 'lead_ack', channel: 'sms', to: lead.phone,
+    templateKey: 'lead_ack', channel: 'sms', to: lead.phone, locale: lead.preferredLocale,
     vars, related: { model: 'Lead', id: lead.id },
     fallbackBody: 'Thank you {{leadName}}, we received your request. Our team will call you shortly. - {{appName}}',
   });
@@ -223,20 +227,34 @@ export async function createLead(input, actorId) {
   return decorateSla(lead);
 }
 
-export async function listLeads(query) {
-  const { page, limit, skip, take, orderBy, q } = parseListQuery(query);
+/**
+ * The list filters as a Prisma where. `assignedToId` is a user id or `none`
+ * (unassigned); the route has already turned `me` into the caller's id.
+ * The SLA and search fragments both use OR, so they are combined with AND.
+ */
+function leadWhere(query, q) {
   const created = dateRange(query.from, query.to);
-  const where = {
+  const and = [];
+  if (query.slaRisk) and.push(slaWhere(query.slaRisk));
+  if (q) and.push({ OR: searchOr(q, ['name', 'phone', 'email', 'address', 'message']) });
+  return {
     deletedAt: null,
     ...(query.status ? { status: query.status } : {}),
     ...(query.priority ? { priority: query.priority } : {}),
     ...(query.source ? { source: query.source } : {}),
-    ...(query.assignedToId ? { assignedToId: query.assignedToId } : {}),
+    ...(query.assignedToId ? { assignedToId: query.assignedToId === 'none' ? null : query.assignedToId } : {}),
     ...(query.serviceId ? { serviceId: query.serviceId } : {}),
+    ...(query.requestedVisit === true ? { preferredAt: { not: null } } : {}),
+    ...(query.requestedVisit === false ? { preferredAt: null } : {}),
+    ...(query.ids?.length ? { id: { in: query.ids } } : {}),
     ...(created ? { createdAt: created } : {}),
-    ...(query.slaRisk ? slaWhere(query.slaRisk) : {}),
-    ...(q ? { OR: searchOr(q, ['name', 'phone', 'email', 'address', 'message']) } : {}),
+    ...(and.length ? { AND: and } : {}),
   };
+}
+
+export async function listLeads(query) {
+  const { page, limit, skip, take, orderBy, q } = parseListQuery(query);
+  const where = leadWhere(query, q);
   const [items, total] = await Promise.all([
     prisma.lead.findMany({ where, orderBy, skip, take, include: LEAD_INCLUDE }),
     prisma.lead.count({ where }),
@@ -252,7 +270,13 @@ export async function getLead(id) {
       notes: { orderBy: { createdAt: 'desc' }, include: { user: { select: { id: true, name: true } } } },
       activities: { orderBy: { createdAt: 'desc' }, take: 100, include: { user: { select: { id: true, name: true } } } },
       quotations: { select: { id: true, number: true, status: true, total: true, createdAt: true } },
-      jobs: { select: { id: true, number: true, status: true, type: true, scheduledStart: true } },
+      jobs: {
+        where: { deletedAt: null },
+        select: {
+          id: true, number: true, title: true, status: true, type: true, scheduledStart: true,
+          survey: { select: { id: true, number: true, status: true } },
+        },
+      },
     },
   });
   if (!lead) throw notFound('Lead');
@@ -260,7 +284,7 @@ export async function getLead(id) {
 }
 
 export async function updateLead(id, data) {
-  await getLead(id);
+  await findLead(id);
   const { estimatedAmount, ...rest } = data;
   const lead = await prisma.lead.update({
     where: { id },
@@ -274,26 +298,46 @@ export async function updateLead(id, data) {
   return decorateSla(lead);
 }
 
+async function findLead(id, client = prisma) {
+  const lead = await client.lead.findFirst({ where: { id, deletedAt: null } });
+  if (!lead) throw notFound('Lead');
+  return lead;
+}
+
 /**
  * Logging any outbound contact stamps firstResponseAt — that timestamp, not a
  * status change, is what the SLA report measures.
+ *
+ * Timeline entries are not audited row by row, so each one also writes
+ * `lead.activity_logged`: that is how it reaches the lead's History.
+ *
+ * @returns the activity, plus `sla` — the lead's response state after it — and
+ *          `firstResponse: true` when this entry is the one that stopped the clock
  */
 export async function addActivity(leadId, { type, summary, meta: metaData }, userId) {
-  const lead = await prisma.lead.findFirst({ where: { id: leadId, deletedAt: null } });
-  if (!lead) throw notFound('Lead');
+  const lead = await findLead(leadId);
+  const stamps = CONTACT_ACTIVITY_TYPES.includes(type) && !lead.firstResponseAt;
 
-  const isContact = ['call', 'sms', 'email', 'whatsapp', 'visit'].includes(type);
-  const [activity] = await prisma.$transaction([
-    prisma.leadActivity.create({ data: { leadId, userId: userId ?? null, type, summary, meta: metaData ?? undefined } }),
-    ...(isContact && !lead.firstResponseAt
-      ? [prisma.lead.update({ where: { id: leadId }, data: { firstResponseAt: new Date() } })]
-      : []),
-  ]);
-  return activity;
+  return prisma.$transaction(async (tx) => {
+    const activity = await tx.leadActivity.create({
+      data: { leadId, userId: userId ?? null, type, summary, meta: metaData ?? undefined },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    const after = stamps
+      ? await tx.lead.update({ where: { id: leadId }, data: { firstResponseAt: new Date() } })
+      : lead;
+    await recordEvent('lead.activity_logged', {
+      model: 'Lead',
+      recordId: leadId,
+      ...(stamps ? { before: { firstResponseAt: null }, after: { firstResponseAt: after.firstResponseAt } } : {}),
+      meta: { activityId: activity.id, type, summary },
+    }, tx);
+    return { ...activity, firstResponse: stamps, sla: decorateSla(after).sla };
+  });
 }
 
 export async function addNote(leadId, note, userId) {
-  await prisma.lead.findFirstOrThrow({ where: { id: leadId, deletedAt: null } }).catch(() => { throw notFound('Lead'); });
+  await findLead(leadId);
   const row = await prisma.leadNote.create({
     data: { leadId, userId, note },
     include: { user: { select: { id: true, name: true } } },
@@ -343,8 +387,7 @@ export async function transitionLead(tx, leadId, to, { actorId, note, data = {} 
 }
 
 export async function changeStatus(id, { status, lostReason, note }, userId) {
-  const lead = await prisma.lead.findFirst({ where: { id, deletedAt: null } });
-  if (!lead) throw notFound('Lead');
+  const lead = await findLead(id);
 
   await prisma.$transaction((tx) => transitionLead(tx, id, status, {
     actorId: userId,
@@ -357,37 +400,99 @@ export async function changeStatus(id, { status, lostReason, note }, userId) {
   return decorateSla(await prisma.lead.findUnique({ where: { id }, include: LEAD_INCLUDE }));
 }
 
-export async function assignLead(id, { assignedToId, note }, actorId) {
-  const lead = await prisma.lead.findFirst({ where: { id, deletedAt: null } });
-  if (!lead) throw notFound('Lead');
-  if (assignedToId) {
-    const user = await prisma.user.findFirst({ where: { id: assignedToId, isActive: true, deletedAt: null } });
-    if (!user) throw badRequest('That staff member does not exist or is inactive');
-  }
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.lead.update({ where: { id }, data: { assignedToId }, include: LEAD_INCLUDE });
-    await tx.leadActivity.create({
-      data: {
-        leadId: id, userId: actorId ?? null, type: 'assignment',
-        summary: assignedToId ? `Assigned to ${row.assignedTo?.name}${note ? ` · ${note}` : ''}` : 'Unassigned',
-      },
-    });
-    await recordEvent('lead.assigned', {
-      model: 'Lead', recordId: id, before: { assignedToId: lead.assignedToId }, after: { assignedToId }, ...(note ? { meta: { note } } : {}),
-    }, tx);
-    return row;
+async function assertAssignable(assignedToId) {
+  if (!assignedToId) return;
+  const user = await prisma.user.findFirst({
+    where: { id: assignedToId, isActive: true, deletedAt: null, role: { in: ASSIGNABLE_ROLES } },
   });
-  if (assignedToId) {
+  if (!user) throw badRequest('That staff member does not exist, is inactive, or does not work leads');
+}
+
+/** One lead's assignment: the column, its timeline entry and its event, through `tx`. */
+async function assignInTx(tx, lead, assignedToId, note, actorId) {
+  const row = await tx.lead.update({ where: { id: lead.id }, data: { assignedToId }, include: LEAD_INCLUDE });
+  await tx.leadActivity.create({
+    data: {
+      leadId: lead.id, userId: actorId ?? null, type: 'assignment',
+      summary: assignedToId ? `Assigned to ${row.assignedTo?.name}${note ? ` · ${note}` : ''}` : 'Unassigned',
+    },
+  });
+  await recordEvent('lead.assigned', {
+    model: 'Lead', recordId: lead.id, before: { assignedToId: lead.assignedToId }, after: { assignedToId }, ...(note ? { meta: { note } } : {}),
+  }, tx);
+  return row;
+}
+
+export async function assignLead(id, { assignedToId, note }, actorId) {
+  const lead = await findLead(id);
+  await assertAssignable(assignedToId);
+  const updated = await prisma.$transaction((tx) => assignInTx(tx, lead, assignedToId, note, actorId));
+  if (assignedToId && assignedToId !== lead.assignedToId) {
     await prisma.notification.create({
       data: {
         userId: assignedToId, type: 'lead_assigned',
         title: `Lead assigned — ${updated.name}`,
         body: `${updated.phone} · respond before the SLA deadline`,
-        link: `/leads/${id}`,
+        link: adminLeadPath(id),
       },
     });
   }
   return decorateSla(updated);
+}
+
+/**
+ * Assigns several leads in one transaction — all or none. Each lead still gets its
+ * own timeline entry and `lead.assigned` event; the assignee gets one notification
+ * for the batch, not one per lead. Leads already with that owner are left alone.
+ *
+ * @returns {{ assigned: number, unchanged: number }}
+ */
+export async function bulkAssign({ ids, assignedToId, note }, actorId) {
+  await assertAssignable(assignedToId);
+  const leads = await prisma.lead.findMany({ where: { id: { in: ids }, deletedAt: null } });
+  if (leads.length !== ids.length) {
+    const found = new Set(leads.map((l) => l.id));
+    throw notFound(`Lead ${ids.find((i) => !found.has(i))}`);
+  }
+  const changing = leads.filter((l) => l.assignedToId !== assignedToId);
+  await prisma.$transaction(async (tx) => {
+    for (const lead of changing) await assignInTx(tx, lead, assignedToId, note, actorId);
+  }, { timeout: 15_000 });
+
+  if (assignedToId && changing.length) {
+    const [first] = changing;
+    await prisma.notification.create({
+      data: {
+        userId: assignedToId, type: 'lead_assigned',
+        title: changing.length === 1 ? `Lead assigned — ${first.name}` : `${changing.length} leads assigned to you`,
+        body: changing.length === 1 ? `${first.phone} · respond before the SLA deadline` : 'Respond before each SLA deadline',
+        link: changing.length === 1 ? adminLeadPath(first.id) : '/admin/leads',
+      },
+    });
+  }
+  return { assigned: changing.length, unchanged: leads.length - changing.length };
+}
+
+/** Active staff a lead can be assigned to, for the assign picker and the owner filter. */
+export async function listAssignees({ q, limit = 50 } = {}) {
+  return prisma.user.findMany({
+    where: {
+      isActive: true, deletedAt: null, role: { in: ASSIGNABLE_ROLES },
+      ...(q ? { OR: searchOr(q, ['name', 'email']) } : {}),
+    },
+    select: { id: true, name: true, email: true, role: true },
+    orderBy: { name: 'asc' },
+    take: limit,
+  });
+}
+
+export async function getAssignee(id) {
+  const user = await prisma.user.findFirst({
+    where: { id, deletedAt: null, role: { in: ASSIGNABLE_ROLES } },
+    select: { id: true, name: true, email: true, role: true, isActive: true },
+  });
+  if (!user) throw notFound('Staff member');
+  return user;
 }
 
 /** Merges duplicates into a primary lead, moving notes/activities and soft-deleting the rest. */
@@ -426,18 +531,34 @@ export async function mergeLeads({ primaryId, duplicateIds }, actorId) {
   return getLead(primaryId);
 }
 
-/** Finds other open leads sharing this phone number. */
+/**
+ * Other live leads with this lead's phone (or alt phone) or email, with what a merge
+ * would move into the primary — the merge preview reads the counts.
+ */
 export async function findDuplicates(id) {
-  const lead = await prisma.lead.findUnique({ where: { id } });
-  if (!lead) throw notFound('Lead');
-  return prisma.lead.findMany({
-    where: { id: { not: id }, phone: lead.phone, deletedAt: null },
+  const lead = await findLead(id);
+  const phones = [lead.phone, lead.altPhone].filter(Boolean);
+  const leads = await prisma.lead.findMany({
+    where: {
+      id: { not: id },
+      deletedAt: null,
+      OR: [
+        { phone: { in: phones } },
+        { altPhone: { in: phones } },
+        ...(lead.email ? [{ email: { equals: lead.email, mode: 'insensitive' } }] : []),
+      ],
+    },
     orderBy: { createdAt: 'desc' },
-    include: LEAD_INCLUDE,
+    include: { ...LEAD_INCLUDE, _count: { select: { notes: true, activities: true, quotations: true, jobs: true } } },
   });
+  return leads.map((l) => ({
+    ...decorateSla(l),
+    matchedOn: phones.includes(l.phone) || phones.includes(l.altPhone) ? 'phone' : 'email',
+  }));
 }
 
 export async function deleteLead(id) {
+  await findLead(id);
   await prisma.lead.update({ where: { id }, data: { deletedAt: new Date() } });
 }
 

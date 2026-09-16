@@ -1,22 +1,55 @@
 import { prisma } from '../lib/prisma.js';
-import { notFound, badRequest } from '../utils/AppError.js';
+import { notFound, badRequest, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { normalizePhone } from '../utils/phone.js';
 
-export async function listCustomers(query) {
+const OPEN_JOB = { deletedAt: null, status: { notIn: ['COMPLETED', 'VERIFIED', 'CANCELLED'] } };
+const UNPAID = ['SENT', 'PARTIAL', 'OVERDUE'];
+
+/**
+ * Customers, with site and open-job counts. `balanceDue` (paisa: invoiced minus paid on
+ * unpaid invoices) is added only when the caller may see money — the route decides.
+ *
+ * @param {object} query  validated customerListQuery
+ * @param {{ withBalance?: boolean }} [opts]
+ */
+export async function listCustomers(query, { withBalance = false } = {}) {
   const { page, limit, skip, take, orderBy, q } = parseListQuery(query);
   const where = {
     deletedAt: null,
-    ...(q ? { OR: searchOr(q, ['name', 'phone', 'email', 'panVatNo']) } : {}),
+    ...(query.type ? { type: query.type } : {}),
+    ...(query.tag ? { tags: { array_contains: [query.tag] } } : {}),
+    ...(q ? { OR: searchOr(q, ['name', 'phone', 'altPhone', 'email', 'panVatNo']) } : {}),
   };
-  const [items, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.customer.findMany({
       where, orderBy, skip, take,
-      include: { sites: { where: { deletedAt: null }, select: { id: true, label: true, address: true } },
-        _count: { select: { jobs: true, invoices: true } } },
+      include: {
+        sites: { where: { deletedAt: null }, select: { id: true, label: true, address: true, isPrimary: true } },
+        _count: { select: { jobs: { where: OPEN_JOB }, invoices: true, quotations: true } },
+      },
     }),
     prisma.customer.count({ where }),
   ]);
+
+  let balances = new Map();
+  if (withBalance && rows.length) {
+    const grouped = await prisma.invoice.groupBy({
+      by: ['customerId'],
+      where: { customerId: { in: rows.map((c) => c.id) }, deletedAt: null, status: { in: UNPAID } },
+      _sum: { total: true, paidAmount: true },
+    });
+    balances = new Map(grouped.map((g) => [g.customerId, (g._sum.total ?? 0) - (g._sum.paidAmount ?? 0)]));
+  }
+
+  const items = rows.map(({ _count, ...c }) => ({
+    ...c,
+    siteCount: c.sites.length,
+    openJobs: _count.jobs,
+    invoiceCount: _count.invoices,
+    quotationCount: _count.quotations,
+    ...(withBalance ? { balanceDue: balances.get(c.id) ?? 0 } : {}),
+  }));
   return { items, meta: meta({ page, limit, total }) };
 }
 
@@ -26,17 +59,22 @@ export async function getCustomer(id) {
     include: {
       sites: { where: { deletedAt: null }, orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }] },
       contracts: { where: { deletedAt: null }, orderBy: { endDate: 'desc' } },
-      _count: { select: { jobs: true, invoices: true, quotations: true, leads: true } },
+      _count: { select: { jobs: true, invoices: true, quotations: true, leads: true, warranties: true } },
     },
   });
   if (!c) throw notFound('Customer');
   return c;
 }
 
+/**
+ * A new customer. The same phone as an existing customer is allowed on purpose —
+ * phones are shared by families and tenants — so the screen warns, the API does not refuse.
+ */
 export async function createCustomer(data) {
   return prisma.customer.create({ data: { ...data, phone: normalizePhone(data.phone) } });
 }
 
+/** A staff edit. An email change here is the audited model change (before → after). */
 export async function updateCustomer(id, data) {
   await getCustomer(id);
   return prisma.customer.update({
@@ -46,26 +84,83 @@ export async function updateCustomer(id, data) {
 }
 
 export async function deleteCustomer(id) {
-  const open = await prisma.job.count({ where: { customerId: id, status: { notIn: ['COMPLETED', 'VERIFIED', 'CANCELLED'] }, deletedAt: null } });
+  await getCustomer(id);
+  const open = await prisma.job.count({ where: { customerId: id, ...OPEN_JOB } });
   if (open) throw badRequest(`This customer has ${open} open job(s). Close them first.`);
   await prisma.customer.update({ where: { id }, data: { deletedAt: new Date() } });
 }
 
-/** Finds an existing customer by phone, or creates one — used by lead conversion. */
-/** @param {import('@prisma/client').Prisma.TransactionClient} [client]  the caller's transaction, if any */
-export async function findOrCreateByPhone({ name, phone, email, address, area, siteLabel }, client = prisma) {
-  const normalized = normalizePhone(phone);
-  let customer = await client.customer.findFirst({ where: { phone: normalized, deletedAt: null } });
-  if (!customer) {
-    customer = await client.customer.create({ data: { name, phone: normalized, email: email ?? null } });
+/**
+ * Live customers with any of these phone numbers, described so staff can tell whether
+ * the enquiry is the same person: jobs, and the last visit (the latest job that started
+ * or was scheduled).
+ *
+ * @param {string[]} phones
+ * @param {import('@prisma/client').Prisma.TransactionClient} [client]
+ */
+export async function customersWithPhone(phones, client = prisma) {
+  const normalized = [...new Set(phones.map(normalizePhone))];
+  if (!normalized.length) return [];
+  const rows = await client.customer.findMany({
+    where: { deletedAt: null, OR: [{ phone: { in: normalized } }, { altPhone: { in: normalized } }] },
+    orderBy: { createdAt: 'asc' },
+    take: 10,
+    select: {
+      id: true, name: true, phone: true, altPhone: true, email: true, type: true, preferredLocale: true, createdAt: true,
+      _count: { select: { jobs: { where: { deletedAt: null } } } },
+      jobs: {
+        where: { deletedAt: null, OR: [{ actualStart: { not: null } }, { scheduledStart: { not: null } }] },
+        orderBy: [{ actualStart: { sort: 'desc', nulls: 'last' } }, { scheduledStart: 'desc' }],
+        take: 1,
+        select: { actualStart: true, scheduledStart: true },
+      },
+      sites: { where: { deletedAt: null, isPrimary: true }, take: 1, select: { address: true } },
+    },
+  });
+  return rows.map(({ _count, jobs, sites, ...c }) => ({
+    ...c,
+    jobCount: _count.jobs,
+    lastVisitAt: jobs[0] ? jobs[0].actualStart ?? jobs[0].scheduledStart : null,
+    primaryAddress: sites[0]?.address ?? null,
+  }));
+}
+
+const sameAddress = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+
+/**
+ * The site a convert's visit or quotation belongs to, inside its transaction.
+ *
+ * - An address staff typed (`explicit`) is used as given: an existing site with that
+ *   address, or a new one — primary only when the customer has none yet.
+ * - Otherwise the primary site, or — for a customer with no site — one made from the
+ *   lead's address, when it has one.
+ *
+ * @param {import('@prisma/client').Prisma.TransactionClient} tx
+ * @param {string} customerId
+ * @param {{ label?: string, address?: string|null, area?: string|null, explicit: boolean }} site
+ */
+export async function siteForConvert(tx, customerId, { label, address, area, explicit }) {
+  const sites = await tx.customerSite.findMany({
+    where: { customerId, deletedAt: null },
+    orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+  });
+  const primary = sites.find((s) => s.isPrimary) ?? null;
+
+  if (explicit && address) {
+    const existing = sites.find((s) => sameAddress(s.address, address));
+    if (existing) return existing;
+  } else if (primary || !address) {
+    return primary;
   }
-  let site = await client.customerSite.findFirst({ where: { customerId: customer.id, deletedAt: null, isPrimary: true } });
-  if (!site && address) {
-    site = await client.customerSite.create({
-      data: { customerId: customer.id, label: siteLabel || 'Primary site', address, area: area ?? null, isPrimary: true },
-    });
-  }
-  return { customer, site };
+  return tx.customerSite.create({
+    data: {
+      customerId,
+      label: label || (primary ? 'Other site' : 'Primary site'),
+      address,
+      area: area ?? null,
+      isPrimary: !primary,
+    },
+  });
 }
 
 export async function listSites(customerId) {
@@ -76,29 +171,62 @@ export async function listSites(customerId) {
   });
 }
 
+async function findSite(customerId, siteId, client = prisma) {
+  const site = await client.customerSite.findFirst({ where: { id: siteId, customerId, deletedAt: null } });
+  if (!site) throw notFound('Site');
+  return site;
+}
+
+/** Marks one site primary and every other site of the customer not, through `tx`. */
+async function makePrimary(tx, customerId, siteId) {
+  await tx.customerSite.updateMany({
+    where: { customerId, id: { not: siteId }, isPrimary: true },
+    data: { isPrimary: false },
+  });
+}
+
+/**
+ * A customer has exactly one primary site once it has any: the first site is primary
+ * whatever the form said, and a site marked primary takes the flag from the others.
+ */
 export async function createSite(customerId, data) {
   await getCustomer(customerId);
-  if (data.isPrimary) {
-    await prisma.customerSite.updateMany({ where: { customerId }, data: { isPrimary: false } });
-  }
-  return prisma.customerSite.create({ data: { ...data, customerId } });
+  return prisma.$transaction(async (tx) => {
+    const hasPrimary = await tx.customerSite.count({ where: { customerId, deletedAt: null, isPrimary: true } });
+    const isPrimary = Boolean(data.isPrimary) || hasPrimary === 0;
+    const site = await tx.customerSite.create({ data: { ...data, customerId, isPrimary } });
+    if (isPrimary) await makePrimary(tx, customerId, site.id);
+    return site;
+  });
 }
 
+/** Unmarking the primary is refused: mark another site primary instead. */
 export async function updateSite(customerId, siteId, data) {
-  const site = await prisma.customerSite.findFirst({ where: { id: siteId, customerId, deletedAt: null } });
-  if (!site) throw notFound('Site');
-  if (data.isPrimary) {
-    await prisma.customerSite.updateMany({ where: { customerId }, data: { isPrimary: false } });
+  const site = await findSite(customerId, siteId);
+  if (site.isPrimary && data.isPrimary === false) {
+    throw unprocessable('Every customer keeps one primary site. Mark another site as primary instead.');
   }
-  return prisma.customerSite.update({ where: { id: siteId }, data });
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.customerSite.update({ where: { id: siteId }, data });
+    if (data.isPrimary) await makePrimary(tx, customerId, siteId);
+    return updated;
+  });
 }
 
+/** A site with jobs stays. Removing the primary passes the flag to the oldest other site. */
 export async function deleteSite(customerId, siteId) {
-  const site = await prisma.customerSite.findFirst({ where: { id: siteId, customerId } });
-  if (!site) throw notFound('Site');
+  const site = await findSite(customerId, siteId);
   const jobs = await prisma.job.count({ where: { siteId, deletedAt: null } });
   if (jobs) throw badRequest(`This site has ${jobs} job(s) linked and cannot be removed`);
-  await prisma.customerSite.update({ where: { id: siteId }, data: { deletedAt: new Date() } });
+  await prisma.$transaction(async (tx) => {
+    await tx.customerSite.update({ where: { id: siteId }, data: { deletedAt: new Date(), isPrimary: false } });
+    if (site.isPrimary) {
+      const next = await tx.customerSite.findFirst({
+        where: { customerId, deletedAt: null }, orderBy: { createdAt: 'asc' },
+      });
+      if (next) await tx.customerSite.update({ where: { id: next.id }, data: { isPrimary: true } });
+    }
+  });
 }
 
 /** Everything that ever happened with this customer, newest first. */

@@ -12,9 +12,10 @@ import { publicToken } from '../utils/tokens.js';
 import { markConverted } from './quotation.service.js';
 import { issueToJob } from './material.service.js';
 import { recordEvent } from './audit.service.js';
+import { webUrl } from '../utils/links.js';
 
 const INCLUDE = {
-  customer: { select: { id: true, name: true, phone: true, email: true } },
+  customer: { select: { id: true, name: true, phone: true, email: true, preferredLocale: true } },
   site: { select: { id: true, label: true, address: true, area: true, lat: true, lng: true, accessNotes: true } },
   quotation: { select: { id: true, number: true, total: true } },
   assignments: {
@@ -242,7 +243,7 @@ export async function changeStatus(id, { status, note, lat, lng }, userId) {
 
   if (status === 'EN_ROUTE' && updated.customer?.phone) {
     await notify({
-      templateKey: 'job_en_route', channel: 'sms', to: updated.customer.phone,
+      templateKey: 'job_en_route', channel: 'sms', to: updated.customer.phone, locale: updated.customer.preferredLocale,
       vars: { customerName: updated.customer.name, number: updated.number, appName: env.appName },
       related: { model: 'Job', id },
       fallbackBody: 'Hi {{customerName}}, our technician is on the way for job {{number}}. - {{appName}}',
@@ -345,12 +346,11 @@ export async function completeJob(id, input, userId) {
   const isInspection = updated.type === 'INSPECTION';
 
   if (updated.customer?.phone && !isInspection) {
-    const webOrigin = env.corsOrigins[0] ?? env.appUrl;
     await notify({
-      templateKey: 'job_completed', channel: 'sms', to: updated.customer.phone,
+      templateKey: 'job_completed', channel: 'sms', to: updated.customer.phone, locale: updated.customer.preferredLocale,
       vars: {
         customerName: updated.customer.name, number: updated.number, appName: env.appName,
-        warrantyDays, warrantyLink: warranty ? `${webOrigin}/warranty/${warranty.publicToken}` : '',
+        warrantyDays, warrantyLink: warranty ? webUrl(`/warranty/${warranty.publicToken}`) : '',
       },
       related: { model: 'Job', id },
       fallbackBody:
@@ -362,7 +362,7 @@ export async function completeJob(id, input, userId) {
       type: 'job_completed',
       title: `Job ${updated.number} completed`,
       body: `${updated.customer?.name} · ready to invoice`,
-      link: `/jobs/${id}`,
+      link: `/admin/jobs/${id}`,
     });
   }
 

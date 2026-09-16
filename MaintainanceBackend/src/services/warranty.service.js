@@ -81,7 +81,7 @@ export async function claimByToken(token, { description }) {
     type: 'warranty_claim',
     title: `Warranty claim — ${w.customer.name}`,
     body: `Job ${w.job.number}: ${description.slice(0, 120)}`,
-    link: `/warranty-claims/${claim.id}`,
+    link: `/admin/warranty-claims/${claim.id}`,
   });
   return claim;
 }
@@ -119,6 +119,7 @@ export async function decideClaim(claimId, { status, rejectReason, scheduledStar
     });
     await notify({
       templateKey: 'warranty_claim_rejected', channel: 'sms', to: claim.warranty.customer.phone,
+      locale: claim.warranty.customer.preferredLocale,
       vars: { customerName: claim.warranty.customer.name, reason: rejectReason, appName: env.appName },
       related: { model: 'WarrantyClaim', id: claimId },
       fallbackBody: 'Regarding your warranty claim: {{reason}}. Please call us to discuss. - {{appName}}',
@@ -163,6 +164,7 @@ export async function decideClaim(claimId, { status, rejectReason, scheduledStar
 
   await notify({
     templateKey: 'warranty_claim_accepted', channel: 'sms', to: claim.warranty.customer.phone,
+    locale: claim.warranty.customer.preferredLocale,
     vars: {
       customerName: claim.warranty.customer.name, number: job.number,
       when: scheduledStart ? new Date(scheduledStart).toLocaleString() : 'shortly', appName: env.appName,
@@ -300,7 +302,7 @@ export async function materialiseAmcVisits(daysAhead = 7) {
     created += 1;
 
     await notify({
-      templateKey: 'amc_visit_due', channel: 'sms', to: contract.customer.phone,
+      templateKey: 'amc_visit_due', channel: 'sms', to: contract.customer.phone, locale: contract.customer.preferredLocale,
       vars: {
         customerName: contract.customer.name, planName: contract.planName,
         date: visit.dueDate.toISOString().slice(0, 10), number: job.number, appName: env.appName,
@@ -328,7 +330,7 @@ export async function sweepContracts() {
   const due = await renewalsDue(30);
   if (due.length) {
     await notifyRoles(['ADMIN', 'SALES'], {
-      type: 'amc_renewals', title: `${due.length} AMC contract(s) renew within 30 days`, link: '/amc-contracts?renewals=true',
+      type: 'amc_renewals', title: `${due.length} AMC contract(s) renew within 30 days`, link: '/admin/amc-contracts?renewals=true',
     });
   }
   return { expired: count, renewalsDue: due.length };
@@ -368,7 +370,7 @@ export async function deleteReminder(id) {
 export async function dispatchReminders() {
   const due = await prisma.serviceReminder.findMany({
     where: { status: 'pending', dueAt: { lte: new Date() } },
-    include: { customer: { select: { name: true, phone: true, email: true } } },
+    include: { customer: { select: { name: true, phone: true, email: true, preferredLocale: true } } },
     take: 200,
   });
   for (const r of due) {
@@ -378,7 +380,7 @@ export async function dispatchReminders() {
       continue;
     }
     await notify({
-      templateKey: 'service_reminder', channel: r.channel, to,
+      templateKey: 'service_reminder', channel: r.channel, to, locale: r.customer.preferredLocale,
       vars: { customerName: r.customer.name, appName: env.appName },
       related: { model: 'ServiceReminder', id: r.id },
       fallbackSubject: `A reminder from ${env.appName}`,

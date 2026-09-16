@@ -10,9 +10,10 @@ import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { transitionLead } from './lead.service.js';
 import { recordEvent } from './audit.service.js';
+import { webUrl } from '../utils/links.js';
 
 const INCLUDE = {
-  customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true } },
+  customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true, preferredLocale: true } },
   site: { select: { id: true, label: true, address: true, area: true } },
   lead: { select: { id: true, name: true, status: true } },
   items: { orderBy: { sortOrder: 'asc' } },
@@ -197,25 +198,24 @@ export async function sendQuotation(id) {
     return row;
   });
 
-  const webOrigin = env.corsOrigins[0] ?? env.appUrl;
   const vars = {
     customerName: q.customer.name,
     number: q.number,
     total: formatNpr(q.total),
     validUntil: q.validUntil ? q.validUntil.toISOString().slice(0, 10) : 'further notice',
-    link: `${webOrigin}/quotation/${token}`,
+    link: webUrl(`/quotation/${token}`),
     appName: env.appName,
   };
   if (q.customer.email) {
     await notify({
-      templateKey: 'quotation_sent', channel: 'email', to: q.customer.email, vars,
+      templateKey: 'quotation_sent', channel: 'email', to: q.customer.email, vars, locale: q.customer.preferredLocale,
       related: { model: 'Quotation', id },
       fallbackSubject: 'Your quotation {{number}} from {{appName}}',
       fallbackBody: 'Dear {{customerName}},\n\nYour quotation {{number}} for {{total}} is ready.\nReview and approve it here:\n{{link}}\n\nValid until {{validUntil}}.',
     });
   }
   await notify({
-    templateKey: 'quotation_sent', channel: 'sms', to: q.customer.phone, vars,
+    templateKey: 'quotation_sent', channel: 'sms', to: q.customer.phone, vars, locale: q.customer.preferredLocale,
     related: { model: 'Quotation', id },
     fallbackBody: 'Quotation {{number}} for {{total}} is ready. View and approve: {{link}} - {{appName}}',
   });
@@ -294,10 +294,10 @@ export async function decideByToken(token, { decision, note }, ip) {
   });
 
   await notifyRoles(['ADMIN', 'SALES'], {
-    type: `quotation_${decision}d`,
+    type: status === 'APPROVED' ? 'quotation_approved' : 'quotation_rejected',
     title: `Quotation ${q.number} ${status.toLowerCase()}`,
     body: `${q.customer.name} · ${formatNpr(q.total)}${note ? ` · ${note}` : ''}`,
-    link: `/quotations/${q.id}`,
+    link: `/admin/quotations/${q.id}`,
   });
   return updated;
 }
