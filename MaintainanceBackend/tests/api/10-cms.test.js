@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { as, anon, expectStatus, uploadImage, uid } from './helpers.js';
+import { Prisma } from '@prisma/client';
+import { as, anon, expectStatus, uploadImage, uid, prisma } from './helpers.js';
 
 let editor;
 let mediaId;
@@ -95,6 +96,35 @@ describe('resource specifics', () => {
     }), 400);
   });
 
+  it('service card copy must be 40 to 200 characters', async () => {
+    const short = expectStatus(await editor.post('/admin/services').send({
+      name: `Service ${uid()}`, excerpt: 'Waterproofing for roofs, done well.',
+    }), 400);
+    expect(short.error.details.map((d) => d.path)).toContain('excerpt');
+    expectStatus(await editor.post('/admin/services').send({ name: `Service ${uid()}`, excerpt: 'x'.repeat(201) }), 400);
+    expectStatus(await editor.post('/admin/services').send({ name: `Service ${uid()}`, excerpt: 'x'.repeat(200) }), 201);
+  });
+
+  it('rejects a maximum price below the minimum, on create and on a partial update', async () => {
+    const excerpt = 'Damp walls traced to their source with a moisture meter, then sealed from the side it enters.';
+    const bad = expectStatus(await editor.post('/admin/services').send({
+      name: `Service ${uid()}`, excerpt, priceFrom: 500, priceTo: 100,
+    }), 400);
+    expect(bad.error.details.map((d) => d.path)).toContain('priceTo');
+
+    const svc = expectStatus(await editor.post('/admin/services').send({
+      name: `Service ${uid()}`, excerpt, priceFrom: 100, priceTo: 500,
+    }), 201).data;
+    // Only one side sent: checked against the stored other side.
+    const partial = expectStatus(await editor.put(`/admin/services/${svc.id}`).send({ priceTo: 50 }), 400);
+    expect(partial.error.details.map((d) => d.path)).toContain('priceTo');
+    expectStatus(await editor.put(`/admin/services/${svc.id}`).send({ priceFrom: 600 }), 400);
+    // Both sides sent together are checked too, although PUT's schema is partial.
+    expectStatus(await editor.put(`/admin/services/${svc.id}`).send({ priceFrom: 300, priceTo: 200 }), 400);
+    const ok = expectStatus(await editor.put(`/admin/services/${svc.id}`).send({ priceFrom: 200, priceTo: 200 }), 200).data;
+    expect([ok.priceFrom, ok.priceTo]).toEqual([20000, 20000]);
+  });
+
   it('a slug is generated and kept unique', async () => {
     const name = `Same Name ${uid()}`;
     const a = expectStatus(await editor.post('/admin/service-categories').send({ name }), 201).data;
@@ -157,6 +187,69 @@ describe('home page composer', () => {
     expectStatus(await editor.put('/admin/home-sections').send({
       items: [{ key: 'offers', sortOrder: offers.sortOrder, isVisible: true }],
     }), 200);
+  });
+
+  it('PUT /admin/home-sections reorders the public page and keeps a section limit', async () => {
+    const before = expectStatus(await editor.get('/admin/home-sections'), 200).data;
+    const restore = before.map(({ key, sortOrder, isVisible, settings }) => ({ key, sortOrder, isVisible, ...(settings ? { settings } : {}) }));
+    // Process first, then everything else in its old order.
+    const moved = [...before].sort((a, b) => (a.key === 'process' ? -1 : b.key === 'process' ? 1 : a.sortOrder - b.sortOrder));
+    const items = moved.map((sec, i) => ({
+      key: sec.key, sortOrder: i, isVisible: sec.isVisible, ...(sec.key === 'services' ? { settings: { limit: 3 } } : {}),
+    }));
+    try {
+      const saved = expectStatus(await editor.put('/admin/home-sections').send({ items }), 200).data;
+      expect(saved[0].key).toBe('process');
+      expect(saved.find((x) => x.key === 'services').settings).toEqual({ limit: 3 });
+      const home = expectStatus(await anon().get('/public/home'), 200).data;
+      expect(home.sections[0].key).toBe('process');
+      const services = home.sections.find((x) => x.key === 'services');
+      if (services) expect(services.data.length).toBeLessThanOrEqual(3);
+    } finally {
+      expectStatus(await editor.put('/admin/home-sections').send({ items: restore }), 200);
+    }
+  });
+
+  it('PUT /admin/home-sections refuses an unknown section or a limit outside 1–50', async () => {
+    const services = await prisma.homeSection.findUnique({ where: { key: 'services' } });
+    try {
+      expectStatus(await editor.put('/admin/home-sections').send({ items: [{ key: 'nope', sortOrder: 0, isVisible: true }] }), 400);
+      for (const limit of [0, 51, 2.5]) {
+        expectStatus(await editor.put('/admin/home-sections').send({
+          items: [{ key: 'services', sortOrder: services.sortOrder, isVisible: services.isVisible, settings: { limit } }],
+        }), 400);
+      }
+    } finally {
+      // Code that wrongly accepts a limit must not leave it behind for the next run.
+      await prisma.homeSection.update({ where: { key: 'services' }, data: { settings: services.settings ?? Prisma.DbNull } });
+    }
+  });
+
+  it('a hero slide in Nepali reaches the Nepali home page', async () => {
+    const sections = expectStatus(await editor.get('/admin/home-sections'), 200).data;
+    const hero = sections.find((x) => x.key === 'hero');
+    const slides = expectStatus(await editor.get('/admin/hero-slides?limit=100'), 200).data;
+    const slide = expectStatus(await editor.post('/admin/hero-slides').send({
+      title: `Slide ${uid()}`, subtitle: 'English subtitle', ctaLabel: 'Book', ctaUrl: '/book', sortOrder: 0,
+    }), 201).data;
+    try {
+      // First in order, so the storefront shows it.
+      expectStatus(await editor.patch('/admin/hero-slides/reorder').send({
+        items: [{ id: slide.id, sortOrder: 0 }, ...slides.map((x, i) => ({ id: x.id, sortOrder: i + 1 }))],
+      }), 204);
+      expectStatus(await editor.put('/admin/translations').send({
+        model: 'heroSlide', recordId: slide.id, values: { title: { ne: 'घरको मर्मत, सजिलै' }, ctaLabel: { ne: 'बुक गर्नुहोस्' } },
+      }), 200);
+      if (hero?.isVisible) {
+        const ne = expectStatus(await anon().get('/public/home?locale=ne'), 200).data.sections.find((x) => x.key === 'hero');
+        expect(ne.data[0]).toMatchObject({ id: slide.id, title: 'घरको मर्मत, सजिलै', ctaLabel: 'बुक गर्नुहोस्', subtitle: 'English subtitle' });
+      }
+    } finally {
+      expectStatus(await (await as('ADMIN')).delete(`/admin/hero-slides/${slide.id}?hard=true`), 204);
+      expectStatus(await editor.patch('/admin/hero-slides/reorder').send({
+        items: slides.map((x) => ({ id: x.id, sortOrder: x.sortOrder })),
+      }), 204);
+    }
   });
 });
 

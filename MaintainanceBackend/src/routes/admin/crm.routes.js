@@ -3,7 +3,7 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { validate } from '../../middleware/validate.js';
 import { requires } from '../../middleware/authorize.js';
 import { ok, created, noContent } from '../../utils/response.js';
-import { idParam, listQuery, toPartial } from '../../shared/schemas/common.js';
+import { idParam, listQuery, reorderBody, toPartial } from '../../shared/schemas/common.js';
 import * as leads from '../../services/lead.service.js';
 import * as customers from '../../services/customer.service.js';
 import * as quotations from '../../services/quotation.service.js';
@@ -99,14 +99,30 @@ router.delete('/customers/:id/sites/:siteId', writeCust,
 const rateCard = makeCrud({
   model: 'rateCardItem', label: 'Rate card item', searchFields: ['name', 'code', 'category'], moneyFields: ['rate'],
 });
-router.get('/rate-card', requires('quotations:read'), validate({ query: listQuery.passthrough() }),
+// The same surface as a CMS resource (list, get, create, update, toggle, reorder, delete, restore), so the
+// back office manages it through the generic resource screens; the capabilities are the quotation ones.
+const readRate = requires('quotations:read');
+const writeRate = requires('quotations:write');
+router.get('/rate-card', readRate, validate({ query: listQuery.passthrough() }),
   asyncHandler(async (req, res) => { const { items, meta } = await rateCard.list(req.query); ok(res, items, meta); }));
-router.post('/rate-card', requires('quotations:write'), validate({ body: s.rateCardItemSchema }),
+router.post('/rate-card', writeRate, validate({ body: s.rateCardItemSchema }),
   asyncHandler(async (req, res) => created(res, await rateCard.create(req.body))));
-router.put('/rate-card/:id', requires('quotations:write'), validate({ params: idParam, body: toPartial(s.rateCardItemSchema) }),
+router.patch('/rate-card/reorder', writeRate, validate({ body: reorderBody }),
+  asyncHandler(async (req, res) => { await rateCard.reorder(req.body.items); noContent(res); }));
+router.get('/rate-card/:id', readRate, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await rateCard.get(req.params.id))));
+router.put('/rate-card/:id', writeRate, validate({ params: idParam, body: toPartial(s.rateCardItemSchema) }),
   asyncHandler(async (req, res) => ok(res, await rateCard.update(req.params.id, req.body))));
-router.delete('/rate-card/:id', requires('quotations:write'), validate({ params: idParam }),
-  asyncHandler(async (req, res) => { await rateCard.remove(req.params.id); noContent(res); }));
+router.patch('/rate-card/:id/toggle', writeRate, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await rateCard.toggle(req.params.id))));
+router.patch('/rate-card/:id/restore', writeRate, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await rateCard.restore(req.params.id))));
+// Soft delete: quotation and survey lines keep pointing at the item. `?hard=true` needs cms:purge (ADMIN).
+router.delete('/rate-card/:id', writeRate, validate({ params: idParam }),
+  asyncHandler(async (req, res) => {
+    await rateCard.remove(req.params.id, { hard: req.query.hard === 'true', role: req.user.role });
+    noContent(res);
+  }));
 
 // ── quotations
 const readQ = requires('quotations:read');

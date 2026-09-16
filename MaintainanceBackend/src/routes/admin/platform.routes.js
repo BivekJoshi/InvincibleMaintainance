@@ -7,7 +7,7 @@ import { uploadLimiter } from '../../middleware/rateLimit.js';
 import { ok, created, noContent } from '../../utils/response.js';
 import { idParam, listQuery, toPartial } from '../../shared/schemas/common.js';
 import { prisma } from '../../lib/prisma.js';
-import { notFound, badRequest } from '../../utils/AppError.js';
+import { notFound } from '../../utils/AppError.js';
 import { parseListQuery, meta } from '../../utils/pagination.js';
 import * as media from '../../services/media.service.js';
 import * as settings from '../../services/settings.service.js';
@@ -15,7 +15,7 @@ import * as audit from '../../services/audit.service.js';
 import * as reports from '../../services/report.service.js';
 import * as users from '../../services/user.service.js';
 import { createUserSchema, updateUserSchema } from '../../shared/schemas/auth.js';
-import { mediaUpdateSchema, settingsUpdateSchema } from '../../shared/schemas/cms.js';
+import { mediaFolderSchema, mediaUpdateSchema, settingsUpdateSchema } from '../../shared/schemas/cms.js';
 import { messageTemplateSchema } from '../../shared/schemas/ops.js';
 import { auditLogQuery } from '../../shared/schemas/audit.js';
 import { makeCrud } from '../../services/crud.service.js';
@@ -65,10 +65,8 @@ router.post('/media/documents', requires('media:write'), uploadLimiter, uploadAn
   }))));
 
 router.get('/media/folders', requires('media:read'), asyncHandler(async (_req, res) => ok(res, await media.listFolders())));
-router.post('/media/folders', requires('media:write'), asyncHandler(async (req, res) => {
-  if (!req.body?.name) throw badRequest('Folder name is required');
-  created(res, await media.createFolder(req.body.name, req.body.parentId));
-}));
+router.post('/media/folders', requires('media:write'), validate({ body: mediaFolderSchema }),
+  asyncHandler(async (req, res) => created(res, await media.createFolder(req.body.name, req.body.parentId))));
 router.delete('/media/folders/:id', requires('media:write'), validate({ params: idParam }),
   asyncHandler(async (req, res) => { await media.deleteFolder(req.params.id); noContent(res); }));
 

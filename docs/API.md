@@ -114,11 +114,27 @@ A slug derived from a title (`slugFrom`) keeps Devanagari as-is, vowel signs and
 /admin/translations             GET ?model&recordId, PUT { model, recordId, values }
 
 /admin/settings                 GET (settings:read), PATCH { values } (ADMIN only)
-/admin/media                    GET, POST (images, multipart `files`), GET /:id, PUT /:id,
+/admin/media                    GET ?folderId&q, POST (images, multipart `files`), GET /:id, PUT /:id,
                                 DELETE /:id (soft; ?hard=true needs cms:purge)
 /admin/media/documents          POST (PDFs and other files)
-/admin/media/folders            GET, POST, DELETE /:id
+/admin/media/folders            GET, POST { name, parentId? }, DELETE /:id
 ```
+
+**Services** (`POST` and `PUT /admin/services…`) — 400 `BAD_REQUEST` with `details[].path` naming the field when:
+- `excerpt` (the card text) is missing, or shorter than **40** or longer than **200** characters after trimming;
+- `excerpt` is the old site's template, `Professional … with expert tools and results.` (any case, full stop optional);
+- `priceTo` < `priceFrom` (`path: 'priceTo'`). `PUT` is partial, so a body carrying only one of the two prices is
+  checked against the stored other one; equal prices are allowed, and so is a `priceFrom` with no `priceTo`.
+
+**Home sections** — `key` is one of the 19 `HOME_SECTION_KEYS`; `settings.limit`, when sent, is an integer 1–50 (how
+many items the services, projects, gallery and testimonials sections show); other `settings` keys are kept as sent.
+Anything else is 400. The response is the full list in order; the public site's cache is cleared.
+
+**Media** — `PUT /admin/media/:id { alt?, caption?, folderId? }`: `alt` can change but not be emptied (a blank or
+whitespace `alt` is 400 `details: [{ path: 'alt' }]`); `folderId: null` moves the file out of its folder.
+`POST /admin/media/folders`: `name` 1–80 characters (Devanagari kept), `parentId` must be an existing folder (400
+otherwise). `DELETE /admin/media/folders/:id` is 404 for an unknown folder and 400 while the folder holds a live file
+or any subfolder — only an empty folder is deleted.
 
 ## Admin — CRM (`ADMIN`, `SALES`)
 
@@ -149,7 +165,17 @@ POST   /admin/leads/:id/convert     { customerId?, site?, createQuotation, creat
 DELETE /admin/leads/:id             soft delete
 
 /admin/customers                    CRUD + /:id/sites CRUD + GET /:id/timeline
-/admin/rate-card                    CRUD — quotations:read / quotations:write
+/admin/rate-card                    GET (?q searches code, name, category; ?deleted=true is Trash), GET /:id,
+                                    POST, PUT /:id (partial), PATCH /:id/toggle, PATCH /reorder { items },
+                                    PATCH /:id/restore, DELETE /:id (soft) — read: quotations:read,
+                                    write: quotations:write. The same eight endpoints as a CMS resource.
+                                    DELETE ?hard=true needs cms:purge (ADMIN); quotation and survey lines
+                                    that used the item keep their copy and lose the link.
+                                    Body { code, name, description?, category?, unit, rate (rupees), sortOrder?,
+                                    isActive? }. `code` is letters, digits, - and _, stored upper-case and
+                                    unique: `wp-1` after `WP-1` is 409 (a soft-deleted item still holds its code).
+                                    Feeds quotation lines, survey pricing and the rate table on GET
+                                    /public/pricing (active items). The estimator does not read it.
 /admin/quotations                   CRUD + POST /:id/send + POST /:id/revise
 PUT    /admin/quotations/:id        DRAFT only. Any other status is 422 UNPROCESSABLE ("…cannot be edited.
                                     Create a revision to change it.") and nothing changes

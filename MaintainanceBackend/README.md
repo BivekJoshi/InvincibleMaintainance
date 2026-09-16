@@ -108,6 +108,7 @@ src/
 prisma/                schema.prisma · seed.js · seed-data.js
 tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging
 tests/api/             every route over supertest, against a database whose name ends in _test
+tests/fixtures/        plain-data cases shared with the SPA's tests (the service schema's valid/invalid inputs)
 ```
 
 ### Three ideas hold the code together

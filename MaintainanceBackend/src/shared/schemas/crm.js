@@ -130,7 +130,9 @@ export const customerSiteSchema = z.object({
 });
 
 export const rateCardItemSchema = z.object({
-  code: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9_-]+$/, 'Use letters, numbers, dash or underscore'),
+  // Stored upper-case, so `seep-chem` and `SEEP-CHEM` are one code (the column is unique).
+  code: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9_-]+$/, 'Use letters, numbers, dash or underscore')
+    .transform((v) => v.toUpperCase()),
   name: z.string().trim().min(2).max(200),
   description: optionalText,
   category: z.string().trim().max(80).optional(),

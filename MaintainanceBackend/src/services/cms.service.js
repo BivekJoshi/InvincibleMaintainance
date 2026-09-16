@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { HOME_SECTION_KEYS } from '../shared/enums.js';
 import { invalidatePublic } from './cache.service.js';
 import { badRequest } from '../utils/AppError.js';
+import { toPaisa } from '../utils/money.js';
 
 export const heroSlides = makeCrud({
   model: 'heroSlide', label: 'Hero slide', searchFields: ['title', 'subtitle'],
@@ -12,7 +13,7 @@ export const serviceCategories = makeCrud({
   model: 'serviceCategory', label: 'Service category', searchFields: ['name', 'slug'], slugFrom: 'name',
 });
 
-export const services = makeCrud({
+const serviceCrud = makeCrud({
   model: 'service',
   label: 'Service',
   searchFields: ['name', 'slug', 'excerpt'],
@@ -25,6 +26,27 @@ export const services = makeCrud({
     ...(q.featured ? { isFeatured: true } : {}),
   }),
 });
+
+export const services = {
+  ...serviceCrud,
+  /**
+   * PUT is partial, so the schema's range rule only sees the prices the body carries.
+   * Here the range is checked against the stored price the body leaves out.
+   */
+  async update(id, data) {
+    if (data.priceFrom != null || data.priceTo != null) {
+      const row = await serviceCrud.get(id);
+      const from = data.priceFrom != null ? toPaisa(data.priceFrom) : row.priceFrom;
+      const to = data.priceTo != null ? toPaisa(data.priceTo) : row.priceTo;
+      if (from != null && to != null && to < from) {
+        throw badRequest('Validation failed', [
+          { path: 'priceTo', message: 'Maximum price must be greater than or equal to the minimum' },
+        ]);
+      }
+    }
+    return serviceCrud.update(id, data);
+  },
+};
 
 export const projects = makeCrud({
   model: 'project',

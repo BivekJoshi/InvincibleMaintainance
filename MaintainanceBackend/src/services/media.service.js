@@ -83,12 +83,21 @@ export async function listFolders() {
 }
 
 export async function createFolder(name, parentId) {
+  if (parentId && !(await prisma.mediaFolder.findUnique({ where: { id: parentId } }))) {
+    throw badRequest('Validation failed', [{ path: 'parentId', message: 'That parent folder does not exist' }]);
+  }
   return prisma.mediaFolder.create({ data: { name, parentId: parentId ?? null } });
 }
 
+/** Only an empty folder goes: no live files and no subfolders (which would otherwise jump to the top level). */
 export async function deleteFolder(id) {
-  const count = await prisma.media.count({ where: { folderId: id, deletedAt: null } });
-  if (count) throw badRequest(`Move or delete the ${count} file(s) in this folder first`);
+  if (!(await prisma.mediaFolder.findUnique({ where: { id } }))) throw notFound('Folder');
+  const [files, subfolders] = await Promise.all([
+    prisma.media.count({ where: { folderId: id, deletedAt: null } }),
+    prisma.mediaFolder.count({ where: { parentId: id } }),
+  ]);
+  if (subfolders) throw badRequest(`Delete the ${subfolders} folder(s) inside this one first`);
+  if (files) throw badRequest(`Move or delete the ${files} file(s) in this folder first`);
   await prisma.mediaFolder.delete({ where: { id } });
 }
 
