@@ -22,6 +22,8 @@ This is **not** a clone. The marketing page is one deliverable out of nine modul
 | Tenancy | **Single company.** No `tenantId` columns. |
 | Ops depth | Full: leads → quotations → jobs → materials → invoices → warranty → AMC |
 | Auth | JWT access (15m) + httpOnly refresh cookie (30d), RBAC by role |
+| Roles | ADMIN, EDITOR, SALES, **MANAGER** (SALES + `quotations:approve`), DISPATCHER, TECHNICIAN, SURVEYOR, ACCOUNTANT |
+| Quotation approval | **No quotation is sent without internal approval** — MANAGER/ADMIN, never your own (`quotation.makerChecker`), or auto below `quotation.autoApproveBelow`. Every revision is approved again. The customer answers Accept · Ask for changes · Decline with no login; Accept creates the job. |
 | Language | English + Nepali (`en` / `ne`), UTF-8 everywhere, day one |
 | Money | Integer **paisa** (NPR × 100). Never floats. |
 | Dates | UTC in DB; display in Asia/Kathmandu (+05:45). BS dates display-only. |

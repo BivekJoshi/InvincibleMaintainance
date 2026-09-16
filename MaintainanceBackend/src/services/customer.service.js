@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { notFound, badRequest, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { normalizePhone } from '../utils/phone.js';
+import { formatNpr } from '../utils/money.js';
 
 const OPEN_JOB = { deletedAt: null, status: { notIn: ['COMPLETED', 'VERIFIED', 'CANCELLED'] } };
 const UNPAID = ['SENT', 'PARTIAL', 'OVERDUE'];
@@ -230,6 +231,20 @@ export async function deleteSite(customerId, siteId) {
 }
 
 /** Everything that ever happened with this customer, newest first. */
+/** How the timeline words a decided quotation. */
+const CUSTOMER_ANSWER = {
+  APPROVED: 'accepted', CONVERTED: 'accepted', CHANGES_REQUESTED: 'asked for changes to', REJECTED: 'declined',
+};
+
+/**
+ * A superseded version keeps its answer: the revision that replaced it carries the
+ * change request, so a revision with none answered a decline (or an unanswered send).
+ */
+function customerAnswer(q, byId) {
+  if (q.status !== 'SUPERSEDED') return CUSTOMER_ANSWER[q.status];
+  return byId.get(q.supersededById)?.requestedChanges ? 'asked for changes to' : 'declined';
+}
+
 export async function customerTimeline(id) {
   await getCustomer(id);
   const [leads, quotations, jobs, invoices, warranties] = await Promise.all([
@@ -239,9 +254,19 @@ export async function customerTimeline(id) {
     prisma.invoice.findMany({ where: { customerId: id, deletedAt: null }, orderBy: { createdAt: 'desc' } }),
     prisma.warranty.findMany({ where: { customerId: id }, orderBy: { endsAt: 'desc' } }),
   ]);
+  const byId = new Map(quotations.map((r) => [r.id, r]));
   const entries = [
     ...leads.map((r) => ({ kind: 'lead', at: r.createdAt, id: r.id, label: `Enquiry — ${r.status}`, meta: r })),
     ...quotations.map((r) => ({ kind: 'quotation', at: r.createdAt, id: r.id, label: `${r.number} — ${r.status}`, meta: r })),
+    // The customer's own answer on the link, as its own moment.
+    ...quotations.filter((r) => r.decidedAt && customerAnswer(r, byId)).map((r) => ({
+      kind: 'quotation_response',
+      at: r.decidedAt,
+      id: r.id,
+      label: `Customer ${customerAnswer(r, byId)} ${r.number} v${r.version} · NPR ${formatNpr(r.total, { withSymbol: false })}${
+        r.decisionNote ? ` · ${r.decisionNote}` : ''}`,
+      meta: r,
+    })),
     ...jobs.map((r) => ({ kind: 'job', at: r.createdAt, id: r.id, label: `${r.number} — ${r.title}`, meta: r })),
     ...invoices.map((r) => ({ kind: 'invoice', at: r.createdAt, id: r.id, label: `${r.number} — ${r.status}`, meta: r })),
     ...warranties.map((r) => ({ kind: 'warranty', at: r.startsAt, id: r.id, label: `Warranty until ${r.endsAt.toISOString().slice(0, 10)}`, meta: r })),

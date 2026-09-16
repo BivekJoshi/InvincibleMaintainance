@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-16 (Phase E). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-16 (Phase F1). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -25,6 +25,7 @@ Updated 2026-09-16 (Phase E). **Current build order: [`docs/ADMIN-PLAN.md`](docs
 | **v2 · C2 Registry, shell & first resources** | Resource registry (`config/admin/resources/`) rendered by generic `ResourceListPage` / `ResourceEditPage` under `/admin/content/:resource`; `cmsApi` (8 parameterised endpoints, `Cms` tags); `cms.schema.js` mirroring all CMS schemas; FAQs and process steps managed from registry entries alone; admin nav regrouped Overview · Sales · Operations · Finance · Aftercare · Content · Platform, capability-filtered, EDITOR lands on Content; route breadcrumb, brand from settings, notification panel; public FAQs localised (`?locale=ne`); purge from Trash fixed in the CRUD factory; dead barrels removed | ✅ 2026-09-14 |
 | **v2 · D1 Services, rate card, media & home page** | Registry screens for service categories (icon picker, Nepali name), services (category/type/featured filters, price range in rupees, unit, warranty, image, SEO, Nepali name/card text/page text, View on site) and hero slides (CTA link checked against the site's routes); the rate card as a registry entry under Sales at `/admin/rate-card` (`basePath`, quotations:read/write, read-only for ACCOUNTANT, "In use"/Retire); bespoke home composer (`/admin/content/home`: drag or Move up/down, visibility, item limit, Save/Discard, empty-section flag) and media library (`/admin/content/media`: folder tree, search, drag-and-drop upload with required alt, dimensions and WebP variants, copy URL, alt/caption/folder edit, soft delete, Delete forever for ADMIN). API: the four missing rate-card endpoints, upper-case codes; service excerpt 40–200 and the price range checked on partial updates; home `limit` 1–50; non-empty media alt; validated folders, subfolders block a folder delete. Kit fixes: clean form after a save, toasts no longer close sheets | ✅ 2026-09-16 |
 | **v2 · E Leads & CRM** | **Leads** open on My leads with one-click All leads; filters (status, priority, source, service, owner incl. Unassigned, response state, requested visit, date), URL-saved views (Breached, Unassigned, Bookings this week), New lead sheet, bulk Assign in one request, Export filtered or selected. **Pipeline board** at `/admin/leads/board`: drag or "Move to" only where the state machine allows, LOST asks why, refused moves go back with a toast. **Lead detail**: edit, change status, assign, delete, typed activity log with the response result, duplicates with a merge preview, convert with an inspection or without a visit, a History tab. **Customers**: list (sites, open jobs, balance for finance), new, profile, sites with one primary and "use map pin", timeline, quotations / jobs / invoices / warranties / AMC tabs by role, statement, History. **Safe matching (D8)**: a shared phone makes staff choose same or different person; an email moves onto an existing customer only when ticked (`customer.email_confirmed`); emails stored lower-case; the contact form and booking take an optional email. **Language (D7)**: `preferredLocale` on leads and customers (migration `contact_preferred_locale`), captured from the site, copied on convert, used by every customer SMS and email with an English fallback. API: `assignedToId=me\|none`, `requestedVisit`, `bulk-assign`, `assignees`, `customer-matches`, lead and customer `history` (`leads:history` / `customers:history`), `lead.activity_logged`, `/admin/...` notification links and web-origin email links, `services:read` on the service list. Shell: Pipeline and Customers in the nav, a breached-leads badge, one 60 s poll for the badges and the dashboard | ✅ 2026-09-16 |
+| **v2 · F1 Quotation approval (backend)** | **Internal approval:** new **MANAGER** role (SALES + `quotations:approve`); `QuotationStatus` gains PENDING_APPROVAL, OFFICE_APPROVED, CHANGES_REQUESTED and SUPERSEDED (migrations `quotation_approval_enums`, `quotation_approval_fields`); `submit · approve · send-back · pull-back` endpoints, `send` only from OFFICE_APPROVED, no self-approval (`quotation.makerChecker`, 403 `SELF_APPROVAL`), auto-approval below `quotation.autoApproveBelow` (paisa, 0 = off) recorded as the system, every revision approved again. **Customer answer:** the link offers Accept · Ask for changes (message 5–1000) · Decline, with no login, and records IP and user agent; it has its own rate limit and an allowlisted public view (`version`, `status`, `replaced`, `requestedChanges`, `actions`). **Accept** runs one transaction: SENT → APPROVED → CONVERTED, lead WON, one unscheduled DRAFT job with the service's checklist (guarded, so a double tap makes one job). It then notifies, once each, the customer (SMS + email, their language), the salesperson and author, every dispatcher (with the job link) and the approving manager. **Ask for changes** acknowledges the customer by SMS and notifies sales; **revise** supersedes the old version, whose link then points to the new one. `?stage=` queues on the list, a version chain on the detail, customer-timeline answers, four new role-aware dashboard counts, a seeded manager and a demo quotation at every step. | ✅ 2026-09-16 |
 | **v2 · D2 Projects, content, blog & settings** | Registry screens for projects (story, cost band in rupees, client-name consent note, SEO, linked job number read-only, and a **Gallery** tab: add from the library or upload, drag or Move earlier/later, remove), offers (Nepali-ready title, bullets, price range, start/end in Nepal time with a Live / Scheduled / Ended column), pricing plans, testimonials (a moderation queue that opens on "Waiting for approval", Approve / Withdraw for `testimonials:moderate`), gallery, features and list items (by band; list items reorder one list at a time), content blocks (key fixed once saved, bullets, a label + link button), posts (draft / scheduled / published), post categories and pages (reserved addresses refused); the nav gains **Page blocks** and **Blog & pages**. Bespoke **site settings** at `/admin/platform/settings`: a card per group, inputs by setting type, Nepali phone rule, weekday checkboxes, editable badge and counter rows; ADMIN saves only what changed, EDITOR reads. Public **`/blog`**, **`/blog/:slug`** and a catch-all **`/:slug`** page; Blog in the nav once a post is published; CMS links may point at a live page. API: list-item positions count from 1 after a reorder, projects carry their job number, `ogImageId` no longer 500s on projects/pages/posts, Nepali copy on the home page's grouped sections and on posts and pages, `nav.blog` / `nav.pages` in bootstrap, blog and pages in the sitemap, a seeded blog and About page. Fixes: public pages ignore an empty SEO title, one session restore per page load in dev | ✅ 2026-09-16 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
@@ -111,8 +112,14 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A, B, C (C1 + C2), D (D1 + D2) and E are done; next is **Phase F — Quotation approval, customer response & job
-hand-off**, in two prompts: `docs/prompts/PHASE-F1-quotation-backend.md`, then `PHASE-F2-quotation-screens.md`.
+Phases A, B, C (C1 + C2), D (D1 + D2), E and **F1** (the quotation approval backend) are done; next is **Phase F2 —
+quotation screens** (`docs/prompts/PHASE-F2-quotation-screens.md`): stage tabs, the state-driven action bar, the
+version switcher, the Accept · Ask for changes · Decline public page, and the first Playwright test.
+
+Left from F1 for F2: until those screens ship, the admin quotation page's **Send** button answers 422 on a draft
+(it must submit and be approved first); the public page still offers only approve / reject; a MANAGER can sign in,
+but the SPA has no approval screen yet. The walk-through left quotations `QT-2083-0007` (superseded) and
+`QT-2083-0012` (converted) and job `JOB-2083-0006` for Anjali Karki in the dev database.
 
 Left from E for later phases: pages for jobs, invoices, warranties and AMC (the customer tabs say "Soon"); a map picker
 for sites (a pasted pin for now); `?from` / `?to` on lists still use the server's local day rather than Kathmandu's;
@@ -262,6 +269,46 @@ database (below).
   the customer page's tabs per role, its quotations and a site from a map pin. `npm run lint`: 0 errors in both apps (26
   warnings in the frontend, unchanged); `npm run build` succeeds, and no lead or customer endpoint reaches the main
   bundle (the breached-count query sits in the shell's `dashboardApi`).
+- Phase F1 (2026-09-16): backend unit 124 → **153** (every quotation transition allowed and forbidden, MANAGER
+  capabilities, every role known to the map), API 487 → **543** (new `13-quotation-approval.test.js`, 53 tests: the
+  full loop with exact recipients and dedupe, the Nepali SMS, self-approval, auto-approval for v1 and a revision,
+  threshold 0 and "equal is not below", send before approval, request_changes validation, revise and the replaced
+  link, decline without LOST, three simultaneous accepts → one job, accept on a WON / LOST lead, expiry, the stage
+  filter, dashboard counts, the rate limit). Existing tests now submit and approve before sending (`approveAndSend`
+  helper). The "approved quotation → job" test seeds an APPROVED quotation directly, as a pre-F one. A second
+  convert-to-job now 422s: before, `CONVERTED → CONVERTED` passed the state machine and made a second job.
+  Clean run: test database reset, then the full API suite twice in a row, both green. `npm run lint` is clean.
+  Frontend 255 tests still pass (its permission mirror gained MANAGER); lint has 0 errors.
+- Phase F1 walk-through (a script against the dev server and the seeded dev database, not committed):
+  ```
+  QT-2083-0007 v1 · Anjali Karki (seeded DRAFT, sent back once)
+  submit (sales)                          → 200 PENDING_APPROVAL
+  send before approval (sales)            → 422 INVALID_TRANSITION
+  approve (sales)                         → 403 Missing permission: quotations:approve
+  approve (manager)                       → 200 OFFICE_APPROVED, approvedBy Meena Manager
+  send (sales)                            → 200 SENT, token issued
+  GET public link                         → 200 SENT v1, actions [approve, request_changes, reject]
+  decide request_changes (no note)        → 400 "Tell us what you would like changed…"
+  decide request_changes (Nepali)         → 200 CHANGES_REQUESTED "कृपया बार्दलीको भित्ता पनि थप्नुहोस्।"
+  decide approve (same link)              → 422 QUOTATION_ANSWERED
+  revise (sales)                          → 201 QT-2083-0012 v2 DRAFT, requestedChanges = the message
+  PUT v2 (+ balcony wall line)            → 200 total 6881700 paisa, 3 lines
+  submit / approve (manager) / send v2    → 200 PENDING_APPROVAL / OFFICE_APPROVED / SENT
+  GET old link                            → 200 SUPERSEDED, replaced → v2's token
+  decide approve on old link              → 422 QUOTATION_REPLACED
+  decide approve on v2                    → 200 CONVERTED, job JOB-2083-0006
+  decide approve on v2 again              → 422 QUOTATION_ANSWERED
+  GET job (dispatcher)                    → DRAFT, REPAIR, unscheduled, "Seepage & Damp Treatment — QT-2083-0012", 8 tasks
+  GET v2 (sales)                          → CONVERTED, lead WON, versions [v1:SUPERSEDED, v2:CONVERTED]
+  notifications  sales      quotation_office_approved ×2, quotation_changes_requested, quotation_accepted (once)
+                 manager    quotation_submitted ×2, quotation_accepted
+                 dispatcher quotation_accepted → /admin/jobs/…
+  dashboard (manager)       pendingApproval 1, changesRequested 1, awaitingCustomer 4, acceptedJobsUnscheduled 1
+  audit trail   submitted, office_approved, sent, customer_changes_requested (public), revised, superseded,
+                submitted, office_approved, sent, customer_approved (public), job.created (public)
+  messages      approver emails ×4, quotation_sent SMS ×2, changes_requested_staff email, changes_received SMS,
+                quotation_accepted SMS, quotation_accepted_staff emails to sales and dispatch
+  ```
 - Phase E browser walk-through (headless Chromium, dev servers, dev database; **14/14 steps**, no console errors, no
   5xx). As a visitor with the site in नेपाली: the contact form with an email typed `  Walk.<tag>@Example.com ` → "Request
   received". As `sales@gharjatan.com.np`: the lead is in **My leads** under New with "2h 0m left", its email stored
@@ -316,7 +363,8 @@ Gaps filled: `POST /admin/quotations/:id/convert-to-job`, `POST|DELETE /admin/jo
 
 - Quotation `validUntil` is a date stored at midnight UTC, so "valid until the 14th" expires at 05:45 Kathmandu on
   the 14th (unchanged behaviour, now applied consistently by GET, decide and the sweep).
-- A quotation whose `validUntil` has already passed can still be sent.
+- A job created by a customer's acceptance is always type REPAIR: nothing maps a service to a job type yet.
+- Quotation notifications and messages are sent after the commit, inside the request (defect #14 still open).
 - Converting a lead with an unknown `surveyorId` answers 409 `FK_CONSTRAINT` ("referenced by other records")
   rather than naming the surveyor — the convert rolls back correctly, the message is just unhelpful.
 

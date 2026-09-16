@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
-  anon, as, expectStatus, createCustomer, createCompletedJob, prisma, phone, dayMatching, uid,
+  anon, as, expectStatus, createCustomer, createCompletedJob, prisma, phone, dayMatching, uid, approveAndSend,
 } from './helpers.js';
 
 const lead = (extra = {}) => ({
@@ -286,8 +286,7 @@ describe('customer documents by token', () => {
       customerId: customer.id,
       items: [{ description: 'Waterproofing', unit: 'sq.ft', qty: 100, rate: 150 }],
     }), 201).data;
-    const sent = expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200).data;
-    quotationToken = sent.publicToken ?? (await prisma.quotation.findUnique({ where: { id: q.id } })).publicToken;
+    quotationToken = (await approveAndSend(q.id)).publicToken;
   });
 
   it('GET /public/quotations/:token shows the quotation', async () => {
@@ -312,8 +311,7 @@ describe('customer documents by token', () => {
       validUntil: new Date(Date.now() - 86_400_000).toISOString(),
       items: [{ description: 'Stale offer', qty: 1, rate: 500 }],
     }), 201).data;
-    expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
-    const { publicToken } = await prisma.quotation.findUnique({ where: { id: q.id } });
+    const { publicToken } = await approveAndSend(q.id);
 
     const res = expectStatus(await anon().post(`/public/quotations/${publicToken}/decide`).send({ decision: 'approve' }), 422);
     expect(res.error.message).toMatch(/expired/i);

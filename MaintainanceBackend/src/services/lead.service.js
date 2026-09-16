@@ -16,7 +16,7 @@ import { logger } from '../lib/logger.js';
 import { recordEvent } from './audit.service.js';
 
 /** Who a lead can be assigned to — the people who work the pipeline. */
-export const ASSIGNABLE_ROLES = ['SALES', 'ADMIN'];
+export const ASSIGNABLE_ROLES = ['SALES', 'MANAGER', 'ADMIN'];
 
 const LEAD_INCLUDE = {
   service: { select: { id: true, name: true, slug: true } },
@@ -179,7 +179,7 @@ async function announceNewLead(lead) {
     link: webUrl(adminLeadPath(lead.id)), appName: env.appName,
   };
 
-  await notifyRoles(['ADMIN', 'SALES'], {
+  await notifyRoles(['ADMIN', 'SALES', 'MANAGER'], {
     type: 'lead_new',
     title: lead.preferredAt ? `New booking — ${lead.name}` : `New lead — ${lead.name}`,
     body: [lead.phone, lead.service?.name ?? 'General enquiry', lead.preferredAt ? vars.requested : null]

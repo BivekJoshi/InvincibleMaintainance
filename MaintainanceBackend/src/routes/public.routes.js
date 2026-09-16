@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { validate } from '../middleware/validate.js';
-import { leadLimiter } from '../middleware/rateLimit.js';
+import { decisionLimiter, leadLimiter } from '../middleware/rateLimit.js';
 import { cached } from '../services/cache.service.js';
 import { ok, created } from '../utils/response.js';
 import * as pub from '../services/public.service.js';
@@ -51,8 +51,9 @@ router.post('/leads', leadLimiter, validate({ body: publicLeadSchema }), asyncHa
 
 // ── customer self-service via single-purpose tokens
 router.get('/quotations/:token', validate({ params: tokenParam }), asyncHandler(async (req, res) => ok(res, await quotations.getByPublicToken(req.params.token))));
-router.post('/quotations/:token/decide', validate({ params: tokenParam, body: quotationDecisionSchema }), asyncHandler(async (req, res) =>
-  ok(res, await quotations.decideByToken(req.params.token, req.body, req.ip))));
+// Accept · Ask for changes · Decline. No login and no OTP (decision D4); the IP and user agent are kept.
+router.post('/quotations/:token/decide', decisionLimiter, validate({ params: tokenParam, body: quotationDecisionSchema }), asyncHandler(async (req, res) =>
+  ok(res, await quotations.decideByToken(req.params.token, req.body, { ip: req.ip, userAgent: req.get('user-agent') }))));
 
 router.get('/invoices/:token', validate({ params: tokenParam }), asyncHandler(async (req, res) => ok(res, await invoices.getByPublicToken(req.params.token))));
 

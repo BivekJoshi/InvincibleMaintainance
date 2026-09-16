@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, expectStatus, createCustomer, technicianIdFor, phone, uid, daysFromNow, prisma,
+  anon, as, expectStatus, createCustomer, technicianIdFor, phone, uid, daysFromNow, prisma, approveAndSend,
 } from './helpers.js';
 import { expireQuotations } from '../../src/services/quotation.service.js';
 
@@ -393,9 +393,15 @@ describe('quotations', () => {
     expect(body.data.total).toBe(200000);
   });
 
-  it('POST /admin/quotations/:id/send issues a public link', async () => {
-    const body = expectStatus(await sales.post(`/admin/quotations/${quotation.id}/send`), 200);
-    expect(body.data.status).toBe('SENT');
+  it('POST /admin/quotations/:id/send refuses a draft nobody approved', async () => {
+    const res = expectStatus(await sales.post(`/admin/quotations/${quotation.id}/send`), 422);
+    expect(res.error.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('POST /admin/quotations/:id/send issues a public link once approved', async () => {
+    const sent = await approveAndSend(quotation.id);
+    expect(sent.status).toBe('SENT');
+    expect(sent.publicToken).toBeTruthy();
   });
 
   it('PUT /admin/quotations/:id on a SENT quotation is 422 and changes nothing', async () => {
@@ -421,7 +427,7 @@ describe('quotations', () => {
       const q = expectStatus(await sales.post('/admin/quotations').send({
         customerId: customer.id, validUntil, items: [{ description: 'Expiry sweep', qty: 1, rate: 100 }],
       }), 201).data;
-      if (send) expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
+      if (send) await approveAndSend(q.id);
       return q.id;
     };
     const stale = await make(daysFromNow(-2).toISOString());
@@ -450,8 +456,7 @@ describe('quotations', () => {
       const q = expectStatus(await sales.post('/admin/quotations').send({
         customerId: customer.id, leadId, items: [{ description: 'Approval edge case', qty: 1, rate: 1000 }],
       }), 201).data;
-      expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
-      const { publicToken } = await prisma.quotation.findUnique({ where: { id: q.id } });
+      const { publicToken } = await approveAndSend(q.id);
       return anon().post(`/public/quotations/${publicToken}/decide`).send({ decision: 'approve' });
     };
 
@@ -464,12 +469,12 @@ describe('quotations', () => {
       expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>WON']);
     });
 
-    it('a LOST lead does not fail the customer — it stays LOST and the timeline says the customer approved', async () => {
+    it('a LOST lead does not fail the customer — it stays LOST and the timeline says the customer accepted', async () => {
       const lead = await leadAt('CONTACTED', 'LOST');
-      expect(expectStatus(await approveFor(lead.id), 200).data.status).toBe('APPROVED');
+      expect(expectStatus(await approveFor(lead.id), 200).data.status).toBe('CONVERTED');
       expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('LOST');
       const note = await prisma.leadActivity.findFirst({
-        where: { leadId: lead.id, type: 'note', summary: { contains: 'approved', mode: 'insensitive' } },
+        where: { leadId: lead.id, type: 'note', summary: { contains: 'accepted', mode: 'insensitive' } },
       });
       expect(note).toBeTruthy();
     });
@@ -499,14 +504,14 @@ describe('quotations', () => {
   describe('approved quotation → job', () => {
     let approved;
 
+    // Since Phase F a customer's acceptance creates the job itself. This endpoint stays for
+    // quotations the customer approved before that shipped: APPROVED, with no job yet.
     beforeAll(async () => {
       approved = expectStatus(await sales.post('/admin/quotations').send({
         customerId: customer.id,
         items: [{ description: 'Terrace waterproofing', unit: 'sq.ft', qty: 400, rate: 180 }],
       }), 201).data;
-      expectStatus(await sales.post(`/admin/quotations/${approved.id}/send`), 200);
-      const { publicToken } = await prisma.quotation.findUnique({ where: { id: approved.id } });
-      expectStatus(await anon().post(`/public/quotations/${publicToken}/decide`).send({ decision: 'approve' }), 200);
+      await prisma.quotation.update({ where: { id: approved.id }, data: { status: 'APPROVED', sentAt: new Date(), decidedAt: new Date() } });
     });
 
     it('POST /admin/jobs refuses to convert a quotation nobody approved', async () => {
@@ -540,6 +545,12 @@ describe('quotations', () => {
       expect(job.tasks.length).toBeGreaterThan(0);
       expect(job.title).toContain(approved.number);
       expect(expectStatus(await sales.get(`/admin/quotations/${approved.id}`), 200).data.status).toBe('CONVERTED');
+    });
+
+    it('a second convert-to-job is refused and creates no second job', async () => {
+      const res = await (await as('DISPATCHER')).post(`/admin/quotations/${approved.id}/convert-to-job`).send({});
+      expect(expectStatus(res, 422).error.code).toBe('INVALID_TRANSITION');
+      expect(await prisma.job.count({ where: { quotationId: approved.id } })).toBe(1);
     });
 
     it('404 for an unknown quotation', async () => {

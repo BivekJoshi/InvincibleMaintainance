@@ -110,7 +110,7 @@ export async function runSlaSweep() {
       select: { id: true },
     });
     if (already) continue;
-    await notifyRoles(lead.assignedTo ? ['ADMIN', 'SALES'] : ['ADMIN', 'SALES'], {
+    await notifyRoles(['ADMIN', 'SALES', 'MANAGER'], {
       type: 'lead_sla_warn',
       title: `Response due soon — ${lead.name}`,
       body: `Call ${lead.phone} before the promised deadline.`,

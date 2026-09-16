@@ -9,7 +9,7 @@
 //   { sed -n '1,/^\/\/ ═══/p' docs/DATA-MODEL.prisma; cat MaintainanceBackend/prisma/schema.prisma; } \
 //     > /tmp/dm && mv /tmp/dm docs/DATA-MODEL.prisma
 //
-// Last regenerated 2026-09-16 (Phase E: Lead.preferredLocale, Customer.preferredLocale).
+// Last regenerated 2026-09-16 (Phase F1: Role.MANAGER, the approval QuotationStatus values and the Quotation approval fields).
 // ═════════════════════════════════════════════════════════════════════════════
 // Maintenance System — Prisma schema
 // Money is ALWAYS Int paisa (NPR x 100). Timestamps are UTC.
@@ -31,6 +31,8 @@ enum Role {
   ADMIN
   EDITOR
   SALES
+  /// every SALES capability plus quotations:approve (Phase F)
+  MANAGER
   DISPATCHER
   TECHNICIAN
   ACCOUNTANT
@@ -62,6 +64,8 @@ model User {
   auditLogs        AuditLog[]
   notifications    Notification[]
   createdQuotes    Quotation[]      @relation("QuotationCreator")
+  submittedQuotes  Quotation[]      @relation("QuotationSubmitter")
+  approvedQuotes   Quotation[]      @relation("QuotationApprover")
   createdJobs      Job[]            @relation("JobCreator")
   jobEvents        JobStatusEvent[]
   submittedSurveys SiteSurvey[]     @relation("SurveySubmitter")
@@ -694,56 +698,82 @@ model RateCardItem {
   @@index([isActive, sortOrder])
 }
 
+/// APPROVED means the *customer* accepted; OFFICE_APPROVED is the internal approval.
 enum QuotationStatus {
   DRAFT
+  PENDING_APPROVAL
+  OFFICE_APPROVED
   SENT
+  CHANGES_REQUESTED
   APPROVED
   REJECTED
   EXPIRED
+  SUPERSEDED
   CONVERTED
 }
 
 model Quotation {
-  id           String          @id @default(cuid())
-  number       String          @unique
-  version      Int             @default(1)
-  parentId     String?
-  customerId   String
-  siteId       String?
-  leadId       String?
-  status       QuotationStatus @default(DRAFT)
-  validUntil   DateTime?
-  subtotal     Int             @default(0)
-  discount     Int             @default(0)
-  vatApplied   Boolean         @default(true)
-  vatRate      Int             @default(13)
-  vatAmount    Int             @default(0)
-  total        Int             @default(0)
-  terms        String?
-  internalNote String?
-  publicToken  String?         @unique
-  sentAt       DateTime?
-  decidedAt    DateTime?
-  decidedIp    String?
-  decisionNote String?
-  createdById  String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  deletedAt    DateTime?
+  id               String          @id @default(cuid())
+  number           String          @unique
+  version          Int             @default(1)
+  parentId         String?
+  customerId       String
+  siteId           String?
+  leadId           String?
+  status           QuotationStatus @default(DRAFT)
+  validUntil       DateTime?
+  subtotal         Int             @default(0)
+  discount         Int             @default(0)
+  vatApplied       Boolean         @default(true)
+  vatRate          Int             @default(13)
+  vatAmount        Int             @default(0)
+  total            Int             @default(0)
+  terms            String?
+  internalNote     String?
+  publicToken      String?         @unique
+  submittedAt      DateTime?
+  submittedById    String?
+  approvedById     String?
+  approvedAt       DateTime?
+  approvalNote     String?
+  /// true when quotation.autoApproveBelow approved it (approvedById stays null)
+  autoApproved     Boolean         @default(false)
+  /// why it went back to DRAFT: an approver's send-back or a pull-back before sending
+  sentBackReason   String?
+  sentAt           DateTime?
+  decidedAt        DateTime?
+  decidedIp        String?
+  decidedUserAgent String?
+  /// the customer's own answer to this version: a change request or a decline reason
+  decisionNote     String?
+  /// the change request this revision answers, copied from the parent; never overwritten
+  requestedChanges String?
+  /// the newer version that replaced this one (status SUPERSEDED)
+  supersededById   String?
+  createdById      String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
 
-  customer  Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  site      CustomerSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  lead      Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  createdBy User?           @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  parent    Quotation?      @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
-  revisions Quotation[]     @relation("QuotationVersions")
-  items     QuotationItem[]
-  jobs      Job[]
-  invoices  Invoice[]
-  survey    SiteSurvey?
+  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site         CustomerSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead         Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  submittedBy  User?           @relation("QuotationSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  approvedBy   User?           @relation("QuotationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  parent       Quotation?      @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
+  revisions    Quotation[]     @relation("QuotationVersions")
+  supersededBy Quotation?      @relation("QuotationSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   Quotation[]     @relation("QuotationSupersession")
+  items        QuotationItem[]
+  jobs         Job[]
+  invoices     Invoice[]
+  survey       SiteSurvey?
 
   @@index([status, createdAt])
   @@index([customerId])
+  @@index([parentId])
+  @@index([leadId])
 }
 
 model QuotationItem {

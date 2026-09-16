@@ -329,7 +329,7 @@ export async function sweepContracts() {
   });
   const due = await renewalsDue(30);
   if (due.length) {
-    await notifyRoles(['ADMIN', 'SALES'], {
+    await notifyRoles(['ADMIN', 'SALES', 'MANAGER'], {
       type: 'amc_renewals', title: `${due.length} AMC contract(s) renew within 30 days`, link: '/admin/amc-contracts?renewals=true',
     });
   }

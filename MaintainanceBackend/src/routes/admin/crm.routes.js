@@ -161,8 +161,10 @@ router.delete('/rate-card/:id', writeRate, validate({ params: idParam }),
 const readQ = requires('quotations:read');
 const writeQ = requires('quotations:write');
 
-router.get('/quotations', readQ, validate({ query: listQuery.passthrough() }), asyncHandler(async (req, res) => {
-  const { items, meta } = await quotations.listQuotations(req.query);
+const approveQ = requires('quotations:approve');
+
+router.get('/quotations', readQ, validate({ query: s.quotationListQuery }), asyncHandler(async (req, res) => {
+  const { items, meta } = await quotations.listQuotations(req.validatedQuery);
   ok(res, items, meta);
 }));
 router.post('/quotations', writeQ, validate({ body: s.quotationSchema }),
@@ -171,12 +173,23 @@ router.get('/quotations/:id', readQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await quotations.getQuotation(req.params.id))));
 router.put('/quotations/:id', writeQ, validate({ params: idParam, body: s.quotationUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await quotations.updateQuotation(req.params.id, req.body))));
+// Internal approval: no quotation is sent until a MANAGER/ADMIN (or the auto-approval limit) approves it.
+router.post('/quotations/:id/submit', writeQ, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await quotations.submitQuotation(req.params.id, req.user.id))));
+router.post('/quotations/:id/approve', approveQ, validate({ params: idParam, body: s.quotationApproveSchema }),
+  asyncHandler(async (req, res) => ok(res, await quotations.approveQuotation(req.params.id, req.body, req.user.id))));
+router.post('/quotations/:id/send-back', approveQ, validate({ params: idParam, body: s.quotationReturnSchema }),
+  asyncHandler(async (req, res) => ok(res, await quotations.sendBackQuotation(req.params.id, req.body, req.user.id))));
+router.post('/quotations/:id/pull-back', writeQ, validate({ params: idParam, body: s.quotationReturnSchema }),
+  asyncHandler(async (req, res) => ok(res, await quotations.pullBackQuotation(req.params.id, req.body))));
 router.post('/quotations/:id/send', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await quotations.sendQuotation(req.params.id))));
 router.post('/quotations/:id/revise', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => created(res, await quotations.reviseQuotation(req.params.id, req.user.id))));
 // Scheduling the crew is dispatch's call, so this takes jobs:write rather than
-// quotations:write — SALES can win the work but not put people on it.
+// quotations:write — SALES can win the work but not put people on it. Since Phase F a
+// customer's acceptance creates the job itself; this stays for quotations APPROVED before
+// that, and refuses one that already has its job.
 router.post('/quotations/:id/convert-to-job', requires('jobs:write'),
   validate({ params: idParam, body: quotationToJobSchema }),
   asyncHandler(async (req, res) => created(res, await jobs.createJobFromQuotation(req.params.id, req.body, req.user.id))));

@@ -20,6 +20,14 @@ export const PERMISSIONS = {
     'surveys:read', 'surveys:write', 'technicians:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
+  // Sales plus the internal approval of quotations (Phase F). quotations:approve is
+  // held here and by ADMIN ('*') only.
+  MANAGER: [
+    'leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history',
+    'quotations:read', 'quotations:write', 'quotations:approve', 'jobs:read', 'services:read',
+    'surveys:read', 'surveys:write', 'technicians:read',
+    'media:read', 'dashboard:read', 'reports:sales',
+  ],
   DISPATCHER: [
     'jobs:read', 'jobs:write', 'jobs:dispatch', 'technicians:read', 'technicians:write',
     'materials:read', 'materials:write', 'customers:read', 'leads:read',

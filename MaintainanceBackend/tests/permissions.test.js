@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { can } from '../src/shared/permissions.js';
+import { can, PERMISSIONS } from '../src/shared/permissions.js';
+import { ROLES } from '../src/shared/enums.js';
 
 describe('role capabilities', () => {
   it('gives ADMIN everything', () => {
@@ -22,7 +23,7 @@ describe('role capabilities', () => {
 
   it('keeps permanent delete (cms:purge) with ADMIN alone', () => {
     expect(can('ADMIN', 'cms:purge')).toBe(true);
-    for (const role of ['EDITOR', 'SALES', 'DISPATCHER', 'ACCOUNTANT', 'TECHNICIAN', 'SURVEYOR']) {
+    for (const role of ['EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'ACCOUNTANT', 'TECHNICIAN', 'SURVEYOR']) {
       expect(can(role, 'cms:purge')).toBe(false);
     }
   });
@@ -67,5 +68,25 @@ describe('role capabilities', () => {
     expect(can('DISPATCHER', 'leads:read')).toBe(true);
     expect(can('DISPATCHER', 'leads:history')).toBe(false);
     expect(can('ACCOUNTANT', 'customers:history')).toBe(false);
+  });
+
+  it('gives MANAGER every SALES capability plus quotation approval', () => {
+    for (const c of PERMISSIONS.SALES) expect(can('MANAGER', c), c).toBe(true);
+    expect(can('MANAGER', 'quotations:approve')).toBe(true);
+    expect(can('MANAGER', 'reports:sales')).toBe(true);
+    expect(can('MANAGER', 'invoices:write')).toBe(false);
+    expect(can('MANAGER', 'jobs:write')).toBe(false);
+    expect(can('MANAGER', 'users:write')).toBe(false);
+  });
+
+  it('keeps quotation approval with MANAGER and ADMIN only', () => {
+    expect(can('ADMIN', 'quotations:approve')).toBe(true);
+    for (const role of ['EDITOR', 'SALES', 'DISPATCHER', 'ACCOUNTANT', 'TECHNICIAN', 'SURVEYOR']) {
+      expect(can(role, 'quotations:approve'), role).toBe(false);
+    }
+  });
+
+  it('knows every role in the ROLES list', () => {
+    expect(Object.keys(PERMISSIONS).sort()).toEqual([...ROLES].sort());
   });
 });

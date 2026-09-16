@@ -11,12 +11,25 @@ export const LEAD_TRANSITIONS = {
   LOST: ['CONTACTED'],
 };
 
+/**
+ * No quotation reaches the customer without internal approval: DRAFT is submitted,
+ * a MANAGER or ADMIN approves it (never their own while quotation.makerChecker is on),
+ * or it auto-approves inside the submit when its total is below
+ * quotation.autoApproveBelow — still by way of PENDING_APPROVAL. APPROVED means the
+ * *customer* accepted, and becomes CONVERTED in the same transaction that creates the
+ * job. A customer's answer, a decline or an expiry is final for that version; the way
+ * on is a revision, which supersedes it with a new DRAFT that is approved again.
+ */
 export const QUOTATION_TRANSITIONS = {
-  DRAFT: ['SENT'],
-  SENT: ['APPROVED', 'REJECTED', 'EXPIRED'],
+  DRAFT: ['PENDING_APPROVAL'],
+  PENDING_APPROVAL: ['OFFICE_APPROVED', 'DRAFT'],
+  OFFICE_APPROVED: ['SENT', 'DRAFT'],
+  SENT: ['APPROVED', 'CHANGES_REQUESTED', 'REJECTED', 'EXPIRED', 'SUPERSEDED'],
+  CHANGES_REQUESTED: ['SUPERSEDED'],
+  REJECTED: ['SUPERSEDED'],
+  EXPIRED: ['SUPERSEDED'],
   APPROVED: ['CONVERTED'],
-  REJECTED: ['SENT'],
-  EXPIRED: ['SENT'],
+  SUPERSEDED: [],
   CONVERTED: [],
 };
 

@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { prisma } from '../lib/prisma.js';
 import { normalizePhone } from '../utils/phone.js';
+import { webUrl } from '../utils/links.js';
 
 // ── SMS adapters ────────────────────────────────────────────────────────────
 
@@ -174,6 +175,65 @@ export async function notify(opts) {
     });
     return log;
   }
+}
+
+/**
+ * Tells named staff about one event, **once each**: a person reached through two
+ * roles (the salesperson who also created the quotation) gets one in-app
+ * notification and at most one email. Staff messages are English (D7).
+ *
+ * @param {Array<{userId:string|null|undefined, email?:boolean, link?:string}>} recipients
+ *   `email: true` if this person also gets an email; `link` (an SPA path) overrides the
+ *   default link for this person — a later recipient entry wins.
+ * @param {{type:string, title:string, body?:string, link:string, templateKey?:string,
+ *          vars?:object, related?:{model:string,id:string}, fallbackSubject?:string,
+ *          fallbackBody?:string}} message
+ *   The email uses `templateKey` (default `<type>_staff`) with `vars` plus `title`, `body`
+ *   and `link` (absolute, on the web origin), falling back to the given text.
+ * @returns {Promise<string[]>} the user ids notified
+ */
+export async function notifyUsers(recipients, message) {
+  const merged = new Map();
+  for (const r of recipients) {
+    if (!r?.userId) continue;
+    const prev = merged.get(r.userId) ?? { email: false, link: message.link };
+    merged.set(r.userId, { email: prev.email || Boolean(r.email), link: r.link ?? prev.link });
+  }
+  if (!merged.size) return [];
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...merged.keys()] }, isActive: true, deletedAt: null },
+    select: { id: true, email: true },
+  });
+  if (!users.length) return [];
+  await prisma.notification.createMany({
+    data: users.map((u) => ({
+      userId: u.id, type: message.type, title: message.title, body: message.body ?? null, link: merged.get(u.id).link,
+    })),
+  });
+  for (const u of users) {
+    const { email, link } = merged.get(u.id);
+    if (!email || !u.email) continue;
+    await notify({
+      templateKey: message.templateKey ?? `${message.type}_staff`,
+      channel: 'email',
+      to: u.email,
+      vars: { ...message.vars, title: message.title, body: message.body ?? '', link: webUrl(link) },
+      related: message.related,
+      fallbackSubject: message.fallbackSubject ?? '{{title}}',
+      fallbackBody: message.fallbackBody ?? '{{title}}\n\n{{body}}\n\nOpen: {{link}}',
+    });
+  }
+  return users.map((u) => u.id);
+}
+
+/** Every active user holding one of these roles — the approvers, the dispatchers. */
+export async function userIdsWithRoles(roles) {
+  const users = await prisma.user.findMany({
+    where: { role: { in: roles }, isActive: true, deletedAt: null },
+    select: { id: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return users.map((u) => u.id);
 }
 
 /** Fan-out helper: in-app notification to every user holding one of these roles. */

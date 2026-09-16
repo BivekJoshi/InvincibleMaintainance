@@ -18,3 +18,9 @@ export const webUrl = (path) => `${webOrigin()}${path}`;
 
 /** `/admin/leads/:id` — the lead's page in the back office. */
 export const adminLeadPath = (id) => `/admin/leads/${id}`;
+
+/** `/admin/quotations/:id` — the quotation's page in the back office. */
+export const adminQuotationPath = (id) => `/admin/quotations/${id}`;
+
+/** `/admin/jobs/:id` — the job's page in the back office. */
+export const adminJobPath = (id) => `/admin/jobs/${id}`;

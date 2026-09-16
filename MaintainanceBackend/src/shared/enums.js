@@ -1,4 +1,4 @@
-export const ROLES = ['ADMIN', 'EDITOR', 'SALES', 'DISPATCHER', 'TECHNICIAN', 'ACCOUNTANT', 'SURVEYOR'];
+export const ROLES = ['ADMIN', 'EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'TECHNICIAN', 'ACCOUNTANT', 'SURVEYOR'];
 
 /** Roles that work off a Technician profile and use the /tech app. */
 export const FIELD_ROLES = ['TECHNICIAN', 'SURVEYOR'];
@@ -28,7 +28,26 @@ export const SURVEY_METRICS = [
   'humidity', 'voltage', 'pressure', 'observation',
 ];
 
-export const QUOTATION_STATUSES = ['DRAFT', 'SENT', 'APPROVED', 'REJECTED', 'EXPIRED', 'CONVERTED'];
+/** APPROVED means the customer accepted; OFFICE_APPROVED is the internal approval. */
+export const QUOTATION_STATUSES = [
+  'DRAFT', 'PENDING_APPROVAL', 'OFFICE_APPROVED', 'SENT', 'CHANGES_REQUESTED',
+  'APPROVED', 'REJECTED', 'EXPIRED', 'SUPERSEDED', 'CONVERTED',
+];
+
+/** `GET /admin/quotations?stage=` — the work queues of the quotation screen. `all` includes superseded versions. */
+export const QUOTATION_STAGES = {
+  drafts: ['DRAFT'],
+  approval: ['PENDING_APPROVAL'],
+  ready: ['OFFICE_APPROVED'],
+  with_customer: ['SENT'],
+  changes_requested: ['CHANGES_REQUESTED'],
+  won: ['APPROVED', 'CONVERTED'],
+  lost: ['REJECTED', 'EXPIRED'],
+  all: null,
+};
+
+/** What a customer may answer on the quotation link. */
+export const QUOTATION_DECISIONS = ['approve', 'request_changes', 'reject'];
 export const JOB_TYPES = ['INSPECTION', 'REPAIR', 'INSTALLATION', 'RENOVATION', 'AMC_VISIT', 'WARRANTY'];
 export const JOB_STATUSES = [
   'DRAFT', 'SCHEDULED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'VERIFIED', 'CANCELLED',
@@ -70,11 +89,18 @@ export const AUDIT_EVENTS = Object.freeze({
   CUSTOMER_EMAIL_CONFIRMED: 'customer.email_confirmed',
 
   QUOTATION_CREATED: 'quotation.created',
+  QUOTATION_SUBMITTED: 'quotation.submitted',
+  QUOTATION_AUTO_APPROVED: 'quotation.auto_approved',
+  QUOTATION_OFFICE_APPROVED: 'quotation.office_approved',
+  QUOTATION_SENT_BACK: 'quotation.sent_back',
+  QUOTATION_PULLED_BACK: 'quotation.pulled_back',
   QUOTATION_SENT: 'quotation.sent',
   QUOTATION_CUSTOMER_APPROVED: 'quotation.customer_approved',
+  QUOTATION_CUSTOMER_CHANGES_REQUESTED: 'quotation.customer_changes_requested',
   QUOTATION_CUSTOMER_REJECTED: 'quotation.customer_rejected',
   QUOTATION_EXPIRED: 'quotation.expired',
   QUOTATION_REVISED: 'quotation.revised',
+  QUOTATION_SUPERSEDED: 'quotation.superseded',
 
   JOB_CREATED: 'job.created',
   JOB_STATUS_CHANGED: 'job.status_changed',
@@ -107,19 +133,4 @@ export const AUDIT_EVENTS = Object.freeze({
   USER_CREATED: 'user.created',
   USER_DISABLED: 'user.disabled',
   USER_ROLE_CHANGED: 'user.role_changed',
-
-  // Reserved for Phase F (internal approval). Nothing emits these yet.
-  QUOTATION_SUBMITTED: 'quotation.submitted',
-  QUOTATION_AUTO_APPROVED: 'quotation.auto_approved',
-  QUOTATION_OFFICE_APPROVED: 'quotation.office_approved',
-  QUOTATION_SENT_BACK: 'quotation.sent_back',
-  QUOTATION_PULLED_BACK: 'quotation.pulled_back',
-  QUOTATION_CUSTOMER_CHANGES_REQUESTED: 'quotation.customer_changes_requested',
-  QUOTATION_SUPERSEDED: 'quotation.superseded',
 });
-
-/** The Phase F names above: valid, but not emitted by anything yet. */
-export const RESERVED_AUDIT_EVENTS = [
-  'quotation.submitted', 'quotation.auto_approved', 'quotation.office_approved', 'quotation.sent_back',
-  'quotation.pulled_back', 'quotation.customer_changes_requested', 'quotation.superseded',
-];

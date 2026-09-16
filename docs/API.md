@@ -57,14 +57,52 @@ POST /public/leads                    honeypot + timing + turnstile + rate limit
                                       { name, phone, email? (optional; stored trimmed, lower-case),
                                         preferredLocale? en|ne (the site's language — the acknowledgement
                                         SMS and every later message use it), address?, serviceId?, message?… }
-GET  /public/quotations/:token        customer views a quotation
-POST /public/quotations/:token/decide { decision: approve|reject, note }   once — a second is 422
-                                      a SENT quotation past validUntil is moved to EXPIRED here and
-                                      answered 422 "This quotation has expired…", whether or not
-                                      anyone opened the link first. Approval moves the lead to WON
-                                      through the state machine (NEW via CONTACTED); a lead already
-                                      WON is left alone, a LOST lead keeps its status and gets a
-                                      timeline note — the lead never fails the customer's approval
+GET  /public/quotations/:token        customer views a quotation — an allowlist, never the row:
+                                      { number, version, status, validUntil, subtotal, discount,
+                                        vatApplied, vatRate, vatAmount, total, terms, sentAt, decidedAt,
+                                        decisionNote (their own answer), requestedChanges (the change
+                                        request this version answers), createdAt, customer { name },
+                                        site { label, address } | null, items[] { id, description, unit,
+                                        qty, rate, amount, sortOrder },
+                                        replaced: { token } of the newest version when it is SENT, else null,
+                                        actions: ['approve','request_changes','reject'] while SENT, else [] }
+                                      A SENT quotation past validUntil is moved to EXPIRED on open.
+POST /public/quotations/:token/decide decisionLimiter (20 per IP per 15 min) · no login, no OTP (D4)
+                                      { decision: approve | request_changes | reject, note? }
+                                      note: request_changes 5–1000 chars (required); reject optional
+                                      (≤1000); approve ignores it. IP and user agent are recorded.
+                                      Only a SENT quotation within validUntil takes an answer:
+                                        422 QUOTATION_EXPIRED   past validUntil (moved to EXPIRED here, whether
+                                                                or not anyone opened the link first)
+                                        422 QUOTATION_ANSWERED  already answered — a second tap or a replay
+                                        422 QUOTATION_REPLACED  a newer version superseded it
+                                        422 QUOTATION_NOT_OPEN  any other status
+                                      -> 200 the public view above.
+                                      approve — ONE transaction: SENT → APPROVED → CONVERTED, the lead → WON
+                                        through the state machine (NEW via CONTACTED; the timeline entry reads
+                                        "Customer accepted QT-… vN · NPR …"; a lead already WON or LOST keeps its
+                                        status and gets a note — the lead never fails the acceptance), and one
+                                        job: DRAFT, unscheduled, unassigned, type REPAIR, titled
+                                        "<service> — <number>" (the survey's service, else the lead's, else the
+                                        first line), the service's job-template checklist, priority from the
+                                        survey's urgency. The answer is claimed with a guarded update, so a
+                                        double tap creates exactly one job. Response adds job { id, number }.
+                                        Then, once each: the customer (SMS quotation_accepted, and email when on
+                                        file, in their preferredLocale), the lead's salesperson and the
+                                        quotation's author (in-app + email), every active DISPATCHER (in-app +
+                                        email, linking /admin/jobs/:id) and the approving manager (in-app;
+                                        nobody when it was auto-approved). Notification type quotation_accepted.
+                                      request_changes — SENT → CHANGES_REQUESTED, decisionNote = the message, a
+                                        lead timeline note "Customer asked for changes to QT-… vN: …" (the lead
+                                        keeps its status); the salesperson and author get in-app + email
+                                        (quotation_changes_requested_staff, message included); the customer gets
+                                        an SMS acknowledgement (quotation_changes_received) in their language.
+                                      reject — SENT → REJECTED, decisionNote = the reason, a lead timeline note;
+                                        the lead is NOT marked LOST (sales decides). Salesperson and author get
+                                        in-app + email (type quotation_rejected).
+                                      The three answers are quotation.service.js acceptQuotation /
+                                      requestQuotationChanges / declineQuotation, so a customer account
+                                      (Phase K) reuses them.
 GET  /public/invoices/:token          customer views an invoice (read-only; paid offline)
                                       payments[] include voided ones with voidedAt set (shown struck
                                       through); paidAmount already excludes them
@@ -184,11 +222,13 @@ whitespace `alt` is 400 `details: [{ path: 'alt' }]`); `folderId: null` moves th
 otherwise). `DELETE /admin/media/folders/:id` is 404 for an unknown folder and 400 while the folder holds a live file
 or any subfolder — only an empty folder is deleted.
 
-## Admin — CRM (`ADMIN`, `SALES`)
+## Admin — CRM (`ADMIN`, `SALES`, `MANAGER`)
 
 Capabilities: leads — `leads:read` (SALES, DISPATCHER), `leads:write` (SALES); customers — `customers:read`
 (SALES, DISPATCHER, ACCOUNTANT), `customers:write` (SALES); history — `leads:history` / `customers:history`
-(SALES). ADMIN holds all of them.
+(SALES); quotations — `quotations:read` (SALES, ACCOUNTANT), `quotations:write` (SALES),
+`quotations:approve` (MANAGER only). **MANAGER** holds every SALES capability plus `quotations:approve`, and can be
+assigned leads. ADMIN holds all of them.
 
 A lead and a customer carry `preferredLocale` (`en` | `ne`, default `en`): the language every SMS and email to
 that person uses (a missing `ne` template falls back to the `en` one). `email` is stored trimmed and lower-case
@@ -214,7 +254,7 @@ POST   /admin/leads/bulk-assign     leads:write · { ids (1–100), assignedToId
                                     id is 404 and nothing moves). Each lead gets its timeline entry and its
                                     lead.assigned event; the assignee gets ONE notification for the batch.
                                     Leads already with that owner are left alone
-GET    /admin/leads/assignees       leads:read · ?q&limit — active SALES and ADMIN users { id, name, email, role }:
+GET    /admin/leads/assignees       leads:read · ?q&limit — active SALES, MANAGER and ADMIN users { id, name, email, role }:
                                     who a lead can be assigned to (/admin/users is ADMIN's)
 GET    /admin/leads/assignees/:id   leads:read · one of them; 404 for anyone else
 GET    /admin/leads/:id
@@ -279,7 +319,9 @@ GET    /admin/customers/:id         customers:read · with sites (primary first)
 PUT    /admin/customers/:id         customers:write · partial. The one place staff change a customer's email;
                                     it is the audited model change (before → after)
 DELETE /admin/customers/:id         customers:write · soft; 400 while the customer has open jobs
-GET    /admin/customers/:id/timeline  customers:read · leads, quotations, jobs, invoices, warranties, newest first
+GET    /admin/customers/:id/timeline  customers:read · leads, quotations, jobs, invoices, warranties, newest first,
+                                    plus kind `quotation_response` at decidedAt for each customer answer
+                                    ("Customer accepted QT-… vN · NPR …", "…asked for changes to…", "…declined…")
 GET    /admin/customers/:id/history customers:history · see "Record history" below
 GET    /admin/customers/:id/sites   customers:read
 POST   /admin/customers/:id/sites   customers:write · { label, address, area?, lat?, lng?, accessNotes?, isPrimary? }
@@ -299,10 +341,57 @@ DELETE /admin/customers/:id/sites/:siteId     soft; 400 while jobs use the site
                                     unique: `wp-1` after `WP-1` is 409 (a soft-deleted item still holds its code).
                                     Feeds quotation lines, survey pricing and the rate table on GET
                                     /public/pricing (active items). The estimator does not read it.
-/admin/quotations                   CRUD + POST /:id/send + POST /:id/revise
-PUT    /admin/quotations/:id        DRAFT only. Any other status is 422 UNPROCESSABLE ("…cannot be edited.
-                                    Create a revision to change it.") and nothing changes
-POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only
+GET    /admin/quotations            quotations:read · ?stage&status&customerId&leadId&from&to&q&page&limit&sort
+                                    stage: drafts (DRAFT) · approval (PENDING_APPROVAL) · ready
+                                    (OFFICE_APPROVED) · with_customer (SENT) · changes_requested
+                                    (CHANGES_REQUESTED) · won (APPROVED, CONVERTED) · lost (REJECTED,
+                                    EXPIRED) · all (everything, SUPERSEDED included). No stage = all.
+                                    status narrows within the stage. 400 on an unknown stage or status.
+                                    Rows add submittedBy, approvedBy { id, name } and lead.assignedToId.
+GET    /admin/quotations/:id        quotations:read · adds parent { id, number, version, status, decisionNote },
+                                    supersededBy { id, number, version, status }, revisions[], and
+                                    versions[] { id, number, version, status, total, createdAt } — the
+                                    whole version chain, oldest first
+POST   /admin/quotations            quotations:write · creates a DRAFT (validUntil optional here, but
+                                    required in the future to submit)
+PUT    /admin/quotations/:id        quotations:write · DRAFT only. Any other status is 422 UNPROCESSABLE
+                                    ("…cannot be edited. …") and nothing changes
+DELETE /admin/quotations/:id        quotations:write · soft delete; CONVERTED is 400
+
+Internal approval — no quotation is sent until it is approved (see ARCHITECTURE.md "State machines").
+Every status move is guarded on the status just read: a same-moment second press is 409 CONFLICT; a move the
+state machine does not allow (including to the status it already has) is 422 INVALID_TRANSITION.
+POST   /admin/quotations/:id/submit     quotations:write · DRAFT → PENDING_APPROVAL
+                                    422 QUOTATION_INCOMPLETE without a line, an active customer, or a
+                                    validUntil in the future. When quotation.autoApproveBelow (paisa) > 0 and
+                                    total < it, the same transaction goes on to OFFICE_APPROVED with
+                                    autoApproved=true, approvedById null, event quotation.auto_approved
+                                    (actorType system) — for every version, revisions included.
+                                    Otherwise every active MANAGER and ADMIN except the submitter gets
+                                    quotation_submitted (in-app + email). -> 200 the quotation (GET shape)
+POST   /admin/quotations/:id/approve    quotations:approve · { note? ≤1000 } · PENDING_APPROVAL → OFFICE_APPROVED
+                                    sets approvedById, approvedAt, approvalNote. 403 SELF_APPROVAL when
+                                    quotation.makerChecker is on (default) and the caller created it.
+                                    The creator gets quotation_office_approved (in-app).
+POST   /admin/quotations/:id/send-back  quotations:approve · { note 3–1000 } · PENDING_APPROVAL → DRAFT
+                                    sentBackReason = note; the creator gets quotation_sent_back (in-app)
+POST   /admin/quotations/:id/pull-back  quotations:write · { note 3–1000 } · OFFICE_APPROVED → DRAFT
+                                    before it is sent; sentBackReason = note; the approval is cleared
+POST   /admin/quotations/:id/send       quotations:write · OFFICE_APPROVED → SENT only (a DRAFT or
+                                    PENDING_APPROVAL is 422 INVALID_TRANSITION; a validUntil already past
+                                    is 422 QUOTATION_EXPIRED). Issues publicToken, SMS + email
+                                    quotation_sent in the customer's language.
+POST   /admin/quotations/:id/revise     quotations:write · from SENT, CHANGES_REQUESTED, REJECTED or EXPIRED
+                                    -> 201 a new DRAFT: version+1, parentId, lines and totals copied,
+                                    requestedChanges = the parent's change request (when it was
+                                    CHANGES_REQUESTED). The parent becomes SUPERSEDED with supersededById,
+                                    which closes its link (its GET shows replaced once the new version is
+                                    sent). Events quotation.revised (new) + quotation.superseded (parent).
+                                    The new version is submitted and approved again.
+POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only — quotations the customer
+                                    approved before Phase F; since then acceptance creates the job itself.
+                                    CONVERTED (a job exists) is 422 INVALID_TRANSITION, so it never makes a
+                                    second job.
                                     { type?, title?, description?, priority?, scheduledStart?,
                                       scheduledEnd?, templateId?, technicianIds?, leadTechnicianId? }
                                     -> 201 job. Customer, site and lead come from the quotation, which
@@ -452,7 +541,7 @@ GET  /admin/reports/collections     ?from&to   payments received, summed by meth
 GET  /admin/customers/:id/statement             ledger of invoices and payments (voided excluded)
 ```
 
-## Admin — Aftercare (reads `ADMIN`, `DISPATCHER`, `SALES`; writes `ADMIN`, `DISPATCHER`)
+## Admin — Aftercare (reads `ADMIN`, `DISPATCHER`, `SALES`, `MANAGER`; writes `ADMIN`, `DISPATCHER`)
 
 ```
 /admin/warranties                   GET, GET /expiring ?days, GET /:id, PUT /:id
@@ -492,9 +581,17 @@ GET   /admin/notifications          own only · ?unreadOnly · meta.unread
                                     surveyors (`/tech/jobs/:id`, `/tech/surveys/:id`). A link in an SMS or
                                     email is absolute on the web origin (PUBLIC_WEB_ORIGIN), never APP_URL.
                                     Types include lead_new, lead_assigned, lead_sla_warn, lead_sla_breach,
-                                    quotation_approved, quotation_rejected, survey_submitted, job_completed…
+                                    quotation_submitted, quotation_office_approved, quotation_sent_back,
+                                    quotation_accepted, quotation_changes_requested, quotation_rejected,
+                                    survey_submitted, job_completed… Quotation notifications go to named
+                                    people, once each (a salesperson who also wrote the quotation gets one).
+                                    quotation_approved (pre-Phase F rows) is no longer written.
 PATCH /admin/notifications/:id/read  ·  PATCH /admin/notifications/read-all
 GET   /admin/dashboard              every role · role-aware widget payload
+                                    cards added in Phase F: quotationsPendingApproval,
+                                    quotationsChangesRequested, quotationsAwaitingCustomer (SALES, MANAGER,
+                                    ADMIN) and acceptedJobsUnscheduled — DRAFT jobs from a quotation with no
+                                    scheduledStart (DISPATCHER, MANAGER, ADMIN). MANAGER also gets funnel and sla.
 GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
 GET   /admin/reports/job-margin | /technicians | /warranty-claims   reports:ops
 ```
@@ -527,11 +624,18 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `lead.activity_logged` | `POST /admin/leads/:id/activities` | firstResponseAt null → the time, when this entry stopped the clock · activityId, type, summary |
 | `customer.email_confirmed` | convert with `confirmEmail` puts the lead's email on an existing customer (actor = the staff member) | email → email · leadId |
 | `quotation.created` | a quotation is created (admin, convert, survey quote) | → number, status, total, customerId, leadId |
-| `quotation.sent` | `POST /admin/quotations/:id/send` | status → SENT |
-| `quotation.customer_approved` | the customer approves by link (`public`) | SENT → APPROVED · note |
-| `quotation.customer_rejected` | the customer rejects by link (`public`) | SENT → REJECTED · note |
+| `quotation.submitted` | `POST /admin/quotations/:id/submit` | DRAFT → PENDING_APPROVAL, total |
+| `quotation.auto_approved` | the same submit, when the total is below `quotation.autoApproveBelow` (actorType `system`, actorId null) | PENDING_APPROVAL → OFFICE_APPROVED · total, threshold |
+| `quotation.office_approved` | `POST /admin/quotations/:id/approve` | PENDING_APPROVAL → OFFICE_APPROVED · note |
+| `quotation.sent_back` | `POST /admin/quotations/:id/send-back` | PENDING_APPROVAL → DRAFT · note |
+| `quotation.pulled_back` | `POST /admin/quotations/:id/pull-back` | OFFICE_APPROVED → DRAFT · note |
+| `quotation.sent` | `POST /admin/quotations/:id/send` | OFFICE_APPROVED → SENT |
+| `quotation.customer_approved` | the customer accepts by link (`public`); `job.created` and `lead.status_changed` follow in the same transaction | SENT → APPROVED · note |
+| `quotation.customer_changes_requested` | the customer asks for changes by link (`public`) | SENT → CHANGES_REQUESTED · note |
+| `quotation.customer_rejected` | the customer declines by link (`public`) | SENT → REJECTED · note |
 | `quotation.expired` | a SENT quotation past `validUntil` is expired by the link or the `quotation:expire` task | SENT → EXPIRED |
 | `quotation.revised` | `POST /admin/quotations/:id/revise`, on the new version | → number, version, status, total · parentId, version |
+| `quotation.superseded` | the same revise, on the version it replaces | status → SUPERSEDED · supersededById, number, version |
 | `job.created` | a job is created (admin, convert, quotation) | → number, type, status, customerId, quotationId, leadId, technicianIds |
 | `job.status_changed` | `PATCH …/jobs/:id/status` (admin or field app), except completion | status → status · note |
 | `job.assigned` | `POST /admin/jobs/:id/assign` | technicianIds, status → technicianIds, status |
@@ -558,9 +662,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `cms.purged` | `?hard=true` (needs `cms:purge`), or a delete on a resource with no soft delete | the removed row's scalars → |
 | `user.created` · `user.role_changed` · `user.disabled` | see `/admin/users` above | |
 
-Reserved for Phase F and not emitted yet: `quotation.submitted`, `quotation.auto_approved`,
-`quotation.office_approved`, `quotation.sent_back`, `quotation.pulled_back`,
-`quotation.customer_changes_requested`, `quotation.superseded`. The list lives in
+Every name above is emitted (Phase F1 implemented the ones that were reserved). The list lives in
 `MaintainanceBackend/src/shared/enums.js` (`AUDIT_EVENTS`); `recordEvent` refuses any other name.
 
 ## Not implemented

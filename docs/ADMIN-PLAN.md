@@ -545,7 +545,7 @@ outright; it narrowed #13 (the customer-site routes now validate `:id` / `:siteI
 - **Kit additions, generic:** `FormDialog`, `RecordHistory`, `DataTable searchable`, `RecordCombobox fixedOptions` (a
   relation filter's "Unassigned").
 
-### Phase F — Quotation approval, customer response & job hand-off · ~5 days
+### Phase F — Quotation approval, customer response & job hand-off · ~5 days · F1 ✅ 2026-09-16
 
 Two prompts: `PHASE-F1-quotation-backend.md`, then `PHASE-F2-quotation-screens.md` (screens and the first Playwright end-to-end test).
 
@@ -588,6 +588,56 @@ Two prompts: `PHASE-F1-quotation-backend.md`, then `PHASE-F2-quotation-screens.m
 3. the customer asks for changes (in Nepali) → revision → re-approval → sent
 4. the customer accepts → lead WON, stakeholders notified once each, exactly one job in the dispatch queue
 5. the whole trail is in the audit log
+
+**Deviations (Phase F1, 2026-09-16)** — built differently from the plan, or beyond it. F1 closed none of the §3
+defects outright. It narrowed #13: `GET /admin/quotations` now validates `stage` and `status`. #14 is unchanged:
+the new notifications are still sent in the request, after the commit.
+- **`Quotation.requestedChanges`, one field more than the prompt listed.** It holds the change request a revision
+  answers, copied from the parent at revise time and never overwritten. `decisionNote` stays the customer's
+  answer to *that* version. Without the extra field, the earlier message is lost once the revision is itself
+  answered. The public view returns it as `requestedChanges`.
+- **Auto-approval takes two steps** (DRAFT → PENDING_APPROVAL → OFFICE_APPROVED) inside the submit transaction.
+  The state machine has no DRAFT → OFFICE_APPROVED edge. `recordEvent` gained `actorType: 'system'` for the second
+  step.
+- **Moving to the current status is refused.** `canTransition` lets X → X through as a no-op, so quotation moves
+  use `assertMove`, and `createJob` refuses a CONVERTED quotation by name. Before this, a second convert-to-job
+  on the same quotation created a second job.
+- **Legacy re-send removed.** REJECTED and EXPIRED used to go back to SENT; the only way on now is a revision, as the
+  transition table says.
+- **Send refuses a lapsed `validUntil`** (422 `QUOTATION_EXPIRED`), which closes the STATUS known gap. Submit also
+  requires a future `validUntil`. A revision copies its parent's date, so a revision of an expired quotation needs
+  a new date before it can be submitted.
+- **Customer-facing error codes:** `QUOTATION_EXPIRED`, `QUOTATION_ANSWERED`, `QUOTATION_REPLACED`,
+  `QUOTATION_NOT_OPEN` (all 422), plus `QUOTATION_INCOMPLETE` on submit and `SELF_APPROVAL` (403).
+- **Public view is an allowlist.** `GET /public/quotations/:token` used to return the whole row (`internalNote`,
+  `decidedIp`, `createdById`). The decide response has the same shape, plus `job { id, number }` on accept.
+- **Who is notified.**
+  - Submit notifies every MANAGER and ADMIN except the submitter.
+  - Approve and send back notify the creator only when someone else did it.
+  - Decline notifies the salesperson and the author by in-app **and** email. The prompt said only "notify".
+  - Staff emails use `<type>_staff` templates with fallback text. Only `quotation_changes_requested_staff` is seeded,
+    as listed.
+  - Notification types are `quotation_submitted`, `quotation_office_approved`, `quotation_sent_back`,
+    `quotation_accepted`, `quotation_changes_requested` and `quotation_rejected`. `quotation_approved` is no
+    longer written, because "approved" now means the office.
+  - `notifyUsers` in `notify.service.js` merges each person's in-app notification and email, and links each
+    dispatcher to the job.
+- **Accepted job.** Its type is always REPAIR, because nothing maps a service to a job type. The title and
+  checklist come from the survey's service (found through the whole version chain), else the lead's service.
+  Priority comes from the survey's urgency. `createdById` is null, because the customer created it.
+- **CRM entries.** The lead's WON move carries the note "Customer accepted QT-… vN · NPR …"; a lead already
+  WON or LOST gets a note instead (it used to get nothing when WON). The customer timeline has no table, so it
+  derives a `quotation_response` entry from each decided quotation (a superseded version included).
+- **MANAGER** can also be assigned leads, reads aftercare like SALES and receives the role-wide lead and survey
+  alerts SALES gets. The seed adds `manager@gharjatan.com.np` (Meena Manager). The frontend's copy of the
+  permission map gained the MANAGER row, the only frontend change, because its mirror test compares the two.
+- **Settings** sit in the existing `finance` group ("Quotations and invoices"), so the current settings screen
+  shows them. `quotation.autoApproveBelow` is a plain number whose hint says it is in paisa.
+- **Dashboard cards:** `quotationsPendingApproval`, `quotationsChangesRequested` and `quotationsAwaitingCustomer`
+  (SALES, MANAGER, ADMIN); `acceptedJobsUnscheduled` (DISPATCHER, MANAGER, ADMIN). MANAGER also gets `funnel`
+  and `sla`.
+- **Index migration.** The second migration also adds indexes on `Quotation.parentId` and `leadId` (the version
+  chain and lead pages).
 
 ### Phase G — Audit, logs & platform screens · ~3 days
 
@@ -658,7 +708,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | C Admin UI kit ✅ 2026-09-14 (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
 | D Services & CMS ✅ 2026-09-16 (D1 + D2) | 6 | 15 | Editors run the whole public site |
 | E Leads & CRM ✅ 2026-09-16 | 5 | 20 | Sales works entirely in the UI |
-| F Quotation approval (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
+| F Quotation approval (F1 ✅ 2026-09-16 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
 | G Audit & platform UI | 3 | 28 | Traceability, users, templates |
 | H Operations (H1 + H2) | 7 | 35 | Dispatch and job management |
 | I Finance & aftercare | 6 | 41 | Billing and retention |

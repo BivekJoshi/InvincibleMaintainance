@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, expectStatus, createCustomer, createAssignedJob, technicianIdFor, phone, uid, dayMatching, prisma, USERS,
+  anon, as, expectStatus, createCustomer, createAssignedJob, technicianIdFor, phone, uid, dayMatching, prisma, USERS, approveAndSend,
 } from './helpers.js';
 import { runSlaSweep } from '../../src/services/sla.service.js';
 import { loadTemplate, notify } from '../../src/services/notify.service.js';
@@ -89,10 +89,10 @@ describe('the service picker', () => {
 });
 
 describe('assignment', () => {
-  it('GET /admin/leads/assignees lists active sales and admin staff only', async () => {
+  it('GET /admin/leads/assignees lists active sales, manager and admin staff only', async () => {
     const rows = expectStatus(await sales.get('/admin/leads/assignees'), 200).data;
     expect(rows.map((u) => u.id)).toEqual(expect.arrayContaining([salesId, adminId]));
-    expect(rows.every((u) => ['SALES', 'ADMIN'].includes(u.role))).toBe(true);
+    expect(rows.every((u) => ['SALES', 'MANAGER', 'ADMIN'].includes(u.role))).toBe(true);
     expect(rows[0]).not.toHaveProperty('passwordHash');
     const found = expectStatus(await sales.get('/admin/leads/assignees?q=sales'), 200).data;
     expect(found.map((u) => u.id)).toContain(salesId);
@@ -301,8 +301,7 @@ describe('notification links are admin paths', () => {
     const q = expectStatus(await sales.post('/admin/quotations').send({
       customerId: customer.id, items: [{ description: 'Link check', qty: 1, rate: 100 }],
     }), 201).data;
-    expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
-    const { publicToken } = await prisma.quotation.findUnique({ where: { id: q.id } });
+    const { publicToken } = await approveAndSend(q.id);
     expectStatus(await anon().post(`/public/quotations/${publicToken}/decide`).send({ decision: 'reject' }), 200);
     const note = await prisma.notification.findFirst({ where: { userId: salesId, type: 'quotation_rejected', link: { contains: q.id } } });
     expect(note.link).toBe(`/admin/quotations/${q.id}`);
@@ -519,7 +518,7 @@ describe('preferred language', () => {
     const q = expectStatus(await sales.post('/admin/quotations').send({
       customerId: customer.id, items: [{ description: 'Fallback check', qty: 1, rate: 100 }],
     }), 201).data;
-    expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
+    await approveAndSend(q.id);
     const sms = await prisma.messageLog.findFirst({ where: { relatedId: q.id, templateKey: 'quotation_sent', channel: 'sms' } });
     expect(sms.body).toMatch(/^Quotation /);
     expect(sms.body).toContain('http://localhost:5400/quotation/');
@@ -534,7 +533,7 @@ describe('preferred language', () => {
       const q = expectStatus(await sales.post('/admin/quotations').send({
         customerId: customer.id, items: [{ description: 'Nepali check', qty: 1, rate: 100 }],
       }), 201).data;
-      expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
+      await approveAndSend(q.id);
       const sms = await prisma.messageLog.findFirst({ where: { relatedId: q.id, templateKey: 'quotation_sent', channel: 'sms' } });
       expect(sms.body).toContain('कोटेसन');
     } finally {

@@ -45,22 +45,27 @@ export async function listAuditLogs(query) {
  * Pass the transaction client of the change it describes, so the event commits
  * and rolls back with it. Actor, request id, ip and user agent come from the
  * request context; `actorId` overrides the actor where the context cannot know
- * it yet (a login).
+ * it yet (a login), and `actorType: 'system'` marks a decision the system took
+ * inside someone's request (an auto-approval) — it clears the actor.
  *
  * `meta` lands in the `changes` column: extra detail that is neither a before
  * nor an after (export filters, merged ids).
  *
  * @param {string} event  one of AUDIT_EVENTS
  * @param {{ model: string, recordId?: string|null, before?: object|null, after?: object|null,
- *           meta?: object|null, actorId?: string|null }} detail
+ *           meta?: object|null, actorId?: string|null, actorType?: 'system' }} detail
  * @param {import('@prisma/client').Prisma.TransactionClient} [tx]
  */
-export async function recordEvent(event, { model, recordId = null, before, after, meta: extra, actorId } = {}, tx = prisma) {
+export async function recordEvent(event, { model, recordId = null, before, after, meta: extra, actorId, actorType } = {}, tx = prisma) {
   if (!EVENT_NAMES.has(event)) throw new Error(`Unknown audit event "${event}"`);
   const who = auditAttribution();
   if (actorId !== undefined) {
     who.actorId = actorId;
     if (actorId) who.actorType = 'user';
+  }
+  if (actorType === 'system') {
+    who.actorId = null;
+    who.actorType = 'system';
   }
   const b = snapshot(model, before);
   const a = snapshot(model, after);

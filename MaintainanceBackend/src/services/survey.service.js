@@ -287,7 +287,7 @@ export async function submitSurvey(id, input = {}, actor = {}) {
     return row;
   });
 
-  await notifyRoles(['ADMIN', 'SALES'], {
+  await notifyRoles(['ADMIN', 'SALES', 'MANAGER'], {
     type: 'survey_submitted',
     title: `Survey ${updated.number} ready to price`,
     body: `${updated.customer?.name ?? 'Customer'} · ${updated.items.length} line(s)`

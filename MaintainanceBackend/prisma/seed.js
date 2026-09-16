@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import * as D from './seed-data.js';
 import { nextNumber } from '../src/utils/numbering.js';
+import { documentTotals } from '../src/utils/money.js';
 
 const prisma = new PrismaClient();
 
@@ -39,6 +40,7 @@ async function main() {
     { name: 'Admin', email: 'admin@gharjatan.com.np', role: 'ADMIN', phone: '9808338255' },
     { name: 'Sabina Editor', email: 'editor@gharjatan.com.np', role: 'EDITOR', phone: '9841000001' },
     { name: 'Rajesh Sales', email: 'sales@gharjatan.com.np', role: 'SALES', phone: '9841000002' },
+    { name: 'Meena Manager', email: 'manager@gharjatan.com.np', role: 'MANAGER', phone: '9841000008' },
     { name: 'Kiran Dispatcher', email: 'dispatch@gharjatan.com.np', role: 'DISPATCHER', phone: '9841000003' },
     { name: 'Bimal Accountant', email: 'accounts@gharjatan.com.np', role: 'ACCOUNTANT', phone: '9841000004' },
     { name: 'Hari Technician', email: 'hari@gharjatan.com.np', role: 'TECHNICIAN', phone: '9841000005' },
@@ -486,8 +488,99 @@ async function main() {
     console.log(`  survey demo: ${visit.number} surveyed by ${surveyor.employeeCode}, ${survey.number} waiting to be priced, 1 case study published`);
   }
 
+  // ═══ quotation approval demo (Phase F): one quotation at each step of the office →
+  //     customer loop. Guarded on its own marker customer, so it tops up an older database.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841500001' } }))) {
+    const seepChem = await prisma.rateCardItem.findUnique({ where: { code: 'SEEP-CHEM' } });
+    const labourSkill = await prisma.rateCardItem.findUnique({ where: { code: 'LABOUR-SKILL' } });
+    const line = (item, fallback, qty, sortOrder) => ({
+      rateCardItemId: item?.id ?? null,
+      description: item?.name ?? fallback.description,
+      unit: item?.unit ?? fallback.unit,
+      qty,
+      rate: item?.rate ?? fallback.rate,
+      sortOrder,
+    });
+    const lines = (area) => [
+      line(seepChem, { description: 'Chemical seepage treatment', unit: 'sq.ft', rate: toPaisa(220) }, area, 0),
+      line(labourSkill, { description: 'Skilled applicator', unit: 'hour', rate: toPaisa(450) }, Math.ceil(area / 10), 1),
+    ];
+
+    const DEMO = [
+      {
+        status: 'DRAFT', leadStatus: 'CONTACTED', area: 180,
+        customer: { name: 'Anjali Karki', phone: '9841500001', address: 'Baneshwor, Kathmandu', area: 'Baneshwor' },
+        extra: { sentBackReason: 'Use the monsoon rate for the membrane and add scaffolding.' },
+      },
+      {
+        status: 'PENDING_APPROVAL', leadStatus: 'CONTACTED', area: 260,
+        customer: { name: 'Bikash Rai', phone: '9841500002', address: 'Dhapasi, Kathmandu', area: 'Dhapasi' },
+        extra: { submittedAt: days(0), submittedById: users.SALES.id },
+      },
+      {
+        status: 'OFFICE_APPROVED', leadStatus: 'CONTACTED', area: 150,
+        customer: { name: 'Nirmala Tamang', phone: '9841500003', address: 'Kalanki, Kathmandu', area: 'Kalanki' },
+        extra: {
+          submittedAt: days(-1), submittedById: users.SALES.id,
+          approvedById: users.MANAGER.id, approvedAt: days(0), approvalNote: 'Rates match the rate card.',
+        },
+      },
+      {
+        status: 'SENT', leadStatus: 'QUOTED', area: 320,
+        customer: { name: 'Hari Prasad Adhikari', phone: '9841500004', address: 'Lazimpat, Kathmandu', area: 'Lazimpat', email: 'hari.adhikari@example.com' },
+        extra: {
+          submittedAt: days(-3), submittedById: users.SALES.id, approvedById: users.MANAGER.id, approvedAt: days(-3),
+          sentAt: days(-2), publicToken: token(),
+        },
+      },
+      {
+        status: 'CHANGES_REQUESTED', leadStatus: 'QUOTED', area: 400, locale: 'ne',
+        customer: { name: 'सीता गुरुङ', phone: '9841500005', address: 'Budhanilkantha, Kathmandu', area: 'Budhanilkantha' },
+        extra: {
+          submittedAt: days(-5), submittedById: users.SALES.id, approvedById: users.MANAGER.id, approvedAt: days(-5),
+          sentAt: days(-4), publicToken: token(), decidedAt: days(-1), decidedIp: '127.0.0.1',
+          decisionNote: 'कृपया बार्दलीको भित्ता पनि थप्नुहोस् र श्रमको घण्टा घटाउन मिल्छ कि हेर्नुहोस्।',
+        },
+      },
+    ];
+
+    const vatRate = 13;
+    for (const d of DEMO) {
+      const customer = await prisma.customer.create({
+        data: {
+          name: d.customer.name, phone: d.customer.phone, email: d.customer.email ?? null,
+          preferredLocale: d.locale ?? 'en',
+          sites: { create: { label: 'Home', address: d.customer.address, area: d.customer.area, isPrimary: true } },
+        },
+        include: { sites: true },
+      });
+      const lead = await prisma.lead.create({
+        data: {
+          name: d.customer.name, phone: d.customer.phone, email: d.customer.email ?? null,
+          address: d.customer.address, area: d.customer.area, serviceId: services['seepage-and-damp-treatment']?.id,
+          source: 'call', status: d.leadStatus, assignedToId: users.SALES.id, customerId: customer.id,
+          preferredLocale: d.locale ?? 'en', firstResponseAt: days(-6), createdAt: days(-6), slaDueAt: days(-6),
+        },
+      });
+      const totals = documentTotals(lines(d.area), { vatApplied: true, vatRate });
+      const number = await prisma.$transaction((tx) => nextNumber(tx, 'QT'));
+      await prisma.quotation.create({
+        data: {
+          number, status: d.status, customerId: customer.id, siteId: customer.sites[0].id, leadId: lead.id,
+          validUntil: days(14), subtotal: totals.subtotal, discount: totals.discount, vatApplied: true, vatRate,
+          vatAmount: totals.vatAmount, total: totals.total, createdById: users.SALES.id,
+          ...d.extra,
+          items: { create: totals.lines },
+        },
+      });
+    }
+    console.log(`  quotation approval demo: ${DEMO.map((d) => d.status).join(', ')}`);
+  }
+
   console.log('\nSeed complete.');
   console.log('  Admin login:      admin@gharjatan.com.np / Password123');
+  console.log('  Manager login:    manager@gharjatan.com.np / Password123');
   console.log('  Technician login: hari@gharjatan.com.np / Password123');
   console.log('  Surveyor login:   survey@gharjatan.com.np / Password123');
 }

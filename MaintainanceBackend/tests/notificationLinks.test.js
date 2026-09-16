@@ -37,7 +37,7 @@ describe('notification links', () => {
     expect(exprs.length).toBeGreaterThan(0);
     for (const expr of exprs) {
       const ok = /^[`'](\/admin\/|\/admin[`']|\/tech\/)/.test(expr)
-        || /^adminLeadPath\(/.test(expr)
+        || /^admin[A-Z]\w*Path\(/.test(expr)
         || /^webUrl\(/.test(expr)
         || /^changing\.length === 1 \? adminLeadPath\(.+\) : '\/admin\/leads'/.test(expr);
       expect(ok, `${file}: link: ${expr}`).toBe(true);

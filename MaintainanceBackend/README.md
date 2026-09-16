@@ -32,7 +32,8 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 |---|---|---|
 | `admin@gharjatan.com.np` | ADMIN | everything |
 | `editor@gharjatan.com.np` | EDITOR | CMS + media only |
-| `sales@gharjatan.com.np` | SALES | leads, customers, quotations |
+| `sales@gharjatan.com.np` | SALES | leads, customers, quotations (prepares and submits them) |
+| `manager@gharjatan.com.np` | MANAGER | everything SALES sees, plus approving quotations |
 | `dispatch@gharjatan.com.np` | DISPATCHER | jobs, technicians, materials |
 | `accounts@gharjatan.com.np` | ACCOUNTANT | invoices, payments, reports |
 | `hari@gharjatan.com.np` | TECHNICIAN | only jobs assigned to them |
@@ -40,6 +41,10 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 The seed builds a browsable demo: 18 services, 3 projects, a rate card, 10 materials with
 opening stock, a blog (2 published posts in 2 categories), an About page at `/about`, and a complete pipeline — leads (one already SLA-breached, one at risk) →
 customer → approved quotation → completed job → warranty → part-paid invoice → AMC contract.
+It also seeds one quotation at each step of the approval loop — DRAFT (sent back once), PENDING_APPROVAL,
+OFFICE_APPROVED, SENT and CHANGES_REQUESTED (a Nepali customer's message) — the
+`quotation.makerChecker` / `quotation.autoApproveBelow` settings, and the `quotation_accepted`,
+`quotation_changes_received` and `quotation_changes_requested_staff` templates in English and Nepali.
 
 ## Commands
 
@@ -125,7 +130,11 @@ it. Eighteen CMS resources, one pattern — there is no second way to write a CR
 **3. Status is the server's decision.** Transitions live in `shared/stateMachines.js` and are
 asserted in the service layer. A client cannot set a job to `COMPLETED`; it calls the complete
 endpoint, which validates the checklist, closes timers, stamps `actualEnd`, creates the
-warranty and opens the job for invoicing.
+warranty and opens the job for invoicing. A quotation is never sent without **internal approval**:
+SALES submits it, a MANAGER or ADMIN who did not write it approves it (or it auto-approves below
+`quotation.autoApproveBelow`), and only then can it be sent. On the link the customer can Accept, Ask for
+changes or Decline; a change request loops into a revision — a new version that is approved again — and
+an acceptance converts the quotation, wins the lead and creates the job in one transaction.
 
 ---
 

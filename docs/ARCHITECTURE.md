@@ -69,12 +69,38 @@ service layer — never by trusting a status string from the client.
 
 ```
 Lead      NEW → CONTACTED → INSPECTION_SCHEDULED → QUOTED → WON | LOST ;  LOST → CONTACTED
-Quotation DRAFT → SENT → APPROVED | REJECTED | EXPIRED → CONVERTED
+Quotation DRAFT → PENDING_APPROVAL → OFFICE_APPROVED → SENT → APPROVED → CONVERTED
+          PENDING_APPROVAL | OFFICE_APPROVED → DRAFT (send back · pull back)
+          SENT → CHANGES_REQUESTED | REJECTED | EXPIRED
+          SENT | CHANGES_REQUESTED | REJECTED | EXPIRED → SUPERSEDED (revise → a new DRAFT version)
 Job       DRAFT → SCHEDULED → ASSIGNED → EN_ROUTE → IN_PROGRESS ⇄ ON_HOLD
                 → COMPLETED → VERIFIED ;  any → CANCELLED
 Invoice   DRAFT → SENT → PARTIAL → PAID ;  SENT|PARTIAL → OVERDUE ;  any → VOID
           voiding a payment walks it back:  PAID → PARTIAL | SENT | OVERDUE ;  PARTIAL → SENT
 ```
+
+**Quotations — who moves them (Phase F).** No quotation reaches the customer without internal approval.
+`APPROVED` means the *customer* accepted; `OFFICE_APPROVED` is the office's approval.
+
+| From | To | Trigger | Who |
+|---|---|---|---|
+| DRAFT | PENDING_APPROVAL | submit (≥1 line, a customer, `validUntil` in the future) | `quotations:write` — SALES, MANAGER, ADMIN |
+| PENDING_APPROVAL | OFFICE_APPROVED | approve — never the quotation's creator while `quotation.makerChecker` is on (403 `SELF_APPROVAL`) | `quotations:approve` — MANAGER, ADMIN |
+| PENDING_APPROVAL | OFFICE_APPROVED | auto-approval inside the submit, when total < `quotation.autoApproveBelow` (paisa, 0 = off), any version | the system (`actorType: system`) |
+| PENDING_APPROVAL | DRAFT | send back, note required | `quotations:approve` |
+| OFFICE_APPROVED | SENT | send (issues the link, SMS + email) | `quotations:write` |
+| OFFICE_APPROVED | DRAFT | pull back before sending, note required; the approval is cleared | `quotations:write` |
+| SENT | APPROVED → CONVERTED | the customer taps Accept: one transaction also wins the lead and creates the DRAFT job | the customer (`public`) |
+| SENT | CHANGES_REQUESTED · REJECTED | Ask for changes (message required) · Decline (reason optional) | the customer (`public`) |
+| SENT | EXPIRED | past `validUntil` — on open, on decide, or the hourly task | the system |
+| SENT · CHANGES_REQUESTED · REJECTED · EXPIRED | SUPERSEDED | revise: a new DRAFT version (lines and the change request copied) that is approved again | `quotations:write` |
+| APPROVED (pre-Phase F) | CONVERTED | convert-to-job | `jobs:write` — DISPATCHER, ADMIN |
+
+Every quotation move is a guarded `updateMany` on the status just read (`quotation.service.js#moveStatus`,
+`claimAnswer` for the customer), with its domain event in the same transaction; moving to the status it already
+has is refused. The customer's three answers are service functions (`acceptQuotation`,
+`requestQuotationChanges`, `declineQuotation`), not route code, so a customer account (Phase K) reuses them.
+Notifications go to named people once each (`notify.service.js#notifyUsers`), after the commit.
 
 Every lead status change goes through `lead.service.js#transitionLead(tx, leadId, to, opts)`, which
 asserts the transition, stamps `closedAt` and writes the `status_change` timeline entry inside the

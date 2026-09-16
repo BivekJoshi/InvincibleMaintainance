@@ -12,6 +12,7 @@ export const USERS = {
   ADMIN: 'admin@gharjatan.com.np',
   EDITOR: 'editor@gharjatan.com.np',
   SALES: 'sales@gharjatan.com.np',
+  MANAGER: 'manager@gharjatan.com.np',
   DISPATCHER: 'dispatch@gharjatan.com.np',
   ACCOUNTANT: 'accounts@gharjatan.com.np',
   TECHNICIAN: 'hari@gharjatan.com.np',
@@ -150,6 +151,26 @@ export async function createCompletedJob({ withMaterial = false } = {}) {
   }
   const done = await dispatcher.post(`/admin/jobs/${job.id}/complete`).send({ note: 'Done in test', customerRating: 5 });
   return { job: expectStatus(done, 200).data, customer };
+}
+
+/**
+ * Takes a DRAFT quotation through internal approval and sends it: SALES submits, MANAGER
+ * approves (unless it auto-approved), SALES sends. Submit needs a future validUntil, so a
+ * missing or lapsed one is moved forward for the send and a lapsed one put back afterwards
+ * — which is how a test gets a SENT quotation that has since expired.
+ * @returns the sent quotation row, publicToken included
+ */
+export async function approveAndSend(id, { requestId } = {}) {
+  const [sales, manager] = await Promise.all([as('SALES'), as('MANAGER')]);
+  const q = await prisma.quotation.findUnique({ where: { id } });
+  const lapsed = q.validUntil && q.validUntil < new Date() ? q.validUntil : null;
+  if (!q.validUntil || lapsed) await prisma.quotation.update({ where: { id }, data: { validUntil: daysFromNow(15) } });
+  const submitted = expectStatus(await sales.post(`/admin/quotations/${id}/submit`), 200).data;
+  if (submitted.status === 'PENDING_APPROVAL') expectStatus(await manager.post(`/admin/quotations/${id}/approve`).send({}), 200);
+  const send = sales.post(`/admin/quotations/${id}/send`);
+  expectStatus(await (requestId ? send.set('X-Request-Id', requestId) : send), 200);
+  if (lapsed) await prisma.quotation.update({ where: { id }, data: { validUntil: lapsed } });
+  return prisma.quotation.findUnique({ where: { id } });
 }
 
 export async function uploadImage(api, color) {

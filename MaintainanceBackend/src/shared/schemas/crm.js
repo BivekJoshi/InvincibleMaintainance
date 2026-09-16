@@ -5,6 +5,7 @@ import {
 } from './common.js';
 import {
   BOOKING_SLOT_KEYS, CUSTOMER_TYPES, LEAD_SOURCES, LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, PRIORITIES,
+  QUOTATION_DECISIONS, QUOTATION_STAGES, QUOTATION_STATUSES,
 } from '../enums.js';
 
 /** A booking may be made for today or up to 90 days out — never for the past. */
@@ -228,9 +229,43 @@ export const quotationUpdateSchema = quotationSchema.partial().extend({
   items: z.array(quotationItem).min(1).max(200).optional(),
 });
 
+export const quotationListQuery = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  sort: z.string().optional(),
+  q: z.string().trim().max(200).optional(),
+  /** A work queue (see QUOTATION_STAGES); `status` narrows further. */
+  stage: z.enum(Object.keys(QUOTATION_STAGES)).optional(),
+  status: z.enum(QUOTATION_STATUSES).optional(),
+  customerId: z.string().optional(),
+  leadId: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+});
+
+/** An approver's optional remark. */
+export const quotationApproveSchema = z.object({
+  note: z.string().trim().max(1000).optional(),
+});
+
+/** Send back (approver) and pull back (sales): the reason is what the next editor reads. */
+export const quotationReturnSchema = z.object({
+  note: z.string().trim().min(3, 'Say what needs to change').max(1000),
+});
+
+/**
+ * The customer's answer on the quotation link. No login, no name: one tap and a confirm.
+ * A change request must say what to change; a decline may say why; an acceptance
+ * carries no message.
+ */
 export const quotationDecisionSchema = z.object({
-  decision: z.enum(['approve', 'reject']),
-  note: z.string().trim().max(2000).optional(),
+  decision: z.enum(QUOTATION_DECISIONS),
+  note: z.string().trim().max(1000).optional()
+    .transform((v) => v || undefined),
+}).superRefine((v, ctx) => {
+  if (v.decision === 'request_changes' && (!v.note || v.note.length < 5)) {
+    ctx.addIssue({ code: 'custom', path: ['note'], message: 'Tell us what you would like changed (at least 5 characters)' });
+  }
 });
 
 export const estimateSchema = z.object({

@@ -303,6 +303,7 @@ export async function dashboard(role) {
     leadsToday, leadsOpen, slaBreached, slaAtRisk,
     jobsToday, jobsOpen, jobsUnassigned,
     invoicesOutstanding, warrantiesActive, amcRenewals,
+    quotationsPendingApproval, quotationsChangesRequested, quotationsAwaitingCustomer, acceptedJobsUnscheduled,
   ] = await Promise.all([
     prisma.lead.count({ where: { deletedAt: null, createdAt: today } }),
     prisma.lead.count({ where: { deletedAt: null, status: { notIn: ['WON', 'LOST'] } } }),
@@ -317,6 +318,11 @@ export async function dashboard(role) {
     }),
     prisma.warranty.count({ where: { status: 'ACTIVE', endsAt: { gte: new Date() } } }),
     prisma.amcContract.count({ where: { deletedAt: null, status: 'active', endDate: { lte: addDays(new Date(), 60) } } }),
+    prisma.quotation.count({ where: { deletedAt: null, status: 'PENDING_APPROVAL' } }),
+    prisma.quotation.count({ where: { deletedAt: null, status: 'CHANGES_REQUESTED' } }),
+    prisma.quotation.count({ where: { deletedAt: null, status: 'SENT' } }),
+    // Work the customer accepted that nobody has put on the calendar yet.
+    prisma.job.count({ where: { deletedAt: null, quotationId: { not: null }, status: 'DRAFT', scheduledStart: null } }),
   ]);
 
   const outstanding = (invoicesOutstanding._sum.total ?? 0) - (invoicesOutstanding._sum.paidAmount ?? 0);
@@ -326,6 +332,7 @@ export async function dashboard(role) {
     jobsToday, jobsOpen, jobsUnassigned,
     outstandingAmount: outstanding, outstandingInvoices: invoicesOutstanding._count._all,
     warrantiesActive, amcRenewals,
+    quotationsPendingApproval, quotationsChangesRequested, quotationsAwaitingCustomer, acceptedJobsUnscheduled,
   };
 
   const [funnel, sla, revenue] = await Promise.all([
@@ -334,11 +341,16 @@ export async function dashboard(role) {
     revenueReport({ from: last30.gte, groupBy: 'day' }),
   ]);
 
+  const SALES_CARDS = [
+    'leadsToday', 'leadsOpen', 'slaBreached', 'slaAtRisk', 'amcRenewals',
+    'quotationsPendingApproval', 'quotationsChangesRequested', 'quotationsAwaitingCustomer',
+  ];
   const VISIBLE = {
     ADMIN: Object.keys(cards),
     EDITOR: ['leadsToday'],
-    SALES: ['leadsToday', 'leadsOpen', 'slaBreached', 'slaAtRisk', 'amcRenewals'],
-    DISPATCHER: ['jobsToday', 'jobsOpen', 'jobsUnassigned'],
+    SALES: SALES_CARDS,
+    MANAGER: [...SALES_CARDS, 'acceptedJobsUnscheduled'],
+    DISPATCHER: ['jobsToday', 'jobsOpen', 'jobsUnassigned', 'acceptedJobsUnscheduled'],
     TECHNICIAN: ['jobsToday'],
     ACCOUNTANT: ['outstandingAmount', 'outstandingInvoices'],
   };
@@ -347,7 +359,7 @@ export async function dashboard(role) {
   return {
     role,
     cards: Object.fromEntries(Object.entries(cards).filter(([k]) => allowed.includes(k))),
-    ...(role === 'ADMIN' || role === 'SALES' ? { funnel, sla } : {}),
+    ...(['ADMIN', 'SALES', 'MANAGER'].includes(role) ? { funnel, sla } : {}),
     ...(role === 'ADMIN' || role === 'ACCOUNTANT' ? { revenue } : {}),
   };
 }

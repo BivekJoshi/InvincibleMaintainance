@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
-import { notFound, badRequest, forbidden, unprocessable } from '../utils/AppError.js';
+import { AppError, notFound, badRequest, forbidden, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
 import { sum } from '../utils/money.js';
@@ -93,6 +93,11 @@ export async function createJob(input, userId, client = prisma) {
     if (quotation.customerId !== rest.customerId) throw badRequest('That quotation belongs to another customer');
     // Only approved work becomes a job. Without this, a job pointing at a draft
     // marked it CONVERTED and the customer's approval step simply never happened.
+    // CONVERTED → CONVERTED would pass assertTransition (a no-op move), so it is refused
+    // by name: a quotation becomes work once.
+    if (quotation.status === 'CONVERTED') {
+      throw new AppError(422, 'INVALID_TRANSITION', 'This quotation has already been converted to a job');
+    }
     assertTransition(QUOTATION_TRANSITIONS, quotation.status, 'CONVERTED', 'quotation');
   }
 

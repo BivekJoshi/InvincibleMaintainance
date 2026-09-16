@@ -7,7 +7,7 @@ import '../../src/queues/handlers.js';
 import { AUDIT_EVENTS } from '../../src/shared/enums.js';
 import {
   anon, as, withToken, expectStatus, prisma, USERS, PASSWORD, uid, phone, nextIp,
-  createCustomer, technicianIdFor,
+  createCustomer, technicianIdFor, approveAndSend,
 } from './helpers.js';
 
 // ── helpers
@@ -252,8 +252,7 @@ describe('who did it', () => {
     const q = expectStatus(await sales.post('/admin/quotations').send({
       customerId: customer.id, items: [{ description: 'Audit line', qty: 1, rate: 1000 }],
     }), 201).data;
-    expectStatus(await sales.post(`/admin/quotations/${q.id}/send`), 200);
-    return prisma.quotation.findUnique({ where: { id: q.id } });
+    return approveAndSend(q.id);
   };
 
   beforeAll(async () => { customer = await createCustomer(sales); });
@@ -401,7 +400,7 @@ describe('domain events: quotations', () => {
     await expectEvents(created, 'quotation.created');
 
     const sent = rid();
-    expectStatus(await sales.post(`/admin/quotations/${q.id}/send`).set('X-Request-Id', sent), 200);
+    await approveAndSend(q.id, { requestId: sent });
     expect((await expectEvents(sent, 'quotation.sent'))['quotation.sent'].after).toEqual({ status: 'SENT' });
 
     const revised = rid();
