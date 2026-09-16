@@ -6,7 +6,7 @@ import {
   HomePage, ServicesPage, ServiceDetailPage, PricingPage, ContactPage, BookingPage,
   ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage,
   BlogPage, BlogPostPage, GenericPage, SettingsPage,
-  LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, SurveysPage,
+  LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SurveysPage,
   SurveyReviewPage, QuotationsPage, QuotationBuilderPage, ResourceListPage, ResourceEditPage,
   HomeComposerPage, MediaLibraryPage,
   TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, NotFoundPage,
@@ -61,8 +61,14 @@ export function AppRoutes() {
             <Route path="/admin" element={<AdminHome />} />
             <Route element={<RequireAuth capability="leads:read" />}>
               <Route path="/admin/leads" element={<LeadsPage />} />
+              {/* A static segment outranks :id */}
+              <Route path="/admin/leads/board" element={<LeadBoardPage />} />
               <Route path="/admin/leads/:id" element={<LeadDetailPage />} />
               <Route path="/admin/sla" element={<SlaBoardPage />} />
+            </Route>
+            <Route element={<RequireAuth capability="customers:read" />}>
+              <Route path="/admin/customers" element={<CustomersPage />} />
+              <Route path="/admin/customers/:id" element={<CustomerDetailPage />} />
             </Route>
             <Route element={<RequireAuth capability="surveys:read" />}>
               <Route path="/admin/surveys" element={<SurveysPage />} />

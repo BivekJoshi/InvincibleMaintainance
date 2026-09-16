@@ -15,6 +15,61 @@ export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTE
 export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 
+/**
+ * Where a lead may move next. Mirrors the API's `shared/stateMachines.js` (a parity test
+ * holds them together); the API still asserts every move, this only decides what the
+ * screens offer — the status menu and the board's drop targets.
+ */
+export const LEAD_TRANSITIONS = {
+  NEW: ['CONTACTED', 'LOST'],
+  CONTACTED: ['INSPECTION_SCHEDULED', 'QUOTED', 'WON', 'LOST'],
+  INSPECTION_SCHEDULED: ['QUOTED', 'WON', 'LOST'],
+  QUOTED: ['WON', 'LOST'],
+  WON: [],
+  LOST: ['CONTACTED'],
+};
+
+/** Plain words for a lead's status. */
+export const LEAD_STATUS_LABELS = {
+  NEW: 'New',
+  CONTACTED: 'Contacted',
+  INSPECTION_SCHEDULED: 'Visit booked',
+  QUOTED: 'Quoted',
+  WON: 'Won',
+  LOST: 'Lost',
+};
+
+export const LEAD_SOURCE_LABELS = {
+  web_form: 'Website form',
+  estimator: 'Price estimator',
+  booking: 'Online booking',
+  call: 'Phone call',
+  whatsapp: 'WhatsApp',
+  viber: 'Viber',
+  walk_in: 'Walk-in',
+  referral: 'Referral',
+  other: 'Other',
+};
+
+/** Activities staff log by hand; every one but `note` is contact and stops the response clock. */
+export const LOGGABLE_ACTIVITY_TYPES = ['call', 'sms', 'whatsapp', 'email', 'visit', 'note'];
+export const CONTACT_ACTIVITY_TYPES = ['call', 'sms', 'whatsapp', 'email', 'visit'];
+export const ACTIVITY_LABELS = {
+  call: 'Call', sms: 'SMS', whatsapp: 'WhatsApp', email: 'Email', visit: 'Visit', note: 'Note',
+  status_change: 'Status', assignment: 'Assignment',
+};
+
+export const CUSTOMER_TYPES = ['individual', 'company'];
+
+/** The languages a customer is written to. The back office itself stays English (D7). */
+export const PREFERRED_LOCALE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'ne', label: 'नेपाली' },
+];
+
+/** How often the shell's counters refresh: the notification badge and the SLA breach badge. */
+export const SHELL_POLL_MS = 60_000;
+
 export const JOB_STATUSES = [
   'DRAFT', 'SCHEDULED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'VERIFIED', 'CANCELLED',
 ];

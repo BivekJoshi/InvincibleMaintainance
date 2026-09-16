@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, LogOut, ChevronDown } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,7 +15,8 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { navForRole } from '@/config/admin/adminNav';
+import { activeNavPath, navForRole } from '@/config/admin/adminNav';
+import { useNavBadges } from '@/hooks/useNavBadges';
 import { initials } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 import { AdminBreadcrumb } from './AdminBreadcrumb';
@@ -32,6 +33,9 @@ function Brand({ name, initial }) {
 
 /** The grouped sidebar. Navigation is filtered in `config/admin/adminNav.js`. */
 function AdminNav({ role, onNavigate }) {
+  const { pathname } = useLocation();
+  const activeTo = activeNavPath(pathname);
+  const badges = useNavBadges(role);
   return (
     <nav aria-label="Back office" className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
       {navForRole(role).map((group) => (
@@ -59,14 +63,15 @@ function AdminNav({ role, onNavigate }) {
                 to={item.to}
                 end={item.end}
                 onClick={onNavigate}
-                className={({ isActive }) => cn(
+                aria-current={item.to === activeTo ? 'page' : undefined}
+                className={() => cn(
                   'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                  isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                  item.to === activeTo ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
               >
-                {({ isActive }) => (
+                {() => (
                   <>
-                    {isActive ? (
+                    {item.to === activeTo ? (
                       <motion.span
                         layoutId="admin-nav-active"
                         className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-primary"
@@ -75,6 +80,15 @@ function AdminNav({ role, onNavigate }) {
                     ) : null}
                     <item.icon className="h-4 w-4 shrink-0" aria-hidden />
                     {item.label}
+                    {item.badge && badges[item.badge] ? (
+                      <span
+                        className="ml-auto rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-destructive-foreground"
+                        title={`${badges[item.badge]} past the response deadline`}
+                      >
+                        {badges[item.badge] > 99 ? '99+' : badges[item.badge]}
+                        <span className="sr-only"> past the response deadline</span>
+                      </span>
+                    ) : null}
                   </>
                 )}
               </NavLink>

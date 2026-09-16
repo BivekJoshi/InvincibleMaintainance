@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useZodForm, leadSchema, leadDefaults } from '@/form/formKit';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSubmitLeadMutation } from '@/api/publicApi';
+import { selectLocale } from '@/redux/slices/uiSlice';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,6 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
  */
 export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage, compact = false }) {
   const [submitLead, { isLoading }] = useSubmitLeadMutation();
+  // The site's language when they enquire is the language we write back in.
+  const locale = useSelector(selectLocale);
   const [done, setDone] = useState(false);
   const [serverError, setServerError] = useState(null);
   const mountedAt = useRef(Date.now());
@@ -33,6 +37,7 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
     try {
       await submitLead({
         ...values,
+        preferredLocale: locale,
         serviceId: values.serviceId || undefined,
         sourcePage: sourcePage ?? window.location.pathname,
         elapsedMs: Date.now() - mountedAt.current,
@@ -86,6 +91,17 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
           <Input id="lead-phone" type="tel" inputMode="tel" placeholder="9808338255" aria-invalid={Boolean(errors.phone)} {...register('phone')} />
           {errors.phone ? <p className="text-xs text-destructive">{errors.phone.message}</p> : null}
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="lead-email">Email <span className="font-normal text-muted-foreground">(optional)</span></Label>
+        <Input
+          id="lead-email" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com"
+          aria-invalid={Boolean(errors.email)} aria-describedby="lead-email-help" {...register('email')}
+        />
+        {errors.email
+          ? <p className="text-xs text-destructive">{errors.email.message}</p>
+          : <p id="lead-email-help" className="text-xs text-muted-foreground">For your quotation and warranty. We never share it.</p>}
       </div>
 
       <div className="space-y-1.5">

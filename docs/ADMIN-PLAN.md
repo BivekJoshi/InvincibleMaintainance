@@ -105,9 +105,9 @@ Gaps against the intended business process:
 | **D3** | What happens when the customer accepts | Always, in one transaction: lead → WON with a timeline entry, and an unscheduled DRAFT job with its checklist. Notify once each: the customer (SMS + email), the salesperson and the quotation creator, every dispatcher, and the approving manager. |
 | **D4** | How the customer responds | **Keep it simple:** no OTP, no login, no typed name. The link page offers **Accept · Ask for changes · Decline**. Ask for changes loops into a revision. An optional **customer account** comes after launch (D8). |
 | **D5** | Controllers layer | The inline route handler is the controller; raw Prisma moves out of routes into services; CLAUDE.md is amended (Phase A). |
-| **D6** | Lead visibility for SALES | All leads are visible, and "My leads" is the default view. |
-| **D7** | Nepali UI (chrome, not just content) | The field app, the public website + booking, and the customer quotation / invoice / warranty pages. **The admin panel stays English.** Customer SMS and email use the customer's preferred language, captured at booking (Phase E). |
-| **D8** | Customer accounts | **Never required.** Customers book a consultation, accept quotations and get the work done with contact details only. **After launch** (Phase K) a customer may **sign up with their email**; once verified, they see all earlier history recorded under that email. Phase E starts capturing an optional, normalised email. A matching phone number never attaches an email to someone else's record: staff confirm it, and accounts link by email only, never by phone. |
+| **D6** | Lead visibility for SALES | All leads are visible, and "My leads" is the default view. *As built (Phase E, 2026-09-16):* the leads table and the pipeline open on My leads (`view=mine` → `GET /admin/leads?assignedToId=me`), one click shows All leads, and no record-level restriction exists. |
+| **D7** | Nepali UI (chrome, not just content) | The field app, the public website + booking, and the customer quotation / invoice / warranty pages. **The admin panel stays English.** Customer SMS and email use the customer's preferred language, captured at booking (Phase E). *As built (Phase E):* `Lead.preferredLocale` / `Customer.preferredLocale` (`en` \| `ne`, default `en`); the contact form and booking wizard send the site's language; convert copies it to a new customer and changes an existing customer's only when staff tick "Write to them in …"; every customer-facing `notify()` passes it, and a missing Nepali template falls back to the English one. Staff messages stay English. |
+| **D8** | Customer accounts | **Never required.** Customers book a consultation, accept quotations and get the work done with contact details only. **After launch** (Phase K) a customer may **sign up with their email**; once verified, they see all earlier history recorded under that email. Phase E starts capturing an optional, normalised email. A matching phone number never attaches an email to someone else's record: staff confirm it, and accounts link by email only, never by phone. *As built (Phase E):* email is stored trimmed and lower-case; when a customer has the lead's phone, convert answers 409 `CUSTOMER_MATCH` unless staff chose `customerId` ("same person") or `createNewCustomer` ("different person"); the lead's email reaches an existing customer only with `confirmEmail` (event `customer.email_confirmed`, actor = the staff member). The only other writer of a customer's email is a staff edit (`PUT /admin/customers/:id`, an audited model change). |
 
 ---
 
@@ -495,6 +495,56 @@ input", which otherwise stays open.
 
 **Acceptance (v1 Phase 4):** a public form or booking creates a lead that shows a 120-minute countdown and can be assigned, worked, merged and converted into customer + site + scheduled inspection entirely in the UI. Every step appears on the lead's History tab. A shared phone number never merges two people or moves an email between them.
 
+**Deviations (Phase E, 2026-09-16)** — built differently from the plan, or beyond it. E closed none of the §3 defects
+outright; it narrowed #13 (the customer-site routes now validate `:id` / `:siteId`, and the lead list's new `ids`,
+`requestedVisit` and `assignedToId` values are parsed) and #15 is unchanged.
+- **Endpoints the prompt left open, added:**
+  - `POST /admin/leads/bulk-assign` rather than one `PATCH` per lead: one transaction (a selection is assigned whole or
+    not at all), the assignee gets **one** notification instead of N, and each lead still gets its own timeline entry
+    and `lead.assigned` event.
+  - `GET /admin/leads/assignees` (+ `/:id`): `/admin/users` is ADMIN-only, and sales needs the list to assign. Assigning
+    is now limited to active SALES and ADMIN users (it accepted any active user before).
+  - `GET /admin/leads/:id/customer-matches`, so both convert dialogs show "Existing customer with this phone" before
+    submitting; the 409 remains the guard.
+  - `?requestedVisit=true|false` (the lead names a visit day) instead of `source=booking`: a booking folded onto an
+    earlier enquiry keeps its slot but not the booking source. `?assignedToId=none` for Unassigned; `export.csv?ids=` for
+    Export selected.
+  - `GET /admin/services` and `/:id` also accept `services:read` (SALES held it, but nothing used it), so the lead form
+    and filter can pick a service. Services writes stay `cms:write`. `requires(...)` accepts several capabilities.
+- **History capabilities.** The prompt asks for "that record's own read capability" and also "DISPATCHER 403" — but
+  DISPATCHER holds `leads:read`. Resolved with **`leads:history` / `customers:history`**, held by SALES (and ADMIN):
+  DISPATCHER and ACCOUNTANT read the records but not their trails. Phase G can extend them per role.
+- **History content.** Scopes live in `services/history.service.js` (`HISTORY_SCOPES`): a lead's rows and events plus
+  its notes' rows; a customer's plus its sites'. Lead timeline entries are not audited row by row (`LeadActivity` is in
+  `AUDIT_SKIP`), so staff-logged activities now write **`lead.activity_logged`**; staff may log only call, sms, whatsapp,
+  email, visit and note (`status_change` / `assignment` entries are the system's — a hand-typed one is 400). The screen
+  folds a request's plain row writes into its named event, so a status change reads once. `ip` and `userAgent` are not
+  returned.
+- **Notification links.** Office staff links are `/admin/...` everywhere (leads, SLA, quotations, jobs, materials,
+  warranty claims, overdue invoices, AMC renewals). Notifications to technicians and surveyors keep `/tech/...` — their
+  app. Staff **email** links used `APP_URL`, the API's own origin, so they never opened; they now use the web origin
+  (`utils/links.js`). The decided-quotation notification type was `quotation_rejectd` (`${decision}d`); it is
+  `quotation_approved` / `quotation_rejected`. A source-scan unit test fails on any other `link:` form.
+- **Convert.** `findOrCreateByPhone` is gone. The response adds `customerCreated`. An address typed in the convert
+  dialog becomes a site of an existing customer when it has none with that address (primary only if it has no sites),
+  so a second property is not booked against the first one's address. `loadTemplate` now falls back to the `en`
+  template explicitly (it used to take any active template, whatever its language). No existing convert API test had
+  to change: they all use fresh phone numbers; the matching cases are new tests.
+- **Sites.** "Exactly one primary" is enforced in the API: the first site is primary whatever was sent, marking another
+  moves the flag, unmarking the primary is 422, deleting it promotes the oldest remaining site.
+- **Lead detail** now reads each job's title and survey (the old page linked a survey the API never sent). Duplicates
+  match the alt phone and the email too, as `docs/API.md` already claimed, and carry the counts the merge preview shows.
+- **Customers list** adds site and open-job counts, and `balanceDue` only for `invoices:read`. The tag filter is a chip
+  on the row (tags are free text, so there is no option list). The record tabs follow each API's own guard: warranties
+  and AMC by role (ADMIN, DISPATCHER, SALES), the rest by capability; job, invoice, warranty and AMC rows say "Soon".
+- **Board.** Pointer-based collision (a column is where the pointer is), each card also has a "Move to" menu for the
+  keyboard and screen readers, and a move shows in its new column until the server lists it there.
+- **Shell.** Pipeline is a Sales nav item; Customers is built; the SLA board item carries a breached-leads badge. The
+  badge, the notification count and now the dashboard poll every `SHELL_POLL_MS` (60 s) — the dashboard did not poll
+  before. The sidebar highlights the longest matching item, as the breadcrumbs do.
+- **Kit additions, generic:** `FormDialog`, `RecordHistory`, `DataTable searchable`, `RecordCombobox fixedOptions` (a
+  relation filter's "Unassigned").
+
 ### Phase F — Quotation approval, customer response & job hand-off · ~5 days
 
 Two prompts: `PHASE-F1-quotation-backend.md`, then `PHASE-F2-quotation-screens.md` (screens and the first Playwright end-to-end test).
@@ -607,7 +657,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | B Logging & audit ✅ 2026-09-14 | 3 | 5 | Redacted request-id logs, complete audit with domain events |
 | C Admin UI kit ✅ 2026-09-14 (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
 | D Services & CMS ✅ 2026-09-16 (D1 + D2) | 6 | 15 | Editors run the whole public site |
-| E Leads & CRM | 5 | 20 | Sales works entirely in the UI |
+| E Leads & CRM ✅ 2026-09-16 | 5 | 20 | Sales works entirely in the UI |
 | F Quotation approval (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
 | G Audit & platform UI | 3 | 28 | Traceability, users, templates |
 | H Operations (H1 + H2) | 7 | 35 | Dispatch and job management |

@@ -24,6 +24,8 @@ import { cn } from '@/helpers/utils';
  * @param {string} [props.valueKey]
  * @param {object} [props.params]             extra query params for the search
  * @param {boolean} [props.clearable]
+ * @param {{ value: string, label: string }[]} [props.fixedOptions] choices that are not records
+ *   (`none` → "Unassigned"), listed first and never looked up
  */
 export function RecordCombobox({
   path,
@@ -38,6 +40,7 @@ export function RecordCombobox({
   clearable = true,
   disabled,
   className,
+  fixedOptions = [],
   ...aria
 }) {
   const [open, setOpen] = useState(false);
@@ -50,12 +53,15 @@ export function RecordCombobox({
   };
 
   const { data: results = [], isFetching } = useSearchRecordsQuery({ path, q: debouncedQ, params }, { skip: !open });
-  const fromResults = value ? results.find((row) => row[valueKey] === value) : undefined;
+  const fixed = fixedOptions.find((o) => o.value === value);
+  const fromResults = value && !fixed ? results.find((row) => row[valueKey] === value) : undefined;
   const { data: fetched, isFetching: resolving } = useGetRecordQuery(
     { path, id: value },
-    { skip: !value || Boolean(fromResults) },
+    { skip: !value || Boolean(fixed) || Boolean(fromResults) },
   );
   const current = fromResults ?? fetched;
+  const needle = debouncedQ.trim().toLowerCase();
+  const fixedShown = fixedOptions.filter((o) => !needle || o.label.toLowerCase().includes(needle));
 
   return (
     <div className={cn('relative', className)}>
@@ -71,7 +77,7 @@ export function RecordCombobox({
             {...aria}
           >
             <span className={cn('truncate', !value && 'text-muted-foreground')}>
-              {value ? (labelOf(current) || (resolving ? 'Loading…' : value)) : placeholder}
+              {value ? (fixed?.label ?? (labelOf(current) || (resolving ? 'Loading…' : value))) : placeholder}
             </span>
             <ChevronsUpDown className="opacity-50" aria-hidden />
           </Button>
@@ -87,6 +93,16 @@ export function RecordCombobox({
               ) : (
                 <CommandEmpty>{emptyText}</CommandEmpty>
               )}
+              {fixedShown.length ? (
+                <CommandGroup>
+                  {fixedShown.map((o) => (
+                    <CommandItem key={o.value} value={`fixed:${o.value}`} onSelect={() => { onChange(o.value); setOpen(false); setQ(''); }}>
+                      <Check className={cn(o.value === value ? 'opacity-100' : 'opacity-0')} aria-hidden />
+                      <span className="truncate">{o.label}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ) : null}
               {!isFetching && results.length ? (
                 <CommandGroup>
                   {results.map((row) => (

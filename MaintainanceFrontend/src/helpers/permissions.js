@@ -5,7 +5,7 @@
 export const PERMISSIONS = {
   ADMIN: ['*'],
   EDITOR: ['cms:read', 'cms:write', 'media:read', 'media:write', 'settings:read', 'testimonials:moderate', 'dashboard:read'],
-  SALES: ['leads:read', 'leads:write', 'customers:read', 'customers:write', 'quotations:read', 'quotations:write', 'jobs:read', 'services:read', 'surveys:read', 'surveys:write', 'technicians:read', 'media:read', 'dashboard:read', 'reports:sales'],
+  SALES: ['leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history', 'quotations:read', 'quotations:write', 'jobs:read', 'services:read', 'surveys:read', 'surveys:write', 'technicians:read', 'media:read', 'dashboard:read', 'reports:sales'],
   DISPATCHER: ['jobs:read', 'jobs:write', 'jobs:dispatch', 'technicians:read', 'technicians:write', 'materials:read', 'materials:write', 'customers:read', 'leads:read', 'surveys:read', 'media:read', 'media:write', 'dashboard:read', 'reports:ops'],
   TECHNICIAN: ['jobs:own', 'media:write', 'dashboard:read'],
   // No quotations:read — a surveyor reports quantities and never sees price.

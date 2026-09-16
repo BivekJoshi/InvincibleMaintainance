@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { breadcrumbsFor, contentHomeFor, landingPathFor, navForRole } from '@/config/admin/adminNav';
+import { activeNavPath, breadcrumbsFor, contentHomeFor, landingPathFor, navForRole } from '@/config/admin/adminNav';
 
 /** `{ group label: [item labels] }` for a role. */
 const navOf = (role) => Object.fromEntries(navForRole(role).map((g) => [g.label, g.items.map((i) => i.label)]));
@@ -43,7 +43,7 @@ describe('admin nav', () => {
   it('hides Content, Finance and Platform from SALES', () => {
     const nav = navOf('SALES');
     expect(Object.keys(nav)).toEqual(['Overview', 'Sales', 'Operations', 'Aftercare']);
-    expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Customers', 'Site surveys', 'Quotations', 'Rate card']);
+    expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations', 'Rate card']);
     expect(nav.Operations).toEqual(['Jobs']);
     expect(landingPathFor('SALES')).toBe('/admin');
     expect(contentHomeFor('SALES')).toBe('/admin');
@@ -51,8 +51,10 @@ describe('admin nav', () => {
 
   it('keeps unbuilt modules marked as soon', () => {
     const sales = navForRole('SALES').find((g) => g.key === 'sales').items;
-    expect(sales.find((i) => i.label === 'Customers').soon).toBe(true);
+    expect(sales.find((i) => i.label === 'Customers').soon).toBeFalsy();
     expect(sales.find((i) => i.label === 'Leads').soon).toBeFalsy();
+    const ops = navForRole('SALES').find((g) => g.key === 'operations').items;
+    expect(ops.find((i) => i.label === 'Jobs').soon).toBe(true);
   });
 
   it('builds the breadcrumb from the path', () => {
@@ -75,5 +77,27 @@ describe('admin nav', () => {
       { label: 'Platform' }, { label: 'Settings', to: '/admin/platform/settings' },
     ]);
     expect(breadcrumbsFor('/tech')).toEqual([]);
+    expect(breadcrumbsFor('/admin/leads/board')).toEqual([{ label: 'Sales' }, { label: 'Pipeline', to: '/admin/leads/board' }]);
+    expect(breadcrumbsFor('/admin/customers/cl1')).toEqual([{ label: 'Sales' }, { label: 'Customers', to: '/admin/customers' }, { label: 'Details' }]);
+  });
+});
+
+describe('the active nav item', () => {
+  it('is the longest match', () => {
+    expect(activeNavPath('/admin/leads')).toBe('/admin/leads');
+    expect(activeNavPath('/admin/leads/cl1')).toBe('/admin/leads');
+    expect(activeNavPath('/admin/leads/board')).toBe('/admin/leads/board');
+    expect(activeNavPath('/admin/customers/cl1')).toBe('/admin/customers');
+    expect(activeNavPath('/admin')).toBe('/admin');
+    expect(activeNavPath('/admin/nowhere')).toBeNull();
+  });
+
+  it('offers Customers and the Pipeline to sales and dispatch, not to editors', () => {
+    const items = (role) => navForRole(role).flatMap((g) => g.items).filter((i) => !i.soon).map((i) => i.to);
+    expect(items('SALES')).toEqual(expect.arrayContaining(['/admin/customers', '/admin/leads/board']));
+    expect(items('DISPATCHER')).toEqual(expect.arrayContaining(['/admin/customers', '/admin/leads/board']));
+    expect(items('ACCOUNTANT')).toContain('/admin/customers');
+    expect(items('ACCOUNTANT')).not.toContain('/admin/leads/board');
+    expect(items('EDITOR')).not.toContain('/admin/customers');
   });
 });

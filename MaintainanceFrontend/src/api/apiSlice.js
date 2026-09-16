@@ -19,7 +19,7 @@ export const apiSlice = createApi({
     'Service', 'ServiceCategory', 'Project', 'Offer', 'PricingPlan', 'Feature',
     'ListItem', 'ContentBlock', 'ProcessStep', 'Testimonial', 'Gallery', 'Faq',
     'Page', 'Post', 'PostCategory', 'HomeSection', 'Translation',
-    'Media', 'MediaFolder', 'Setting', 'User', 'AuditLog', 'MessageTemplate', 'Report',
+    'Media', 'MediaFolder', 'Setting', 'User', 'AuditLog', 'History', 'MessageTemplate', 'Report',
     'Public',
   ],
   // Staff data changes constantly; don't serve stale rows after a tab switch.

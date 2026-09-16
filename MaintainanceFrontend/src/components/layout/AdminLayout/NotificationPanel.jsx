@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
 import { relativeTime } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
+import { SHELL_POLL_MS } from '@/config/constants';
 import { notificationHref } from './notificationLinks';
 
 /**
@@ -22,7 +23,7 @@ import { notificationHref } from './notificationLinks';
 export function NotificationPanel() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const { data: badge } = useGetNotificationsQuery({ unreadOnly: 'true' }, { pollingInterval: 60000 });
+  const { data: badge } = useGetNotificationsQuery({ unreadOnly: 'true' }, { pollingInterval: SHELL_POLL_MS });
   const { data, isLoading, error, refetch } = useGetNotificationsQuery({}, { skip: !open });
   const [markRead] = useMarkNotificationReadMutation();
   const [markAllRead, { isLoading: markingAll }] = useMarkAllReadMutation();

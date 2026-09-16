@@ -56,6 +56,7 @@ const rowIdOf = (row) => row.id;
  * @param {(items: { id: string, sortOrder: number }[]) => Promise<unknown>|void} [props.onReorder]
  *   the new order of this page, offset by the rows on earlier pages — the body `PATCH /reorder` takes
  * @param {(row: object, index: number) => string} [props.rowLabel] names a row for screen readers in reorder mode
+ * @param {boolean} [props.searchable] false hides the search box (a short list that is already complete)
  */
 export function DataTable({
   columns,
@@ -83,6 +84,7 @@ export function DataTable({
   reorderDisabledReason,
   onReorder,
   rowLabel,
+  searchable = true,
 }) {
   const { can } = useAuth();
   const [confirm, confirmDialog] = useConfirm();
@@ -206,16 +208,18 @@ export function DataTable({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <form onSubmit={submitSearch} className="relative w-full lg:max-w-xs" role="search">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="pl-9"
-            aria-label="Search"
-          />
-        </form>
+        {searchable ? (
+          <form onSubmit={submitSearch} className="relative w-full lg:max-w-xs" role="search">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="pl-9"
+              aria-label="Search"
+            />
+          </form>
+        ) : <span />}
         <div className="flex flex-wrap items-center gap-2">
           {filters?.length && !reordering ? <DataTableFilters filters={filters} params={params} onChange={setParam} /> : null}
           {toolbar}

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import {
   Users, Timer, AlertTriangle, Briefcase, Receipt, ShieldCheck, RefreshCw, TrendingUp,
 } from 'lucide-react';
+import { SHELL_POLL_MS } from '@/config/constants';
 import { useGetDashboardQuery } from '@/api/dashboardApi';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -83,7 +84,8 @@ function FunnelBar({ stage, max }) {
 
 export default function DashboardPage() {
   const { user, role } = useAuth();
-  const { data, isLoading, error, refetch } = useGetDashboardQuery();
+  // The shell's cadence: the notification and SLA badges refresh on the same beat.
+  const { data, isLoading, error, refetch } = useGetDashboardQuery(undefined, { pollingInterval: SHELL_POLL_MS });
 
   if (error) return <ErrorState error={error} onRetry={refetch} />;
 

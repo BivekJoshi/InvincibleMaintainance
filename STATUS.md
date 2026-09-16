@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-16. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-16 (Phase E). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -11,8 +11,8 @@ Updated 2026-09-16. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLA
 | 1 Identity & media | Auth, RBAC, audit, settings, media pipeline, admin shell | ✅ |
 | 2 CMS models | All 20 sections modelled, CRUD factory, home composer, i18n | ✅ backend · ✅ admin UI (v2 C–D) |
 | 3 Public site | Storefront: search, catalogue, service pages, pricing, estimator, online booking, SEO; blog and generic pages (v2 D2) | ✅ |
-| 4 Lead CRM + SLA | Capture, spam defence, SLA engine, board, pipeline, notifications, export | ✅ |
-| 5 Customers & quotes | Customers, sites, rate card, quotations, public approval | ✅ backend · UI pending |
+| 4 Lead CRM + SLA | Capture, spam defence, SLA engine, board, pipeline, notifications, export | ✅ backend · ✅ admin UI (v2 E) |
+| 5 Customers & quotes | Customers, sites, rate card, quotations, public approval | ✅ backend · customers, sites and rate card UI (v2 D1, E) · quotation approval UI in F |
 | 6 Jobs & dispatch | Work orders, templates, assignment, dispatch board, technician flow, offline sync | ✅ backend · `/tech` today screen built |
 | 7 Materials | Catalog, derived stock, issue-to-job, job costing | ✅ backend · UI pending |
 | 8 Finance | Invoices from actual consumption, payments, VAT, expenses, aging | ✅ backend · UI pending |
@@ -24,10 +24,12 @@ Updated 2026-09-16. **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLA
 | **v2 · C1 Admin UI primitives** | shadcn sheet/alert-dialog/textarea/popover/calendar/command/breadcrumb/scroll-area/radio-group/accordion/collapsible/progress/toggle-group; Vitest + Testing Library as `npm test` (in CI); DataTable v2 (row and bulk actions, page size, URL-synced filter bar, trash via `?deleted=true`, dnd-kit reorder with move buttons); `<ResourceForm>` with 16 field types, server-error mapping and an unsaved-changes guard (data router); `LocaleTabs`; `MediaPicker` with alt-required upload; `ConfirmDialog` / `useConfirm`; Devanagari slug fix in the API | ✅ 2026-09-14 |
 | **v2 · C2 Registry, shell & first resources** | Resource registry (`config/admin/resources/`) rendered by generic `ResourceListPage` / `ResourceEditPage` under `/admin/content/:resource`; `cmsApi` (8 parameterised endpoints, `Cms` tags); `cms.schema.js` mirroring all CMS schemas; FAQs and process steps managed from registry entries alone; admin nav regrouped Overview · Sales · Operations · Finance · Aftercare · Content · Platform, capability-filtered, EDITOR lands on Content; route breadcrumb, brand from settings, notification panel; public FAQs localised (`?locale=ne`); purge from Trash fixed in the CRUD factory; dead barrels removed | ✅ 2026-09-14 |
 | **v2 · D1 Services, rate card, media & home page** | Registry screens for service categories (icon picker, Nepali name), services (category/type/featured filters, price range in rupees, unit, warranty, image, SEO, Nepali name/card text/page text, View on site) and hero slides (CTA link checked against the site's routes); the rate card as a registry entry under Sales at `/admin/rate-card` (`basePath`, quotations:read/write, read-only for ACCOUNTANT, "In use"/Retire); bespoke home composer (`/admin/content/home`: drag or Move up/down, visibility, item limit, Save/Discard, empty-section flag) and media library (`/admin/content/media`: folder tree, search, drag-and-drop upload with required alt, dimensions and WebP variants, copy URL, alt/caption/folder edit, soft delete, Delete forever for ADMIN). API: the four missing rate-card endpoints, upper-case codes; service excerpt 40–200 and the price range checked on partial updates; home `limit` 1–50; non-empty media alt; validated folders, subfolders block a folder delete. Kit fixes: clean form after a save, toasts no longer close sheets | ✅ 2026-09-16 |
+| **v2 · E Leads & CRM** | **Leads** open on My leads with one-click All leads; filters (status, priority, source, service, owner incl. Unassigned, response state, requested visit, date), URL-saved views (Breached, Unassigned, Bookings this week), New lead sheet, bulk Assign in one request, Export filtered or selected. **Pipeline board** at `/admin/leads/board`: drag or "Move to" only where the state machine allows, LOST asks why, refused moves go back with a toast. **Lead detail**: edit, change status, assign, delete, typed activity log with the response result, duplicates with a merge preview, convert with an inspection or without a visit, a History tab. **Customers**: list (sites, open jobs, balance for finance), new, profile, sites with one primary and "use map pin", timeline, quotations / jobs / invoices / warranties / AMC tabs by role, statement, History. **Safe matching (D8)**: a shared phone makes staff choose same or different person; an email moves onto an existing customer only when ticked (`customer.email_confirmed`); emails stored lower-case; the contact form and booking take an optional email. **Language (D7)**: `preferredLocale` on leads and customers (migration `contact_preferred_locale`), captured from the site, copied on convert, used by every customer SMS and email with an English fallback. API: `assignedToId=me\|none`, `requestedVisit`, `bulk-assign`, `assignees`, `customer-matches`, lead and customer `history` (`leads:history` / `customers:history`), `lead.activity_logged`, `/admin/...` notification links and web-origin email links, `services:read` on the service list. Shell: Pipeline and Customers in the nav, a breached-leads badge, one 60 s poll for the badges and the dashboard | ✅ 2026-09-16 |
 | **v2 · D2 Projects, content, blog & settings** | Registry screens for projects (story, cost band in rupees, client-name consent note, SEO, linked job number read-only, and a **Gallery** tab: add from the library or upload, drag or Move earlier/later, remove), offers (Nepali-ready title, bullets, price range, start/end in Nepal time with a Live / Scheduled / Ended column), pricing plans, testimonials (a moderation queue that opens on "Waiting for approval", Approve / Withdraw for `testimonials:moderate`), gallery, features and list items (by band; list items reorder one list at a time), content blocks (key fixed once saved, bullets, a label + link button), posts (draft / scheduled / published), post categories and pages (reserved addresses refused); the nav gains **Page blocks** and **Blog & pages**. Bespoke **site settings** at `/admin/platform/settings`: a card per group, inputs by setting type, Nepali phone rule, weekday checkboxes, editable badge and counter rows; ADMIN saves only what changed, EDITOR reads. Public **`/blog`**, **`/blog/:slug`** and a catch-all **`/:slug`** page; Blog in the nav once a post is published; CMS links may point at a live page. API: list-item positions count from 1 after a reorder, projects carry their job number, `ogImageId` no longer 500s on projects/pages/posts, Nepali copy on the home page's grouped sections and on posts and pages, `nav.blog` / `nav.pages` in bootstrap, blog and pages in the sitemap, a seeded blog and About page. Fixes: public pages ignore an empty SEO title, one session restore per page load in dev | ✅ 2026-09-16 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
-auth, dashboard, SLA board, leads (list + detail), the site-survey inbox and review screen, the
+auth, dashboard, SLA board, the whole lead pipeline (list, board, detail, convert) and customers with their sites, the
+site-survey inbox and review screen, the
 quotation builder, the field app for technicians and surveyors, and the admin UI kit every later
 screen is built from (DataTable v2, ResourceForm, LocaleTabs, MediaPicker, useConfirm). **Every CMS resource in
 `docs/API.md` has a screen**: sixteen are registry entries — a config file each, Nepali copy included where the site
@@ -109,14 +111,18 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A, B, C (C1 + C2) and D (D1 + D2) are done; next is **Phase E — Lead management & CRM**: the new-lead dialog,
-bulk assign, saved filters, the pipeline board, lead detail actions, customers and sites
-(`docs/prompts/PHASE-E-leads-crm.md`).
+Phases A, B, C (C1 + C2), D (D1 + D2) and E are done; next is **Phase F — Quotation approval, customer response & job
+hand-off**, in two prompts: `docs/prompts/PHASE-F1-quotation-backend.md`, then `PHASE-F2-quotation-screens.md`.
+
+Left from E for later phases: pages for jobs, invoices, warranties and AMC (the customer tabs say "Soon"); a map picker
+for sites (a pasted pin for now); `?from` / `?to` on lists still use the server's local day rather than Kathmandu's;
+the password-reset email still links to `APP_URL` (there is no SPA reset page yet); walk-through records in the dev
+database (below).
 
 ## Verification
 
-- 92 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas, logging, slugs) — `npm test`.
-- 399 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
+- 124 backend unit tests pass (money, BS dates, phone, state machines, permissions, SLA, schemas, logging, slugs, notification links) — `npm test`.
+- 487 API tests pass over HTTP against a seeded `_test` database — `npm run test:api` drives every
   route in `docs/API.md`, RBAC per role and the error envelope, and runs twice in a row without a reset.
 - Phase A (2026-09-14): unit 59 → 62, API 347 → 368; every new test was run against the old code first and
   failed there. `npm run lint` is clean in the backend and has 0 errors (25 `react-refresh` warnings, kept on
@@ -230,6 +236,50 @@ bulk assign, saved filters, the pipeline board, lead detail actions, customers a
   purged afterwards, and the home order, the slide order and the settings were put back. The walk found three bugs,
   fixed before this record (see ADMIN-PLAN D2 deviations): the empty-SEO-title fallback, a dev-only sign-out on reload,
   and untouched counters counted as a settings change.
+- Phase E (2026-09-16): backend unit 113 → **124** (the notification-link source scan, history capabilities), API
+  435 → **487** — `assignedToId=me` / `none`, `requestedVisit`, `export.csv?ids`, the assignees list and who may be
+  assigned, `bulk-assign` (one event and timeline entry per lead, one notification, all or nothing, RBAC, limits), typed
+  activities (`lead.activity_logged`, the SLA result, refused system types), duplicates by email with counts, lead and
+  customer history (content, order, paging, no other record's rows, SALES 200 / DISPATCHER and ACCOUNTANT 403), links on
+  the new-lead, assignment, SLA sweep (and its email on the web origin), quotation decision, job completion and
+  technician notifications, the convert decision (candidates, 409 with nothing written, different person, same person
+  with and without `confirmEmail` and its audited event, language kept or changed, a linked lead, a typed address as a
+  new site, both choices refused), email normalisation, bookings with and without an email, a Nepali booking
+  acknowledged in Nepali, the `en` fallback, a Nepali template used once it exists, a lead's language kept on edit,
+  customer filters and `balanceDue` by capability, one primary site, site locks and validation, Devanagari customers,
+  `services:read`, a lead's visit with its survey. The new endpoints and fields did not exist before; the link, email,
+  locale and assignee-role tests assert behaviour the old code did not have. The `_test` database was reset once with
+  your consent after the migration, then the API suite ran twice in a row with no reset, both green. No existing API
+  test changed; two frontend nav tests changed on purpose (Customers is built, Pipeline added). Frontend 162 →
+  **255 tests in 33 files** — lead transitions, statuses, sources, activity types, customer types, locales, audit
+  events and the capability map against the API's own files; board drops, card placement mid-move, column links, the
+  response result; Nepali phone numbers (mobile, landline, +977, invalid) on every contact form, email normalisation,
+  Devanagari customers, map pins; the convert decision helper; history lines, diffs and folding; the estimate and merge
+  preview; lead views and presets (the Kathmandu week); nav per role, breadcrumbs and the active item; the leads page
+  (My leads default, All leads, presets, bulk assign, read-only dispatch); the board (allowed moves only, a refused move
+  put back, LOST asks why); both converts (disabled until decided, different / same person, email and language boxes,
+  no match); `RecordHistory`; the customers list (balance by role, tag filter, create with a refused then a +977 phone),
+  the customer page's tabs per role, its quotations and a site from a map pin. `npm run lint`: 0 errors in both apps (26
+  warnings in the frontend, unchanged); `npm run build` succeeds, and no lead or customer endpoint reaches the main
+  bundle (the breached-count query sits in the shell's `dashboardApi`).
+- Phase E browser walk-through (headless Chromium, dev servers, dev database; **14/14 steps**, no console errors, no
+  5xx). As a visitor with the site in नेपाली: the contact form with an email typed `  Walk.<tag>@Example.com ` → "Request
+  received". As `sales@gharjatan.com.np`: the lead is in **My leads** under New with "2h 0m left", its email stored
+  lower-case and "Preferred language: नेपाली"; assigned to self; a call logged → "Responded in 0 min — within the
+  promise" and the Responded chip; on the **board**, dragged by its handle — Won dimmed as refused — and dropped on
+  Contacted; a second lead with `+977` and the same phone created from New lead, found under Duplicates and **merged**
+  (the confirm said nothing else would move); a customer with the same phone created; **Book the inspection visit**
+  showed "Existing customer with this phone", kept Book disabled until "Same person" was chosen, had the email box
+  unticked, then booked with the email ticked, an address and the surveyor → Converted: existing customer, primary
+  site, `JOB-…` and `SRV-…`; a third lead on that phone converted **without a visit** as a **different person** → "A new
+  customer was created"; the customer page showed two sites after adding "Parents’ house" from a pasted map pin, and the
+  confirmed email on its profile; the lead's **History** listed Lead created, Assigned, Activity logged, Status changed
+  (once each), Duplicates merged in and Converted, and the customer's History "Email confirmed from a lead"; the SLA board
+  rendered; Export (filtered) downloaded the two leads of that walk. The walk found two bugs, fixed before this record:
+  drops on the board did not register (rectangle collision → pointer collision), and History listed each status change
+  twice (row writes now fold into their event). **Left in the dev database:** the walk's leads ("Walk Lead / Duplicate /
+  Tenant <tag>"), customers ("Walk Household <tag>" and the tenants), their inspection jobs and surveys, from four runs
+  — soft-deletable from the screens; jobs have no screen yet.
 - Phase A browser walk-through (headless Chrome against the dev servers): signed in as
   `sales@gharjatan.com.np`, exported leads filtered to NEW — the first export call was forced to 401, the page
   refreshed once and retried, both calls carried the Bearer token, and the file (UTF-8 BOM) held exactly the 2

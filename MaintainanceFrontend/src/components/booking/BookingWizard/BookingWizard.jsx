@@ -116,6 +116,8 @@ export function BookingWizard({ slug }) {
     try {
       await submitLead({
         ...values,
+        // The language they booked in is the language we write back in.
+        preferredLocale: locale,
         serviceId: serviceId || undefined,
         preferredAt: preferredAtIso(date, startHour),
         preferredSlot: slot,

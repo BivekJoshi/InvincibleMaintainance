@@ -1,6 +1,6 @@
 import {
   Blocks, Briefcase, Building2, CalendarDays, ClipboardCheck, Coins, Contact, File, FileText, GalleryHorizontal,
-  HelpCircle, Home, Image, Images, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, MessageSquareQuote,
+  HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, MessageSquareQuote,
   Newspaper, Package, Receipt, Ruler, ScrollText, Settings, ShieldCheck, Sparkles, Tag, Tags, Timer, UserCog, Users,
   Wallet, Wrench,
 } from 'lucide-react';
@@ -20,8 +20,9 @@ import { can } from '@/helpers/permissions';
  * at that path in whichever group it belongs to. The registry test enforces all of it.
  *
  * `editLabel` names the last crumb under an item (`Edit` for content, `Details` elsewhere).
+ * `badge` names a live count the shell shows beside the item (`slaBreached`).
  *
- * @typedef {{ to: string, label: string, icon: import('react').ElementType, capability?: string, end?: boolean, soon?: boolean, editLabel?: string }} NavItem
+ * @typedef {{ to: string, label: string, icon: import('react').ElementType, capability?: string, end?: boolean, soon?: boolean, editLabel?: string, badge?: string }} NavItem
  * @typedef {{ key: string, label: string, items: NavItem[] }} NavGroup
  */
 
@@ -36,9 +37,10 @@ export const ADMIN_NAV = [
     key: 'sales',
     label: 'Sales',
     items: [
-      { to: '/admin/sla', label: 'SLA board', icon: Timer, capability: 'leads:read' },
+      { to: '/admin/sla', label: 'SLA board', icon: Timer, capability: 'leads:read', badge: 'slaBreached' },
       { to: '/admin/leads', label: 'Leads', icon: Users, capability: 'leads:read' },
-      { to: '/admin/customers', label: 'Customers', icon: Contact, capability: 'customers:read', soon: true },
+      { to: '/admin/leads/board', label: 'Pipeline', icon: KanbanSquare, capability: 'leads:read', editLabel: 'Board' },
+      { to: '/admin/customers', label: 'Customers', icon: Contact, capability: 'customers:read' },
       { to: '/admin/surveys', label: 'Site surveys', icon: ClipboardCheck, capability: 'surveys:read' },
       { to: '/admin/quotations', label: 'Quotations', icon: FileText, capability: 'quotations:read' },
       { to: '/admin/rate-card', label: 'Rate card', icon: Ruler, capability: 'quotations:read', editLabel: 'Edit' },
@@ -160,7 +162,7 @@ export function contentHomeFor(role) {
  * @param {string} pathname
  * @returns {{ label: string, to?: string }[]}
  */
-export function breadcrumbsFor(pathname) {
+function bestMatch(pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
   let best = null;
   for (const group of ADMIN_NAV) {
@@ -170,6 +172,20 @@ export function breadcrumbsFor(pathname) {
       if (matches && (!best || item.to.length > best.item.to.length)) best = { group, item };
     }
   }
+  return { path, best };
+}
+
+/**
+ * The nav item a path belongs to — the longest match, so the board at `/admin/leads/board`
+ * is Pipeline, not Leads, while a lead at `/admin/leads/:id` is Leads.
+ *
+ * @param {string} pathname
+ * @returns {string|null} the item's `to`
+ */
+export const activeNavPath = (pathname) => bestMatch(pathname).best?.item.to ?? null;
+
+export function breadcrumbsFor(pathname) {
+  const { path, best } = bestMatch(pathname);
   if (!best) return path === '/admin/content' || path.startsWith('/admin/content/') ? [{ label: 'Content' }] : [];
 
   const crumbs = [{ label: best.group.label }, { label: best.item.label, to: best.item.to }];

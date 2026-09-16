@@ -45,6 +45,9 @@ export const DashboardPage = route(() => import('@/pages/admin/DashboardPage'));
 export const LeadsPage = route(() => import('@/pages/admin/LeadsPage'));
 export const SlaBoardPage = route(() => import('@/pages/admin/SlaBoardPage'));
 export const LeadDetailPage = route(() => import('@/pages/admin/LeadDetailPage'));
+export const LeadBoardPage = route(() => import('@/pages/admin/LeadBoardPage/LeadBoardPage'));
+export const CustomersPage = route(() => import('@/pages/admin/CustomersPage'));
+export const CustomerDetailPage = route(() => import('@/pages/admin/CustomerDetailPage/CustomerDetailPage'));
 export const SurveysPage = route(() => import('@/pages/admin/SurveysPage'));
 export const SurveyReviewPage = route(() => import('@/pages/admin/SurveyReviewPage'));
 export const QuotationsPage = route(() => import('@/pages/admin/QuotationsPage'));
@@ -71,7 +74,7 @@ export const NotFoundPage = route(() => import('@/pages/NotFoundPage'));
 const GROUPS = {
   public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage, BlogPage],
   admin: [
-    LeadsPage, LeadDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
+    LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
     HomeComposerPage, MediaLibraryPage, SettingsPage,
   ],
   tech: [TechJobPage, SurveyListPage, SurveyFormPage],

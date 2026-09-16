@@ -147,12 +147,19 @@ drag-and-drop upload with required alt text, variants, copy URL).
 blocks, posts, post categories and pages — every CMS resource in the API has a screen — and the site settings at
 `/admin/platform/settings` (ADMIN saves, EDITOR reads). See `src/STRUCTURE.md` → "Which screen is which".
 
+**Leads and customers (Phase E)** — the leads table opening on My leads (saved views, bulk assign, export), the
+pipeline board at `/admin/leads/board`, the lead page (status, assign, typed activity log, duplicates and merge, convert
+with or without a visit — asking "same person or different person" when a customer has the phone — and a History tab),
+and customers at `/admin/customers` (profile, sites with one primary, timeline, the records each role may read,
+statement, History). The contact form and booking wizard take an optional email and send the site's language. See
+`src/STRUCTURE.md` → "Leads and customers (Phase E)".
+
 **Technician** — mobile-first `/tech` with today's jobs, tap-to-call, tap-to-navigate, and
 one-tap status advance.
 
-**Not yet built** (backend endpoints exist and are documented in `../docs/API.md`): lead detail
-drawer, customers, quotation builder, job detail + dispatch board, materials, invoices, warranty
-and AMC screens, and the offline sync queue for the technician PWA.
+**Not yet built** (backend endpoints exist and are documented in `../docs/API.md`): quotation approval (Phase F), job
+detail + dispatch board, materials, invoices, warranty and AMC screens (the customer page lists those records and says
+"Soon"), users and the audit log screen, and the offline sync queue for the technician PWA.
 
 ---
 

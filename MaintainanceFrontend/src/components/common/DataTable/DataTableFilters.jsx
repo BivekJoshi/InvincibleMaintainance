@@ -120,6 +120,7 @@ export function DataTableFilters({ filters, params, onChange }) {
                 {...filter.relation}
                 value={params[filter.key]}
                 onChange={(id) => onChange({ [filter.key]: id ?? undefined })}
+                fixedOptions={filter.fixedOptions}
                 placeholder={filter.label}
                 aria-label={filter.label}
                 className={cn('w-[200px]', filter.className)}
