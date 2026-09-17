@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { publicLeadSchema } from '../src/shared/schemas/crm.js';
 import { serviceSchema } from '../src/shared/schemas/cms.js';
 import { toPartial } from '../src/shared/schemas/common.js';
+import {
+  MAX_NOTES, MAX_SHORTCUTS, noteCreateSchema, noteUpdateSchema, shortcutCreateSchema, shortcutOrderSchema,
+  shortcutUpdateSchema,
+} from '../src/shared/schemas/me.js';
 import { SERVICE_BASE, SERVICE_SCHEMA_CASES } from './fixtures/serviceSchemaCases.js';
 
 describe('public lead form validation', () => {
@@ -95,5 +99,64 @@ describe('toPartial', () => {
   it('unwraps refined schemas so PUT does not demand every field', () => {
     expect(typeof serviceSchema.partial).toBe('undefined');
     expect(toPartial(serviceSchema).safeParse({}).success).toBe(true);
+  });
+});
+
+describe('admin shell shortcuts and notes', () => {
+  const shortcut = (to) => shortcutCreateSchema.safeParse({ label: 'Go', to });
+
+  it('exports the limits', () => {
+    expect(MAX_SHORTCUTS).toBe(12);
+    expect(MAX_NOTES).toBe(100);
+  });
+
+  it.each(['/admin', '/admin/leads', '/admin?tab=mine', '/admin/quotations?status=SENT&page=2', '/admin/jobs/abc123'])(
+    'accepts the admin path %j', (to) => {
+      expect(shortcut(to).success).toBe(true);
+    },
+  );
+
+  it.each([
+    'https://evil.com', 'http://localhost/admin', '//evil', '//evil.com/admin', '/admin//evil.com',
+    'javascript:alert(1)', 'JAVASCRIPT:/admin', '/administrator', '/adminx', '/tech/jobs', 'admin',
+    '/admin/a b', '/admin\\evil', '/admin\tx', '', `/admin/${'a'.repeat(300)}`,
+  ])('rejects %j', (to) => {
+    expect(shortcut(to).success).toBe(false);
+  });
+
+  it('trims the label and path, and limits the label and icon', () => {
+    expect(shortcutCreateSchema.parse({ label: '  Leads ', to: ' /admin/leads ' })).toEqual({ label: 'Leads', to: '/admin/leads' });
+    expect(shortcutCreateSchema.safeParse({ label: ' ', to: '/admin' }).success).toBe(false);
+    expect(shortcutCreateSchema.safeParse({ label: 'x'.repeat(41), to: '/admin' }).success).toBe(false);
+    expect(shortcutCreateSchema.safeParse({ label: 'Go', to: '/admin', icon: 'FileText' }).success).toBe(true);
+    expect(shortcutCreateSchema.safeParse({ label: 'Go', to: '/admin', icon: 'file-text' }).success).toBe(false);
+    expect(shortcutCreateSchema.safeParse({ label: 'Go', to: '/admin', icon: 'A'.repeat(41) }).success).toBe(false);
+  });
+
+  it('an update needs at least one field and never changes the path', () => {
+    expect(shortcutUpdateSchema.safeParse({}).success).toBe(false);
+    expect(shortcutUpdateSchema.parse({ label: 'New', to: 'https://evil.com' })).toEqual({ label: 'New' });
+  });
+
+  it('an order is 1 to 12 ids', () => {
+    expect(shortcutOrderSchema.safeParse({ ids: [] }).success).toBe(false);
+    expect(shortcutOrderSchema.safeParse({ ids: ['a'] }).success).toBe(true);
+    expect(shortcutOrderSchema.safeParse({ ids: Array.from({ length: 13 }, (_, i) => `id${i}`) }).success).toBe(false);
+  });
+
+  it('a note defaults to yellow, keeps Nepali text and limits the body', () => {
+    const nepali = 'शुक्रबार साँझ ५ बजे बैठक';
+    expect(noteCreateSchema.parse({ body: ` ${nepali} ` })).toEqual({ body: nepali, color: 'yellow' });
+    expect(noteCreateSchema.safeParse({ body: '' }).success).toBe(false);
+    expect(noteCreateSchema.safeParse({ body: 'क'.repeat(2000) }).success).toBe(true);
+    expect(noteCreateSchema.safeParse({ body: 'क'.repeat(2001) }).success).toBe(false);
+    expect(noteCreateSchema.safeParse({ body: 'x', color: 'red' }).success).toBe(false);
+    expect(noteCreateSchema.safeParse({ body: 'x', isPinned: 'true' }).success).toBe(false);
+  });
+
+  it('a note update is partial, without a default colour, and needs one field', () => {
+    expect(noteUpdateSchema.safeParse({}).success).toBe(false);
+    expect(noteUpdateSchema.parse({ isPinned: true })).toEqual({ isPinned: true });
+    expect(noteUpdateSchema.safeParse({ color: 'purple' }).success).toBe(true);
   });
 });

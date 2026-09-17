@@ -7,11 +7,12 @@ import { auditDiff } from './auditDiff.js';
 /**
  * Models left out of automatic audit rows: the audit table itself, secrets, and
  * append-only or high-volume tables that are already their own history.
- * Translation is audited — it is editor content.
+ * Translation is audited — it is editor content. UserShortcut and UserNote are one
+ * person's private shell preferences: nobody else's business, so not in the log.
  */
 export const AUDIT_SKIP = new Set([
   'AuditLog', 'RefreshToken', 'PasswordReset', 'MessageLog', 'Notification',
-  'JobStatusEvent', 'LeadActivity', 'Counter',
+  'JobStatusEvent', 'LeadActivity', 'Counter', 'UserShortcut', 'UserNote',
 ]);
 
 const AUDITED_OPERATIONS = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);

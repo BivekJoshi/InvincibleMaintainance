@@ -40,9 +40,29 @@
     --ink-foreground: 40 26% 95%;
     --ink-muted: 199 12% 66%;
 
+    /* Chart series, validated as a pair for colour-blind separation and 3:1
+       against the card (dataviz validate_palette). The brand primary is too
+       dark and grey to be a series; these are its brighter chart twins.
+       Marks only, never text — charts use them as `hsl(var(--chart-1))`. */
+    --chart-1: 188 100% 31%;   /* teal  — the main series */
+    --chart-2: 35 73% 45%;     /* brass — the second series, or the emphasis */
+
     --sla-ok: 152 55% 36%;
     --sla-warn: 34 84% 46%;
     --sla-breach: 4 66% 48%;
+
+    /* Sticky notes in the back office. Each colour is a paper tint and its
+       edge; the text on every one of them is plain foreground. */
+    --note-yellow: 46 92% 88%;
+    --note-yellow-edge: 44 70% 62%;
+    --note-blue: 205 80% 91%;
+    --note-blue-edge: 205 55% 62%;
+    --note-green: 145 50% 89%;
+    --note-green-edge: 148 38% 55%;
+    --note-pink: 340 80% 92%;
+    --note-pink-edge: 340 55% 66%;
+    --note-purple: 262 70% 93%;
+    --note-purple-edge: 262 40% 66%;
 
     /* Outcome colours. Every "it worked", "careful" and "here is a fact"
        surface in the app resolves to one of these three pairs — a component
@@ -136,9 +156,23 @@
     --ink-foreground: 40 25% 94%;
     --ink-muted: 199 10% 62%;
 
+    --chart-1: 187 81% 39%;
+    --chart-2: 35 68% 46%;
+
     --sla-ok: 152 48% 46%;
     --sla-warn: 36 84% 56%;
     --sla-breach: 4 66% 58%;
+
+    --note-yellow: 44 34% 17%;
+    --note-yellow-edge: 44 60% 45%;
+    --note-blue: 205 34% 18%;
+    --note-blue-edge: 205 55% 50%;
+    --note-green: 150 26% 16%;
+    --note-green-edge: 150 38% 42%;
+    --note-pink: 340 26% 18%;
+    --note-pink-edge: 340 45% 52%;
+    --note-purple: 262 24% 19%;
+    --note-purple-edge: 262 38% 58%;
 
     /* The same three roles, re-cut for a dark ground: the surface is a low
        tint of the hue rather than a pale wash, and the text on it is the

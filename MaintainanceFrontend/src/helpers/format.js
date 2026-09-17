@@ -16,6 +16,18 @@ export function formatNpr(paisa, { symbol = true, compact = false } = {}) {
   return symbol ? `Rs. ${body}` : body;
 }
 
+/**
+ * Money short enough for a chart axis, in the units Nepal counts in:
+ * 4 500 000 paisa → `Rs 45K`, 1 250 000 00 → `Rs 12.5L`, 3 × 10⁹ → `Rs 3Cr`.
+ */
+export function formatNprShort(paisa) {
+  const rupees = paisaToRupees(paisa);
+  const abs = Math.abs(rupees);
+  const [div, unit] = abs >= 1e7 ? [1e7, 'Cr'] : abs >= 1e5 ? [1e5, 'L'] : abs >= 1e3 ? [1e3, 'K'] : [1, ''];
+  const n = rupees / div;
+  return `Rs ${Number(n.toFixed(Math.abs(n) >= 100 || !unit ? 0 : 1))}${unit}`;
+}
+
 /** Rupees for a form field — the API expects rupees on input, paisa on output. */
 export const rupeesInput = (paisa) => (paisa == null ? '' : String(paisaToRupees(paisa)));
 

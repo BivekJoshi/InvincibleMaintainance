@@ -50,6 +50,8 @@ model User {
   technician       Technician?
   auditLogs        AuditLog[]
   notifications    Notification[]
+  shortcuts        UserShortcut[]
+  notes            UserNote[]
   createdQuotes    Quotation[]      @relation("QuotationCreator")
   submittedQuotes  Quotation[]      @relation("QuotationSubmitter")
   approvedQuotes   Quotation[]      @relation("QuotationApprover")
@@ -1431,6 +1433,41 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
+}
+
+// Per-user admin-shell preferences: the quick-links bar and sticky notes. Own rows only.
+model UserShortcut {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String
+  to        String
+  icon      String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, to])
+  @@index([userId, sortOrder])
+}
+
+model UserNote {
+  id        String    @id @default(cuid())
+  userId    String
+  body      String
+  color     String    @default("yellow")
+  isPinned  Boolean   @default(false)
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt])
 }
 
 model Counter {

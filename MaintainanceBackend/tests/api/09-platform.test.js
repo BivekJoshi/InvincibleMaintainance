@@ -11,6 +11,56 @@ describe('dashboard', () => {
   it.each(Object.keys(USERS))('GET /admin/dashboard as %s', async (role) => {
     expectStatus(await (await as(role)).get('/admin/dashboard'), 200);
   });
+
+  it('puts a job booked for today on the run sheet with who is going', async () => {
+    const dispatcher = await as('DISPATCHER');
+    const before = expectStatus(await dispatcher.get('/admin/dashboard'), 200).data;
+    await createAssignedJob({ scheduledStart: new Date(Date.now() + 60_000).toISOString() });
+    const after = expectStatus(await dispatcher.get('/admin/dashboard'), 200).data;
+    expect(after.todaysJobs.total).toBe(before.todaysJobs.total + 1);
+    expect(after.todaysJobs.items.length).toBe(Math.min(8, after.todaysJobs.total));
+    expect(after.todaysJobs.items.every((j) => Array.isArray(j.technicians))).toBe(true);
+    expect(after.todaysJobs.items.some((j) => j.technicians.length > 0)).toBe(true);
+    expect(after.technicianLoad.reduce((n, t) => n + t.jobs, 0)).toBeGreaterThan(before.technicianLoad.reduce((n, t) => n + t.jobs, 0));
+  });
+
+  it('sends each role only its own charts, with every day filled in', async () => {
+    const a = expectStatus(await admin.get('/admin/dashboard'), 200).data;
+    expect(a.leadTrend).toHaveLength(14);
+    expect(a.leadTrend[13]).toEqual({ day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), leads: expect.any(Number), won: expect.any(Number) });
+    expect(a.jobsWeek).toHaveLength(7);
+    expect(a.leadTrend[13].day).toBe(a.jobsWeek[0].day);
+    expect(Array.isArray(a.sources)).toBe(true);
+    expect(a.jobStatus).not.toHaveProperty('COMPLETED');
+    expect(a.revenue).toBeTruthy();
+    expect(a.leadHeatmap.cells).toHaveLength(7);
+    expect(a.leadHeatmap.cells.every((row) => row.length === a.leadHeatmap.bands.length)).toBe(true);
+    expect(a.leadHeatmap.cells.flat().reduce((n, v) => n + v, 0)).toBe(a.leadHeatmap.total);
+    expect(a.slaQueue.items.length).toBeLessThanOrEqual(6);
+    const dues = a.slaQueue.items.map((l) => new Date(l.slaDueAt).getTime());
+    expect(dues).toEqual([...dues].sort((x, y) => x - y));
+    expect(a.quotationPipeline.stages.map((st) => st.status)).toEqual(['DRAFT', 'PENDING_APPROVAL', 'OFFICE_APPROVED', 'SENT', 'CHANGES_REQUESTED']);
+    expect(a.quotationPipeline.openValue).toBe(a.quotationPipeline.stages.reduce((n, st) => n + st.value, 0));
+    expect(Number.isInteger(a.quotationPipeline.openValue)).toBe(true);
+    expect(a.todaysJobs.items.length).toBeLessThanOrEqual(a.todaysJobs.total);
+    expect(a.technicianLoad[0]).toEqual(expect.objectContaining({ name: expect.any(String), capacity: expect.any(Number), jobs: expect.any(Number) }));
+
+    const s = expectStatus(await (await as('SALES')).get('/admin/dashboard'), 200).data;
+    expect(s.leadTrend).toHaveLength(14);
+    expect(s).not.toHaveProperty('jobsWeek');
+    expect(s).not.toHaveProperty('revenue');
+    expect(s).not.toHaveProperty('todaysJobs');
+    expect(s.slaQueue).toBeTruthy();
+
+    const d = expectStatus(await (await as('DISPATCHER')).get('/admin/dashboard'), 200).data;
+    expect(d.jobsWeek).toHaveLength(7);
+    expect(d).not.toHaveProperty('leadTrend');
+    expect(d).not.toHaveProperty('slaQueue');
+    expect(Array.isArray(d.technicianLoad)).toBe(true);
+
+    const t = expectStatus(await (await as('TECHNICIAN')).get('/admin/dashboard'), 200).data;
+    expect(Object.keys(t)).toEqual(['role', 'cards']);
+  });
 });
 
 describe('notifications', () => {

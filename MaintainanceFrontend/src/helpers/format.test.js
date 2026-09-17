@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  formatRupees, fromKathmanduParts, parseRupees, rupeesInput, rupeesToPaisa, toKathmanduParts,
+  formatNprShort, formatRupees, fromKathmanduParts, parseRupees, rupeesInput, rupeesToPaisa, toKathmanduParts,
 } from '@/helpers/format';
 
 describe('money — paisa from the API, rupees in the form', () => {
@@ -76,5 +76,18 @@ describe('formatMinutes', () => {
     expect(formatMinutes(45)).toBe('45 min');
     expect(formatMinutes(0)).toBe('0 min');
     expect(formatMinutes(null)).toBe('0 min');
+  });
+});
+
+describe('formatNprShort — chart axes in K, lakh and crore', () => {
+  it.each([
+    [0, 'Rs 0'],
+    [50_000, 'Rs 500'],
+    [4_500_000, 'Rs 45K'],
+    [12_50_000_00, 'Rs 12.5L'],
+    [1_00_00_000_00, 'Rs 1Cr'],
+    [345e9, 'Rs 345Cr'],
+  ])('%i paisa → %s', (paisa, text) => {
+    expect(formatNprShort(paisa)).toBe(text);
   });
 });

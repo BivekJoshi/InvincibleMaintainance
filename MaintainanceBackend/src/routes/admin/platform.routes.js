@@ -10,6 +10,7 @@ import * as media from '../../services/media.service.js';
 import * as settings from '../../services/settings.service.js';
 import * as audit from '../../services/audit.service.js';
 import * as reports from '../../services/report.service.js';
+import { dashboard } from '../../services/dashboard.service.js';
 import * as users from '../../services/user.service.js';
 import * as messages from '../../services/message.service.js';
 import * as notifications from '../../services/notification.service.js';
@@ -26,7 +27,7 @@ const router = Router();
 const adminOnly = authorize('ADMIN');
 
 // ── dashboard (every role)
-router.get('/dashboard', asyncHandler(async (req, res) => ok(res, await reports.dashboard(req.user.role))));
+router.get('/dashboard', asyncHandler(async (req, res) => ok(res, await dashboard(req.user.role))));
 
 // ── notifications (every role, own only)
 router.get('/notifications', asyncHandler(async (req, res) => {

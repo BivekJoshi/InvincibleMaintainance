@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { RouteErrorBoundary } from '@/components/common/ErrorBoundary/RouteErrorBoundary';
 import { EASE, motion, useReducedMotion } from '@/three/motion/motionKit';
 import { cn } from '@/helpers/utils';
 
@@ -15,6 +16,9 @@ import { cn } from '@/helpers/utils';
  * suspends re-runs the effects beneath it when it resolves — which restarted
  * the entrance from invisible at the moment the page finally arrived, so a
  * heavy route looked like a blank screen for as long as it took to render.
+ *
+ * An error boundary sits outside both, so a page that throws is replaced inside
+ * the shell — header and sidebar stay, and following any link clears it.
  *
  * There is deliberately no `<AnimatePresence>` here. Its exit is gated on every
  * `motion` descendant resolving `setActive('exit')`, and an animation with
@@ -38,17 +42,19 @@ export function PageOutlet({ className }) {
   const reduced = useReducedMotion();
 
   return (
-    <Suspense fallback={<RouteFallback className={className} />}>
-      <motion.div
-        key={pathname}
-        initial={reduced ? false : 'hidden'}
-        animate="show"
-        variants={VARIANTS}
-        className={className}
-      >
-        <Outlet />
-      </motion.div>
-    </Suspense>
+    <RouteErrorBoundary variant="page">
+      <Suspense fallback={<RouteFallback className={className} />}>
+        <motion.div
+          key={pathname}
+          initial={reduced ? false : 'hidden'}
+          animate="show"
+          variants={VARIANTS}
+          className={className}
+        >
+          <Outlet />
+        </motion.div>
+      </Suspense>
+    </RouteErrorBoundary>
   );
 }
 

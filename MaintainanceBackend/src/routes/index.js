@@ -11,6 +11,7 @@ import surveyRoutes from './admin/surveys.routes.js';
 import financeRoutes from './admin/finance.routes.js';
 import aftercareRoutes from './admin/aftercare.routes.js';
 import platformRoutes from './admin/platform.routes.js';
+import meRoutes from './admin/me.routes.js';
 import * as pub from '../services/public.service.js';
 
 const router = Router();
@@ -43,5 +44,6 @@ router.use('/admin', authenticate, surveyRoutes);
 router.use('/admin', authenticate, financeRoutes);
 router.use('/admin', authenticate, aftercareRoutes);
 router.use('/admin', authenticate, platformRoutes);
+router.use('/admin', authenticate, meRoutes);
 
 export default router;

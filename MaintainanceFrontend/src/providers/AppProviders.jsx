@@ -3,6 +3,8 @@ import { Provider } from 'react-redux';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/common/Toaster';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary/ErrorBoundary';
+import { RouteErrorBoundary, RouterErrorElement } from '@/components/common/ErrorBoundary/RouteErrorBoundary';
 import { store } from '@/redux/store';
 import { SessionEffect } from './SessionEffect';
 import { ThemeProvider } from './ThemeProvider';
@@ -15,7 +17,8 @@ function RouterShell({ children }) {
       <TooltipProvider delayDuration={200}>
         <ScrollToTop />
         <SessionEffect />
-        {children}
+        {/* Clears on navigation. A page inside a shell has its own, in `PageOutlet`. */}
+        <RouteErrorBoundary variant="app">{children}</RouteErrorBoundary>
         <Toaster />
       </TooltipProvider>
     </ThemeProvider>
@@ -38,19 +41,26 @@ function RouterShell({ children }) {
  * an icon, a WebGL palette — is below it and so cannot render a frame ahead
  * of the class it is styled by.
  *
+ * Errors are caught at three levels, innermost first: a page inside a shell
+ * (`PageOutlet`, the shell stays usable), anything under the router (below, and
+ * the route's `errorElement`, which otherwise shows React Router's own screen),
+ * and the store and router themselves (the outer `ErrorBoundary`).
+ *
  * None of these hold the first paint back. Restoring a session is a background
  * errand, not a gate — see `SessionEffect`.
  */
 export function AppProviders({ children }) {
   // Created once. `children` is the route table, which is the same element for the app's lifetime.
   const [router] = useState(() => createBrowserRouter([
-    { path: '*', element: <RouterShell>{children}</RouterShell> },
+    { path: '*', element: <RouterShell>{children}</RouterShell>, errorElement: <RouterErrorElement /> },
   ]));
 
   return (
-    <Provider store={store}>
-      <RouterProvider router={router} />
-    </Provider>
+    <ErrorBoundary variant="app">
+      <Provider store={store}>
+        <RouterProvider router={router} />
+      </Provider>
+    </ErrorBoundary>
   );
 }
 

@@ -57,6 +57,30 @@ async function main() {
   }
   console.log(`  users: ${USERS.length} (password: Password123)`);
 
+  // ── the admin's shell shortcuts and sticky notes. Upserted by path; a note is
+  //    added only if the admin has no live note with the same text.
+  const SHORTCUTS = [
+    { label: 'Leads', to: '/admin/leads', icon: 'Users' },
+    { label: 'Quotations', to: '/admin/quotations', icon: 'FileText' },
+    { label: 'Dispatch board', to: '/admin/dispatch', icon: 'CalendarDays' },
+  ];
+  for (const [sortOrder, s] of SHORTCUTS.entries()) {
+    await prisma.userShortcut.upsert({
+      where: { userId_to: { userId: users.ADMIN.id, to: s.to } },
+      create: { ...s, userId: users.ADMIN.id, sortOrder },
+      update: {},
+    });
+  }
+  const NOTES = [
+    { body: 'Call back the Lalitpur waterproofing lead before noon.', color: 'yellow', isPinned: true },
+    { body: 'शुक्रबार साँझ ५ बजे प्राविधिकहरूसँग साप्ताहिक बैठक।', color: 'blue', isPinned: false },
+  ];
+  for (const n of NOTES) {
+    const exists = await prisma.userNote.findFirst({ where: { userId: users.ADMIN.id, body: n.body, deletedAt: null } });
+    if (!exists) await prisma.userNote.create({ data: { ...n, userId: users.ADMIN.id } });
+  }
+  console.log(`  admin shell: ${SHORTCUTS.length} shortcuts, ${NOTES.length} notes`);
+
   // ── technicians. A surveyor is a Technician too — that is what keeps them
   //    assignable on the dispatch board and reachable through the /tech app.
   const techs = [];

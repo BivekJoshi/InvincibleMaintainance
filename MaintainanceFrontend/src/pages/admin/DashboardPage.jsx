@@ -1,178 +1,164 @@
-import { Link } from 'react-router-dom';
-import {
-  Users, Timer, AlertTriangle, Briefcase, Receipt, ShieldCheck, RefreshCw, TrendingUp,
-  Boxes, FileCheck2, MessageSquareWarning, Send, Wrench,
-} from 'lucide-react';
-import { ktmDay } from '@/helpers/dispatchBoard';
 import { SHELL_POLL_MS } from '@/config/constants';
+import { DASHBOARD_GROUPS } from '@/config/admin/dashboardCards';
 import { useGetDashboardQuery } from '@/api/dashboardApi';
 import { useAuth } from '@/hooks/useAuth';
-import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
-import { Card, CardContent } from '@/components/ui/card';
-import { CardSkeleton } from '@/components/ui/skeleton';
-import { PageTransition, Stagger, CountUp } from '@/three/motion/motionKit';
-import { formatNpr } from '@/helpers/format';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageTransition, Stagger } from '@/three/motion/motionKit';
+import { DashboardHero } from '@/components/dashboard/DashboardHero';
+import { MetricGroup } from '@/components/dashboard/MetricGroup';
+import { LatestCard } from '@/components/dashboard/LatestCard';
+import { LeadTrendCard } from '@/components/dashboard/LeadTrendCard';
+import { SlaCard } from '@/components/dashboard/SlaCard';
+import { SlaQueueCard } from '@/components/dashboard/SlaQueueCard';
+import { PipelineCard } from '@/components/dashboard/PipelineCard';
+import { FunnelCard } from '@/components/dashboard/FunnelCard';
+import { HeatmapCard } from '@/components/dashboard/HeatmapCard';
+import { LeadSourcesCard } from '@/components/dashboard/LeadSourcesCard';
+import { TodayJobsCard } from '@/components/dashboard/TodayJobsCard';
+import { TechLoadCard } from '@/components/dashboard/TechLoadCard';
+import { JobsWeekCard } from '@/components/dashboard/JobsWeekCard';
+import { JobStatusCard } from '@/components/dashboard/JobStatusCard';
+import { RevenueCard } from '@/components/dashboard/RevenueCard';
+import { groupCards, percentChange } from '@/helpers/dashboard';
 import { cn } from '@/helpers/utils';
 
-/** The jobs list's Today preset: Kathmandu's today, whenever the card is drawn. */
-const todayQuery = () => `from=${ktmDay()}&to=${ktmDay()}`;
-
-/** Card definitions keyed by the API's card names; the API decides which appear. */
-const CARDS = {
-  leadsToday: { label: 'Leads today', icon: Users, to: '/admin/leads' },
-  leadsOpen: { label: 'Open leads', icon: Users, to: '/admin/leads' },
-  slaBreached: { label: 'SLA breached', icon: AlertTriangle, to: '/admin/sla', tone: 'danger' },
-  slaAtRisk: { label: 'Response due soon', icon: Timer, to: '/admin/sla', tone: 'warn' },
-  jobsToday: { label: 'Jobs today', icon: Briefcase, to: () => `/admin/jobs?${todayQuery()}` },
-  jobsOpen: { label: 'Open jobs', icon: Briefcase, to: '/admin/jobs' },
-  jobsUnassigned: { label: 'Unassigned jobs', icon: AlertTriangle, to: '/admin/dispatch', tone: 'warn' },
-  outstandingAmount: { label: 'Outstanding', icon: Receipt, to: '/admin/invoices', money: true, soon: true },
-  outstandingInvoices: { label: 'Unpaid invoices', icon: Receipt, to: '/admin/invoices', soon: true },
-  warrantiesActive: { label: 'Active warranties', icon: ShieldCheck, to: '/admin/warranties', soon: true },
-  amcRenewals: { label: 'AMC renewals due', icon: RefreshCw, to: '/admin/warranties', soon: true },
-  // Phase F: each opens its quotation queue.
-  quotationsPendingApproval: { label: 'Quotations to approve', icon: FileCheck2, to: '/admin/quotations?stage=approval', tone: 'warn' },
-  quotationsChangesRequested: { label: 'Customers asked for changes', icon: MessageSquareWarning, to: '/admin/quotations?stage=changes_requested', tone: 'warn' },
-  quotationsAwaitingCustomer: { label: 'Quotations with customers', icon: Send, to: '/admin/quotations?stage=with_customer' },
-  // Phase H1: accepted quotations wait on the board's unassigned queue.
-  acceptedJobsUnscheduled: { label: 'Accepted jobs to schedule', icon: Wrench, to: '/admin/dispatch', tone: 'warn' },
-  stockLow: { label: 'Materials to reorder', icon: Boxes, to: '/admin/stock?lowOnly=true', tone: 'warn' },
+// Written out so Tailwind sees every class.
+const SPAN = {
+  3: 'lg:col-span-3', 4: 'lg:col-span-4', 5: 'lg:col-span-5', 6: 'lg:col-span-6',
+  7: 'lg:col-span-7', 8: 'lg:col-span-8', 9: 'lg:col-span-9', 12: 'lg:col-span-12',
 };
 
-const TONES = {
-  danger: 'text-destructive',
-  warn: 'text-sla-warn',
-};
+/**
+ * The page's sections, each a list of rows on a 12-column grid. A widget the API
+ * did not send drops out; the last one left in a row widens to close the gap.
+ */
+const SECTIONS = [
+  {
+    key: 'sales',
+    label: 'Sales and response',
+    rows: [
+      [['leadTrend', 8, (d) => <LeadTrendCard data={d.leadTrend} />], ['sla', 4, (d) => <SlaCard sla={d.sla} />]],
+      [
+        ['slaQueue', 5, (d) => <SlaQueueCard queue={d.slaQueue} />],
+        ['quotationPipeline', 4, (d) => <PipelineCard pipeline={d.quotationPipeline} />],
+        ['funnel', 3, (d) => <FunnelCard funnel={d.funnel} />],
+      ],
+      [['leadHeatmap', 7, (d) => <HeatmapCard heatmap={d.leadHeatmap} />], ['sources', 5, (d) => <LeadSourcesCard sources={d.sources} />]],
+    ],
+  },
+  {
+    key: 'ops',
+    label: 'Operations',
+    rows: [
+      [['todaysJobs', 8, (d) => <TodayJobsCard sheet={d.todaysJobs} />], ['technicianLoad', 4, (d) => <TechLoadCard load={d.technicianLoad} />]],
+      [['jobsWeek', 7, (d) => <JobsWeekCard data={d.jobsWeek} />], ['jobStatus', 5, (d) => <JobStatusCard counts={d.jobStatus} />]],
+    ],
+  },
+  {
+    key: 'money',
+    label: 'Money',
+    rows: [[['revenue', 12, (d) => <RevenueCard revenue={d.revenue} />]]],
+  },
+];
 
-function StatCard({ name, value }) {
-  const def = CARDS[name];
-  if (!def) return null;
-  const Icon = def.icon;
-  const display = def.money ? formatNpr(value, { compact: true }) : value.toLocaleString();
-  const highlight = def.tone && value > 0;
-
-  const card = (
-    <Card className={cn(
-      'transition-shadow',
-      def.soon ? 'opacity-80' : 'hover:shadow-md',
-      highlight && 'border-current/20', highlight && TONES[def.tone],
-    )}>
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{def.label}</p>
-          <Icon className={cn('h-4 w-4', highlight ? TONES[def.tone] : 'text-muted-foreground')} aria-hidden />
-        </div>
-        <p className={cn('mt-2 text-2xl font-bold tabular-nums', highlight && TONES[def.tone])}>
-          <CountUp value={display} />
-        </p>
-      </CardContent>
-    </Card>
-  );
-
-  // No link while the screen behind it is unbuilt — a card that navigates back to
-  // the page you are already on reads as broken.
-  return (
-    <Stagger.Item>
-      {def.soon ? card : <Link to={typeof def.to === 'function' ? def.to() : def.to} className="block">{card}</Link>}
-    </Stagger.Item>
-  );
+/** The sections with something in them, their rows packed to fill twelve columns. */
+function layout(data) {
+  return SECTIONS.map((section) => ({
+    ...section,
+    rows: section.rows
+      .map((row) => row.filter(([key]) => data[key] != null))
+      .filter((row) => row.length)
+      .map((row) => {
+        const used = row.reduce((n, [, span]) => n + span, 0);
+        return row.map(([key, span, render], i) => ({
+          key, render, span: i === row.length - 1 ? span + 12 - used : span,
+        }));
+      }),
+  })).filter((s) => s.rows.length);
 }
 
-function FunnelBar({ stage, max }) {
-  const pct = max ? (stage.count / max) * 100 : 0;
+/** A tile's extras, from the chart data the same payload carries. */
+function tileExtras(data) {
+  return (name) => {
+    if (name !== 'leadsToday' || !data.leadTrend?.length) return {};
+    const counts = data.leadTrend.map((d) => d.leads);
+    const sum = (a) => a.reduce((n, v) => n + v, 0);
+    const pct = percentChange(sum(counts.slice(-7)), sum(counts.slice(-14, -7)));
+    return { trend: counts, delta: pct == null ? undefined : { pct, label: 'this week vs last' } };
+  };
+}
+
+function DashboardSkeleton() {
   return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="font-medium">{stage.label}</span>
-        <span className="tabular-nums text-muted-foreground">{stage.count} · {stage.pct}%</span>
+    <div className="space-y-3" aria-hidden>
+      <div className="grid gap-3 lg:grid-cols-12">
+        <div className="space-y-3 lg:col-span-8">
+          <Skeleton className="h-28 rounded-xl" />
+          <Skeleton className="h-28 rounded-xl" />
+        </div>
+        <Skeleton className="h-[236px] rounded-xl lg:col-span-4" />
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary transition-all duration-700" style={{ width: `${pct}%` }} />
+      <div className="grid gap-3 lg:grid-cols-12">
+        <Skeleton className="h-72 rounded-xl lg:col-span-8" />
+        <Skeleton className="h-72 rounded-xl lg:col-span-4" />
       </div>
     </div>
   );
 }
 
+/**
+ * The back office's front page. The API decides what each role sees; this page
+ * lays out whatever arrived: the numbers grouped beside your inbox, then a section
+ * per area of the business.
+ */
 export default function DashboardPage() {
   const { user, role } = useAuth();
   // The shell's cadence: the notification and SLA badges refresh on the same beat.
-  const { data, isLoading, error, refetch } = useGetDashboardQuery(undefined, { pollingInterval: SHELL_POLL_MS });
+  const { data, isLoading, isFetching, error, refetch } = useGetDashboardQuery(undefined, { pollingInterval: SHELL_POLL_MS });
 
   if (error) return <ErrorState error={error} onRetry={refetch} />;
 
-  const cards = Object.entries(data?.cards ?? {});
-  const funnel = data?.funnel;
-  const sla = data?.sla;
+  const groups = groupCards(data?.cards, DASHBOARD_GROUPS);
+  const sections = data ? layout(data) : [];
 
   return (
-    <PageTransition>
-      <PageHeader
-        title={`Good day, ${user?.name?.split(' ')[0] ?? 'there'}`}
-        description={`Here is what needs your attention as ${role}.`}
-      />
+    <PageTransition className="space-y-4">
+      <DashboardHero name={user?.name} role={role} cards={data?.cards} loading={isLoading} />
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
+      {isLoading ? <DashboardSkeleton /> : (
+        // Refetches keep the frame: the old numbers stay until the new ones land.
+        <div className={cn('space-y-5 transition-opacity', isFetching && 'opacity-90')}>
+          <Stagger className="grid items-start gap-3 lg:grid-cols-12">
+            <div className="grid gap-3 lg:col-span-8">
+              {groups.map((g) => (
+                <MetricGroup key={g.key} label={g.label} items={g.items} extras={tileExtras(data)} />
+              ))}
+            </div>
+            <Stagger.Item className="flex self-stretch lg:col-span-4 [&>section]:flex-1">
+              <LatestCard limit={groups.length > 2 ? 7 : 5} />
+            </Stagger.Item>
+          </Stagger>
+
+          {sections.map((section) => (
+            <section key={section.key} aria-labelledby={`dash-${section.key}`} className="space-y-3">
+              <h2 id={`dash-${section.key}`} className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {section.label}
+                <span aria-hidden className="h-px flex-1 bg-border" />
+              </h2>
+              {section.rows.map((row) => (
+                <Stagger key={row.map((w) => w.key).join('-')} className="grid gap-3 lg:grid-cols-12" stagger={0.07}>
+                  {row.map((w) => (
+                    <div key={w.key} className={cn('flex min-w-0 [&>section]:flex-1', SPAN[w.span])}>
+                      {w.render(data)}
+                    </div>
+                  ))}
+                </Stagger>
+              ))}
+            </section>
+          ))}
         </div>
-      ) : (
-        <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {cards.map(([name, value]) => <StatCard key={name} name={name} value={value} />)}
-        </Stagger>
       )}
-
-      {(funnel || sla) && !isLoading ? (
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          {funnel ? (
-            <Card>
-              <CardContent className="p-6">
-                <h2 className="flex items-center gap-2 text-sm font-semibold">
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" /> Conversion funnel · last 30 days
-                </h2>
-                <div className="mt-4 space-y-3">
-                  {funnel.stages.map((s) => <FunnelBar key={s.key} stage={s} max={funnel.total} />)}
-                </div>
-                <p className="mt-4 text-xs text-muted-foreground">{funnel.lost} lead(s) marked lost.</p>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {sla ? (
-            <Card>
-              <CardContent className="p-6">
-                <h2 className="flex items-center gap-2 text-sm font-semibold">
-                  <Timer className="h-4 w-4 text-muted-foreground" /> Response promise · last 30 days
-                </h2>
-                <div className="mt-4 grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <p className="text-2xl font-bold tabular-nums">{sla.complianceRate}%</p>
-                    <p className="text-xs text-muted-foreground">on time</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold tabular-nums">{sla.medianResponseMinutes ?? '—'}</p>
-                    <p className="text-xs text-muted-foreground">median minutes</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold tabular-nums text-destructive">{sla.neverResponded}</p>
-                    <p className="text-xs text-muted-foreground">never answered</p>
-                  </div>
-                </div>
-                {sla.byStaff?.length ? (
-                  <ul className="mt-5 space-y-2 border-t pt-4 text-sm">
-                    {sla.byStaff.slice(0, 4).map((s) => (
-                      <li key={s.staff} className="flex items-center justify-between">
-                        <span className="truncate">{s.staff}</span>
-                        <span className="tabular-nums text-muted-foreground">{s.onTime}/{s.total} · {s.complianceRate}%</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
-        </div>
-      ) : null}
     </PageTransition>
   );
 }

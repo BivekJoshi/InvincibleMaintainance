@@ -478,6 +478,30 @@ export function CountUp({ value, className, duration = 1.6 }) {
   );
 }
 
+/**
+ * A live number that glides from its last value to its new one — a dashboard
+ * figure after a poll. `format` turns the in-between numbers into text, so
+ * money and grouping stay right on every frame.
+ */
+export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleString('en-IN'), className, duration = 1.2 }) {
+  const reduced = useReducedMotion();
+  // Where the number is now, so an update mid-glide carries on from there.
+  const current = useRef(0);
+  const [shown, setShown] = useState(reduced ? value : 0);
+
+  useEffect(() => {
+    if (reduced) { current.current = value; setShown(value); return undefined; }
+    const controls = animateValue(current.current, value, {
+      duration,
+      ease: EASE,
+      onUpdate: (n) => { current.current = n; setShown(n); },
+    });
+    return () => controls.stop();
+  }, [value, reduced, duration]);
+
+  return <span className={className}>{format(shown)}</span>;
+}
+
 // ── ambience ───────────────────────────────────────────────────────────────────
 
 /** Slow-drifting motes over a dark panel. Deterministic, so it never re-shuffles. */

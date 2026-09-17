@@ -9,7 +9,7 @@ export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
   tagTypes: [
-    'Auth', 'Dashboard', 'Notification',
+    'Auth', 'Dashboard', 'Notification', 'Shortcut', 'Note',
     'Lead', 'LeadBoard', 'Customer', 'Site', 'Quotation', 'RateCard',
     'Survey', 'SurveyPricing', 'Availability',
     'Job', 'Dispatch', 'Technician', 'JobTemplate',

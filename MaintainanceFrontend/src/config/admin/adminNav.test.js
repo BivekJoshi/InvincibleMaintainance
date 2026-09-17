@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { activeNavPath, breadcrumbsFor, contentHomeFor, landingPathFor, navForRole } from '@/config/admin/adminNav';
+import { activeNavPath, activeNavTab, breadcrumbsFor, contentHomeFor, landingPathFor, navForRole, navTabsForRole } from '@/config/admin/adminNav';
 
 /** `{ group label: [item labels] }` for a role. */
 const navOf = (role) => Object.fromEntries(navForRole(role).map((g) => [g.label, g.items.map((i) => i.label)]));
@@ -7,18 +7,20 @@ const navOf = (role) => Object.fromEntries(navForRole(role).map((g) => [g.label,
 describe('admin nav', () => {
   it('shows ADMIN every group, in business order', () => {
     expect(Object.keys(navOf('ADMIN'))).toEqual([
-      'Overview', 'Sales', 'Operations', 'Finance', 'Aftercare', 'Content', 'Page blocks', 'Blog & pages', 'Platform',
+      'Overview', 'Sales', 'Operations', 'Finance', 'Aftercare',
+      'Catalog', 'Page blocks', 'Messaging', 'Content', 'Blog & pages', 'Platform',
     ]);
     expect(navOf('ADMIN').Platform).toEqual([
-      'Users', 'Roles & permissions', 'Login activity', 'Audit log', 'Messages', 'Message templates', 'Settings',
+      'Users', 'Roles & permissions', 'Login activity', 'Audit log', 'Messages', 'Settings',
     ]);
+    expect(navOf('ADMIN').Messaging).toEqual(['Message templates']);
     expect(navForRole('ADMIN').find((g) => g.key === 'platform').items.filter((i) => i.soon)).toEqual([]);
     expect(landingPathFor('ADMIN')).toBe('/admin');
   });
 
   it('shows EDITOR Content and settings only, and lands it on Content rather than the dashboard', () => {
     const nav = navOf('EDITOR');
-    expect(Object.keys(nav)).toEqual(['Content', 'Page blocks', 'Blog & pages', 'Platform']);
+    expect(Object.keys(nav)).toEqual(['Page blocks', 'Content', 'Blog & pages', 'Platform']);
     expect(nav.Platform).toEqual(['Settings']);
     expect(landingPathFor('EDITOR')).toBe('/admin/content');
     expect(nav.Content).toEqual([
@@ -34,18 +36,18 @@ describe('admin nav', () => {
   });
 
   it('shows ACCOUNTANT the rate card, read-only by capability', () => {
-    expect(navOf('ACCOUNTANT').Sales).toContain('Rate card');
+    expect(navOf('ACCOUNTANT').Catalog).toContain('Rate card');
     expect(navOf('ACCOUNTANT').Content).toBeUndefined();
   });
 
   it('shows the admin platform screens to ADMIN alone', () => {
     const adminOnly = ['Users', 'Roles & permissions', 'Login activity', 'Audit log', 'Messages', 'Message templates'];
     for (const role of ['EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'ACCOUNTANT', 'TECHNICIAN', 'SURVEYOR']) {
-      const platform = navOf(role).Platform ?? [];
+      const platform = [...(navOf(role).Platform ?? []), ...(navOf(role).Messaging ?? [])];
       for (const label of adminOnly) expect(platform, `${role} sees ${label}`).not.toContain(label);
     }
     expect(breadcrumbsFor('/admin/platform/message-templates/quotation_sent')).toEqual([
-      { label: 'Platform' }, { label: 'Message templates', to: '/admin/platform/message-templates' }, { label: 'Edit' },
+      { label: 'Messaging' }, { label: 'Message templates', to: '/admin/platform/message-templates' }, { label: 'Edit' },
     ]);
     expect(breadcrumbsFor('/admin/platform/audit')).toEqual([{ label: 'Platform' }, { label: 'Audit log', to: '/admin/platform/audit' }]);
   });
@@ -57,10 +59,11 @@ describe('admin nav', () => {
 
   it('hides Content, Finance and Platform from SALES', () => {
     const nav = navOf('SALES');
-    expect(Object.keys(nav)).toEqual(['Overview', 'Sales', 'Operations', 'Aftercare']);
-    expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations', 'Rate card']);
+    expect(Object.keys(nav)).toEqual(['Overview', 'Sales', 'Operations', 'Aftercare', 'Catalog']);
+    expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations']);
     // SALES reads jobs, templates and technicians (to pick a surveyor); dispatch and stock are not theirs.
-    expect(nav.Operations).toEqual(['Jobs', 'Technicians', 'Job templates']);
+    expect(nav.Operations).toEqual(['Jobs', 'Technicians']);
+    expect(nav.Catalog).toEqual(['Rate card', 'Job templates']);
     expect(landingPathFor('SALES')).toBe('/admin');
     expect(contentHomeFor('SALES')).toBe('/admin');
   });
@@ -77,11 +80,11 @@ describe('admin nav', () => {
 
   it('gives the dispatcher the whole of Operations (Phase H1)', () => {
     const nav = navOf('DISPATCHER');
-    expect(nav.Operations).toEqual([
-      'Jobs', 'Dispatch board', 'Technicians', 'Job templates', 'Stock', 'Materials', 'Material categories', 'Suppliers',
-    ]);
-    expect(navOf('ACCOUNTANT').Operations).toEqual(['Jobs', 'Job templates']);
+    expect(nav.Operations).toEqual(['Jobs', 'Dispatch board', 'Technicians', 'Stock']);
+    expect(nav.Catalog).toEqual(['Job templates', 'Materials', 'Material categories', 'Suppliers']);
+    expect(navOf('ACCOUNTANT').Operations).toEqual(['Jobs']);
     expect(breadcrumbsFor('/admin/jobs/cl1')).toEqual([{ label: 'Operations' }, { label: 'Jobs', to: '/admin/jobs' }, { label: 'Details' }]);
+    expect(breadcrumbsFor('/admin/material-categories/new').at(0)).toEqual({ label: 'Catalog' });
     expect(breadcrumbsFor('/admin/material-categories/new').at(-2)).toEqual({ label: 'Material categories', to: '/admin/material-categories' });
     expect(breadcrumbsFor('/admin/materials/cl1').at(-1)).toEqual({ label: 'Edit' });
     expect(activeNavPath('/admin/dispatch')).toBe('/admin/dispatch');
@@ -95,7 +98,7 @@ describe('admin nav', () => {
     expect(breadcrumbsFor('/admin/content/faqs/cl123/').at(-1)).toEqual({ label: 'Edit' });
     expect(breadcrumbsFor('/admin/content/nope')).toEqual([{ label: 'Content' }]);
     expect(breadcrumbsFor('/admin/content/media')).toEqual([{ label: 'Content' }, { label: 'Media library', to: '/admin/content/media' }]);
-    expect(breadcrumbsFor('/admin/rate-card/cl123')).toEqual([{ label: 'Sales' }, { label: 'Rate card', to: '/admin/rate-card' }, { label: 'Edit' }]);
+    expect(breadcrumbsFor('/admin/rate-card/cl123')).toEqual([{ label: 'Catalog' }, { label: 'Rate card', to: '/admin/rate-card' }, { label: 'Edit' }]);
     expect(breadcrumbsFor('/admin/content/services/new')).toEqual([
       { label: 'Content' }, { label: 'Services', to: '/admin/content/services' }, { label: 'New' },
     ]);
@@ -129,5 +132,34 @@ describe('the active nav item', () => {
     expect(items('ACCOUNTANT')).toContain('/admin/customers');
     expect(items('ACCOUNTANT')).not.toContain('/admin/leads/board');
     expect(items('EDITOR')).not.toContain('/admin/customers');
+  });
+});
+
+describe('the sidebar tabs', () => {
+  const tabsOf = (role) => navTabsForRole(role).map((t) => [t.key, t.groups.map((g) => g.label)]);
+
+  it('splits ADMIN into Home, Helpers, Others and Settings', () => {
+    expect(tabsOf('ADMIN')).toEqual([
+      ['home', ['Overview', 'Sales', 'Operations', 'Finance', 'Aftercare']],
+      ['helpers', ['Catalog', 'Page blocks', 'Messaging']],
+      ['others', ['Content', 'Blog & pages']],
+      ['settings', ['Platform']],
+    ]);
+  });
+
+  it('drops a tab with nothing in it', () => {
+    expect(tabsOf('EDITOR').map(([key]) => key)).toEqual(['helpers', 'others', 'settings']);
+    expect(tabsOf('SALES').map(([key]) => key)).toEqual(['home', 'helpers']);
+  });
+
+  it('follows the page you are on', () => {
+    expect(activeNavTab('/admin')).toBe('home');
+    expect(activeNavTab('/admin/leads/cl1')).toBe('home');
+    expect(activeNavTab('/admin/materials/new')).toBe('helpers');
+    expect(activeNavTab('/admin/content/list-items')).toBe('helpers');
+    expect(activeNavTab('/admin/content/posts/cl1')).toBe('others');
+    expect(activeNavTab('/admin/platform/message-templates')).toBe('helpers');
+    expect(activeNavTab('/admin/platform/users')).toBe('settings');
+    expect(activeNavTab('/admin/nowhere')).toBeNull();
   });
 });

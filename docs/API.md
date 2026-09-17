@@ -859,8 +859,61 @@ GET   /admin/dashboard              every role · role-aware widget payload
                                     scheduledStart (DISPATCHER, MANAGER, ADMIN). MANAGER also gets funnel and sla.
                                     added in Phase H1: stockLow — materials at or below their reorder level
                                     (DISPATCHER, ADMIN).
+                                    widgets (2026-09-17, services/dashboard.service.js), each sent only to
+                                    the roles listed and computed only for them:
+                                      ADMIN, SALES, MANAGER —
+                                        funnel, sla, sources (leadSourceReport, 30 days)
+                                        leadTrend [{ day, leads, won }] × 14 Kathmandu days, oldest first
+                                        leadHeatmap { bands: [{ key, label }] × 7, cells: number[7][7]
+                                          (row = Kathmandu weekday, 0 = Sunday), total } — 30 days
+                                        slaQueue { total, items: [{ id, name, area, priority, source,
+                                          slaDueAt, createdAt, service, assignedTo }] ≤ 6 } — not yet
+                                          contacted, earliest deadline first
+                                        quotationPipeline { stages: [{ status, count, value }] for DRAFT,
+                                          PENDING_APPROVAL, OFFICE_APPROVED, SENT, CHANGES_REQUESTED;
+                                          openCount, openValue, won, lost, wonValue, winRate|null } —
+                                          money in paisa; won/lost by decidedAt in the last 30 days
+                                      ADMIN, DISPATCHER, MANAGER —
+                                        jobsWeek [{ day, jobs }] × 7 (today first, excludes CANCELLED)
+                                        jobStatus { [JobStatus]: count } for open jobs
+                                        todaysJobs { total, items: [{ id, number, title, status, priority,
+                                          scheduledStart, scheduledEnd, customer, area, technicians[] }] ≤ 8 }
+                                        technicianLoad [{ id, name, isAvailable, capacity, jobs }] — today,
+                                          fullest first
+                                      ADMIN, ACCOUNTANT — revenue (revenueReport, groupBy day, 30 days)
+                                    Other roles get { role, cards } only.
 GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
 GET   /admin/reports/job-margin | /technicians | /warranty-claims   reports:ops
+```
+
+## Me — shortcuts and notes
+
+The admin shell's quick-links bar and sticky notes. **Every role, own rows only**: another user's `:id`
+is 404 NOT_FOUND, never 403. Neither table is written to the audit log (private preferences).
+
+```
+GET    /admin/me/shortcuts          ordered sortOrder asc, then createdAt
+                                    row: { id, label, to, icon, sortOrder, createdAt, updatedAt }
+                                    meta: { total, max: 12 }
+POST   /admin/me/shortcuts          { label (trimmed, 1–40), to, icon? } -> 201 row, appended (sortOrder = last + 1)
+                                    to: an in-app admin path, ≤ 300 chars — exactly /admin, /admin/… or /admin?…;
+                                    no scheme, no //, no backslash, no whitespace (else 400)
+                                    icon: letters and digits only, ≤ 40 (a lucide icon name, e.g. ClipboardList)
+                                    409 LIMIT_REACHED (details { max }) when the caller already has 12
+                                    409 DUPLICATE when the caller already has a shortcut with this `to`
+PATCH  /admin/me/shortcuts/:id      { label?, icon? } (at least one) -> the row
+PUT    /admin/me/shortcuts/order    { ids: [id, …] } (1–12) -> 204; sortOrder = position in ids, one transaction
+                                    400 BAD_REQUEST unless ids is exactly the caller's shortcuts, each once
+DELETE /admin/me/shortcuts/:id      -> 204, removed for good (a preference, not content)
+
+GET    /admin/me/notes              live notes only; pinned first, then updatedAt desc
+                                    row: { id, body, color, isPinned, createdAt, updatedAt }
+                                    meta: { total, max: 100 }
+POST   /admin/me/notes              { body (trimmed, 1–2000, any UTF-8 incl. Nepali),
+                                      color? = yellow|blue|green|pink|purple (default yellow), isPinned? }
+                                    -> 201 row · 409 LIMIT_REACHED (details { max }) at 100 live notes
+PATCH  /admin/me/notes/:id          { body?, color?, isPinned? } (at least one) -> the row; 404 once deleted
+DELETE /admin/me/notes/:id          -> 204, soft delete (deletedAt); the note leaves the list
 ```
 
 ## Audit log
@@ -870,7 +923,8 @@ from the request (or `<task>:<job id>` and `system` for background work):
 
 - **Model change** — written automatically by the Prisma extension for `create`, `createMany`, `update`,
   `updateMany`, `upsert`, `delete`, `deleteMany` on every model except `AuditLog`, `RefreshToken`,
-  `PasswordReset`, `MessageLog`, `Notification`, `JobStatusEvent`, `LeadActivity`, `Counter`.
+  `PasswordReset`, `MessageLog`, `Notification`, `JobStatusEvent`, `LeadActivity`, `Counter`,
+  `UserShortcut`, `UserNote`.
   `event` is null, `action` is the operation without `Many`, `before`/`after` hold only the scalar
   columns that changed (redacted: anything named `*password*`, `*token*`, `*secret*`, `otp*`), one row
   per record for bulk writes (the first 500; past that a warning is logged). `changes` is null.

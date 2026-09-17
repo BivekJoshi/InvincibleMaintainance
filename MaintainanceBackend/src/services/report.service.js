@@ -1,9 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { dateRange } from '../utils/pagination.js';
 import { sum } from '../utils/money.js';
-import { addDays, startOfDay, endOfDay } from '../utils/dates.js';
-import { slaWhere } from './sla.service.js';
-import { lowStockCount } from './material.service.js';
+import { addDays } from '../utils/dates.js';
 
 const range = (q) => dateRange(q.from, q.to) ?? { gte: addDays(new Date(), -30) };
 
@@ -292,79 +290,5 @@ export async function customerStatement(customerId) {
     customer,
     ledger,
     totals: { invoiced: sum(invoices.map((i) => i.total)), paid: sum(payments.map((p) => p.amount)), outstanding: balance },
-  };
-}
-
-/** Role-aware dashboard payload — one call per login instead of a dozen. */
-export async function dashboard(role) {
-  const today = { gte: startOfDay(), lte: endOfDay() };
-  const last30 = { gte: addDays(new Date(), -30) };
-
-  const [
-    leadsToday, leadsOpen, slaBreached, slaAtRisk,
-    jobsToday, jobsOpen, jobsUnassigned,
-    invoicesOutstanding, warrantiesActive, amcRenewals,
-    quotationsPendingApproval, quotationsChangesRequested, quotationsAwaitingCustomer, acceptedJobsUnscheduled,
-    stockLow,
-  ] = await Promise.all([
-    prisma.lead.count({ where: { deletedAt: null, createdAt: today } }),
-    prisma.lead.count({ where: { deletedAt: null, status: { notIn: ['WON', 'LOST'] } } }),
-    prisma.lead.count({ where: { deletedAt: null, ...slaWhere('breached') } }),
-    prisma.lead.count({ where: { deletedAt: null, ...slaWhere('at_risk') } }),
-    prisma.job.count({ where: { deletedAt: null, scheduledStart: today } }),
-    prisma.job.count({ where: { deletedAt: null, status: { notIn: ['COMPLETED', 'VERIFIED', 'CANCELLED'] } } }),
-    prisma.job.count({ where: { deletedAt: null, assignments: { none: {} }, status: { in: ['DRAFT', 'SCHEDULED'] } } }),
-    prisma.invoice.aggregate({
-      where: { deletedAt: null, status: { in: ['SENT', 'PARTIAL', 'OVERDUE'] } },
-      _sum: { total: true, paidAmount: true }, _count: { _all: true },
-    }),
-    prisma.warranty.count({ where: { status: 'ACTIVE', endsAt: { gte: new Date() } } }),
-    prisma.amcContract.count({ where: { deletedAt: null, status: 'active', endDate: { lte: addDays(new Date(), 60) } } }),
-    prisma.quotation.count({ where: { deletedAt: null, status: 'PENDING_APPROVAL' } }),
-    prisma.quotation.count({ where: { deletedAt: null, status: 'CHANGES_REQUESTED' } }),
-    prisma.quotation.count({ where: { deletedAt: null, status: 'SENT' } }),
-    // Work the customer accepted that nobody has put on the calendar yet.
-    prisma.job.count({ where: { deletedAt: null, quotationId: { not: null }, status: 'DRAFT', scheduledStart: null } }),
-    // Only the roles that see the card pay for the balance sums.
-    ['ADMIN', 'DISPATCHER'].includes(role) ? lowStockCount() : 0,
-  ]);
-
-  const outstanding = (invoicesOutstanding._sum.total ?? 0) - (invoicesOutstanding._sum.paidAmount ?? 0);
-
-  const cards = {
-    leadsToday, leadsOpen, slaBreached, slaAtRisk,
-    jobsToday, jobsOpen, jobsUnassigned,
-    outstandingAmount: outstanding, outstandingInvoices: invoicesOutstanding._count._all,
-    warrantiesActive, amcRenewals,
-    quotationsPendingApproval, quotationsChangesRequested, quotationsAwaitingCustomer, acceptedJobsUnscheduled,
-    stockLow,
-  };
-
-  const [funnel, sla, revenue] = await Promise.all([
-    conversionFunnel({ from: last30.gte }),
-    slaComplianceReport({ from: last30.gte }),
-    revenueReport({ from: last30.gte, groupBy: 'day' }),
-  ]);
-
-  const SALES_CARDS = [
-    'leadsToday', 'leadsOpen', 'slaBreached', 'slaAtRisk', 'amcRenewals',
-    'quotationsPendingApproval', 'quotationsChangesRequested', 'quotationsAwaitingCustomer',
-  ];
-  const VISIBLE = {
-    ADMIN: Object.keys(cards),
-    EDITOR: ['leadsToday'],
-    SALES: SALES_CARDS,
-    MANAGER: [...SALES_CARDS, 'acceptedJobsUnscheduled'],
-    DISPATCHER: ['jobsToday', 'jobsOpen', 'jobsUnassigned', 'acceptedJobsUnscheduled', 'stockLow'],
-    TECHNICIAN: ['jobsToday'],
-    ACCOUNTANT: ['outstandingAmount', 'outstandingInvoices'],
-  };
-  const allowed = VISIBLE[role] ?? [];
-
-  return {
-    role,
-    cards: Object.fromEntries(Object.entries(cards).filter(([k]) => allowed.includes(k))),
-    ...(['ADMIN', 'SALES', 'MANAGER'].includes(role) ? { funnel, sla } : {}),
-    ...(role === 'ADMIN' || role === 'ACCOUNTANT' ? { revenue } : {}),
   };
 }

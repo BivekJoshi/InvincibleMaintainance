@@ -28,8 +28,11 @@ const uiSlice = createSlice({
     // that and is the only thing that writes it to the document.
     theme: storedTheme(),
     locale: storedLocale(),
-    sidebarOpen: true,
+    // The desktop sidebar: full, or folded to an icon rail. Remembered per browser.
+    sidebarOpen: stored('sidebarOpen', 'true') !== 'false',
     mobileNavOpen: false,
+    commandOpen: false,
+    notesOpen: false,
     toasts: [],
   },
   reducers: {
@@ -42,7 +45,12 @@ const uiSlice = createSlice({
       state.locale = action.payload;
       persist('locale', action.payload);
     },
-    toggleSidebar(state) { state.sidebarOpen = !state.sidebarOpen; },
+    toggleSidebar(state) {
+      state.sidebarOpen = !state.sidebarOpen;
+      persist('sidebarOpen', String(state.sidebarOpen));
+    },
+    setCommandOpen(state, action) { state.commandOpen = action.payload; },
+    setNotesOpen(state, action) { state.notesOpen = action.payload; },
     setMobileNav(state, action) { state.mobileNavOpen = action.payload; },
     pushToast: {
       reducer(state, action) { state.toasts.push(action.payload); },
@@ -56,12 +64,18 @@ const uiSlice = createSlice({
   },
 });
 
-export const { setTheme, setLocale, toggleSidebar, setMobileNav, pushToast, dismissToast } = uiSlice.actions;
+export const {
+  setTheme, setLocale, toggleSidebar, setMobileNav, setCommandOpen, setNotesOpen, pushToast, dismissToast,
+} = uiSlice.actions;
 export default uiSlice.reducer;
 
 export const selectTheme = (s) => s.ui.theme;
 export const selectLocale = (s) => s.ui.locale;
 export const selectToasts = (s) => s.ui.toasts;
+export const selectSidebarOpen = (s) => s.ui.sidebarOpen;
+export const selectMobileNavOpen = (s) => s.ui.mobileNavOpen;
+export const selectCommandOpen = (s) => s.ui.commandOpen;
+export const selectNotesOpen = (s) => s.ui.notesOpen;
 
 export const toastSuccess = (title, description) => pushToast({ title, description, variant: 'success' });
 export const toastError = (title, description) => pushToast({ title, description, variant: 'destructive' });

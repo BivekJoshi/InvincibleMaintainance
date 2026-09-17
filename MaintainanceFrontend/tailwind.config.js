@@ -51,6 +51,11 @@ export default {
           surface: 'hsl(var(--info-surface))',
           border: 'hsl(var(--info-border))',
         },
+        // Sticky-note papers in the back office's notes drawer.
+        note: Object.fromEntries(['yellow', 'blue', 'green', 'pink', 'purple'].flatMap((c) => [
+          [c, `hsl(var(--note-${c}))`],
+          [`${c}-edge`, `hsl(var(--note-${c}-edge))`],
+        ])),
         // SLA traffic light — used by the lead board and countdown chips.
         sla: {
           ok: 'hsl(var(--sla-ok))',

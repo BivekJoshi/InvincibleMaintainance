@@ -1,5 +1,5 @@
 import {
-  Blocks, Boxes, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
+  Blocks, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
   HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, LogIn,
   MessageSquareQuote, MessageSquareText, Newspaper, Package, Receipt, Ruler, ScrollText, Send, Settings, ShieldCheck,
   Sparkles, Tag, Tags, Timer, UserCog, Users, Wallet, Wrench,
@@ -23,19 +23,35 @@ import { can } from '@/helpers/permissions';
  * `badge` names a live count the shell shows beside the item (`slaBreached`).
  *
  * @typedef {{ to: string, label: string, icon: import('react').ElementType, capability?: string, end?: boolean, soon?: boolean, editLabel?: string, badge?: string }} NavItem
- * @typedef {{ key: string, label: string, items: NavItem[] }} NavGroup
+ * @typedef {{ key: string, label: string, tab: string, items: NavItem[] }} NavGroup
+ * @typedef {{ key: string, label: string, icon: import('react').ElementType, hint: string }} NavTab
  */
+
+/**
+ * The sidebar's tabs. Every group names one, so the sidebar shows one tab's groups at a time:
+ * the daily work, the lists that work is built from, the website, and the platform itself.
+ *
+ * @type {NavTab[]}
+ */
+export const NAV_TABS = [
+  { key: 'home', label: 'Home', icon: Home, hint: 'Daily work: sales, jobs, finance' },
+  { key: 'helpers', label: 'Helpers', icon: LifeBuoy, hint: 'Rate card, templates, materials, page blocks' },
+  { key: 'others', label: 'Others', icon: Globe, hint: 'Website content and blog' },
+  { key: 'settings', label: 'Settings', icon: Settings, hint: 'Users, roles, audit and settings' },
+];
 
 /** @type {NavGroup[]} */
 export const ADMIN_NAV = [
   {
     key: 'overview',
     label: 'Overview',
+    tab: 'home',
     items: [{ to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true }],
   },
   {
     key: 'sales',
     label: 'Sales',
+    tab: 'home',
     items: [
       { to: '/admin/sla', label: 'SLA board', icon: Timer, capability: 'leads:read', badge: 'slaBreached' },
       { to: '/admin/leads', label: 'Leads', icon: Users, capability: 'leads:read' },
@@ -43,26 +59,23 @@ export const ADMIN_NAV = [
       { to: '/admin/customers', label: 'Customers', icon: Contact, capability: 'customers:read' },
       { to: '/admin/surveys', label: 'Site surveys', icon: ClipboardCheck, capability: 'surveys:read' },
       { to: '/admin/quotations', label: 'Quotations', icon: FileText, capability: 'quotations:read' },
-      { to: '/admin/rate-card', label: 'Rate card', icon: Ruler, capability: 'quotations:read', editLabel: 'Edit' },
     ],
   },
   {
     key: 'operations',
     label: 'Operations',
+    tab: 'home',
     items: [
       { to: '/admin/jobs', label: 'Jobs', icon: Briefcase, capability: 'jobs:read' },
       { to: '/admin/dispatch', label: 'Dispatch board', icon: CalendarDays, capability: 'jobs:dispatch', editLabel: 'Board' },
       { to: '/admin/technicians', label: 'Technicians', icon: HardHat, capability: 'technicians:read', editLabel: 'Edit' },
-      { to: '/admin/job-templates', label: 'Job templates', icon: ClipboardList, capability: 'jobs:read', editLabel: 'Edit' },
       { to: '/admin/stock', label: 'Stock', icon: Boxes, capability: 'materials:read' },
-      { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', editLabel: 'Edit' },
-      { to: '/admin/material-categories', label: 'Material categories', icon: FolderTree, capability: 'materials:read', editLabel: 'Edit' },
-      { to: '/admin/suppliers', label: 'Suppliers', icon: Truck, capability: 'materials:read', editLabel: 'Edit' },
     ],
   },
   {
     key: 'finance',
     label: 'Finance',
+    tab: 'home',
     items: [
       { to: '/admin/invoices', label: 'Invoices', icon: Receipt, capability: 'invoices:read', soon: true },
       { to: '/admin/expenses', label: 'Expenses', icon: Wallet, capability: 'expenses:read', soon: true },
@@ -71,13 +84,48 @@ export const ADMIN_NAV = [
   {
     key: 'aftercare',
     label: 'Aftercare',
+    tab: 'home',
     items: [
       { to: '/admin/warranties', label: 'Warranty & AMC', icon: ShieldCheck, capability: 'jobs:read', soon: true },
     ],
   },
   {
+    // The lists quotations and jobs are built from.
+    key: 'catalog',
+    label: 'Catalog',
+    tab: 'helpers',
+    items: [
+      { to: '/admin/rate-card', label: 'Rate card', icon: Ruler, capability: 'quotations:read', editLabel: 'Edit' },
+      { to: '/admin/job-templates', label: 'Job templates', icon: ClipboardList, capability: 'jobs:read', editLabel: 'Edit' },
+      { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', editLabel: 'Edit' },
+      { to: '/admin/material-categories', label: 'Material categories', icon: FolderTree, capability: 'materials:read', editLabel: 'Edit' },
+      { to: '/admin/suppliers', label: 'Suppliers', icon: Truck, capability: 'materials:read', editLabel: 'Edit' },
+    ],
+  },
+  {
+    // The smaller pieces the home page's bands are made of.
+    key: 'blocks',
+    label: 'Page blocks',
+    tab: 'helpers',
+    items: [
+      { to: '/admin/content/features', label: 'Features', icon: Sparkles, capability: 'cms:read' },
+      { to: '/admin/content/list-items', label: 'List items', icon: ListChecks, capability: 'cms:read' },
+      { to: '/admin/content/content-blocks', label: 'Content blocks', icon: Blocks, capability: 'cms:read' },
+      { to: '/admin/content/process-steps', label: 'Process steps', icon: ListOrdered, capability: 'cms:read' },
+    ],
+  },
+  {
+    key: 'messaging',
+    label: 'Messaging',
+    tab: 'helpers',
+    items: [
+      { to: '/admin/platform/message-templates', label: 'Message templates', icon: MessageSquareText, capability: 'messages:admin', editLabel: 'Edit' },
+    ],
+  },
+  {
     key: 'content',
     label: 'Content',
+    tab: 'others',
     items: [
       { to: '/admin/content/home', label: 'Home page', icon: Home, capability: 'cms:read' },
       { to: '/admin/content/hero-slides', label: 'Hero slides', icon: GalleryHorizontal, capability: 'cms:read' },
@@ -94,19 +142,9 @@ export const ADMIN_NAV = [
     ],
   },
   {
-    // The smaller pieces the home page's bands are made of.
-    key: 'blocks',
-    label: 'Page blocks',
-    items: [
-      { to: '/admin/content/features', label: 'Features', icon: Sparkles, capability: 'cms:read' },
-      { to: '/admin/content/list-items', label: 'List items', icon: ListChecks, capability: 'cms:read' },
-      { to: '/admin/content/content-blocks', label: 'Content blocks', icon: Blocks, capability: 'cms:read' },
-      { to: '/admin/content/process-steps', label: 'Process steps', icon: ListOrdered, capability: 'cms:read' },
-    ],
-  },
-  {
     key: 'publishing',
     label: 'Blog & pages',
+    tab: 'others',
     items: [
       { to: '/admin/content/posts', label: 'Posts', icon: Newspaper, capability: 'cms:read' },
       { to: '/admin/content/post-categories', label: 'Post categories', icon: Tags, capability: 'cms:read' },
@@ -116,6 +154,7 @@ export const ADMIN_NAV = [
   {
     key: 'platform',
     label: 'Platform',
+    tab: 'settings',
     items: [
       // ADMIN only: these capabilities are held by ADMIN's `*` alone, and the API refuses every other role.
       { to: '/admin/platform/users', label: 'Users', icon: UserCog, capability: 'users:admin' },
@@ -123,7 +162,6 @@ export const ADMIN_NAV = [
       { to: '/admin/platform/login-activity', label: 'Login activity', icon: LogIn, capability: 'users:admin' },
       { to: '/admin/platform/audit', label: 'Audit log', icon: ScrollText, capability: 'audit:read' },
       { to: '/admin/platform/messages', label: 'Messages', icon: Send, capability: 'messages:admin' },
-      { to: '/admin/platform/message-templates', label: 'Message templates', icon: MessageSquareText, capability: 'messages:admin', editLabel: 'Edit' },
       // EDITOR reads the settings; only ADMIN saves them (settings:write is held by ADMIN's `*` alone).
       { to: '/admin/platform/settings', label: 'Settings', icon: Settings, capability: 'settings:read' },
     ],
@@ -157,6 +195,22 @@ export function navForRole(role) {
     }))
     .filter((group) => group.items.length);
 }
+
+/**
+ * The tabs a role sees, each with its groups; a tab with nothing in it is dropped.
+ *
+ * @param {string|null} role
+ * @returns {(NavTab & { groups: NavGroup[] })[]}
+ */
+export function navTabsForRole(role) {
+  const groups = navForRole(role);
+  return NAV_TABS
+    .map((tab) => ({ ...tab, groups: groups.filter((g) => g.tab === tab.key) }))
+    .filter((tab) => tab.groups.length);
+}
+
+/** The tab an admin path belongs to, or null when no nav item matches it. */
+export const activeNavTab = (pathname) => bestMatch(pathname).best?.group.tab ?? null;
 
 /** `/admin/content` → the first built content screen this role can open, else `/admin`. */
 export function contentHomeFor(role) {
