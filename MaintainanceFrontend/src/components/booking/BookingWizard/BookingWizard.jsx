@@ -138,7 +138,8 @@ export function BookingWizard({ slug }) {
 
   return (
     <div ref={topRef} className="grid gap-8 lg:grid-cols-[1fr_340px] lg:items-start">
-      <div>
+      {/* min-w-0: the day strip scrolls sideways inside this column; without it, it widened the page on a phone. */}
+      <div className="min-w-0">
         <BookingStepper steps={STEPS} step={step} onStep={setStep} />
 
         <AnimatePresence mode="wait">

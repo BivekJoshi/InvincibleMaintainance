@@ -16,11 +16,20 @@ function emptyValue(type) {
     case 'text': case 'textarea': case 'prose': case 'markdown': case 'slug': return '';
     case 'switch': return false;
     case 'relation': return null;
-    case 'stringList': case 'mediaList': case 'weekdays': case 'objectList': return [];
+    case 'stringList': case 'mediaList': case 'weekdays': case 'objectList': case 'lineItems': return [];
     case 'keyValue': return {};
     default: return undefined;
   }
 }
+
+/** A document line as the API returns it (rate in paisa) → the row a `lineItems` field edits (rupees). */
+const toLineValues = (line) => ({
+  rateCardItemId: line.rateCardItemId ?? null,
+  description: line.description ?? '',
+  unit: line.unit ?? 'lump',
+  qty: line.qty ?? 1,
+  rate: line.rate == null ? '' : paisaToRupees(line.rate),
+});
 
 /**
  * A record as the API returns it → the values the form edits.
@@ -42,6 +51,7 @@ export function toFormValues(fields, record) {
   for (const f of flattenFields(fields)) {
     let value = record?.[f.name];
     if (f.type === 'money' && value != null) value = paisaToRupees(value);
+    if (f.type === 'lineItems' && Array.isArray(value)) value = value.map(toLineValues);
     if (value == null) value = f.defaultValue ?? emptyValue(f.type);
     out[f.name] = value;
   }

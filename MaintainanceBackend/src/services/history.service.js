@@ -27,6 +27,11 @@ export const HISTORY_SCOPES = {
     load: (id) => prisma.customer.findUnique({ where: { id }, select: { id: true, deletedAt: true } }),
     where: (id) => [{ model: 'Customer', recordId: id }, ...byParent('CustomerSite', 'customerId', id)],
   },
+  // The approval and customer-response trail of one version; its lines' rows come with it.
+  Quotation: {
+    load: (id) => prisma.quotation.findUnique({ where: { id }, select: { id: true, deletedAt: true } }),
+    where: (id) => [{ model: 'Quotation', recordId: id }, ...byParent('QuotationItem', 'quotationId', id)],
+  },
 };
 
 /**

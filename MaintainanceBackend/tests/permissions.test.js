@@ -68,6 +68,11 @@ describe('role capabilities', () => {
     expect(can('DISPATCHER', 'leads:read')).toBe(true);
     expect(can('DISPATCHER', 'leads:history')).toBe(false);
     expect(can('ACCOUNTANT', 'customers:history')).toBe(false);
+    // Quotations: the people who prepare and approve them read the trail; accounts reads the figures only.
+    expect(can('SALES', 'quotations:history')).toBe(true);
+    expect(can('MANAGER', 'quotations:history')).toBe(true);
+    expect(can('ACCOUNTANT', 'quotations:read')).toBe(true);
+    expect(can('ACCOUNTANT', 'quotations:history')).toBe(false);
   });
 
   it('gives MANAGER every SALES capability plus quotation approval', () => {

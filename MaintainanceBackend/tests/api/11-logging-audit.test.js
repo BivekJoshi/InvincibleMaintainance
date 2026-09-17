@@ -164,7 +164,11 @@ describe('audit extension', () => {
     await prisma.$transaction(async (tx) => {
       await tx.customer.update({ where: { id: customer.id }, data: { name: 'राम बहादुर श्रेष्ठ', phone: customer.phone } });
     });
-    const [row] = await prisma.auditLog.findMany({ where: { model: 'Customer', recordId: customer.id, createdAt: { gte: since } } });
+    // By action, not just "since": the create row can share this millisecond, and findMany has no order of its own.
+    const [row] = await prisma.auditLog.findMany({
+      where: { model: 'Customer', recordId: customer.id, action: 'update', createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+    });
     expect(row.action).toBe('update');
     expect(row.before).toEqual({ name: customer.name });
     expect(row.after).toEqual({ name: 'राम बहादुर श्रेष्ठ' });

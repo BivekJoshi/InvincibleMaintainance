@@ -1,6 +1,6 @@
 /** Mirrors the backend's src/shared/enums.js. Keep the two in step. */
 
-export const ROLES = ['ADMIN', 'EDITOR', 'SALES', 'DISPATCHER', 'TECHNICIAN', 'ACCOUNTANT', 'SURVEYOR'];
+export const ROLES = ['ADMIN', 'EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'TECHNICIAN', 'ACCOUNTANT', 'SURVEYOR'];
 
 /** Roles that work off a Technician profile and use the /tech app. */
 export const FIELD_ROLES = ['TECHNICIAN', 'SURVEYOR'];
@@ -9,7 +9,7 @@ export const FIELD_ROLES = ['TECHNICIAN', 'SURVEYOR'];
  * Roles that belong in the back office. ADMIN and DISPATCHER appear in both —
  * they run dispatch from a desk and can also "view as" a technician in the field.
  */
-export const OFFICE_ROLES = ['ADMIN', 'EDITOR', 'SALES', 'DISPATCHER', 'ACCOUNTANT'];
+export const OFFICE_ROLES = ['ADMIN', 'EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'ACCOUNTANT'];
 
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON', 'LOST'];
 export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
@@ -81,7 +81,58 @@ export const SURVEY_METRICS = [
   'humidity', 'voltage', 'pressure', 'observation',
 ];
 
-export const QUOTATION_STATUSES = ['DRAFT', 'SENT', 'APPROVED', 'REJECTED', 'EXPIRED', 'CONVERTED'];
+/** APPROVED means the customer accepted; OFFICE_APPROVED is the internal approval. */
+export const QUOTATION_STATUSES = [
+  'DRAFT', 'PENDING_APPROVAL', 'OFFICE_APPROVED', 'SENT', 'CHANGES_REQUESTED',
+  'APPROVED', 'REJECTED', 'EXPIRED', 'SUPERSEDED', 'CONVERTED',
+];
+
+/**
+ * Where a quotation may move next. Mirrors the API's `shared/stateMachines.js` (the parity
+ * test in `crmMirror.test.js`); the API asserts every move, this only decides what is offered.
+ */
+export const QUOTATION_TRANSITIONS = {
+  DRAFT: ['PENDING_APPROVAL'],
+  PENDING_APPROVAL: ['OFFICE_APPROVED', 'DRAFT'],
+  OFFICE_APPROVED: ['SENT', 'DRAFT'],
+  SENT: ['APPROVED', 'CHANGES_REQUESTED', 'REJECTED', 'EXPIRED', 'SUPERSEDED'],
+  CHANGES_REQUESTED: ['SUPERSEDED'],
+  REJECTED: ['SUPERSEDED'],
+  EXPIRED: ['SUPERSEDED'],
+  APPROVED: ['CONVERTED'],
+  SUPERSEDED: [],
+  CONVERTED: [],
+};
+
+/** A quotation's status in the office's words. */
+export const QUOTATION_STATUS_LABELS = {
+  DRAFT: 'Draft',
+  PENDING_APPROVAL: 'Needs approval',
+  OFFICE_APPROVED: 'Ready to send',
+  SENT: 'With customer',
+  CHANGES_REQUESTED: 'Changes asked',
+  APPROVED: 'Accepted',
+  REJECTED: 'Declined',
+  EXPIRED: 'Expired',
+  SUPERSEDED: 'Replaced',
+  CONVERTED: 'Accepted · job created',
+};
+
+/**
+ * The quotation list's tabs — the API's `?stage=` queues (`QUOTATION_STAGES` in its enums).
+ * `counted` shows the tab's total — to everyone, or only to holders of `countCapability`
+ * (the approval queue is a to-do list for approvers, and a status for everyone else).
+ */
+export const QUOTATION_STAGE_TABS = [
+  { value: 'drafts', label: 'Drafts', statuses: ['DRAFT'] },
+  { value: 'approval', label: 'Needs approval', statuses: ['PENDING_APPROVAL'], counted: true, countCapability: 'quotations:approve' },
+  { value: 'ready', label: 'Ready to send', statuses: ['OFFICE_APPROVED'] },
+  { value: 'with_customer', label: 'With customer', statuses: ['SENT'] },
+  { value: 'changes_requested', label: 'Customer asked for changes', statuses: ['CHANGES_REQUESTED'], counted: true },
+  { value: 'won', label: 'Won', statuses: ['APPROVED', 'CONVERTED'] },
+  { value: 'lost', label: 'Declined / Expired', statuses: ['REJECTED', 'EXPIRED'] },
+  { value: 'all', label: 'All', statuses: null },
+];
 export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 'VOID'];
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const UNITS = ['sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set'];
@@ -118,6 +169,10 @@ export const STATUS_STYLES = {
   REJECTED: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
   EXPIRED: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   CONVERTED: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300',
+  PENDING_APPROVAL: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  OFFICE_APPROVED: 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300',
+  CHANGES_REQUESTED: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300',
+  SUPERSEDED: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
   PARTIAL: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
   PAID: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
   OVERDUE: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',

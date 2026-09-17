@@ -111,6 +111,7 @@ npm test               # vitest
 cd MaintainanceFrontend
 npm run dev            # Vite on :5400
 npm test               # vitest (jsdom)
+npm run test:e2e       # playwright: the quotation loop end to end (starts its own API :4010 + Vite :5410)
 ```
 
 Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password123`).

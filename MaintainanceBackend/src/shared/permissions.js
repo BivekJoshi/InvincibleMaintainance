@@ -16,7 +16,7 @@ export const PERMISSIONS = {
   // leads and customers hold it; a dispatcher reads a lead to plan a visit, not its trail.
   SALES: [
     'leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history',
-    'quotations:read', 'quotations:write', 'jobs:read', 'services:read',
+    'quotations:read', 'quotations:write', 'quotations:history', 'jobs:read', 'services:read',
     'surveys:read', 'surveys:write', 'technicians:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
@@ -24,7 +24,7 @@ export const PERMISSIONS = {
   // held here and by ADMIN ('*') only.
   MANAGER: [
     'leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history',
-    'quotations:read', 'quotations:write', 'quotations:approve', 'jobs:read', 'services:read',
+    'quotations:read', 'quotations:write', 'quotations:history', 'quotations:approve', 'jobs:read', 'services:read',
     'surveys:read', 'surveys:write', 'technicians:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],

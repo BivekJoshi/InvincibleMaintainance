@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
   Users, Timer, AlertTriangle, Briefcase, Receipt, ShieldCheck, RefreshCw, TrendingUp,
+  FileCheck2, MessageSquareWarning, Send, Wrench,
 } from 'lucide-react';
 import { SHELL_POLL_MS } from '@/config/constants';
 import { useGetDashboardQuery } from '@/api/dashboardApi';
@@ -26,6 +27,12 @@ const CARDS = {
   outstandingInvoices: { label: 'Unpaid invoices', icon: Receipt, to: '/admin/invoices', soon: true },
   warrantiesActive: { label: 'Active warranties', icon: ShieldCheck, to: '/admin/warranties', soon: true },
   amcRenewals: { label: 'AMC renewals due', icon: RefreshCw, to: '/admin/warranties', soon: true },
+  // Phase F: each opens its quotation queue.
+  quotationsPendingApproval: { label: 'Quotations to approve', icon: FileCheck2, to: '/admin/quotations?stage=approval', tone: 'warn' },
+  quotationsChangesRequested: { label: 'Customers asked for changes', icon: MessageSquareWarning, to: '/admin/quotations?stage=changes_requested', tone: 'warn' },
+  quotationsAwaitingCustomer: { label: 'Quotations with customers', icon: Send, to: '/admin/quotations?stage=with_customer' },
+  // The jobs screen comes in Phase H.
+  acceptedJobsUnscheduled: { label: 'Accepted jobs to schedule', icon: Wrench, to: '/admin/jobs', tone: 'warn', soon: true },
 };
 
 const TONES = {

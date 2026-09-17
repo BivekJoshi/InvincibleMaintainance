@@ -23,7 +23,7 @@ Sign in with `admin@gharjatan.com.np` / `Password123` (all seeded logins are in 
 backend README).
 
 ```
-npm run dev      npm run build      npm run preview      npm run lint      npm test
+npm run dev      npm run build      npm run preview      npm run lint      npm test      npm run test:e2e
 ```
 
 ### Lint and CI
@@ -37,7 +37,8 @@ component, mostly `three/motion/motionKit.jsx`) are left as warnings: they only 
 
 `.github/workflows/ci.yml` runs on every push to `prabesh`, `admin/**` and `DEVELOPMENT`, and on pull
 requests into `prabesh` or `DEVELOPMENT`. The frontend job, on Node 20: `npm ci` → `npm run lint` →
-`npm test` → `npm run build`. Phase F2 adds an end-to-end job.
+`npm test` → `npm run build`. A third job runs the end-to-end suite against a Postgres service and
+uploads the Playwright trace when it fails.
 
 ### Tests
 
@@ -50,6 +51,32 @@ requests into `prabesh` or `DEVELOPMENT`. The frontend job, on Node 20: `npm ci`
 - `src/test/renderWithProviders.jsx` renders a component inside a fresh store and a memory **data** router —
   the only kind `useBlocker` works in — with `signedInAs(role)` for capability checks.
 - Money, phone numbers and Nepali text are the three things that break (CLAUDE.md rule 5). Test them.
+
+### End-to-end tests (Phase F2)
+
+`npm run test:e2e` runs [Playwright](https://playwright.dev) over the whole quotation loop in a real
+browser: a customer books at `/book` on a phone-sized screen, the office prices and approves the
+quotation, the customer asks for changes in Nepali, the office revises and approves again, the
+customer accepts — and the lead, the job in the dispatch queue and the notifications are checked
+over the API.
+
+```bash
+npx playwright install chromium     # once
+npm run test:e2e                    # or: npx playwright test --ui
+```
+
+- **It starts its own servers** (`playwright.config.js`): the API on **:4010** and Vite on **:5410**,
+  so it never collides with `npm run dev` on :4000 / :5400. `VITE_PROXY_TARGET` points the dev
+  server's `/api` proxy at that API.
+- **The database** is the `*_test` one (`E2E_DATABASE_URL`, else `TEST_DATABASE_URL`, else
+  `maintainance_test`); `e2e/global-setup.js` applies the migrations and seeds it. Both are
+  idempotent, so nothing is wiped: the spec creates its own uniquely named customer and asserts only
+  on what it made. For a clean slate, `npm run test:api:prepare` in the backend. A database whose
+  name does not end in `_test` is refused.
+- `e2e/support/e2eEnv.js` holds the ports, the database URL and the API's environment;
+  `e2e/support/api.js` has the signed-in HTTP helpers and `signIn(page, role)`.
+- Steps a person takes run in the browser; set-up that is not under test (the convert, the surveyor's
+  submission, the second approval round) runs over the API, which keeps the test about the screens.
 
 ### Dependencies added in Phase C1
 

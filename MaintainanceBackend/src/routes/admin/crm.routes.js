@@ -171,6 +171,11 @@ router.post('/quotations', writeQ, validate({ body: s.quotationSchema }),
   asyncHandler(async (req, res) => created(res, await quotations.createQuotation(req.body, req.user.id))));
 router.get('/quotations/:id', readQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await quotations.getQuotation(req.params.id))));
+router.get('/quotations/:id/history', requires('quotations:history'), validate({ params: idParam, query: s.historyQuery }),
+  asyncHandler(async (req, res) => {
+    const { items, meta } = await recordHistory('Quotation', req.params.id, req.validatedQuery);
+    ok(res, items, meta);
+  }));
 router.put('/quotations/:id', writeQ, validate({ params: idParam, body: s.quotationUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await quotations.updateQuotation(req.params.id, req.body))));
 // Internal approval: no quotation is sent until a MANAGER/ADMIN (or the auto-approval limit) approves it.

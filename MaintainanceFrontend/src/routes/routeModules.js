@@ -51,7 +51,7 @@ export const CustomerDetailPage = route(() => import('@/pages/admin/CustomerDeta
 export const SurveysPage = route(() => import('@/pages/admin/SurveysPage'));
 export const SurveyReviewPage = route(() => import('@/pages/admin/SurveyReviewPage'));
 export const QuotationsPage = route(() => import('@/pages/admin/QuotationsPage'));
-export const QuotationBuilderPage = route(() => import('@/pages/admin/QuotationBuilderPage'));
+export const QuotationBuilderPage = route(() => import('@/pages/admin/QuotationBuilderPage/QuotationBuilderPage'));
 export const ResourceListPage = route(() => import('@/pages/admin/ResourceListPage'));
 export const ResourceEditPage = route(() => import('@/pages/admin/ResourceEditPage'));
 export const HomeComposerPage = route(() => import('@/pages/admin/HomeComposerPage'));

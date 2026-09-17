@@ -11,9 +11,10 @@ import { cn } from '@/helpers/utils';
 import { FormField } from '../FormField';
 
 /**
- * `{ type: 'date' }` — a calendar day. The value is a UTC ISO string for the start
- * of that day in Kathmandu, so the day reads the same in the admin, on the site and
- * in the database whatever timezone the editor's laptop is set to.
+ * `{ type: 'date', time? }` — a calendar day. The value is a UTC ISO string for the start
+ * of that day in Kathmandu (or `time`, `HH:mm` — `'23:59'` for "valid until" days), so the
+ * day reads the same in the admin, on the site and in the database whatever timezone the
+ * editor's laptop is set to.
  */
 export function DateField({ field, id }) {
   const { field: input, fieldState } = useController({ name: field.name });
@@ -44,7 +45,7 @@ export function DateField({ field, id }) {
                 selected={parseDateString(date)}
                 defaultMonth={parseDateString(date)}
                 onSelect={(day) => {
-                  input.onChange(day ? fromKathmanduParts(toDateString(day)) : undefined);
+                  input.onChange(day ? fromKathmanduParts(toDateString(day), field.time) : undefined);
                   setOpen(false);
                 }}
               />

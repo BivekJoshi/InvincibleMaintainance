@@ -29,11 +29,11 @@ function Badge({ className, variant, ...props }) {
 }
 
 /** Renders any lead/job/quotation/invoice status with its own colour. */
-function StatusBadge({ status, className }) {
+function StatusBadge({ status, label, className }) {
   if (!status) return null;
   return (
     <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', STATUS_STYLES[status] ?? STATUS_STYLES.DRAFT, className)}>
-      {titleCase(status)}
+      {label ?? titleCase(status)}
     </span>
   );
 }

@@ -19,6 +19,11 @@ src/
 ├── config/         Constants, env vars, locale rules, the theme's vocabulary.
 ├── helpers/        Pure functions.
 └── styles/         Tailwind entry + CSS variables.
+
+e2e/                The Playwright suite: the quotation loop end to end (Phase F2).
+├── quotation-flow.spec.js
+├── global-setup.js     migrates and seeds the *_test database
+└── support/            e2eEnv.js (ports, database, the API's environment), api.js (HTTP + signIn)
 ```
 
 ## api/
@@ -84,7 +89,7 @@ The CRM files (Phase E):
 | `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
 | `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog`, `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (typed entries; shows the response result), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice), `ConvertResult` (what a convert made, with links). |
 | `customers/` | `CustomerFormSheet` (new customer) and `MapPinInput` ("use map pin": pasted coordinates fill a site's latitude and longitude — it sits in the site form's `intro`, inside the form). |
-| `public/`, `booking/`, `quotations/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. |
+| `public/`, `booking/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. |
 
 A component used by exactly one page can live beside its domain here; a component
 used by two pages **must**. Nothing imports upward from `pages/`.
@@ -169,6 +174,7 @@ One file per field type under `fields/`. Every spec has `name`, `type`, `label`,
 | `media` | media id | — |
 | `mediaList` | ordered media ids; drag or move buttons | `maxItems`, `addLabel` |
 | `weekdays` | sorted day numbers, 0 = Sunday … 6 = Saturday | — |
+| `lineItems` | a priced document's lines — description, rate-card item, unit, qty and a rate in **rupees** (the record's paisa are converted in); rows move and are removed, a blank row is dropped, and the amounts are a preview until the server saves | `rateCard` (the rate-card rows), `maxItems` |
 | `objectList` | an array of small objects, one row each (move up/down, remove); a completely empty row is dropped on save — give the schema a `z.preprocess` that drops blank rows too, since validation runs first | `itemFields: [{ name, label, type?: 'text' \| 'select', options?, placeholder?, maxLength?, className? }]`, `itemLabel`, `addLabel`, `maxItems` |
 | `group` | collapsible section (e.g. SEO); opens itself on an error inside. `variant: 'card'` is an always-open titled card (the settings page) | `fields`, `defaultOpen`, `variant` |
 
@@ -333,6 +339,38 @@ Icons are picked, not typed: `resources/iconOptions.jsx` offers exactly `DataIco
 Check before step 2 how the **public site** reads the model: its order column (`sortable`), where a record shows
 (`publicHref`), and whether the public query overlays translations (`withLocale`) — a Nepali tab the site never
 reads is a trap for an editor.
+
+## Quotations (Phase F2)
+
+| Route | Page | Does |
+|---|---|---|
+| `/admin/quotations` | `QuotationsPage` | DataTable v2 under the API's `?stage=` tabs — Drafts · Needs approval · Ready to send · With customer · Customer asked for changes · Won · Declined/Expired · All. An approver opens on **Needs approval**; the count on that tab is theirs (`countCapability`), everyone else sees the tab without a number. A row's menu offers exactly what its state allows |
+| `/admin/quotations/:id` | `QuotationBuilderPage/` | one version: the form (a draft only), the action bar, the notices, the totals, the customer link and its messages, the trail, and the History tab |
+| `/quotation/:token` | `pages/public/QuotationPublicPage/` | the customer's page: the document, then **Accept · Ask for changes · Decline** |
+
+- **`helpers/quotationActions.js`** is the single table of what may be done: `quotationActions(quotation, { can, userId })`
+  returns `[{ key, label, primary?, note?, disabledReason? }]`, and `waitingFor()` is the line under the title.
+  Self-approval (`quotation.makerChecker`, sent by the API on the record) disables Approve and says why. The list,
+  the builder and their tests all read this, and a unit test holds every action to `QUOTATION_TRANSITIONS`.
+- **`hooks/useQuotationActions.jsx`** runs one: `const [runAction, actionDialogs] = useQuotationActions()`. Send back
+  and pull back ask for a note (`FormDialog`), approve takes an optional remark, sending, revising and converting
+  confirm first, and a revision opens its new version. A refusal toasts the API's reason.
+- The builder is `ResourceForm` with a **`lineItems`** field (see the kit table) plus a card group for the terms.
+  It is `readOnly` unless the quotation is a DRAFT and the reader holds `quotations:write`; `onDirtyChange` holds
+  the action bar while there are unsaved edits, because those buttons act on the **saved** record.
+- `sections/`: `QuotationActionBar` (buttons, with the reason a disabled one is disabled), `QuotationNotices` (the
+  customer's change request, what a revision answers, a send-back reason, an automatic approval, the self-approval
+  rule), `SendPanel` (the public link, Copy, Open, and each SMS/email with its delivery state) and `VersionSwitcher`.
+- The customer's page keeps **every word in one object**, `quotationPageCopy.js`, for Phase J1 to translate, and
+  decides what to show with the pure `quotationPageState.js` (open · accepted · changes · declined · expired ·
+  replaced · replacedPending · closed) — both beside the page, both unit-tested. Its three buttons each open one
+  confirm step: Accept repeats the total, Ask for changes takes a message (5–1000 characters), Decline an optional
+  reason. No login, no code, no typed name (D4). It is checked at 360px in the end-to-end run.
+- `api/quotationsApi.js` has the queues (`getQuotations`, `getQuotationStageCount`), the record, the draft save and
+  the moves (`submit · approve · sendBack · pullBack · send · revise · convertToJob`). Every move invalidates the
+  quotation, the list, `Dashboard`, `History` and `Notification`.
+- `config/constants.js` mirrors the API's `QUOTATION_STATUSES`, `QUOTATION_TRANSITIONS`, the stage tabs and the
+  status labels (the office's words, not the enum's); `crmMirror.test.js` fails if any of them drift.
 
 ## Leads and customers (Phase E)
 
@@ -586,7 +624,7 @@ site has now) and `pageSlugs` (the live generic pages), which `Cta` and the admi
 
 ## Tests
 
-`npm test` (Vitest, jsdom). A test sits **beside the file it tests** as `*.test.js(x)`. `src/test/` holds
+`npm test` (Vitest, jsdom) and `npm run test:e2e` (Playwright — `e2e/`, see the README). A test sits **beside the file it tests** as `*.test.js(x)`; the end-to-end suite is the exception, because it drives both apps at once rather than one module. `src/test/` holds
 only the harness: `setup.js` (jest-dom matchers, browser API stubs — `ResizeObserver`, `IntersectionObserver`,
 `matchMedia`…), `renderWithProviders.jsx` (a fresh store and a memory data router, plus `signedInAs(role)`) and
 `mockApi.js` (`mockApi(handler)` stubs `fetch` and returns the calls as `{ method, path, query, body }`; `json`,

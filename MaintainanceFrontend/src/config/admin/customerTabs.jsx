@@ -15,7 +15,7 @@ import { formatDate, formatNpr, titleCase } from '@/helpers/format';
 const soon = <StateBadge title="This record’s page is not built yet">Soon</StateBadge>;
 const number = (r) => <span className="font-mono text-xs">{r.number}</span>;
 /** Warranties and AMC are mounted for these roles (aftercare.routes.js authorize). */
-const AFTERCARE_ROLES = ['ADMIN', 'DISPATCHER', 'SALES'];
+const AFTERCARE_ROLES = ['ADMIN', 'DISPATCHER', 'SALES', 'MANAGER'];
 
 /** @type {CustomerRecordTab[]} */
 export const CUSTOMER_RECORD_TABS = [

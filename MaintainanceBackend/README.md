@@ -41,7 +41,8 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 The seed builds a browsable demo: 18 services, 3 projects, a rate card, 10 materials with
 opening stock, a blog (2 published posts in 2 categories), an About page at `/about`, and a complete pipeline — leads (one already SLA-breached, one at risk) →
 customer → approved quotation → completed job → warranty → part-paid invoice → AMC contract.
-It also seeds one quotation at each step of the approval loop — DRAFT (sent back once), PENDING_APPROVAL,
+It also seeds `quotation.validDays` (15 — the valid-until date a quotation gets when nobody sets one) and
+one quotation at each step of the approval loop — DRAFT (sent back once), PENDING_APPROVAL,
 OFFICE_APPROVED, SENT and CHANGES_REQUESTED (a Nepali customer's message) — the
 `quotation.makerChecker` / `quotation.autoApproveBelow` settings, and the `quotation_accepted`,
 `quotation_changes_received` and `quotation_changes_requested_staff` templates in English and Nepali.

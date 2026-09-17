@@ -28,7 +28,7 @@ site is complete** and `vite build` succeeds. The **back office is the gap**: th
 | SLA board | ✅ | ✅ |
 | **Customers + sites** | ✅ | ❌ none |
 | Site surveys | ✅ | ✅ inbox + review + build quotation |
-| **Quotations** | ✅ (no internal approval) | ⚠ list + builder; no create, delete, convert-to-job |
+| **Quotations** | ✅ approval + customer answer (F1) | ✅ stage queues, builder with the action bar, the customer's link (F2) |
 | Jobs, dispatch, technicians, templates | ✅ | ❌ none (only the `/tech` field app) |
 | Materials, stock, suppliers | ✅ | ❌ none |
 | Invoices, payments, expenses, reports | ✅ | ❌ none |
@@ -51,10 +51,14 @@ scroll-area, radio-group, accordion.
                                                                                        │
                                                                                        ▼
  Job starts ◄── Customer accepts ◄── Offered to customer ◄── Back-office approval ◄── Quotation drafted
-    ❌ manual       ⚠ token link        ✅ token link + SMS      ❌ DOES NOT EXIST        ✅ office prices survey
-    dispatcher      expired quotes      but nothing gates it                             (engineer never sees
-    not notified    still approvable                                                     rates — "money wall")
+    ✅ created      ✅ Accept ·         ✅ token link + SMS,     ✅ submit → MANAGER      ✅ office prices survey
+    automatically   Ask for changes ·   only after approval     approves (never their    (engineer never sees
+    dispatchers     Decline, expiry                             own), or auto below      rates — "money wall")
+    told            refused at decide                           the threshold
 ```
+
+**Closed by Phase F (F1 backend 2026-09-16, F2 screens 2026-09-17).** The four gaps below were the
+reason for the phase; each is answered where it is named.
 
 Gaps against the intended business process:
 
@@ -545,7 +549,7 @@ outright; it narrowed #13 (the customer-site routes now validate `:id` / `:siteI
 - **Kit additions, generic:** `FormDialog`, `RecordHistory`, `DataTable searchable`, `RecordCombobox fixedOptions` (a
   relation filter's "Unassigned").
 
-### Phase F — Quotation approval, customer response & job hand-off · ~5 days · F1 ✅ 2026-09-16
+### Phase F — Quotation approval, customer response & job hand-off · ~5 days · ✅ done (F1 2026-09-16, F2 2026-09-17)
 
 Two prompts: `PHASE-F1-quotation-backend.md`, then `PHASE-F2-quotation-screens.md` (screens and the first Playwright end-to-end test).
 
@@ -581,6 +585,32 @@ Two prompts: `PHASE-F1-quotation-backend.md`, then `PHASE-F2-quotation-screens.m
 - The public page is simple and mobile-first: Accept · Ask for changes · Decline.
 - Dashboard counts.
 - The first **Playwright end-to-end test** drives this whole loop in CI.
+
+**Deviations (Phase F2, 2026-09-17)** — built differently from the plan, or beyond it. F2 closed no new §3
+defect; #13 and #15 are unchanged.
+- **The builder became a page folder** (`QuotationBuilderPage/`) on the usual rule, with a `sections/` file per
+  band: the action bar, the notices, the send panel and the version switcher.
+- **Two kit additions rather than page code:** a **`lineItems`** field type (the old
+  `components/quotations/QuotationLineEditor` adapted into `ResourceForm`, which is why that folder is gone), and
+  `ResourceForm`'s **`onDirtyChange`**, so the page can hold Submit while a draft has unsaved edits — the action
+  bar acts on the saved record.
+- **"Needs approval" is a tab for everyone**, but only an approver sees its count (`countCapability`). The plan said
+  the tab was approvers-only; sales needs to see what is waiting, and the dashboard card links there.
+- **The disabled reason is a line under the action bar, not a tooltip** — it has to be readable on a phone, and a
+  tooltip needs a provider the screens' tests do not render.
+- **Three small backend additions F2 needed** (the screens would otherwise be blind or unusable):
+  `GET /admin/quotations/:id` also returns the `survey` it was priced from, the customer `messages` about it and
+  `makerChecker`; a **`quotations:history`** capability (SALES, MANAGER) with
+  `GET /admin/quotations/:id/history` for the History tab every detail page carries (§7); and the setting
+  **`quotation.validDays`** (15), which gives a quotation built from a survey or a convert a valid-until date —
+  without one, submitting it always failed until someone opened the form and picked a date.
+- **A booking bug the end-to-end run found and fixed:** the wizard's column had no `min-w-0`, so on a phone the
+  horizontally scrolling day strip widened the page and the Continue button could not be tapped.
+- **The end-to-end suite starts its own servers** on :4010 and :5410 rather than the prompt's :5400, so it runs
+  while `npm run dev` is up. It prepares the `*_test` database with `migrate deploy` + seed (never `reset`), and
+  the spec keys everything to a unique name, so a database other suites have used is fine.
+- `MANAGER` had to be added to the frontend's `ROLES` and `OFFICE_ROLES` — without the latter a manager signs in
+  and is bounced out of `/admin` — and to the aftercare tabs' role list.
 
 **Acceptance:** the whole loop runs on the seeded demo:
 1. booking → survey → priced draft
@@ -708,7 +738,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | C Admin UI kit ✅ 2026-09-14 (C1 + C2) | 4 | 9 | DataTable v2, ResourceForm, registry, nav |
 | D Services & CMS ✅ 2026-09-16 (D1 + D2) | 6 | 15 | Editors run the whole public site |
 | E Leads & CRM ✅ 2026-09-16 | 5 | 20 | Sales works entirely in the UI |
-| F Quotation approval (F1 ✅ 2026-09-16 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
+| F Quotation approval ✅ 2026-09-17 (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
 | G Audit & platform UI | 3 | 28 | Traceability, users, templates |
 | H Operations (H1 + H2) | 7 | 35 | Dispatch and job management |
 | I Finance & aftercare | 6 | 41 | Billing and retention |

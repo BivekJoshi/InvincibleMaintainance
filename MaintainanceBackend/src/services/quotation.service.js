@@ -43,6 +43,15 @@ function closedError(status) {
   return closed('QUOTATION_NOT_OPEN', NOT_OPEN_MESSAGE);
 }
 
+/** End of the Kathmandu day `quotation.validDays` (default 15) from now, as a UTC instant. */
+async function defaultValidUntil(now = new Date()) {
+  const days = Math.max(1, Math.round(Number(await getSetting('quotation.validDays', 15)) || 15));
+  const kathmandu = new Date(now.getTime() + KATHMANDU_OFFSET_MS);
+  const endOfDay = Date.UTC(kathmandu.getUTCFullYear(), kathmandu.getUTCMonth(), kathmandu.getUTCDate() + days, 23, 59, 59, 999);
+  return new Date(endOfDay - KATHMANDU_OFFSET_MS);
+}
+const KATHMANDU_OFFSET_MS = (5 * 60 + 45) * 60_000;
+
 /** "NPR 12,345.00" — how staff timelines state an amount. */
 const npr = (paisa) => `NPR ${formatNpr(paisa, { withSymbol: false })}`;
 const label = (q) => `${q.number} v${q.version}`;
@@ -152,15 +161,37 @@ export async function listQuotations(query) {
   return { items, meta: meta({ page, limit, total }) };
 }
 
-/** The staff view: the quotation, who moved it, and every version of it. */
+/**
+ * The staff view: the quotation, who moved it, every version of it, the survey it was
+ * priced from, the SMS and emails that went to the customer about it, and whether the
+ * maker-checker rule is on.
+ */
 export async function getQuotation(id) {
   const q = await findQuotation(id, {
     revisions: { select: { id: true, number: true, version: true, status: true } },
     parent: { select: { id: true, number: true, version: true, status: true, decisionNote: true } },
     supersededBy: { select: { id: true, number: true, version: true, status: true } },
   });
-  return { ...q, versions: await versionChain(q) };
+  const [versions, survey, messages, makerChecker] = await Promise.all([
+    versionChain(q),
+    prisma.siteSurvey.findFirst({
+      where: { quotationId: { in: await lineageIds(q) }, deletedAt: null },
+      select: { id: true, number: true, status: true },
+    }),
+    prisma.messageLog.findMany({
+      where: { relatedModel: 'Quotation', relatedId: id, templateKey: { in: CUSTOMER_TEMPLATES } },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { id: true, channel: true, templateKey: true, toAddress: true, status: true, error: true, createdAt: true },
+    }),
+    // So the screen can say "someone else must approve this" without reading settings (MANAGER cannot).
+    getSetting('quotation.makerChecker', true).then((v) => v !== false),
+  ]);
+  return { ...q, versions, survey, messages, makerChecker };
 }
+
+/** The customer's own messages about a quotation — what the Send panel reports on. */
+const CUSTOMER_TEMPLATES = ['quotation_sent', 'quotation_accepted', 'quotation_changes_received'];
 
 /**
  * @param {object} input  rupee-denominated, as the API receives it
@@ -171,6 +202,8 @@ export async function getQuotation(id) {
 export async function createQuotation(input, userId, client = prisma) {
   const { items, discount = 0, vatApplied = true, ...rest } = input;
   const totals = await buildTotals(items, { discount, vatApplied });
+  // Submitting needs a validity date; a quotation built from a survey or a convert has none of its own.
+  if (!rest.validUntil) rest.validUntil = await defaultValidUntil();
 
   const run = async (tx) => {
     const number = await nextNumber(tx, 'QT');

@@ -46,7 +46,7 @@ const LEAVE = {
  *
  * Field types: text, textarea, prose (alias markdown), number, money, switch,
  * select/enum, relation, date, datetime, slug, stringList, keyValue, media,
- * mediaList, weekdays, objectList, and `group` for sections. See `FieldRenderer.jsx`.
+ * mediaList, weekdays, objectList, lineItems, and `group` for sections. See `FieldRenderer.jsx`.
  *
  * @param {object} props
  * @param {import('zod').ZodTypeAny} props.schema          validates the form values (money in rupees)
@@ -65,6 +65,7 @@ const LEAVE = {
  * @param {boolean} [props.readOnly]                      shows the values with every control disabled and no Save
  * @param {import('react').ReactNode} [props.intro]       shown above the fields, e.g. a record's preview in a sheet
  * @param {boolean} [props.stickyActions]                 page mode: keep Save in view at the bottom of a long form
+ * @param {(dirty: boolean) => void} [props.onDirtyChange]  told when the form gains or loses unsaved changes
  */
 export function ResourceForm({
   schema,
@@ -85,6 +86,7 @@ export function ResourceForm({
   readOnly = false,
   intro,
   stickyActions = false,
+  onDirtyChange,
 }) {
   const formId = `form-${useId().replace(/[^\w-]/g, '')}`;
   const initial = useMemo(() => toFormValues(fields, defaultValues), [fields, defaultValues]);
@@ -95,6 +97,9 @@ export function ResourceForm({
   const [formError, setFormError] = useState(null);
   const [confirm, confirmDialog] = useConfirm();
   const { blocker, setBypass } = useUnsavedChangesGuard(guard && isDirty);
+
+  // A page that acts on the saved record (submit a quotation) holds its buttons while this form has edits.
+  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
   // A record that arrives or refetches after mount replaces the values — unless someone is mid-edit.
   const dirty = useRef(isDirty);

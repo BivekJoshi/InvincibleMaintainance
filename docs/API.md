@@ -225,8 +225,8 @@ or any subfolder — only an empty folder is deleted.
 ## Admin — CRM (`ADMIN`, `SALES`, `MANAGER`)
 
 Capabilities: leads — `leads:read` (SALES, DISPATCHER), `leads:write` (SALES); customers — `customers:read`
-(SALES, DISPATCHER, ACCOUNTANT), `customers:write` (SALES); history — `leads:history` / `customers:history`
-(SALES); quotations — `quotations:read` (SALES, ACCOUNTANT), `quotations:write` (SALES),
+(SALES, DISPATCHER, ACCOUNTANT), `customers:write` (SALES); history — `leads:history` / `customers:history` /
+`quotations:history` (SALES, MANAGER); quotations — `quotations:read` (SALES, ACCOUNTANT), `quotations:write` (SALES),
 `quotations:approve` (MANAGER only). **MANAGER** holds every SALES capability plus `quotations:approve`, and can be
 assigned leads. ADMIN holds all of them.
 
@@ -351,9 +351,18 @@ GET    /admin/quotations            quotations:read · ?stage&status&customerId&
 GET    /admin/quotations/:id        quotations:read · adds parent { id, number, version, status, decisionNote },
                                     supersededBy { id, number, version, status }, revisions[], and
                                     versions[] { id, number, version, status, total, createdAt } — the
-                                    whole version chain, oldest first
-POST   /admin/quotations            quotations:write · creates a DRAFT (validUntil optional here, but
-                                    required in the future to submit)
+                                    whole version chain, oldest first — plus, for the screens:
+                                    survey { id, number, status } | null (the survey any version of it was
+                                    priced from), messages[] { id, channel, templateKey, toAddress, status,
+                                    error, createdAt } (the customer's SMS and email about it, newest first,
+                                    max 20) and makerChecker (the setting, so the page can say why an
+                                    author may not approve their own)
+GET    /admin/quotations/:id/history  quotations:history (SALES, MANAGER, ADMIN) · ?page&limit
+                                    the quotation's own audit rows and its lines', newest first — the same
+                                    shape as the lead and customer history (no ip, no user agent)
+POST   /admin/quotations            quotations:write · creates a DRAFT. Without `validUntil` it is valid to
+                                    the end of the Kathmandu day `quotation.validDays` (default 15) away, so a
+                                    quotation built from a survey or a convert can be submitted as it is
 PUT    /admin/quotations/:id        quotations:write · DRAFT only. Any other status is 422 UNPROCESSABLE
                                     ("…cannot be edited. …") and nothing changes
 DELETE /admin/quotations/:id        quotations:write · soft delete; CONVERTED is 400

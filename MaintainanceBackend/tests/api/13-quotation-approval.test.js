@@ -90,8 +90,19 @@ describe('submit', () => {
     expect(managerMail.body).toContain(`/admin/quotations/${quotation.id}`);
   });
 
+  it('a quotation created without a date is valid for quotation.validDays, to the end of that Kathmandu day', async () => {
+    const { quotation } = await draft({ validUntil: null });
+    const until = new Date(quotation.validUntil);
+    const days = (until - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(14);
+    expect(days).toBeLessThan(16.1);
+    // 23:59:59.999 in Kathmandu is 18:14:59.999 UTC.
+    expect(until.toISOString().slice(11)).toBe('18:14:59.999Z');
+  });
+
   it('needs a valid-until date in the future', async () => {
-    const none = await draft({ validUntil: null });
+    const none = await draft();
+    await prisma.quotation.update({ where: { id: none.quotation.id }, data: { validUntil: null } });
     const noDate = expectStatus(await sales.post(`/admin/quotations/${none.quotation.id}/submit`), 422);
     expect(noDate.error.message).toMatch(/valid/i);
 
@@ -687,6 +698,44 @@ describe('GET /admin/dashboard', () => {
     expect(d.acceptedJobsUnscheduled).toBe(await prisma.job.count({
       where: { deletedAt: null, quotationId: { not: null }, status: 'DRAFT', scheduledStart: null },
     }));
+  });
+});
+
+describe('the staff detail and history', () => {
+  it('GET /admin/quotations/:id carries the survey it was priced from and the customer messages', async () => {
+    const { quotation } = await draft();
+    await approveAndSend(quotation.id);
+    const detail = expectStatus(await sales.get(`/admin/quotations/${quotation.id}`), 200).data;
+    expect(detail.survey).toBeNull();
+    expect(detail.makerChecker).toBe(true);
+    expect(detail.messages.map((m) => [m.channel, m.templateKey, m.status])).toEqual(
+      expect.arrayContaining([['sms', 'quotation_sent', 'sent'], ['email', 'quotation_sent', 'sent']]),
+    );
+    // Staff emails about it are not the customer's messages.
+    expect(detail.messages.every((m) => !m.templateKey.endsWith('_staff') && m.templateKey !== 'quotation_submitted')).toBe(true);
+  });
+
+  it('a revision still names the survey its first version was priced from', async () => {
+    const survey = await prisma.siteSurvey.findFirst({ where: { quotationId: { not: null } } });
+    if (!survey) return;
+    const q = await prisma.quotation.findUnique({ where: { id: survey.quotationId } });
+    const detail = expectStatus(await sales.get(`/admin/quotations/${q.id}`), 200).data;
+    expect(detail.survey).toMatchObject({ id: survey.id, number: survey.number });
+  });
+
+  it('GET /admin/quotations/:id/history is the approval and response trail, for quotations:history', async () => {
+    const { quotation } = await draft();
+    const { publicToken } = await approveAndSend(quotation.id);
+    expectStatus(await decide(publicToken, { decision: 'request_changes', note: 'Smaller area please' }), 200);
+    const body = expectStatus(await manager.get(`/admin/quotations/${quotation.id}/history?limit=50`), 200);
+    const events = body.data.map((r) => r.event).filter(Boolean);
+    expect(events).toEqual(expect.arrayContaining([
+      'quotation.created', 'quotation.submitted', 'quotation.office_approved', 'quotation.sent', 'quotation.customer_changes_requested',
+    ]));
+    expect(body.data[0]).not.toHaveProperty('ip');
+    expectStatus(await (await as('ACCOUNTANT')).get(`/admin/quotations/${quotation.id}/history`), 403);
+    expectStatus(await dispatcher.get(`/admin/quotations/${quotation.id}/history`), 403);
+    expectStatus(await sales.get('/admin/quotations/nope/history'), 404);
   });
 });
 
