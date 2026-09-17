@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma.js';
-import { notFound, badRequest } from '../utils/AppError.js';
+import { recordEvent } from './audit.service.js';
+import { notFound, badRequest, forbidden } from '../utils/AppError.js';
+import { can } from '../shared/permissions.js';
 import { sniffMime } from '../middleware/upload.js';
 import { processImage, storeRaw, deleteObject, publicUrl } from './storage.service.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
@@ -54,7 +56,9 @@ export async function updateMedia(id, data) {
   return decorateMedia(await prisma.media.update({ where: { id }, data }));
 }
 
-export async function deleteMedia(id, { hard = false } = {}) {
+/** Soft delete; `hard` removes the file and the row for good and needs cms:purge (ADMIN). */
+export async function deleteMedia(id, { hard = false, role } = {}) {
+  if (hard && !can(role, 'cms:purge')) throw forbidden('Permanent delete needs the cms:purge permission');
   const m = await prisma.media.findUnique({ where: { id } });
   if (!m) throw notFound('Media');
   if (hard) {
@@ -62,10 +66,16 @@ export async function deleteMedia(id, { hard = false } = {}) {
     for (const url of Object.values(m.variants ?? {})) {
       await deleteObject(String(url).replace(/^\/uploads\//, ''));
     }
-    await prisma.media.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.media.delete({ where: { id } });
+      await recordEvent('cms.purged', { model: 'Media', recordId: id, before: m }, tx);
+    });
     return;
   }
-  await prisma.media.update({ where: { id }, data: { deletedAt: new Date() } });
+  await prisma.$transaction(async (tx) => {
+    await tx.media.update({ where: { id }, data: { deletedAt: new Date() } });
+    await recordEvent('cms.deleted', { model: 'Media', recordId: id }, tx);
+  });
 }
 
 export async function listFolders() {
@@ -73,12 +83,21 @@ export async function listFolders() {
 }
 
 export async function createFolder(name, parentId) {
+  if (parentId && !(await prisma.mediaFolder.findUnique({ where: { id: parentId } }))) {
+    throw badRequest('Validation failed', [{ path: 'parentId', message: 'That parent folder does not exist' }]);
+  }
   return prisma.mediaFolder.create({ data: { name, parentId: parentId ?? null } });
 }
 
+/** Only an empty folder goes: no live files and no subfolders (which would otherwise jump to the top level). */
 export async function deleteFolder(id) {
-  const count = await prisma.media.count({ where: { folderId: id, deletedAt: null } });
-  if (count) throw badRequest(`Move or delete the ${count} file(s) in this folder first`);
+  if (!(await prisma.mediaFolder.findUnique({ where: { id } }))) throw notFound('Folder');
+  const [files, subfolders] = await Promise.all([
+    prisma.media.count({ where: { folderId: id, deletedAt: null } }),
+    prisma.mediaFolder.count({ where: { parentId: id } }),
+  ]);
+  if (subfolders) throw badRequest(`Delete the ${subfolders} folder(s) inside this one first`);
+  if (files) throw badRequest(`Move or delete the ${files} file(s) in this folder first`);
   await prisma.mediaFolder.delete({ where: { id } });
 }
 

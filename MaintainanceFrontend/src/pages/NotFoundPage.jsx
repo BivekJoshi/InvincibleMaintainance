@@ -1,10 +1,15 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { PageTransition } from '@/three/motion/motionKit';
+import { cn } from '@/helpers/utils';
 
-export default function NotFoundPage() {
+/**
+ * @param {{ className?: string }} props  inside the site's shell a generic page passes a
+ *   shorter height, since the header and footer are already on screen
+ */
+export default function NotFoundPage({ className }) {
   return (
-    <PageTransition className="flex min-h-dvh flex-col items-center justify-center p-6 text-center">
+    <PageTransition className={cn('flex min-h-dvh flex-col items-center justify-center p-6 text-center', className)}>
       <p className="text-6xl font-extrabold tracking-tight text-muted-foreground/30">404</p>
       <h1 className="mt-4 text-xl font-bold">We could not find that page</h1>
       <p className="mt-2 max-w-sm text-sm text-muted-foreground">

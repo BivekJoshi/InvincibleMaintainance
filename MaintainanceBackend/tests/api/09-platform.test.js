@@ -73,6 +73,34 @@ describe('media', () => {
     expectStatus(await admin.delete(`/admin/media/folders/${folderId}`), 204);
   });
 
+  it('alt text can be changed but never emptied', async () => {
+    const res = expectStatus(await admin.put(`/admin/media/${mediaId}`).send({ alt: '   ' }), 400);
+    expect(res.error.details.map((d) => d.path)).toContain('alt');
+    expect(expectStatus(await admin.get(`/admin/media/${mediaId}`), 200).data.alt).toBe('Test image');
+    expectStatus(await admin.put(`/admin/media/${mediaId}`).send({ caption: 'A caption alone is fine' }), 200);
+  });
+
+  it('folders: a name is required, a parent must exist, and only an empty folder is deleted', async () => {
+    expectStatus(await admin.post('/admin/media/folders').send({ name: '  ' }), 400);
+    expectStatus(await admin.post('/admin/media/folders').send({ name: 'x'.repeat(81) }), 400);
+    expectStatus(await admin.post('/admin/media/folders').send({ name: 'Orphan', parentId: 'no-such-folder' }), 400);
+
+    const parent = expectStatus(await admin.post('/admin/media/folders').send({ name: `Parent ${uid()}` }), 201).data;
+    const child = expectStatus(await admin.post('/admin/media/folders').send({ name: 'निर्माण साइट', parentId: parent.id }), 201).data;
+    expect(child.name).toBe('निर्माण साइट');
+    expect(child.parentId).toBe(parent.id);
+    // A folder with a subfolder stays; so does one holding a file.
+    expect(expectStatus(await admin.delete(`/admin/media/folders/${parent.id}`), 400).error.message).toMatch(/folder/);
+    const file = await uploadImage(admin, '#557799');
+    expectStatus(await admin.put(`/admin/media/${file.id}`).send({ folderId: child.id }), 200);
+    expect(expectStatus(await admin.get(`/admin/media?folderId=${child.id}`), 200).data.map((m) => m.id)).toEqual([file.id]);
+    expectStatus(await admin.delete(`/admin/media/folders/${child.id}`), 400);
+    expectStatus(await admin.put(`/admin/media/${file.id}`).send({ folderId: null }), 200);
+    expectStatus(await admin.delete(`/admin/media/folders/${child.id}`), 204);
+    expectStatus(await admin.delete(`/admin/media/folders/${parent.id}`), 204);
+    expectStatus(await admin.delete(`/admin/media/folders/${parent.id}`), 404);
+  });
+
   it('DELETE /admin/media/:id', async () => {
     const doomed = await uploadImage(admin, '#123456');
     expectStatus(await admin.delete(`/admin/media/${doomed.id}`), 204);

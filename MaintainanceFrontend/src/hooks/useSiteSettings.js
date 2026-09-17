@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { useGetBootstrapQuery } from '@/api/publicApi';
 import { selectLocale } from '@/redux/slices/uiSlice';
 import { COMPANY_FALLBACKS, SETTINGS_KEYS } from '@/config/site/company';
+import { siteNavFor } from '@/config/site/siteNav';
 
 /**
  * The company's own details, already resolved.
@@ -17,8 +18,11 @@ import { COMPANY_FALLBACKS, SETTINGS_KEYS } from '@/config/site/company';
  *   settings: Record<string, string>, categories: object[], isLoading: boolean,
  *   name: string, initial: string, tagline: string,
  *   phone: string, mobile: string, email: string, address: string, city: string,
- *   mapEmbed: string|undefined,
+ *   mapEmbed: string|undefined, nav: object[], pageSlugs: string[],
  * }}
+ *
+ * `nav` is the site's navigation for what it has now (Blog only once a post is
+ * published); `pageSlugs` are the live generic pages, which a CMS link may point at.
  */
 export function useSiteSettings() {
   const locale = useSelector(selectLocale);
@@ -42,6 +46,8 @@ export function useSiteSettings() {
       address: read('address', COMPANY_FALLBACKS.address),
       city: read('city', COMPANY_FALLBACKS.city),
       mapEmbed: settings[SETTINGS_KEYS.mapEmbed],
+      nav: siteNavFor(data?.nav),
+      pageSlugs: (data?.nav?.pages ?? []).map((p) => p.slug),
     };
   }, [data, isLoading]);
 }

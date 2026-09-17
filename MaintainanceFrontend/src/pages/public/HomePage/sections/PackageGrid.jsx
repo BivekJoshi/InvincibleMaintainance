@@ -49,12 +49,16 @@ export function PackageGrid({ section, tone }) {
                       </Badge>
                     ) : null}
                   </div>
+                  {/* A plan with no published price is priced on inspection. */}
                   <p className="flex items-baseline gap-1.5 pt-4">
                     <span className="text-[1.35rem] font-bold leading-none tabular-nums">
-                      {formatNpr(plan.priceMin, { compact: true })}
+                      {plan.priceMin == null ? 'On inspection' : formatNpr(plan.priceMin, { compact: true })}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false })} {plan.unit}
+                      {plan.priceMin != null && plan.priceMax && plan.priceMax !== plan.priceMin
+                        ? <>{' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false })} </>
+                        : ' '}
+                      {plan.unit}
                     </span>
                   </p>
                 </CardHeader>

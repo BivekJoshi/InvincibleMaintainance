@@ -3,7 +3,6 @@ import { Mail, MapPin, Phone } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { FIELD_ROLES } from '@/config/constants';
-import { SITE_NAV } from '@/config/site/siteNav';
 import { PromiseList } from '@/components/site/PromiseList';
 
 /** One contact line. `href` is optional — an address is not something to dial. */
@@ -29,7 +28,7 @@ function ContactLine({ icon: Icon, children, href, align = 'center' }) {
  * `useSiteSettings`, so the phone number here is the phone number in the header.
  */
 export function SiteFooter() {
-  const { name: company, initial, tagline, phone, mobile, email, address, city, categories } = useSiteSettings();
+  const { name: company, initial, tagline, phone, mobile, email, address, city, categories, nav } = useSiteSettings();
   const { isAuthenticated, role } = useAuth();
   const appHome = FIELD_ROLES.includes(role) ? '/tech' : '/admin';
 
@@ -72,7 +71,7 @@ export function SiteFooter() {
           <p className="text-[11px] font-semibold uppercase tracking-widest text-gold">Company</p>
           <ul className="mt-4 space-y-2.5 text-ink-muted">
             <li><Link to="/book" className="transition-colors hover:text-ink-foreground">Book a visit</Link></li>
-            {SITE_NAV.map((n) => (
+            {nav.map((n) => (
               <li key={n.to}><Link to={n.to} className="transition-colors hover:text-ink-foreground">{n.label}</Link></li>
             ))}
             <li>

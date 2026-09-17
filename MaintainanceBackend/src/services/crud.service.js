@@ -1,9 +1,11 @@
 import { prisma } from '../lib/prisma.js';
-import { notFound } from '../utils/AppError.js';
+import { forbidden, notFound } from '../utils/AppError.js';
+import { can } from '../shared/permissions.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { uniqueSlug } from '../utils/slug.js';
 import { invalidatePublic } from './cache.service.js';
 import { toPaisa } from '../utils/money.js';
+import { recordEvent } from './audit.service.js';
 
 /**
  * Builds a standard CRUD service for a Prisma model.
@@ -17,6 +19,9 @@ import { toPaisa } from '../utils/money.js';
  * @param {string} [opts.orderField]     That column — `sortOrder` unless the model numbers its rows
  *                                      another way (ListItem uses `position`). The reorder body is
  *                                      always `{ id, sortOrder }`; this maps it onto the column.
+ * @param {number} [opts.orderBase]      Added to each reorder index before it is stored. A list whose order
+ *                                      column is the number a visitor reads (ListItem) counts from 1, while
+ *                                      the admin table's reorder body counts from 0.
  * @param {boolean} [opts.slugFrom]      Field to derive a unique slug from
  * @param {string[]} [opts.moneyFields]  Fields submitted in rupees, stored as paisa
  * @param {object} [opts.include]        Default Prisma include
@@ -31,6 +36,7 @@ export function makeCrud(opts) {
     softDelete = true,
     sortable = true,
     orderField = 'sortOrder',
+    orderBase = 0,
     slugFrom = null,
     moneyFields = [],
     include,
@@ -39,6 +45,8 @@ export function makeCrud(opts) {
   } = opts;
 
   const db = () => prisma[model];
+  /** The Prisma model name ('faq' → 'Faq'), which is what audit rows carry. */
+  const modelName = model.charAt(0).toUpperCase() + model.slice(1);
 
   const toStorage = (data) => {
     const out = { ...data };
@@ -48,8 +56,15 @@ export function makeCrud(opts) {
     return out;
   };
 
+  /** `deleted` is the trash view (only soft-deleted rows); `includeDeleted` shows both. */
+  const deletedWhere = (query) => {
+    if (!softDelete) return {};
+    if (query.deleted === true || query.deleted === 'true') return { deletedAt: { not: null } };
+    return query.includeDeleted ? {} : { deletedAt: null };
+  };
+
   const baseWhere = (query = {}) => ({
-    ...(softDelete && !query.includeDeleted ? { deletedAt: null } : {}),
+    ...deletedWhere(query),
     ...(query.includeInactive ? {} : query.onlyActive ? { isActive: true } : {}),
     ...(filter ? filter(query) : {}),
   });
@@ -107,20 +122,33 @@ export function makeCrud(opts) {
       return row;
     },
 
-    async remove(id, { hard = false } = {}) {
-      await this.get(id);
-      if (softDelete && !hard) {
-        await db().update({ where: { id }, data: { deletedAt: new Date() } });
-      } else {
-        await db().delete({ where: { id } });
-      }
+    /**
+     * Soft delete, which the caller can restore. `hard` removes the row for good and
+     * needs cms:purge (ADMIN only); `role` is the caller's.
+     */
+    async remove(id, { hard = false, role } = {}) {
+      if (hard && !can(role, 'cms:purge')) throw forbidden('Permanent delete needs the cms:purge permission');
+      // A purge usually comes from the Trash view, so it must find a row that is already soft-deleted;
+      // a soft delete still needs a live one.
+      const row = hard ? await db().findUnique({ where: { id }, ...(include ? { include } : {}) }) : await this.get(id);
+      if (!row) throw notFound(label);
+      const purge = hard || !softDelete;
+      await prisma.$transaction(async (tx) => {
+        if (purge) await tx[model].delete({ where: { id } });
+        else await tx[model].update({ where: { id }, data: { deletedAt: new Date() } });
+        // A purge keeps what was removed; the row itself is gone.
+        await recordEvent(purge ? 'cms.purged' : 'cms.deleted', { model: modelName, recordId: id, ...(purge ? { before: row } : {}) }, tx);
+      });
       await invalidatePublic();
     },
 
     async restore(id) {
       const row = await db().findUnique({ where: { id } });
       if (!row) throw notFound(label);
-      await db().update({ where: { id }, data: { deletedAt: null } });
+      await prisma.$transaction(async (tx) => {
+        await tx[model].update({ where: { id }, data: { deletedAt: null } });
+        await recordEvent('cms.restored', { model: modelName, recordId: id, before: { deletedAt: row.deletedAt }, after: { deletedAt: null } }, tx);
+      });
       await invalidatePublic();
       return db().findUnique({ where: { id } });
     },
@@ -136,7 +164,7 @@ export function makeCrud(opts) {
     async reorder(items) {
       if (!sortable) return;
       await prisma.$transaction(
-        items.map((i) => db().update({ where: { id: i.id }, data: { [orderField]: i.sortOrder } })),
+        items.map((i) => db().update({ where: { id: i.id }, data: { [orderField]: i.sortOrder + orderBase } })),
       );
       await invalidatePublic();
     },

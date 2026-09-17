@@ -23,8 +23,82 @@ Sign in with `admin@gharjatan.com.np` / `Password123` (all seeded logins are in 
 backend README).
 
 ```
-npm run dev      npm run build      npm run preview      npm run lint
+npm run dev      npm run build      npm run preview      npm run lint      npm test      npm run test:e2e
 ```
+
+### Lint and CI
+
+`npm run lint` runs ESLint 9 over `src` with `eslint.config.js`: `@eslint/js` recommended,
+`eslint-plugin-react` (recommended + JSX runtime; `prop-types` off, since the project uses JSDoc),
+`eslint-plugin-react-hooks` **v5** (rules-of-hooks + exhaustive-deps — v6+ adds React Compiler rules
+this app does not use) and `eslint-plugin-react-refresh`. Errors fail the run. The known
+`react-refresh/only-export-components` warnings (a file exporting a hook or variants beside its
+component, mostly `three/motion/motionKit.jsx`) are left as warnings: they only affect hot reload.
+
+`.github/workflows/ci.yml` runs on every push to `prabesh`, `admin/**` and `DEVELOPMENT`, and on pull
+requests into `prabesh` or `DEVELOPMENT`. The frontend job, on Node 20: `npm ci` → `npm run lint` →
+`npm test` → `npm run build`. A third job runs the end-to-end suite against a Postgres service and
+uploads the Playwright trace when it fails.
+
+### Tests
+
+`npm test` runs [Vitest](https://vitest.dev) once in jsdom (`npm run test:watch` keeps it running).
+`vitest.config.js` reuses `vite.config.js`, so the `@/` alias and the React plugin match the build.
+
+- Tests sit **beside the file they test** as `*.test.js` / `*.test.jsx`.
+- `src/test/setup.js` loads the jest-dom matchers and stubs the browser APIs jsdom lacks (ResizeObserver,
+  matchMedia, pointer capture) that Radix and dnd-kit touch.
+- `src/test/renderWithProviders.jsx` renders a component inside a fresh store and a memory **data** router —
+  the only kind `useBlocker` works in — with `signedInAs(role)` for capability checks.
+- Money, phone numbers and Nepali text are the three things that break (CLAUDE.md rule 5). Test them.
+
+### End-to-end tests (Phases F2, H1)
+
+`npm run test:e2e` runs [Playwright](https://playwright.dev) over two flows in a real browser:
+
+- `e2e/quotation-flow.spec.js` — the whole quotation loop: a customer books at `/book` on a phone-sized
+  screen, the office prices and approves the quotation, the customer asks for changes in Nepali, the office
+  revises and approves again, the customer accepts — and the lead, the job in the dispatch queue and the
+  notifications are checked over the API.
+- `e2e/operations-flow.spec.js` — the dispatcher's day: the job an accepted quotation made is dragged onto
+  Hari's 10:00 tomorrow, moved with the Schedule dialog, a second job dropped on the same slot is warned about
+  and not saved, 22 kg is issued (stock falls by 22), time is recorded, costing reconciles, completion waits for
+  the checklist, the job is completed and verified, and an admin drafts the case study. It clears Hari's
+  tomorrow of jobs earlier runs left, and accepts a warning about the ones it cannot move.
+
+```bash
+npx playwright install chromium     # once
+npm run test:e2e                    # or: npx playwright test --ui
+```
+
+- **It starts its own servers** (`playwright.config.js`): the API on **:4010** and Vite on **:5410**,
+  so it never collides with `npm run dev` on :4000 / :5400. `VITE_PROXY_TARGET` points the dev
+  server's `/api` proxy at that API.
+- **The database** is the `*_test` one (`E2E_DATABASE_URL`, else `TEST_DATABASE_URL`, else
+  `maintainance_test`); `e2e/global-setup.js` applies the migrations and seeds it. Both are
+  idempotent, so nothing is wiped: the spec creates its own uniquely named customer and asserts only
+  on what it made. For a clean slate, `npm run test:api:prepare` in the backend. A database whose
+  name does not end in `_test` is refused.
+- `e2e/support/e2eEnv.js` holds the ports, the database URL and the API's environment;
+  `e2e/support/api.js` has the signed-in HTTP helpers and `signIn(page, role)`.
+- Steps a person takes run in the browser; set-up that is not under test (the convert, the surveyor's
+  submission, the second approval round, the quotation behind the dispatch flow) runs over the API, which
+  keeps the test about the screens. A drag moves the real pointer in small steps (dnd-kit starts a drag only
+  after the pointer moves) and measures the target cell again before dropping.
+
+### Dependencies added in Phase C1
+
+| Package | Why |
+|---|---|
+| `@radix-ui/react-{accordion,alert-dialog,collapsible,progress,radio-group,scroll-area,toggle,toggle-group}`, `cmdk`, `react-day-picker`, `date-fns` | Installed by `npx shadcn@latest add` for sheet, alert-dialog, popover, calendar, command, breadcrumb, scroll-area, radio-group, accordion, collapsible, progress and toggle-group. |
+| `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` | Drag-to-reorder in DataTable's reorder mode and the gallery field. `utilities` is the CSS transform helper sortable items need. |
+| `blurhash` | Decodes the blurhash the API stores for every image, so media thumbnails have a placeholder while they load. |
+| `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom` (dev) | The frontend test runner — there was none before C1. |
+
+**shadcn on Tailwind 3:** `shadcn@latest` rewrites `tailwind.config.js` when it adds some components — it strips the
+comments and breaks the Devanagari font entry (`'Noto Sans Devanagari"'`). Run `git checkout tailwind.config.js`
+after `add` unless the component really needs a config change, and decline overwriting `button` and `dialog`,
+which are edited. `calendar.jsx` also arrived with a few Tailwind 4-only classes, fixed by hand.
 
 ---
 
@@ -88,18 +162,47 @@ New primitives come from `npx shadcn@latest add <name>` (configured for JSX in
 
 **Public site** — home assembled from the API's ordered, visible sections (change the order in
 the admin, the page changes); services list and per-service detail with JSON-LD; pricing with
-the live cost estimator; contact; and the customer self-service pages for quotation approval
+the live cost estimator; contact; projects; the blog (`/blog`, `/blog/:slug`) and editor-written pages at their own
+address (`/about`); and the customer self-service pages for quotation approval
 and warranty claims, both opened from an SMS link with no login.
 
 **Back office** — login, role-aware dashboard, the SLA response board, and the leads table with
-status/response/source filters, URL-persisted, CSV export.
+status/response/source/received-date filters, URL-persisted, CSV export.
+
+**Admin kit (Phase C1)** — DataTable v2, `<ResourceForm>` with 18 field types, `LocaleTabs`, `MediaPicker`,
+`ConfirmDialog` / `useConfirm`. See `src/STRUCTURE.md` → "The admin kit".
+
+**Content and prices (Phases C2, D1)** — registry screens for FAQs, process steps, service categories, services
+(price range, SEO, Nepali name/card text/page text) and hero slides; the rate card under Sales (SALES writes,
+ACCOUNTANT reads); the home page composer (order, visibility, item limits); the media library (folders,
+drag-and-drop upload with required alt text, variants, copy URL).
+
+**The rest of the content, and settings (Phase D2)** — registry screens for projects (with a Gallery tab), offers
+(Live / Scheduled / Ended), pricing plans, testimonials (an approval queue), gallery, features, list items, content
+blocks, posts, post categories and pages — every CMS resource in the API has a screen — and the site settings at
+`/admin/platform/settings` (ADMIN saves, EDITOR reads). See `src/STRUCTURE.md` → "Which screen is which".
+
+**Leads and customers (Phase E)** — the leads table opening on My leads (saved views, bulk assign, export), the
+pipeline board at `/admin/leads/board`, the lead page (status, assign, typed activity log, duplicates and merge, convert
+with or without a visit — asking "same person or different person" when a customer has the phone — and a History tab),
+and customers at `/admin/customers` (profile, sites with one primary, timeline, the records each role may read,
+statement, History). The contact form and booking wizard take an optional email and send the site's language. See
+`src/STRUCTURE.md` → "Leads and customers (Phase E)".
+
+**Platform (Phase G, ADMIN only)** — users at `/admin/platform/users` (create with an emailed invite — admins never
+set passwords — edit, switch off, send a reset link, unlock, sessions with "sign out everywhere"), a read-only roles
+& permissions matrix, login activity (every sign-in event, and the accounts locked or failing now), the audit log
+(filters, a before/after diff per row, "everything from this request"), the message delivery log (masked addresses,
+Send again for a failure) and the message templates (EN | NE × SMS | Email, live preview, SMS part counter).
+Every registry edit page has a **History** tab. `/reset-password` is where a reset or invite link lands. See
+`src/STRUCTURE.md` → "Platform (Phase G)".
 
 **Technician** — mobile-first `/tech` with today's jobs, tap-to-call, tap-to-navigate, and
 one-tap status advance.
 
-**Not yet built** (backend endpoints exist and are documented in `../docs/API.md`): lead detail
-drawer, customers, quotation builder, job detail + dispatch board, materials, invoices, warranty
-and AMC screens, the CMS editors, and the offline sync queue for the technician PWA.
+**Not yet built** (backend endpoints exist and are documented in `../docs/API.md`): job
+detail + dispatch board, materials, invoices, warranty and AMC screens (the customer page lists those records and says
+"Soon"), and the offline sync queue for the technician PWA.
 
 ---
 

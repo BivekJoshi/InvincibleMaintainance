@@ -596,7 +596,6 @@ export function BlueprintScene({ className, reduced = false, tone = 'ink' }) {
     const PAINT_AT = WALLS_AT + WALLS_FOR;
     const PAINT_FOR = 1.9;
     const PAINT_END = PAINT_AT + PAINT_FOR;
-    const BUILD_END = PAINT_END;
     // Then the house is handed over: a break, a slow push in on the finished
     // thing, and a pull back out before the plot is cleared again.
     const FOCUS_AT = PAINT_END + 0.9;

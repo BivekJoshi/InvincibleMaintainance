@@ -8,7 +8,7 @@ import * as w from '../../services/warranty.service.js';
 import * as s from '../../shared/schemas/ops.js';
 
 const router = Router();
-const staff = authorize('ADMIN', 'DISPATCHER', 'SALES');
+const staff = authorize('ADMIN', 'DISPATCHER', 'SALES', 'MANAGER');
 const manage = authorize('ADMIN', 'DISPATCHER');
 
 router.get('/warranties', staff, validate({ query: listQuery.passthrough() }),

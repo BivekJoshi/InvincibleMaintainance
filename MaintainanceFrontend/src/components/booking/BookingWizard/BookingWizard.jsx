@@ -47,7 +47,8 @@ export function BookingWizard({ slug }) {
   // failed query degrades to "everything is available" rather than an empty calendar.
   const { data: availability } = useGetAvailabilityQuery({ days: 14 });
 
-  const services = catalogue?.items ?? [];
+  // Memoised: a fresh `[]` every render would re-run the slug effect and the filter below each time.
+  const services = useMemo(() => catalogue?.items ?? [], [catalogue]);
   const booking = boot?.booking ?? DEFAULT_BOOKING;
 
   const [step, setStep] = useState(slug ? 1 : 0);
@@ -59,9 +60,14 @@ export function BookingWizard({ slug }) {
   const [serverError, setServerError] = useState(null);
   const [done, setDone] = useState(null);
   const topRef = useRef(null);
+  // When the wizard opened. The API refuses a submit that arrives faster than a
+  // person could fill the form, so it must get the real figure, not a constant.
+  const openedAt = useRef(0);
 
   const service = services.find((s) => s.id === serviceId) ?? null;
   const form = useZodForm(bookingDetailsSchema, { defaultValues: bookingDetailsDefaults });
+
+  useEffect(() => { openedAt.current = Date.now(); }, []);
 
   // Changing step swaps the panel; if the visitor has scrolled past its top,
   // bring it back rather than leaving them looking at the middle of a form.
@@ -110,11 +116,13 @@ export function BookingWizard({ slug }) {
     try {
       await submitLead({
         ...values,
+        // The language they booked in is the language we write back in.
+        preferredLocale: locale,
         serviceId: serviceId || undefined,
         preferredAt: preferredAtIso(date, startHour),
         preferredSlot: slot,
         sourcePage: slug ? `/book/${slug}` : '/book',
-        elapsedMs: 60_000,
+        elapsedMs: Date.now() - openedAt.current,
         website: '',
         ...(estimate ? { estimatedAmount: estimate.max / 100, estimatePayload: estimate } : {}),
       }).unwrap();
@@ -130,7 +138,8 @@ export function BookingWizard({ slug }) {
 
   return (
     <div ref={topRef} className="grid gap-8 lg:grid-cols-[1fr_340px] lg:items-start">
-      <div>
+      {/* min-w-0: the day strip scrolls sideways inside this column; without it, it widened the page on a phone. */}
+      <div className="min-w-0">
         <BookingStepper steps={STEPS} step={step} onStep={setStep} />
 
         <AnimatePresence mode="wait">

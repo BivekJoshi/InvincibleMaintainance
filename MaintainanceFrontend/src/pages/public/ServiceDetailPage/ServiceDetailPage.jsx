@@ -32,8 +32,9 @@ export default function ServiceDetailPage() {
   const service = data?.service;
 
   useSeo({
-    title: service?.metaTitle ?? service?.name,
-    description: service?.metaDescription ?? service?.excerpt,
+    // `||`, not `??`: an SEO field left empty in the admin is saved as ''.
+    title: service?.metaTitle || service?.name,
+    description: service?.metaDescription || service?.excerpt,
     jsonLd: serviceJsonLd(service, company),
   });
 

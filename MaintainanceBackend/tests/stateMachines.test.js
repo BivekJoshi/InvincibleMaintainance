@@ -32,6 +32,24 @@ describe('state machines', () => {
     expect(canTransition(INVOICE_TRANSITIONS, 'VOID', 'SENT')).toBe(false);
   });
 
+  it('lets a voided payment walk an invoice back down', () => {
+    // A bounced cheque on a settled invoice: PAID → PARTIAL, or all the way back
+    // to SENT / OVERDUE when it was the only payment.
+    expect(canTransition(INVOICE_TRANSITIONS, 'PAID', 'PARTIAL')).toBe(true);
+    expect(canTransition(INVOICE_TRANSITIONS, 'PAID', 'SENT')).toBe(true);
+    expect(canTransition(INVOICE_TRANSITIONS, 'PAID', 'OVERDUE')).toBe(true);
+    expect(canTransition(INVOICE_TRANSITIONS, 'PARTIAL', 'SENT')).toBe(true);
+    expect(canTransition(INVOICE_TRANSITIONS, 'PAID', 'DRAFT')).toBe(false);
+    expect(canTransition(INVOICE_TRANSITIONS, 'VOID', 'PAID')).toBe(false);
+  });
+
+  it('lets a sent quotation expire, and only a revision follows', () => {
+    expect(canTransition(QUOTATION_TRANSITIONS, 'SENT', 'EXPIRED')).toBe(true);
+    expect(canTransition(QUOTATION_TRANSITIONS, 'EXPIRED', 'APPROVED')).toBe(false);
+    expect(canTransition(QUOTATION_TRANSITIONS, 'EXPIRED', 'SENT')).toBe(false);
+    expect(canTransition(QUOTATION_TRANSITIONS, 'EXPIRED', 'SUPERSEDED')).toBe(true);
+  });
+
   it('throws a 422 with the allowed set listed', () => {
     try {
       assertTransition(JOB_TRANSITIONS, 'COMPLETED', 'DRAFT', 'job');
@@ -41,6 +59,60 @@ describe('state machines', () => {
       expect(err.code).toBe('INVALID_TRANSITION');
       expect(err.message).toContain('VERIFIED');
     }
+  });
+});
+
+describe('quotation transitions (Phase F)', () => {
+  const ALLOWED = [
+    ['DRAFT', 'PENDING_APPROVAL'],
+    ['PENDING_APPROVAL', 'OFFICE_APPROVED'],
+    ['PENDING_APPROVAL', 'DRAFT'],
+    ['OFFICE_APPROVED', 'SENT'],
+    ['OFFICE_APPROVED', 'DRAFT'],
+    ['SENT', 'APPROVED'],
+    ['SENT', 'CHANGES_REQUESTED'],
+    ['SENT', 'REJECTED'],
+    ['SENT', 'EXPIRED'],
+    ['SENT', 'SUPERSEDED'],
+    ['CHANGES_REQUESTED', 'SUPERSEDED'],
+    ['REJECTED', 'SUPERSEDED'],
+    ['EXPIRED', 'SUPERSEDED'],
+    ['APPROVED', 'CONVERTED'],
+  ];
+
+  it.each(ALLOWED)('allows %s → %s', (from, to) => {
+    expect(canTransition(QUOTATION_TRANSITIONS, from, to)).toBe(true);
+  });
+
+  it('allows nothing else', () => {
+    const allowed = new Set(ALLOWED.map(([a, b]) => `${a}>${b}`));
+    const states = Object.keys(QUOTATION_TRANSITIONS);
+    for (const from of states) {
+      for (const to of states) {
+        if (from === to) continue;
+        expect(canTransition(QUOTATION_TRANSITIONS, from, to), `${from} → ${to}`).toBe(allowed.has(`${from}>${to}`));
+      }
+    }
+  });
+
+  it.each([
+    ['DRAFT', 'SENT'], // no quotation reaches the customer without approval
+    ['DRAFT', 'OFFICE_APPROVED'], // auto-approval still passes through PENDING_APPROVAL
+    ['PENDING_APPROVAL', 'SENT'],
+    ['CHANGES_REQUESTED', 'SENT'],
+    ['CHANGES_REQUESTED', 'APPROVED'],
+    ['REJECTED', 'SENT'],
+    ['SUPERSEDED', 'SENT'],
+    ['SUPERSEDED', 'APPROVED'],
+    ['CONVERTED', 'SUPERSEDED'],
+    ['APPROVED', 'SUPERSEDED'],
+  ])('refuses %s → %s', (from, to) => {
+    expect(() => assertTransition(QUOTATION_TRANSITIONS, from, to, 'quotation')).toThrow(/Cannot move quotation/);
+  });
+
+  it('closes superseded and converted quotations for good', () => {
+    expect(QUOTATION_TRANSITIONS.SUPERSEDED).toEqual([]);
+    expect(QUOTATION_TRANSITIONS.CONVERTED).toEqual([]);
   });
 });
 

@@ -9,9 +9,11 @@ import { INVOICE_TRANSITIONS, assertTransition } from '../shared/stateMachines.j
 import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { addDays } from '../utils/dates.js';
+import { recordEvent } from './audit.service.js';
+import { webUrl } from '../utils/links.js';
 
 const INCLUDE = {
-  customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true } },
+  customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true, preferredLocale: true } },
   items: { orderBy: { sortOrder: 'asc' } },
   payments: { orderBy: { receivedAt: 'desc' } },
   quotation: { select: { id: true, number: true } },
@@ -64,7 +66,7 @@ export async function createInvoice(input) {
 
   return prisma.$transaction(async (tx) => {
     const number = await nextNumber(tx, 'INV');
-    return tx.invoice.create({
+    const invoice = await tx.invoice.create({
       data: {
         ...rest,
         number,
@@ -75,6 +77,12 @@ export async function createInvoice(input) {
       },
       include: INCLUDE,
     });
+    await recordEvent('invoice.created', {
+      model: 'Invoice',
+      recordId: invoice.id,
+      after: { number, status: invoice.status, total: invoice.total, customerId: invoice.customerId, quotationId: invoice.quotationId },
+    }, tx);
+    return invoice;
   });
 }
 
@@ -176,26 +184,29 @@ export async function sendInvoice(id) {
   const inv = await getInvoice(id);
   assertTransition(INVOICE_TRANSITIONS, inv.status, 'SENT', 'invoice');
   const token = inv.publicToken ?? publicToken();
-  const updated = await prisma.invoice.update({
-    where: { id }, data: { status: 'SENT', sentAt: new Date(), publicToken: token }, include: INCLUDE,
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.invoice.update({
+      where: { id }, data: { status: 'SENT', sentAt: new Date(), publicToken: token }, include: INCLUDE,
+    });
+    await recordEvent('invoice.sent', { model: 'Invoice', recordId: id, before: { status: inv.status }, after: { status: 'SENT' } }, tx);
+    return row;
   });
 
-  const webOrigin = env.corsOrigins[0] ?? env.appUrl;
   const vars = {
     customerName: inv.customer.name, number: inv.number, total: formatNpr(inv.total),
     dueDate: inv.dueDate?.toISOString().slice(0, 10) ?? '-',
-    link: `${webOrigin}/invoice/${token}`, appName: env.appName,
+    link: webUrl(`/invoice/${token}`), appName: env.appName,
   };
   if (inv.customer.email) {
     await notify({
-      templateKey: 'invoice_sent', channel: 'email', to: inv.customer.email, vars,
+      templateKey: 'invoice_sent', channel: 'email', to: inv.customer.email, vars, locale: inv.customer.preferredLocale,
       related: { model: 'Invoice', id },
       fallbackSubject: 'Invoice {{number}} from {{appName}}',
       fallbackBody: 'Dear {{customerName}},\n\nInvoice {{number}} for {{total}} is due on {{dueDate}}.\n{{link}}',
     });
   }
   await notify({
-    templateKey: 'invoice_sent', channel: 'sms', to: inv.customer.phone, vars,
+    templateKey: 'invoice_sent', channel: 'sms', to: inv.customer.phone, vars, locale: inv.customer.preferredLocale,
     related: { model: 'Invoice', id },
     fallbackBody: 'Invoice {{number}}: {{total}}, due {{dueDate}}. {{link}} - {{appName}}',
   });
@@ -205,7 +216,13 @@ export async function sendInvoice(id) {
 export async function voidInvoice(id, reason) {
   const inv = await getInvoice(id);
   if (inv.paidAmount > 0) throw unprocessable('Refund the payments before voiding this invoice');
-  return prisma.invoice.update({ where: { id }, data: { status: 'VOID', voidReason: reason }, include: INCLUDE });
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.invoice.update({ where: { id }, data: { status: 'VOID', voidReason: reason }, include: INCLUDE });
+    await recordEvent('invoice.voided', {
+      model: 'Invoice', recordId: id, before: { status: inv.status }, after: { status: 'VOID' }, meta: { reason },
+    }, tx);
+    return row;
+  });
 }
 
 export async function recordPayment(invoiceId, input, userId) {
@@ -231,18 +248,49 @@ export async function recordPayment(invoiceId, input, userId) {
       where: { id: invoiceId },
       data: { paidAmount, status: deriveStatus(inv, paidAmount) },
     });
+    await recordEvent('payment.recorded', {
+      model: 'Payment',
+      recordId: payment.id,
+      after: { invoiceId, amount, method: payment.method, reference: payment.reference },
+      meta: { invoiceStatus: deriveStatus(inv, paidAmount), paidAmount },
+    }, tx);
     return payment;
   });
 }
 
-export async function deletePayment(invoiceId, paymentId) {
+/**
+ * A payment is never deleted — a bounced cheque or a double entry is voided, and
+ * the row stays with who voided it and why. The paid total is recomputed from the
+ * payments still standing, and the invoice status follows it back down through
+ * the state machine (PAID → PARTIAL, or → SENT / OVERDUE when none are left).
+ */
+export async function voidPayment(invoiceId, paymentId, reason, userId) {
   const payment = await prisma.payment.findFirst({ where: { id: paymentId, invoiceId } });
   if (!payment) throw notFound('Payment');
+  if (payment.voidedAt) throw unprocessable('This payment has already been voided');
   const inv = await getInvoice(invoiceId);
+
   return prisma.$transaction(async (tx) => {
-    await tx.payment.delete({ where: { id: paymentId } });
-    const paidAmount = Math.max(0, inv.paidAmount - payment.amount);
-    await tx.invoice.update({ where: { id: invoiceId }, data: { paidAmount, status: deriveStatus(inv, paidAmount) } });
+    // Guarded, so two people voiding the same payment cannot both recompute the balance.
+    const { count } = await tx.payment.updateMany({
+      where: { id: paymentId, voidedAt: null },
+      data: { voidedAt: new Date(), voidReason: reason, voidedById: userId ?? null },
+    });
+    if (count === 0) throw unprocessable('This payment has already been voided');
+
+    const standing = await tx.payment.findMany({ where: { invoiceId, voidedAt: null }, select: { amount: true } });
+    const paidAmount = sum(standing.map((p) => p.amount));
+    const status = deriveStatus(inv, paidAmount);
+    assertTransition(INVOICE_TRANSITIONS, inv.status, status, 'invoice');
+    await tx.invoice.update({ where: { id: invoiceId }, data: { paidAmount, status } });
+    await recordEvent('payment.voided', {
+      model: 'Payment',
+      recordId: paymentId,
+      before: { voidedAt: null, amount: payment.amount },
+      after: { voidedAt: new Date(), voidReason: reason },
+      meta: { invoiceId, invoiceStatus: status, paidAmount },
+    }, tx);
+    return tx.payment.findUnique({ where: { id: paymentId } });
   });
 }
 
@@ -282,7 +330,8 @@ export async function getByPublicToken(token) {
     include: {
       customer: { select: { name: true, phone: true, panVatNo: true } },
       items: { orderBy: { sortOrder: 'asc' } },
-      payments: { select: { amount: true, method: true, receivedAt: true } },
+      // Voided payments stay visible to the customer, marked, so the history never changes silently.
+      payments: { select: { amount: true, method: true, receivedAt: true, voidedAt: true }, orderBy: { receivedAt: 'asc' } },
     },
   });
   if (!inv) throw notFound('Invoice');
@@ -294,7 +343,7 @@ export async function sweepOverdue() {
   const now = new Date();
   const due = await prisma.invoice.findMany({
     where: { deletedAt: null, status: { in: ['SENT', 'PARTIAL'] }, dueDate: { lt: now } },
-    include: { customer: { select: { name: true, phone: true, email: true } } },
+    include: { customer: { select: { name: true, phone: true, email: true, preferredLocale: true } } },
     take: 500,
   });
   for (const inv of due) {
@@ -302,7 +351,7 @@ export async function sweepOverdue() {
     const days = Math.floor((now - new Date(inv.dueDate)) / 86400000);
     if ([1, 7, 15].includes(days) || days % 30 === 0) {
       await notify({
-        templateKey: 'invoice_overdue', channel: 'sms', to: inv.customer.phone,
+        templateKey: 'invoice_overdue', channel: 'sms', to: inv.customer.phone, locale: inv.customer.preferredLocale,
         vars: {
           customerName: inv.customer.name, number: inv.number,
           outstanding: formatNpr(inv.total - inv.paidAmount), days, appName: env.appName,
@@ -314,7 +363,7 @@ export async function sweepOverdue() {
   }
   if (due.length) {
     await notifyRoles(['ACCOUNTANT', 'ADMIN'], {
-      type: 'invoices_overdue', title: `${due.length} invoice(s) went overdue`, link: '/invoices?overdueOnly=true',
+      type: 'invoices_overdue', title: `${due.length} invoice(s) went overdue`, link: '/admin/invoices?overdueOnly=true',
     });
   }
   return { marked: due.length };

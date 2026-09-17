@@ -104,7 +104,7 @@ describe('service reminders', () => {
       customerId: customer.id, jobId: job.id, dueAt: daysFromNow(180).toISOString(),
       message: 'Time for your six-month check-up.',
     }), 201).data.id;
-    expect(expectStatus(await dispatcher.get('/admin/service-reminders'), 200).data.map((r) => r.id)).toContain(reminderId);
+    expect(expectStatus(await dispatcher.get('/admin/service-reminders?sort=-createdAt'), 200).data.map((r) => r.id)).toContain(reminderId);
 
     const moved = daysFromNow(200);
     const updated = expectStatus(await dispatcher.put(`/admin/service-reminders/${reminderId}`).send({

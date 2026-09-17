@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { CalendarCheck, Loader2 } from 'lucide-react';
 import { useConvertLeadMutation, useGetTechniciansQuery } from '@/api/leadsApi';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { CustomerMatchChoice } from '@/components/leads/CustomerMatchChoice';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { cn } from '@/helpers/utils';
 
@@ -16,6 +17,9 @@ const dayKey = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kathman
 
 /**
  * Turns a lead into a customer and books the free inspection.
+ *
+ * When a customer already has the lead's phone, staff say "same person" or "different
+ * person" first (`CustomerMatchChoice`); Book stays disabled until they do.
  *
  * The instant is built from the day plus the slot's own startHour at a literal
  * +05:45 — Kathmandu's offset is not a whole number of hours, so deriving it
@@ -36,6 +40,9 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
   const [slot, setSlot] = useState(lead.preferredSlot ?? slots[0]?.key ?? 'morning');
   const [surveyorId, setSurveyorId] = useState('');
   const [address, setAddress] = useState(lead.address ?? '');
+  const [choice, setChoice] = useState({ ready: false, body: {}, loading: true });
+  const onChoice = useCallback((state) => setChoice(state), []);
+  const [error, setError] = useState(null);
 
   const dayInfo = availability?.days?.find((d) => d.date === date);
   const slotInfo = dayInfo?.slots?.find((s) => s.key === slot);
@@ -43,9 +50,11 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
   const submit = async () => {
     const startHour = slots.find((s) => s.key === slot)?.startHour ?? 8;
     const scheduledStart = new Date(`${date}T${String(startHour).padStart(2, '0')}:00:00${KTM_OFFSET}`).toISOString();
+    setError(null);
     try {
       const result = await convert({
         id: lead.id,
+        ...choice.body,
         createInspectionJob: true,
         scheduledStart,
         surveyorId: surveyorId || undefined,
@@ -58,7 +67,10 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
       onOpenChange(false);
       onScheduled?.(result);
     } catch (err) {
-      dispatch(toastError(err?.data?.error?.message ?? 'Could not book the visit'));
+      const message = err?.data?.error?.message ?? 'Could not book the visit';
+      // A customer with this phone appeared since the dialog opened: the choice above reloads.
+      if (err?.data?.error?.code === 'CUSTOMER_MATCH') setError(message);
+      else dispatch(toastError(message));
     }
   };
 
@@ -73,6 +85,9 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
         </DialogHeader>
 
         <div className="space-y-4">
+          {open ? <CustomerMatchChoice lead={lead} onChange={onChoice} /> : null}
+          {error ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+
           {lead.preferredAt ? (
             <p className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
               <CalendarCheck className="h-4 w-4 text-primary" aria-hidden />
@@ -135,7 +150,7 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={isLoading || !date}>
+          <Button onClick={submit} disabled={isLoading || !date || !choice.ready}>
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />}
             Book visit
           </Button>

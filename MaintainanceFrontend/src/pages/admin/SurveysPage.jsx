@@ -3,9 +3,8 @@ import { Ruler } from 'lucide-react';
 import { useGetSurveysQuery } from '@/api/surveysApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable';
+import { DataTable } from '@/components/common/DataTable/DataTable';
 import { StatusBadge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageTransition } from '@/three/motion/motionKit';
 import { SURVEY_STATUSES } from '@/config/constants';
 import { formatDate, formatDateTime, titleCase } from '@/helpers/format';
@@ -54,6 +53,13 @@ const columns = [
   { key: 'createdAt', header: 'Created', sortable: true, cell: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</span> },
 ];
 
+const filters = [
+  {
+    key: 'status', label: 'Status', type: 'enum', allLabel: 'All statuses', className: 'w-[170px]',
+    options: SURVEY_STATUSES.map((s) => ({ value: s, label: titleCase(s) })),
+  },
+];
+
 export default function SurveysPage() {
   const [params, setParams] = useListParams({ limit: 20 });
   const { data, isLoading, isFetching, error, refetch } = useGetSurveysQuery(params);
@@ -80,18 +86,7 @@ export default function SurveysPage() {
         searchPlaceholder="Search number, customer, diagnosis…"
         emptyTitle="No surveys yet"
         emptyDescription="A survey appears here once a surveyor submits it from the field."
-        toolbar={
-          <Select
-            value={params.status ?? 'all'}
-            onValueChange={(v) => setParams({ ...params, page: 1, status: v === 'all' ? undefined : v })}
-          >
-            <SelectTrigger className="w-[170px]"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {SURVEY_STATUSES.map((s) => <SelectItem key={s} value={s}>{titleCase(s)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        }
+        filters={filters}
       />
     </PageTransition>
   );

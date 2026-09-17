@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { prisma } from '../lib/prisma.js';
 import { normalizePhone } from '../utils/phone.js';
+import { webUrl } from '../utils/links.js';
 
 // ── SMS adapters ────────────────────────────────────────────────────────────
 
@@ -91,19 +92,60 @@ function mailer() {
 
 // ── Templates ───────────────────────────────────────────────────────────────
 
+/** `{{name}}`, `{{ quotation.number }}` — a dotted path into the vars. */
+const PLACEHOLDER = /\{\{\s*([\w.]+)\s*\}\}/g;
+
+const lookup = (vars, key) => key.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), vars);
+
 /** Replaces {{var}} placeholders. Missing variables render as an empty string. */
 export function renderTemplate(body, vars = {}) {
-  return String(body).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, key) => {
-    const value = key.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), vars);
+  return String(body).replace(PLACEHOLDER, (_m, key) => {
+    const value = lookup(vars, key);
     return value == null ? '' : String(value);
   });
 }
 
-async function loadTemplate(key, channel, locale = 'en') {
-  return (
-    (await prisma.messageTemplate.findFirst({ where: { key, channel, locale, isActive: true } })) ??
-    (await prisma.messageTemplate.findFirst({ where: { key, channel, isActive: true } }))
-  );
+/** The placeholder names in a text, in order of first use. */
+export function placeholdersIn(...texts) {
+  const found = new Set();
+  for (const text of texts) {
+    for (const [, key] of String(text ?? '').matchAll(PLACEHOLDER)) found.add(key);
+  }
+  return [...found];
+}
+
+/**
+ * What a template would send with these vars, for the editor's preview: the rendered
+ * subject and body, every placeholder, and the ones the vars leave empty.
+ */
+export function previewTemplate({ subject, body }, vars = {}) {
+  const placeholders = placeholdersIn(subject, body);
+  return {
+    subject: subject ? renderTemplate(subject, vars) : null,
+    body: renderTemplate(body, vars),
+    placeholders,
+    missing: placeholders.filter((key) => {
+      const value = lookup(vars, key);
+      return value == null || value === '';
+    }),
+  };
+}
+
+/** What a MessageLog keeps in place of a secret (a password link's token). */
+export const REDACTED_TEXT = '[redacted]';
+
+const redact = (text, secrets) => (text && secrets.length
+  ? secrets.reduce((out, secret) => out.split(secret).join(REDACTED_TEXT), text)
+  : text);
+
+/**
+ * The template for this language, else the English one, else none (the caller's
+ * fallback text). A Nepali template missing is normal — they are added one by one —
+ * and must never leave a customer without their message.
+ */
+export async function loadTemplate(key, channel, locale = 'en') {
+  const find = (lang) => prisma.messageTemplate.findFirst({ where: { key, channel, locale: lang, isActive: true } });
+  return (await find(locale)) ?? (locale === 'en' ? null : await find('en'));
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -111,12 +153,19 @@ async function loadTemplate(key, channel, locale = 'en') {
 /**
  * Sends a templated message and records it in MessageLog. Never throws into the
  * caller's request — delivery failures are logged and surfaced via MessageLog.
+ *
+ * A message to a customer or a lead passes `locale`: that record's `preferredLocale`.
+ * Staff messages stay English (the back office is English — decision D7).
+ * `secrets` are values (a password link's token) sent in the message but replaced by
+ * `[redacted]` in the log — such a message cannot be retried from the log.
+ *
  * @param {{templateKey:string, channel:'sms'|'email'|'inapp', to:string, vars?:object,
  *          locale?:string, userId?:string, related?:{model:string,id:string},
- *          fallbackBody?:string, fallbackSubject?:string}} opts
+ *          secrets?:string[], fallbackBody?:string, fallbackSubject?:string}} opts
  */
 export async function notify(opts) {
-  const { templateKey, channel, to, vars = {}, locale = 'en', userId, related } = opts;
+  const { templateKey, channel, to, vars = {}, userId, related } = opts;
+  const locale = opts.locale === 'ne' ? 'ne' : 'en';
 
   const tpl = await loadTemplate(templateKey, channel, locale);
   const body = renderTemplate(tpl?.body ?? opts.fallbackBody ?? '', vars);
@@ -134,13 +183,26 @@ export async function notify(opts) {
     });
   }
 
+  // A secret (a password link) is sent but never stored: the log keeps the message without it.
+  const secrets = (opts.secrets ?? []).filter(Boolean);
   const log = await prisma.messageLog.create({
     data: {
-      channel, templateKey, toAddress: to, subject: subject || null, body,
+      channel, templateKey, toAddress: to, subject: redact(subject, secrets) || null, body: redact(body, secrets),
       status: 'queued', relatedModel: related?.model ?? null, relatedId: related?.id ?? null,
     },
   });
+  return deliver(log, { subject, body });
+}
 
+/**
+ * Sends one logged message and records the outcome on its row. `content` is what goes
+ * out when it differs from what the log kept (a redacted secret). Never throws.
+ *
+ * @param {{ id: string, channel: string, toAddress: string, templateKey?: string|null }} log
+ * @param {{ subject?: string|null, body: string }} content
+ */
+export async function deliver(log, { subject, body }) {
+  const { channel, toAddress: to, templateKey } = log;
   try {
     let providerId = null;
     let provider = null;
@@ -154,19 +216,76 @@ export async function notify(opts) {
       const info = await t.sendMail({ from: env.mail.from, to, subject: subject || env.appName, text: body });
       providerId = info?.messageId ?? null;
     }
-    await prisma.messageLog.update({
+    return await prisma.messageLog.update({
       where: { id: log.id },
-      data: { status: 'sent', provider, providerId },
+      data: { status: 'sent', provider, providerId, error: null },
     });
-    return log;
   } catch (err) {
     logger.error({ err: err.message, channel, to, templateKey }, 'message delivery failed');
-    await prisma.messageLog.update({
+    return prisma.messageLog.update({
       where: { id: log.id },
       data: { status: 'failed', error: String(err.message).slice(0, 900) },
     });
-    return log;
   }
+}
+
+/**
+ * Tells named staff about one event, **once each**: a person reached through two
+ * roles (the salesperson who also created the quotation) gets one in-app
+ * notification and at most one email. Staff messages are English (D7).
+ *
+ * @param {Array<{userId:string|null|undefined, email?:boolean, link?:string}>} recipients
+ *   `email: true` if this person also gets an email; `link` (an SPA path) overrides the
+ *   default link for this person — a later recipient entry wins.
+ * @param {{type:string, title:string, body?:string, link:string, templateKey?:string,
+ *          vars?:object, related?:{model:string,id:string}, fallbackSubject?:string,
+ *          fallbackBody?:string}} message
+ *   The email uses `templateKey` (default `<type>_staff`) with `vars` plus `title`, `body`
+ *   and `link` (absolute, on the web origin), falling back to the given text.
+ * @returns {Promise<string[]>} the user ids notified
+ */
+export async function notifyUsers(recipients, message) {
+  const merged = new Map();
+  for (const r of recipients) {
+    if (!r?.userId) continue;
+    const prev = merged.get(r.userId) ?? { email: false, link: message.link };
+    merged.set(r.userId, { email: prev.email || Boolean(r.email), link: r.link ?? prev.link });
+  }
+  if (!merged.size) return [];
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...merged.keys()] }, isActive: true, deletedAt: null },
+    select: { id: true, email: true },
+  });
+  if (!users.length) return [];
+  await prisma.notification.createMany({
+    data: users.map((u) => ({
+      userId: u.id, type: message.type, title: message.title, body: message.body ?? null, link: merged.get(u.id).link,
+    })),
+  });
+  for (const u of users) {
+    const { email, link } = merged.get(u.id);
+    if (!email || !u.email) continue;
+    await notify({
+      templateKey: message.templateKey ?? `${message.type}_staff`,
+      channel: 'email',
+      to: u.email,
+      vars: { ...message.vars, title: message.title, body: message.body ?? '', link: webUrl(link) },
+      related: message.related,
+      fallbackSubject: message.fallbackSubject ?? '{{title}}',
+      fallbackBody: message.fallbackBody ?? '{{title}}\n\n{{body}}\n\nOpen: {{link}}',
+    });
+  }
+  return users.map((u) => u.id);
+}
+
+/** Every active user holding one of these roles — the approvers, the dispatchers. */
+export async function userIdsWithRoles(roles) {
+  const users = await prisma.user.findMany({
+    where: { role: { in: roles }, isActive: true, deletedAt: null },
+    select: { id: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return users.map((u) => u.id);
 }
 
 /** Fan-out helper: in-app notification to every user holding one of these roles. */

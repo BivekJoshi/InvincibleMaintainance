@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSyncOfflineMutation } from '@/api/techApi';
 import { flush, pending } from '@/helpers/offlineQueue';
 
@@ -49,7 +49,9 @@ export function useOfflineQueue() {
   }, [refresh, drain]);
 
   // One attempt on mount, in case the app was opened after coming back online.
-  useEffect(() => { drain(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // Held in a ref so this runs exactly once, not again whenever drain's identity changes.
+  const drainOnMount = useRef(drain);
+  useEffect(() => { drainOnMount.current(); }, []);
 
   return { count, online, syncing, drain, refresh };
 }

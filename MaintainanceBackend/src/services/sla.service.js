@@ -4,6 +4,7 @@ import { addMinutes } from '../utils/dates.js';
 import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { logger } from '../lib/logger.js';
+import { adminLeadPath, webUrl } from '../utils/links.js';
 
 /** Response-time budget in minutes, overridable from Settings. */
 export async function slaMinutes() {
@@ -79,12 +80,12 @@ export async function runSlaSweep() {
       type: 'lead_sla_breach',
       title: `SLA breached — ${lead.name}`,
       body: `No response within the promised window. Phone ${lead.phone}.`,
-      link: `/leads/${lead.id}`,
+      link: adminLeadPath(lead.id),
     });
     if (lead.assignedTo?.email) {
       await notify({
         templateKey: 'lead_sla_breach', channel: 'email', to: lead.assignedTo.email,
-        vars: { staffName: lead.assignedTo.name, leadName: lead.name, phone: lead.phone, link: `${env.appUrl}/leads/${lead.id}` },
+        vars: { staffName: lead.assignedTo.name, leadName: lead.name, phone: lead.phone, link: webUrl(adminLeadPath(lead.id)) },
         related: { model: 'Lead', id: lead.id },
         fallbackSubject: `SLA BREACHED: ${lead.name}`,
         fallbackBody: 'Lead {{leadName}} ({{phone}}) passed the response deadline with no contact logged.',
@@ -105,15 +106,15 @@ export async function runSlaSweep() {
 
   for (const lead of atRisk) {
     const already = await prisma.notification.findFirst({
-      where: { type: 'lead_sla_warn', link: `/leads/${lead.id}` },
+      where: { type: 'lead_sla_warn', link: adminLeadPath(lead.id) },
       select: { id: true },
     });
     if (already) continue;
-    await notifyRoles(lead.assignedTo ? ['ADMIN', 'SALES'] : ['ADMIN', 'SALES'], {
+    await notifyRoles(['ADMIN', 'SALES', 'MANAGER'], {
       type: 'lead_sla_warn',
       title: `Response due soon — ${lead.name}`,
       body: `Call ${lead.phone} before the promised deadline.`,
-      link: `/leads/${lead.id}`,
+      link: adminLeadPath(lead.id),
     });
   }
 

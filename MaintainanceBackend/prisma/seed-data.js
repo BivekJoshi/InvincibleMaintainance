@@ -52,6 +52,12 @@ export const SETTINGS = [
   { group: 'finance', key: 'finance.panVatNo', label: 'Company PAN/VAT number', type: 'string', value: '', sortOrder: 2 },
   { group: 'finance', key: 'finance.quotationTerms', label: 'Default quotation terms', type: 'richtext', sortOrder: 3,
     value: '1. Prices are valid for 15 days from the date of this quotation.\n2. 50% advance is required before work begins.\n3. Rates exclude VAT unless stated.\n4. Workmanship carries a 1-month warranty.' },
+  { group: 'finance', key: 'quotation.validDays', label: 'Quotations are valid for (days)', type: 'number', value: 15, sortOrder: 5,
+    hint: 'The valid-until date a new quotation gets when nobody sets one.' },
+  { group: 'finance', key: 'quotation.makerChecker', label: 'A different person approves each quotation', type: 'boolean', value: true, sortOrder: 6,
+    hint: 'When on, whoever prepared a quotation cannot approve it; another manager or admin must.' },
+  { group: 'finance', key: 'quotation.autoApproveBelow', label: 'Approve quotations automatically below (paisa)', type: 'number', value: 0, sortOrder: 7,
+    hint: 'In paisa (NPR × 100): 500000 means NPR 5,000. Quotations whose total is below it skip manager approval, revisions included. 0 turns this off.' },
   { group: 'finance', key: 'finance.invoiceTerms', label: 'Default invoice terms', type: 'richtext', sortOrder: 4,
     value: 'Payment is due within 15 days. Please quote the invoice number with your transfer.' },
 
@@ -349,6 +355,44 @@ export const HERO_SLIDES = [
   { title: 'One month warranty on every technical solution', subtitle: 'You receive a certificate and a claim link. A valid claim is attended free, at high priority.', ctaLabel: 'How it works', ctaUrl: '/about', sortOrder: 2 },
 ];
 
+/** The blog: advice a homeowner searches for, which is what brings them to the service pages. */
+export const POST_CATEGORIES = [
+  { name: 'Damp & waterproofing', slug: 'damp-and-waterproofing', sortOrder: 0 },
+  { name: 'Home care', slug: 'home-care', sortOrder: 1 },
+];
+
+export const POSTS = [
+  {
+    category: 'damp-and-waterproofing',
+    title: 'Rising damp or a leaking terrace? How to tell before you repaint',
+    slug: 'rising-damp-or-leaking-terrace',
+    excerpt: 'Three kinds of damp look identical on a painted wall. Where the stain starts, and when it appears, tells you which one you have.',
+    body: 'A damp patch low on a ground-floor wall, with white salt on the plaster, is almost always rising damp: water drawn up from the ground because the damp-proof course has failed or was never laid.\n\nA patch high on a top-floor wall or ceiling that appears a day after heavy rain is the roof. On a flat terrace the cause is usually ponding — water that does not drain toward the outlet and finds its way through a crack instead.\n\nA patch in the middle of a wall that shares a surface with a bathroom or a neighbour\'s house is lateral seepage, and the source is on the other side.\n\nRepainting treats none of these. Before you spend on paint, have the wall read with a moisture meter: the pattern of readings shows where the water is coming from, and that decides the repair.',
+    publishedDaysAgo: 12,
+    metaTitle: 'Rising damp or roof leak? How to tell | Kathmandu homes',
+    metaDescription: 'Three kinds of damp look the same on a painted wall. How to tell rising damp, terrace leaks and lateral seepage apart before you repaint.',
+  },
+  {
+    category: 'home-care',
+    title: 'Five checks to make before the monsoon',
+    slug: 'five-checks-before-the-monsoon',
+    excerpt: 'An hour on the roof in May saves a ceiling in July. What to look at, and what each problem costs to fix early.',
+    body: 'Clear every terrace outlet and pour a bucket of water toward it. If the water sits for more than a few minutes, the slope needs correcting.\n\nLook along the parapet for hairline cracks where the wall meets the slab. That joint moves, and it is where most terrace leaks begin.\n\nCheck the overhead tank lid and its overflow pipe. A blocked overflow soaks the slab beneath it all season.\n\nOpen the cupboard under the kitchen sink and feel the back wall. A cold, damp patch there is a concealed pipe, not rain.\n\nFinally, photograph any existing stains with a date. If one grows during the monsoon, you will know it is active.',
+    publishedDaysAgo: 30,
+  },
+];
+
+export const PAGES = [
+  {
+    // The seeded third hero slide links here.
+    slug: 'about',
+    title: 'About Ghar Jatan',
+    body: 'Ghar Jatan is a team of certified civil and electrical engineers and our own trained crews, working across Kathmandu, Lalitpur and Bhaktapur.\n\nWe started because homeowners kept paying twice for the same repair: once for a quick fix that did not address the cause, and again when the problem came back. So we diagnose first, with instruments, and quote against a published rate card.\n\nEvery enquiry is answered within two hours, every inspection is free, and every technical solution carries a written one-month warranty.',
+    metaTitle: 'About us — certified engineers for home repair in Kathmandu',
+    metaDescription: 'Certified engineers and our own crews for seepage, waterproofing, renovation and interiors across Kathmandu Valley. Free inspection, two-hour response.',
+  },
+];
+
 export const MESSAGE_TEMPLATES = [
   { key: 'lead_new', channel: 'sms', locale: 'en', body: 'NEW LEAD: {{leadName}}, {{phone}}. Service: {{service}}. Respond within the 2-hour window. {{link}}' },
   { key: 'lead_new', channel: 'email', locale: 'en', subject: 'New lead: {{leadName}} ({{phone}})',
@@ -360,10 +404,26 @@ export const MESSAGE_TEMPLATES = [
   { key: 'quotation_sent', channel: 'sms', locale: 'en', body: 'Quotation {{number}} for {{total}} is ready. View and approve: {{link}} - {{appName}}' },
   { key: 'quotation_sent', channel: 'email', locale: 'en', subject: 'Your quotation {{number}} from {{appName}}',
     body: 'Dear {{customerName}},\n\nYour quotation {{number}} totalling {{total}} is ready.\n\nReview and approve it here:\n{{link}}\n\nValid until {{validUntil}}.\n\n{{appName}}' },
+  { key: 'quotation_accepted', channel: 'sms', locale: 'en', body: 'Thank you {{customerName}}. Quotation {{number}} ({{total}}) is accepted. We will call you to schedule the work. - {{appName}}' },
+  { key: 'quotation_accepted', channel: 'sms', locale: 'ne', body: 'तपाईंको स्वीकृति प्राप्त भयो। कोटेसन {{number}} ({{total}}) अनुसारको काम मिलाउन हामी चाँडै फोन गर्नेछौं। - {{appName}}' },
+  { key: 'quotation_accepted', channel: 'email', locale: 'en', subject: 'Quotation {{number}} accepted — thank you',
+    body: 'Dear {{customerName}},\n\nThank you for accepting quotation {{number}} for {{total}}. Your job number is {{jobNumber}}.\nWe will call you shortly to agree a date for the work.\n\n{{appName}}' },
+  { key: 'quotation_accepted', channel: 'email', locale: 'ne', subject: 'कोटेसन {{number}} स्वीकृत — धन्यवाद',
+    body: 'आदरणीय {{customerName}},\n\nकोटेसन {{number}} ({{total}}) स्वीकार गर्नुभएकोमा धन्यवाद। तपाईंको कामको नम्बर {{jobNumber}} हो।\nकाम गर्ने मिति मिलाउन हामी चाँडै फोन गर्नेछौं।\n\n{{appName}}' },
+  { key: 'quotation_changes_received', channel: 'sms', locale: 'en', body: 'Thank you {{customerName}}. We have your requested changes to quotation {{number}} and will send a revised quotation soon. - {{appName}}' },
+  { key: 'quotation_changes_received', channel: 'sms', locale: 'ne', body: 'तपाईंले मागेका परिवर्तन प्राप्त भए। कोटेसन {{number}} को संशोधित प्रस्ताव चाँडै पठाउनेछौं। - {{appName}}' },
+  { key: 'quotation_changes_requested_staff', channel: 'email', locale: 'en', subject: '{{customerName}} asked for changes to {{number}} v{{version}}',
+    body: '{{customerName}} asked for changes to quotation {{number}} v{{version}}:\n\n"{{note}}"\n\nRevise it here: {{link}}' },
+  { key: 'quotation_changes_requested_staff', channel: 'email', locale: 'ne', subject: '{{customerName}} ले {{number}} v{{version}} मा परिवर्तन मागे',
+    body: '{{customerName}} ले कोटेसन {{number}} v{{version}} मा यस्तो परिवर्तन मागेका छन्:\n\n"{{note}}"\n\nसंशोधन गर्न: {{link}}' },
   { key: 'job_assigned', channel: 'sms', locale: 'en', body: 'Job {{number}}: {{title}}\nAt: {{address}}\nCustomer: {{customer}} {{phone}}\nWhen: {{when}}' },
   { key: 'survey_returned', channel: 'sms', locale: 'en', body: 'Survey {{number}} was sent back: {{note}} - {{appName}}' },
+  { key: 'job_scheduled', channel: 'sms', locale: 'en', body: 'Hi {{customerName}}, job {{number}} is booked for {{date}}, {{time}}. We will call before we come. - {{appName}}' },
+  { key: 'job_scheduled', channel: 'sms', locale: 'ne', body: 'नमस्ते {{customerName}}, काम {{number}} को लागि {{date}}, {{time}} मा समय मिलाइएको छ। आउनुअघि फोन गर्नेछौं। - {{appName}}' },
   { key: 'job_en_route', channel: 'sms', locale: 'en', body: 'Hi {{customerName}}, our technician is on the way for job {{number}}. - {{appName}}' },
+  { key: 'job_en_route', channel: 'sms', locale: 'ne', body: 'नमस्ते {{customerName}}, काम {{number}} का लागि हाम्रो प्राविधिक बाटोमा हुनुहुन्छ। - {{appName}}' },
   { key: 'job_completed', channel: 'sms', locale: 'en', body: 'Job {{number}} is complete. Your work carries a {{warrantyDays}}-day warranty: {{warrantyLink}} - {{appName}}' },
+  { key: 'job_completed', channel: 'sms', locale: 'ne', body: 'काम {{number}} सम्पन्न भयो। यस कामको {{warrantyDays}} दिनको वारेन्टी छ: {{warrantyLink}} - {{appName}}' },
   { key: 'invoice_sent', channel: 'sms', locale: 'en', body: 'Invoice {{number}}: {{total}}, due {{dueDate}}. {{link}} - {{appName}}' },
   { key: 'invoice_overdue', channel: 'sms', locale: 'en', body: 'Reminder: invoice {{number}} ({{outstanding}}) is {{days}} day(s) overdue. - {{appName}}' },
   { key: 'warranty_claim_accepted', channel: 'sms', locale: 'en', body: 'Your warranty claim is accepted. Job {{number}} is scheduled {{when}} at no charge. - {{appName}}' },
@@ -371,6 +431,8 @@ export const MESSAGE_TEMPLATES = [
   { key: 'amc_visit_due', channel: 'sms', locale: 'en', body: 'Your {{planName}} maintenance visit is due on {{date}}. We will confirm the time. - {{appName}}' },
   { key: 'password_reset', channel: 'email', locale: 'en', subject: 'Reset your {{appName}} password',
     body: 'Hi {{name}},\n\nReset your password using this link (valid for 1 hour):\n{{link}}\n\nIf you did not request this, ignore this email.' },
+  { key: 'account_invite', channel: 'email', locale: 'en', subject: 'Your {{appName}} account',
+    body: 'Hi {{name}},\n\nAn account has been created for you on {{appName}}. Choose your password using this link (valid for {{hours}} hours):\n{{link}}\n\nIf you were not expecting this, ignore this email.' },
 ];
 
 export const JOB_TEMPLATES = [

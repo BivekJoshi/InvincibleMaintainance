@@ -24,7 +24,7 @@ export function ExplainerBlock({ section, media, tone }) {
             <p className="mt-4 border-l-2 border-gold pl-4 text-[15px] leading-relaxed">{block.subheading}</p>
           ) : null}
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{block.body}</p>
-          {block.cta ? (
+          {block.cta?.label && block.cta?.url ? (
             <Cta href={block.cta.url} className="mt-6">{block.cta.label} <ArrowRight className="h-4 w-4" /></Cta>
           ) : null}
         </Reveal>

@@ -5,6 +5,12 @@ import {
 import { FEATURE_GROUPS, HOME_SECTION_KEYS, LIST_GROUPS } from '../enums.js';
 
 const title = z.string().trim().min(2).max(250);
+
+/**
+ * Projects, pages and posts have a meta title and description but no sharing-image column,
+ * so `ogImageId` is not accepted there (zod strips it) — it used to reach Prisma and fail with a 500.
+ */
+const { ogImageId: _ogImageId, ...pageSeoFields } = seoFields;
 const optionalImage = z.string().optional();
 
 export const heroSlideSchema = z.object({
@@ -26,6 +32,7 @@ export const serviceCategorySchema = z.object({
   isActive,
 });
 
+/** The templated card copy the old site shipped on every service ("Professional … with expert tools and results."). */
 const BOILERPLATE = /^professional .+ with expert tools and results\.?$/i;
 
 export const serviceSchema = z.object({
@@ -35,8 +42,8 @@ export const serviceSchema = z.object({
   excerpt: z
     .string()
     .trim()
-    .min(20, 'Write at least 20 characters — this is the card text customers read')
-    .max(400)
+    .min(40, 'Write at least 40 characters — this is the card text customers read')
+    .max(200, 'Keep it to 200 characters — the service card shows about two lines')
     .refine((v) => !BOILERPLATE.test(v), 'Replace the placeholder copy with a real description of this service'),
   body: optionalText,
   icon: z.string().trim().max(60).optional(),
@@ -79,7 +86,7 @@ export const projectSchema = z.object({
   isFeatured: z.coerce.boolean().default(false),
   sortOrder,
   isActive,
-  ...seoFields,
+  ...pageSeoFields,
 });
 
 /** POST /admin/jobs/:id/publish-case-study — everything is optional but the title. */
@@ -204,7 +211,7 @@ export const pageSchema = z.object({
   slug: z.string().trim().max(140).optional(),
   title,
   body: optionalText,
-  ...seoFields,
+  ...pageSeoFields,
   sortOrder,
   isActive,
 });
@@ -224,7 +231,7 @@ export const postSchema = z.object({
   body: z.string().trim().min(20),
   coverId: optionalImage,
   publishedAt: z.coerce.date().optional(),
-  ...seoFields,
+  ...pageSeoFields,
   sortOrder,
   isActive,
 });
@@ -234,7 +241,8 @@ export const homeSectionUpdateSchema = z.object({
     key: z.enum(HOME_SECTION_KEYS),
     sortOrder: z.coerce.number().int().min(0),
     isVisible: z.coerce.boolean(),
-    settings: z.record(z.any()).optional(),
+    // `limit` is the one setting the site reads (services, projects, gallery, testimonials); others are kept as sent.
+    settings: z.object({ limit: z.coerce.number().int().min(1).max(50).optional() }).passthrough().optional(),
   })).min(1),
 });
 
@@ -243,9 +251,15 @@ export const settingsUpdateSchema = z.object({
 });
 
 export const mediaUpdateSchema = z.object({
-  alt: z.string().trim().max(300).optional(),
+  // Alt text can be changed, never emptied: every picture on the site needs one.
+  alt: z.string().trim().min(1, 'Describe the picture — alt text cannot be empty').max(300).optional(),
   caption: z.string().trim().max(500).optional(),
   folderId: z.string().nullable().optional(),
+});
+
+export const mediaFolderSchema = z.object({
+  name: z.string().trim().min(1, 'Folder name is required').max(80),
+  parentId: z.string().min(1).nullable().optional(),
 });
 
 export const translationUpsertSchema = z.object({

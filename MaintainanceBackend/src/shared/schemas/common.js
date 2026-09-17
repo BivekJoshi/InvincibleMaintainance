@@ -16,6 +16,17 @@ export const listQuery = z.object({
   to: z.string().optional(),
   includeInactive: z.coerce.boolean().optional(),
   includeDeleted: z.coerce.boolean().optional(),
+  /**
+   * Trash view: only soft-deleted rows. Parsed strictly, because z.coerce.boolean()
+   * reads the string 'false' as true.
+   */
+  deleted: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+});
+
+/** `…/:id/history` — a record's audit trail, sorted by time only. */
+export const historyQuery = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export const nepaliPhone = z
@@ -26,10 +37,16 @@ export const nepaliPhone = z
 
 export const optionalPhone = z.union([nepaliPhone, z.literal('')]).optional().transform((v) => v || undefined);
 export const email = z.string().trim().email('Enter a valid email address');
-export const optionalEmail = z.union([email, z.literal('')]).optional().transform((v) => v || undefined);
+/**
+ * A contact's email, stored trimmed and lower-case: after launch a customer account
+ * links to earlier history by email alone, so `Ram@X.com ` and `ram@x.com` must be one address.
+ */
+export const optionalEmail = z.union([email.toLowerCase(), z.literal('')]).optional().transform((v) => v || undefined);
 export const optionalText = z.string().trim().max(20000).optional().or(z.literal('')).transform((v) => v || undefined);
 export const url = z.string().trim().max(2000);
 export const locale = z.enum(LOCALES);
+/** The language a lead or customer is written to. */
+export const preferredLocale = locale;
 export const unit = z.enum(UNITS);
 
 /** Money is submitted in RUPEES from the UI and stored as integer paisa. */

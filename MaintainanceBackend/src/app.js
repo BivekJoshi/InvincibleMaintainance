@@ -7,13 +7,20 @@ import pinoHttp from 'pino-http';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { env } from './config/env.js';
-import { logger } from './lib/logger.js';
+import { logger as defaultLogger, serializers } from './lib/logger.js';
+import { isValidRequestId } from './lib/requestContext.js';
+import { requestContext } from './middleware/requestContext.js';
 import { globalLimiter } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
+import { AppError } from './utils/AppError.js';
 import { prisma } from './lib/prisma.js';
 import routes from './routes/index.js';
 
-export function createApp() {
+/**
+ * @param {object} [opts]
+ * @param {import('pino').Logger} [opts.logger]  tests pass a logger writing to a captured stream
+ */
+export function createApp({ logger = defaultLogger } = {}) {
   const app = express();
 
   app.set('trust proxy', 1);
@@ -21,10 +28,19 @@ export function createApp() {
 
   app.use(pinoHttp({
     logger,
-    genReqId: (req) => req.headers['x-request-id'] ?? crypto.randomUUID(),
+    serializers,
+    // A client may pass its own id to correlate a request across systems, but only
+    // a plain token: anything else is replaced, so it cannot forge log lines.
+    genReqId: (req, res) => {
+      const incoming = req.headers['x-request-id'];
+      const id = isValidRequestId(incoming) ? incoming : crypto.randomUUID();
+      res.setHeader('X-Request-Id', id);
+      return id;
+    },
     autoLogging: { ignore: (req) => req.url === '/healthz' || req.url === '/readyz' },
-    customLogLevel: (_req, res, err) => (err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
+    customLogLevel: (_req, res, err) => (err || res.statusCode >= 500 ? 'error' : 'info'),
   }));
+  app.use(requestContext);
 
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' }, // uploaded images are served to the SPAs
@@ -35,9 +51,10 @@ export function createApp() {
     origin(origin, cb) {
       if (!origin) return cb(null, true); // curl, server-to-server
       if (env.corsOrigins.includes(origin)) return cb(null, true);
-      return cb(new Error(`Origin ${origin} is not allowed`));
+      return cb(new AppError(403, 'FORBIDDEN_ORIGIN', 'This origin is not allowed to call the API'));
     },
     credentials: true,
+    exposedHeaders: ['X-Request-Id'],
   }));
 
   app.use(compression());

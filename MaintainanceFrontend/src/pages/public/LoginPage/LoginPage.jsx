@@ -83,8 +83,8 @@ export default function LoginPage() {
             <DemoAccounts variants={rise} onPick={flow.fillDemo} />
 
             <motion.p variants={rise} className="mt-8 text-xs leading-relaxed text-muted-foreground">
-              Locked out? Ask an administrator to reset your password — for security we do not
-              send reset links from this screen.
+              Forgot your password, or locked out? Ask an administrator to email you a reset link —
+              for security this screen does not send one.
             </motion.p>
           </motion.div>
         </div>
