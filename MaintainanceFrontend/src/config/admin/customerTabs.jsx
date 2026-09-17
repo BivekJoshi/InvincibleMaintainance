@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { StatusBadge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/common/StateBadge';
 import { formatDate, formatNpr, titleCase } from '@/helpers/format';
+import { JOB_STATUS_LABELS, JOB_TYPE_LABELS } from '@/config/constants';
 
 /**
  * The record tabs on a customer's page: each is that domain's own list, filtered by the
@@ -34,14 +35,14 @@ export const CUSTOMER_RECORD_TABS = [
   {
     key: 'jobs', label: 'Jobs', kind: 'jobs',
     allowed: ({ can }) => can('jobs:read'),
+    href: (r) => `/admin/jobs/${r.id}`,
     emptyTitle: 'No jobs yet',
     columns: [
-      { key: 'number', header: 'Number', sortable: true, cell: number },
+      { key: 'number', header: 'Number', sortable: true, cell: (r) => <Link to={`/admin/jobs/${r.id}`} className="font-mono text-xs hover:underline">{r.number}</Link> },
       { key: 'title', header: 'Job', cell: (r) => <span className="line-clamp-1">{r.title}</span> },
-      { key: 'type', header: 'Type', cell: (r) => titleCase(r.type) },
-      { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} /> },
+      { key: 'type', header: 'Type', cell: (r) => JOB_TYPE_LABELS[r.type] ?? titleCase(r.type) },
+      { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} label={JOB_STATUS_LABELS[r.status]} /> },
       { key: 'scheduledStart', header: 'When', sortable: true, cell: (r) => formatDate(r.scheduledStart) },
-      { key: 'page', header: '', cell: () => soon },
     ],
   },
   {

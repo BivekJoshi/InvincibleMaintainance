@@ -94,9 +94,9 @@ Gaps against the intended business process:
 | ✅ 10 · A 2026-09-14 | Medium | Leads CSV export always 401s. It uses `window.open`, but the API accepts only a Bearer header. | `MaintainanceFrontend/src/pages/admin/LeadsPage.jsx` |
 | ✅ 11 · A 2026-09-14 | Medium | The booking wizard hardcodes `elapsedMs: 60_000`, which defeats the anti-spam timing check. | `components/booking/BookingWizard/BookingWizard.jsx` |
 | ✅ 12 · A 2026-09-14 | Low | `npm run lint` fails: eslint 9 with no `eslint.config.js` in the frontend. | `MaintainanceFrontend/` |
-| 13 | Low | *(G 2026-09-17: users, audit log, login activity, message templates and message logs now validate `sort` and their filters.)* Unvalidated `?sort` and `?status` reach Prisma. Sub-resource `:id` params are unvalidated in crm, ops and finance routes. Several lists are unpaginated. | routes |
+| 13 | Low | *(G 2026-09-17: users, audit log, login activity, message templates and message logs now validate `sort` and their filters. H1 2026-09-17: jobs, technicians, dispatch, stock and movements validate theirs and are paginated; ops sub-resource ids are validated.)* Unvalidated `?sort` and `?status` reach Prisma. Sub-resource `:id` params are unvalidated in crm, ops and finance routes. Several lists are unpaginated. | routes |
 | 14 | Low | `notify()` is awaited inside the request with no retry. Crons have no leader lock, so they are unsafe on more than one instance. | `notify.service.js`, `crons/index.js` |
-| 15 | Low | *(G 2026-09-17: `platform.routes.js` is Prisma-free — users, notifications, message logs; ops technicians and tech sync remain for H.)* Raw Prisma calls in route files (technicians, users, tech sync) break the "routes never touch Prisma" rule. | `ops.routes.js:95-129`, `platform.routes.js:87-137`, `tech.routes.js:214-283` |
+| 15 | Low | *(G 2026-09-17: `platform.routes.js` is Prisma-free — users, notifications, message logs. H1 2026-09-17: `ops.routes.js` is Prisma-free — technicians. Tech sync remains for H2.)* Raw Prisma calls in route files (technicians, users, tech sync) break the "routes never touch Prisma" rule. | `ops.routes.js:95-129`, `platform.routes.js:87-137`, `tech.routes.js:214-283` |
 
 ---
 
@@ -706,7 +706,7 @@ closed neither outright.
   accounts, not sorted by failure count; the manual walk-through was scripted with Playwright against the `_test`
   database rather than clicked by hand (below, in STATUS).
 
-### Phase H — Operations screens · ~7 days
+### Phase H — Operations screens · ~7 days · H1 ✅ done 2026-09-17 · H2 to do
 
 - **Jobs:**
   - list with filters
@@ -718,7 +718,50 @@ closed neither outright.
 
 **Acceptance:** a dispatcher schedules on the board. The technician completes the whole job on a phone, partly offline, and everything syncs: photos, checklist, signature, time, materials. Stock falls by what was issued, and job costing reconciles to the paisa.
 
-### Phase I — Finance & aftercare screens · ~6 days
+**H1 — back-office screens (✅ 2026-09-17).** Jobs list with presets and a New job sheet; job detail with Overview,
+Checklist, Photos, Materials, Time, Costing, Events and History and a state-driven action bar; the dispatch board (day
+and week, drag or "Schedule…", warnings before commit, the unassigned queue, skill and area filters); technicians, job
+templates, materials, categories and suppliers as registry entries; the stock page with movements and "Record movement";
+the low-stock card. Backend:
+- **D5:** technicians moved into `services/technician.service.js`; `ops.routes.js` no longer calls Prisma.
+  Technicians, job templates, materials, material categories and suppliers are mounted by the shared
+  `routes/admin/mountResource.js` (moved out of `cms.routes.js`), which gives the four ops resources the toggle,
+  restore and history endpoints the registry screens call. The technician "switch" is availability.
+- **One-step scheduling:** `POST /admin/jobs/:id/schedule` sets the window and (optionally) the people, moves the
+  status, writes `job.scheduled`, tells new technicians, and sends the customer **`job_scheduled`** in their language;
+  its `meta.warnings` are the board's conflict and capacity rules. Nepali `job_en_route` and `job_completed` seeded too.
+- **#13, narrowed:** technicians, `/dispatch/unassigned`, `/stock` and `/stock/movements` are paginated; the jobs list
+  validates `sort`, reads `from`/`to` as Kathmandu days (the old range used the server's timezone for the end of day)
+  and gains `invoiced=false`; `unassigned`/`available` read `'false'` as false; job sub-resource ids are validated.
+- **Costing reconciles to the paisa:** each material line carries its `cost`, each total is the sum of its rounded lines.
+- A manual `ISSUE_TO_JOB` stock movement is refused — stock reaches a job only through the job.
+
+**Deviations (Phase H1, 2026-09-17)** — built differently from the prompt, or beyond it.
+- **Job template steps are an `objectList`** (step + optional "how"), not a `stringList`: the API stores
+  `{ title, description }` and the seeded templates would have lost their descriptions on the first save.
+- **The board is a new endpoint's client, not `PUT` + `assign`.** A drop is one `POST /jobs/:id/schedule` (window and
+  people in one transaction, one status event, one customer SMS), because two calls could half-apply and `PUT` never
+  moved a DRAFT job to SCHEDULED. Warnings never block: dispatch can "Schedule anyway".
+- **The board's `unassigned` array became `unassignedCount`;** the side list pages `/dispatch/unassigned` itself (it
+  was capped at 100). The board also returns `days`, `hours`, per-lane `loadByDay` / `overCapacityDays` (week view
+  too — capacity used to be checked in day view only) and `unscheduledAssigned`.
+- **DISPATCHER gained `services:read`** — a job template belongs to a service, and the picker reads `/admin/services`.
+- **The technician list never carries `hourlyRate`**, even for `technicians:write` (one profile does); a technician's
+  **History needs `technicians:write`**, because the trail records rate changes. A technician profile cannot be purged.
+- **Dragging a job between two lanes swaps that person** (a multi-technician job keeps the others); from the queue the
+  lane's person leads. Work under way (EN_ROUTE, IN_PROGRESS) and closed jobs cannot be rescheduled (422).
+- **New kit pieces:** the `checklist` field type, a registry `activeField` and a field-level `capability`.
+- **The job's Photos tab adds from the media library** (upload tab included) filed under a chosen kind; the SIGNATURE
+  kind is only taken at completion. The "Publish case study" dialog asks only the title and whether to name the customer;
+  the rest is finished in the project editor it opens.
+- **New job's "From an accepted quotation" picker shows only to `quotations:read`** — a dispatcher cannot list quotations,
+  and an accepted quotation normally became its job when the customer said yes.
+- **Not done here:** `tech.routes.js` sync still calls Prisma (H2, #15); the costing endpoint shows labour cost to
+  every `jobs:read` role (SALES, ACCOUNTANT) — a rate can be worked out from it; a checklist cannot be reordered (no API
+  endpoint); `casestudy.service` stores `costBandMin/Max` as given although the schema calls them rupees (no screen sends
+  them yet).
+
+### Phase I — Finance & aftercare screens### Phase I — Finance & aftercare screens · ~6 days
 
 - Invoices (from job, send, void, payments), payment search, expenses, and reports (aging, revenue, collections, customer statement).
 - Warranties, the claims decision queue, AMC contracts and visits, renewals due, service reminders.
@@ -768,7 +811,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | E Leads & CRM ✅ 2026-09-16 | 5 | 20 | Sales works entirely in the UI |
 | F Quotation approval ✅ 2026-09-17 (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
 | G Audit & platform UI ✅ 2026-09-17 | 3 | 28 | Traceability, users, templates |
-| H Operations (H1 + H2) | 7 | 35 | Dispatch and job management |
+| H Operations (H1 ✅ 2026-09-17 + H2) | 7 | 35 | Dispatch and job management |
 | I Finance & aftercare | 6 | 41 | Billing and retention |
 | J1 Nepali UI | 2 | 43 | Field app, site, customer pages in Nepali |
 | J2 Reliability & PDFs | 2 | 45 | Queued notifications, cron locks, PDFs |

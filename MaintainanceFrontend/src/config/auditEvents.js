@@ -23,6 +23,7 @@ export const AUDIT_EVENT_LABELS = {
   'job.created': 'Job created',
   'job.status_changed': 'Job status changed',
   'job.assigned': 'Job assigned',
+  'job.scheduled': 'Job scheduled',
   'job.completed': 'Job completed',
   'job.verified': 'Job verified',
 

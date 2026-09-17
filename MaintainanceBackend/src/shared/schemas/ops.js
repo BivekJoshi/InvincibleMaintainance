@@ -90,6 +90,13 @@ export const jobAssignSchema = z.object({
   note: z.string().trim().max(1000).optional(),
 });
 
+/** `/admin/jobs/:id/<child>/:childId` — both ids checked before the service looks. */
+const childParams = (name) => z.object({ id: z.string().min(1), [name]: z.string().min(1).max(64) });
+export const jobTaskParams = childParams('taskId');
+export const jobPhotoParams = childParams('photoId');
+export const jobMaterialParams = childParams('jobMaterialId');
+export const jobTimeLogParams = childParams('logId');
+
 export const jobTaskSchema = z.object({
   title: z.string().trim().min(2).max(300),
   note: z.string().trim().max(2000).optional(),
@@ -139,32 +146,73 @@ export const jobCompleteSchema = z.object({
   warrantyScope: z.string().trim().max(2000).optional(),
 });
 
-export const technicianListQuery = z.object({
+/** `true` / `false` in a query string. `z.coerce.boolean()` reads the string 'false' as true. */
+const flag = z.enum(['true', 'false']).transform((v) => v === 'true');
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-09-18');
+
+/** GET /admin/technicians — paginated (at most 100 a page). */
+export const technicianListQuery = listQuery.pick({ page: true, limit: true, q: true, deleted: true }).extend({
+  sort: z.enum([
+    'employeeCode', '-employeeCode', 'name', '-name', 'rating', '-rating',
+    'dailyCapacity', '-dailyCapacity', 'isAvailable', '-isAvailable', 'createdAt', '-createdAt',
+  ]).optional(),
   role: z.enum(ROLES).optional(),
-  available: z.coerce.boolean().optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
+  available: flag.optional(),
+  skill: z.string().trim().max(60).optional(),
+  area: z.string().trim().max(80).optional(),
 });
 
+/** GET /admin/technicians/users — people a new profile can be for. */
+export const linkableUserQuery = listQuery.pick({ page: true, limit: true, q: true });
+
 export const dispatchQuery = z.object({
-  date: z.string().optional(),
+  date: day.optional(),
   view: z.enum(['day', 'week']).default('day'),
   technicianId: z.string().optional(),
   role: z.enum(ROLES).optional(),
 });
 
+/** GET /admin/dispatch/unassigned — most urgent first unless sorted by age. */
+export const unassignedQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  sort: z.enum(['priority', 'createdAt', '-createdAt']).optional(),
+});
+
+/**
+ * POST /admin/jobs/:id/schedule — the board's drop and its Schedule dialog. `technicianIds`
+ * replaces the assignment when given (the first one leads unless `leadTechnicianId` says).
+ */
+export const jobScheduleSchema = z.object({
+  scheduledStart: z.coerce.date(),
+  scheduledEnd: z.coerce.date(),
+  technicianIds: z.array(z.string().min(1)).min(1, 'Choose at least one technician').max(20).optional(),
+  leadTechnicianId: z.string().min(1).optional(),
+  note: z.string().trim().max(1000).optional(),
+  notifyCustomer: z.boolean().default(true),
+}).refine((v) => v.scheduledEnd > v.scheduledStart, {
+  message: 'End time must be after the start time', path: ['scheduledEnd'],
+}).refine((v) => v.scheduledEnd - v.scheduledStart <= 14 * 86_400_000, {
+  message: 'A visit cannot be longer than 14 days', path: ['scheduledEnd'],
+});
+
+/** GET /admin/jobs. `from` / `to` are Kathmandu days; `invoiced=false` is finished billable work not yet invoiced. */
 export const jobListQuery = z.object({
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  sort: z.string().optional(),
+  sort: z.enum([
+    'createdAt', '-createdAt', 'scheduledStart', '-scheduledStart', 'number', '-number',
+    'priority', '-priority', 'status', '-status', 'updatedAt', '-updatedAt',
+  ]).optional(),
   q: z.string().trim().max(200).optional(),
   status: z.enum(JOB_STATUSES).optional(),
   type: z.enum(JOB_TYPES).optional(),
   priority: z.enum(PRIORITIES).optional(),
   technicianId: z.string().optional(),
   customerId: z.string().optional(),
-  unassigned: z.coerce.boolean().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  quotationId: z.string().optional(),
+  unassigned: flag.optional(),
+  invoiced: flag.optional(),
+  from: day.optional(),
+  to: day.optional(),
 });
 
 // ── materials
@@ -197,10 +245,29 @@ export const materialSchema = z.object({
   isActive,
 });
 
+/** GET /admin/stock — every material with its derived balance, paginated. */
+export const stockQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  sort: z.enum(['name', '-name', 'code', '-code', 'balance', '-balance', 'sortOrder']).optional(),
+  categoryId: z.string().optional(),
+  lowOnly: flag.optional(),
+  includeInactive: flag.optional(),
+});
+
+/** GET /admin/stock/movements — newest first. */
+export const stockMovementListQuery = listQuery.pick({ page: true, limit: true, from: true, to: true }).extend({
+  materialId: z.string().optional(),
+  jobId: z.string().optional(),
+  type: z.enum(STOCK_MOVEMENT_TYPES).optional(),
+});
+
+/**
+ * POST /admin/stock/movements. ISSUE_TO_JOB is refused here: stock goes to a job only through
+ * the job (`POST /admin/jobs/:id/materials`), which writes the job's material line with it.
+ */
 export const stockMovementSchema = z.object({
   materialId: z.string().min(1),
-  type: z.enum(STOCK_MOVEMENT_TYPES),
-  qty: z.coerce.number().refine((v) => v !== 0, 'Quantity cannot be zero'),
+  type: z.enum(STOCK_MOVEMENT_TYPES).refine((v) => v !== 'ISSUE_TO_JOB', 'Issue stock to a job from the job itself'),
+  qty: z.coerce.number().min(-1_000_000).max(1_000_000).refine((v) => v !== 0, 'Quantity cannot be zero'),
   rate: optionalRupees,
   jobId: z.string().optional().nullable(),
   reference: z.string().trim().max(120).optional(),

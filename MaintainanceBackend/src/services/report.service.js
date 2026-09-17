@@ -3,6 +3,7 @@ import { dateRange } from '../utils/pagination.js';
 import { sum } from '../utils/money.js';
 import { addDays, startOfDay, endOfDay } from '../utils/dates.js';
 import { slaWhere } from './sla.service.js';
+import { lowStockCount } from './material.service.js';
 
 const range = (q) => dateRange(q.from, q.to) ?? { gte: addDays(new Date(), -30) };
 
@@ -304,6 +305,7 @@ export async function dashboard(role) {
     jobsToday, jobsOpen, jobsUnassigned,
     invoicesOutstanding, warrantiesActive, amcRenewals,
     quotationsPendingApproval, quotationsChangesRequested, quotationsAwaitingCustomer, acceptedJobsUnscheduled,
+    stockLow,
   ] = await Promise.all([
     prisma.lead.count({ where: { deletedAt: null, createdAt: today } }),
     prisma.lead.count({ where: { deletedAt: null, status: { notIn: ['WON', 'LOST'] } } }),
@@ -323,6 +325,8 @@ export async function dashboard(role) {
     prisma.quotation.count({ where: { deletedAt: null, status: 'SENT' } }),
     // Work the customer accepted that nobody has put on the calendar yet.
     prisma.job.count({ where: { deletedAt: null, quotationId: { not: null }, status: 'DRAFT', scheduledStart: null } }),
+    // Only the roles that see the card pay for the balance sums.
+    ['ADMIN', 'DISPATCHER'].includes(role) ? lowStockCount() : 0,
   ]);
 
   const outstanding = (invoicesOutstanding._sum.total ?? 0) - (invoicesOutstanding._sum.paidAmount ?? 0);
@@ -333,6 +337,7 @@ export async function dashboard(role) {
     outstandingAmount: outstanding, outstandingInvoices: invoicesOutstanding._count._all,
     warrantiesActive, amcRenewals,
     quotationsPendingApproval, quotationsChangesRequested, quotationsAwaitingCustomer, acceptedJobsUnscheduled,
+    stockLow,
   };
 
   const [funnel, sla, revenue] = await Promise.all([
@@ -350,7 +355,7 @@ export async function dashboard(role) {
     EDITOR: ['leadsToday'],
     SALES: SALES_CARDS,
     MANAGER: [...SALES_CARDS, 'acceptedJobsUnscheduled'],
-    DISPATCHER: ['jobsToday', 'jobsOpen', 'jobsUnassigned', 'acceptedJobsUnscheduled'],
+    DISPATCHER: ['jobsToday', 'jobsOpen', 'jobsUnassigned', 'acceptedJobsUnscheduled', 'stockLow'],
     TECHNICIAN: ['jobsToday'],
     ACCOUNTANT: ['outstandingAmount', 'outstandingInvoices'],
   };

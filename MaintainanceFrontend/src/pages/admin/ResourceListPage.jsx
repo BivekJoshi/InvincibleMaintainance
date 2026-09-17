@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useResourceEntry } from '@/hooks/useResourceEntry';
 import { useListParams } from '@/hooks/useListParams';
 import { useConfirm } from '@/hooks/useConfirm';
-import { activeCopyOf, screenPathOf } from '@/config/admin/resourceRegistry';
+import { activeCopyOf, activeFieldOf, screenPathOf } from '@/config/admin/resourceRegistry';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable } from '@/components/common/DataTable/DataTable';
 import { Button } from '@/components/ui/button';
@@ -59,13 +59,14 @@ function ResourceList({ entry, canWrite }) {
   const inTrash = params.deleted === 'true';
   const screenPath = screenPathOf(entry);
   const copy = activeCopyOf(entry);
+  const activeField = activeFieldOf(entry);
   const editHref = (row) => `${screenPath}/${row.id}`;
   const nameOf = (row) => entry.titleOf(row);
 
   const onToggle = async (row) => {
     try {
       const updated = await toggle({ resource, id: row.id }).unwrap();
-      dispatch(toastSuccess(`${label} ${updated.isActive ? copy.turnedOn : copy.turnedOff}`));
+      dispatch(toastSuccess(`${label} ${updated[activeField] ? copy.turnedOn : copy.turnedOff}`));
     } catch (err) {
       dispatch(toastError(`Could not change this ${label}`, messageOf(err)));
     }
@@ -123,14 +124,14 @@ function ResourceList({ entry, canWrite }) {
   });
 
   const activeColumn = {
-    key: 'isActive',
+    key: activeField,
     header: copy.column,
     sortable: true,
     className: 'w-20',
     cell: (row) => (
       <span onClick={(e) => e.stopPropagation()} className="inline-flex">
         <Switch
-          checked={Boolean(row.isActive)}
+          checked={Boolean(row[activeField])}
           disabled={!canWrite || inTrash}
           onCheckedChange={() => onToggle(row)}
           aria-label={`${copy.switchLabel} “${nameOf(row)}”`}
@@ -149,7 +150,7 @@ function ResourceList({ entry, canWrite }) {
       ...(href ? [{ label: 'View on site', icon: ExternalLink, onSelect: () => window.open(href, '_blank', 'noopener') }] : []),
       ...extra,
       ...(canWrite ? [
-        row.isActive
+        row[activeField]
           ? { label: copy.turnOff, icon: EyeOff, onSelect: () => onToggle(row) }
           : { label: copy.turnOn, icon: Eye, onSelect: () => onToggle(row) },
         { label: 'Delete', icon: Trash2, destructive: true, onSelect: () => onDelete([row]) },

@@ -64,6 +64,10 @@ export const AuditLogPage = route(() => import('@/pages/admin/AuditLogPage'));
 export const LoginActivityPage = route(() => import('@/pages/admin/LoginActivityPage'));
 export const MessageLogsPage = route(() => import('@/pages/admin/MessageLogsPage'));
 export const MessageTemplatesPage = route(() => import('@/pages/admin/MessageTemplatesPage'));
+export const JobsPage = route(() => import('@/pages/admin/JobsPage'));
+export const JobDetailPage = route(() => import('@/pages/admin/JobDetailPage/JobDetailPage'));
+export const DispatchBoardPage = route(() => import('@/pages/admin/DispatchBoardPage/DispatchBoardPage'));
+export const StockPage = route(() => import('@/pages/admin/StockPage'));
 export const MessageTemplateEditPage = route(() => import('@/pages/admin/MessageTemplateEditPage/MessageTemplateEditPage'));
 
 // Field app
@@ -84,6 +88,7 @@ const GROUPS = {
   admin: [
     LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
     HomeComposerPage, MediaLibraryPage, SettingsPage, UsersPage, AuditLogPage, MessageLogsPage,
+    JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
   ],
   tech: [TechJobPage, SurveyListPage, SurveyFormPage],
 };

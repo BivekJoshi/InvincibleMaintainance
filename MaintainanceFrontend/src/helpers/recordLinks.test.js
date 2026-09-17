@@ -19,8 +19,15 @@ describe('recordHref', () => {
     expect(recordHref({ model: 'LeadNote', recordId: 'n1', after: { body: 'x' } })).toBeNull();
   });
 
+  it('links a job, and its parts to the job (Phase H1)', () => {
+    expect(recordHref({ model: 'Job', recordId: 'j1' })).toBe('/admin/jobs/j1');
+    expect(recordHref({ model: 'JobTask', recordId: 't1', after: { jobId: 'j9' } })).toBe('/admin/jobs/j9');
+    expect(recordHref({ model: 'TimeLog', recordId: 'l1', before: { jobId: 'j8' } })).toBe('/admin/jobs/j8');
+    expect(recordHref({ model: 'Technician', recordId: 'x1' })).toBe('/admin/technicians/x1');
+    expect(recordHref({ model: 'Material', recordId: 'm1' })).toBe('/admin/materials/m1');
+  });
+
   it('has no link for records without a screen yet', () => {
-    expect(recordHref({ model: 'Job', recordId: 'j1' })).toBeNull();
     expect(recordHref({ model: 'Invoice', recordId: 'i1' })).toBeNull();
     expect(recordHref({ model: 'Lead', recordId: null })).toBeNull();
   });

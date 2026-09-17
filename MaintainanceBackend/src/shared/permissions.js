@@ -32,7 +32,8 @@ export const PERMISSIONS = {
   DISPATCHER: [
     'jobs:read', 'jobs:write', 'jobs:dispatch', 'jobs:history', 'technicians:read', 'technicians:write',
     'materials:read', 'materials:write', 'customers:read', 'leads:read',
-    'surveys:read',
+    // services:read: a job template belongs to a service (Phase H1).
+    'surveys:read', 'services:read',
     'media:read', 'media:write', 'dashboard:read', 'reports:ops',
   ],
   TECHNICIAN: ['jobs:own', 'media:write', 'dashboard:read'],

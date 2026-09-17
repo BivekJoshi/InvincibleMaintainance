@@ -9,6 +9,7 @@ import { useResourceEntry } from '@/hooks/useResourceEntry';
 import { useConfirm } from '@/hooks/useConfirm';
 import { activeCopyOf, historyCapabilityOf, schemaOf, screenPathOf } from '@/config/admin/resourceRegistry';
 import { useAuth } from '@/hooks/useAuth';
+import { can as roleCan } from '@/helpers/permissions';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -27,13 +28,19 @@ const lockFields = (fields) => fields.map((f) => (f.type === 'group'
   ? { ...f, fields: lockFields(f.fields) }
   : f.lockedOnEdit ? { ...f, disabled: true } : f));
 
+/** Field specs without the ones this user may not see (a field's own `capability`), groups included. */
+const visibleFields = (fields, can) => fields
+  .filter((f) => !f.capability || can(f.capability))
+  .map((f) => (f.type === 'group' ? { ...f, fields: visibleFields(f.fields, can) } : f));
+
 /**
  * `/admin/content/:resource/new` and `/admin/content/:resource/:id` (or under an entry's
  * own `basePath`) — the create/edit screen of every registry entry: the entry's fields in a
  * `ResourceForm`, inside `LocaleTabs` when it has translatable fields or tabs of its own. A
  * new record opens its own edit page once saved, which is where its Nepali tab and any
  * other tab (a project's Gallery) become available. A field marked `lockedOnEdit` is
- * read-only once the record exists; `intro(record)` shows read-only facts above the form. Every
+ * read-only once the record exists, and one with a `capability` is shown only to its holders;
+ * `intro(record)` shows read-only facts above the form. Every
  * saved record has a History tab (its audit trail) for a role holding the entry's history capability.
  *
  * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
@@ -48,7 +55,7 @@ export default function ResourceEditPage({ resource }) {
 function ResourceEditor({ entry, canWrite }) {
   const { resource, label } = entry;
   const { id } = useParams();
-  const { can } = useAuth();
+  const { can, role } = useAuth();
   const isNew = !id;
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -67,7 +74,10 @@ function ResourceEditor({ entry, canWrite }) {
   const { pageSlugs } = useSiteSettings();
   const pageSlugsKey = pageSlugs.join('/');
   const schema = useMemo(() => schemaOf(entry, { pageSlugs: pageSlugsKey ? pageSlugsKey.split('/') : [] }), [entry, pageSlugsKey]);
-  const fields = useMemo(() => (isNew ? entry.fields : lockFields(entry.fields)), [entry, isNew]);
+  const fields = useMemo(() => {
+    const shown = visibleFields(entry.fields, (capability) => roleCan(role, capability));
+    return isNew ? shown : lockFields(shown);
+  }, [entry, isNew, role]);
   const readOnlyNew = isNew && !canWrite;
   const translatableFields = useMemo(
     () => flattenFields(entry.fields).filter((f) => entry.translatable?.includes(f.name)),

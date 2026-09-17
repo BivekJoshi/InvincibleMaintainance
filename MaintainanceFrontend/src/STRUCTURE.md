@@ -20,8 +20,9 @@ src/
 ├── helpers/        Pure functions.
 └── styles/         Tailwind entry + CSS variables.
 
-e2e/                The Playwright suite: the quotation loop end to end (Phase F2).
+e2e/                The Playwright suite: the quotation loop (Phase F2) and the dispatch walk-through (Phase H1).
 ├── quotation-flow.spec.js
+├── operations-flow.spec.js   schedule by drag and by dialog, double-book warning, materials, time, costing, complete, verify, case study
 ├── global-setup.js     migrates and seeds the *_test database
 └── support/            e2eEnv.js (ports, database, the API's environment), api.js (HTTP + signIn)
 ```
@@ -73,6 +74,7 @@ The CRM files (Phase E):
 - `historyApi.js` — **`getRecordHistory({ endpoint, page, limit })`**, one query for every record's History tab (tag `History`).
 - `usersApi.js`, `auditApi.js`, `messagesApi.js` (Phase G, ADMIN) — see "Platform (Phase G)". `previewTemplate` is a
   **query** although it is a POST: it reads, and caching by its arguments is what a live preview wants.
+- `jobsApi.js`, `stockApi.js` (Phase H1) — see "Operations (Phase H1)".
 - `dashboardApi.js` also holds **`getBreachedLeadCount`** (the SLA nav badge): the shell loads that file, and a count must
   not pull `leadsApi` into the main bundle.
 
@@ -91,6 +93,8 @@ The CRM files (Phase E):
 | `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
 | `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog`, `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (typed entries; shows the response result), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice), `ConvertResult` (what a convert made, with links). |
 | `customers/` | `CustomerFormSheet` (new customer) and `MapPinInput` ("use map pin": pasted coordinates fill a site's latitude and longitude — it sits in the site form's `intro`, inside the form). |
+| `jobs/` | Phase H1, shared by the jobs list, the job page and the dispatch board: `JobFormSheet` (new job; the site and quotation follow the customer), `ScheduleJobDialog` (window, who goes, lead, "text the customer" — the board's non-drag path), `AssignJobDialog`, `CompleteJobDialog` (note, signature photo, rating, warranty). |
+| `stock/` | `StockMovementsSheet` — one material's movements, paged (Phase H1). |
 | `platform/` | The admin platform screens' parts (Phase G): `AuditDiff` (a before/after, nested fields by path, each line marked added / removed / changed on the semantic surfaces and in words), `AuditRowDetails` (an audit row opened: the diff, request id, ip, browser, "Show everything from this request", "Open the record"), `UserFormSheet` (new / edit — no password field), `SessionsDialog` (where someone is signed in, "Sign out everywhere"). |
 | `public/`, `booking/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. |
 
@@ -161,7 +165,8 @@ media sheet's preview).
 
 One file per field type under `fields/`. Every spec has `name`, `type`, `label`, and optionally
 `description`, `placeholder`, `required`, `disabled`, `span: 'half'`, `defaultValue` — and, in a registry entry,
-`lockedOnEdit` (editable on a new record, read-only once saved).
+`lockedOnEdit` (editable on a new record, read-only once saved) and `capability` (shown only to a user holding it — a
+technician's labour rate).
 
 | `type` | Value | Extra spec |
 |---|---|---|
@@ -180,6 +185,7 @@ One file per field type under `fields/`. Every spec has `name`, `type`, `label`,
 | `media` | media id | — |
 | `mediaList` | ordered media ids; drag or move buttons | `maxItems`, `addLabel` |
 | `weekdays` | sorted day numbers, 0 = Sunday … 6 = Saturday | — |
+| `checklist` | `string[]` — several values ticked from `options: [{ value, label, description?, disabled? }]`, kept in the options' order; a ticked value no longer listed stays, named by `unknownLabel(value)` (the technicians on a job) | `options`, `emptyText`, `unknownLabel` |
 | `lineItems` | a priced document's lines — description, rate-card item, unit, qty and a rate in **rupees** (the record's paisa are converted in); rows move and are removed, a blank row is dropped, and the amounts are a preview until the server saves | `rateCard` (the rate-card rows), `maxItems` |
 | `objectList` | an array of small objects, one row each (move up/down, remove); a completely empty row is dropped on save — give the schema a `z.preprocess` that drops blank rows too, since validation runs first | `itemFields: [{ name, label, type?: 'text' \| 'select', options?, placeholder?, maxLength?, className? }]`, `itemLabel`, `addLabel`, `maxItems` |
 | `group` | collapsible section (e.g. SEO); opens itself on an error inside. `variant: 'card'` is an always-open titled card (the settings page) | `fields`, `defaultOpen`, `variant` |
@@ -243,6 +249,10 @@ Every CMS resource the API mounts has a screen. `cms` means `cms:read` to open a
 | Post categories | registry `post-categories` | `/admin/content/post-categories` · cms | Blog & pages | `/blog` category filter |
 | Pages | registry `pages` | `/admin/content/pages` · cms | Blog & pages | `/:slug` (e.g. `/about`), CMS button links |
 | Rate card | registry `rate-card`, own `basePath` | `/admin/rate-card` · quotations:read / quotations:write | Sales | quotation lines, survey pricing, `/pricing` rate table |
+| Technicians | registry `technicians`, own `basePath`, switch = **availability** (`activeField: 'isAvailable'`) | `/admin/technicians` · technicians:read / technicians:write; the rate field and the History tab need technicians:write | Operations | — |
+| Job templates | registry `job-templates`, own `basePath`; steps as an `objectList` | `/admin/job-templates` · jobs:read / jobs:write | Operations | — (a new job copies the steps) |
+| Materials | registry `materials`, own `basePath` | `/admin/materials` · materials:read / materials:write | Operations | — (stock is the Stock page) |
+| Material categories, Suppliers | registry `material-categories`, `suppliers`, own `basePath` | `/admin/material-categories`, `/admin/suppliers` · materials | Operations | — |
 | Site settings | **bespoke** `pages/admin/SettingsPage` | `/admin/platform/settings` · settings:read to open; saving is ADMIN's (`settings:write`) | Platform | header, footer, contact, hero badges and counters, booking calendar, SEO defaults |
 
 Why three are bespoke: the **home composer** edits a fixed set of 19 sections with no create or delete, saved
@@ -298,6 +308,7 @@ An entry holds:
 | `intro(record)` | read-only facts above an existing record's form (a project's source job number) |
 | `tabs` | `[{ value, label, component }]` — panels beside the form on an existing record, rendered with `{ record, canWrite }` (a project's Gallery). Disabled on a new record |
 | `historyCapability` | who sees the edit page's **History** tab (default `capability`; the rate card's is `quotations:history`). Every saved record gets the tab — `RecordHistory` on `<path>/:id/history`, which the API's CRUD factory mounts. `historyCapabilityOf(entry)` answers |
+| `activeField` | the boolean the list's switch and Hide/Show act on (default `isActive`) — the API's `toggle` flips the same column. Technicians use `isAvailable` with their own `activeCopy`. `activeFieldOf(entry)` answers |
 | `rowActions(row)` | extra list actions: `[{ label, icon?, capability?, endpoint, arg, done }]` — `endpoint` is a `cmsApi` mutation (`approveTestimonial`), dispatched with `arg`; `done` is the success toast. Hidden without `capability`. The registry test checks each endpoint exists |
 
 A role with `capability` but not `writeCapability` (ACCOUNTANT on the rate card) sees the list with disabled
@@ -338,8 +349,9 @@ Icons are picked, not typed: `resources/iconOptions.jsx` offers exactly `DataIco
 5. `npm test` — `resourceRegistry.test.js` fails until the path is mounted in the API, every field is in the schema,
    every translatable field is a text field, the nav item and the entry agree on the capability, a filter's
    `defaultValue` is one of its options, `reorderWithin` names a filter, and every `rowActions` endpoint is a `cmsApi`
-   mutation. A resource
-   mounted by hand outside `cms.routes.js` (the rate card, in `crm.routes.js`) is listed in the test's
+   mutation. The test reads the resources the API mounts through `mountResource` in `cms.routes.js` and
+   `ops.routes.js` (Phase H1; the mounter is `routes/admin/mountResource.js`). A resource
+   mounted by hand (the rate card, in `crm.routes.js`) is listed in the test's
    `HAND_MOUNTED` and must mount all eight endpoints.
 6. When another screen reads the same data through its own endpoint, add its tag to `ALSO_READ_AS` in
    `api/cmsApi.js` (the rate card also invalidates the quotation builder's `RateCard` list).
@@ -402,8 +414,8 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
 - **`helpers/sms.js`** — `smsSegments(text)`: GSM-7 (160 / 153 a part, extension characters count twice) or Unicode
   (70 / 67, astral characters twice); Devanagari is always Unicode. `nonGsm` says why.
 - **`helpers/recordLinks.js`** — `recordHref(row)`: an audit or message row's page (lead, customer, quotation, survey,
-  user, settings, any registry entry by its Prisma model); a child row (note, site, quotation line, project picture,
-  Nepali copy) links to its parent; jobs and invoices have no page yet → null.
+  job, user, settings, any registry entry by its Prisma model); a child row (note, site, quotation line, project picture,
+  a job's assignment, task, photo, material or time log, Nepali copy) links to its parent; invoices have no page yet → null.
 - **`config/admin/messageKeys.js`** — `MESSAGE_KEYS` (every key the API sends — a test scans its services),
   `SAMPLE_VARS`, `placeholdersIn` (the API's pattern — a test checks the source), `nestVars`, `TEMPLATE_VARIANTS`,
   `templateHref`.
@@ -414,6 +426,57 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
 - Tests: `pages/admin/PlatformScreens.test.jsx` (every screen above, with Devanagari names, a Nepali SMS and a
   `+977` phone), the three helpers' tests, `capabilityMatrix.test.js`, `messageKeys.test.js`, and the History tab in
   `ResourcePages.test.jsx`.
+
+## Operations (Phase H1)
+
+| Route | Page | Does |
+|---|---|---|
+| `/admin/jobs` | `JobsPage` | DataTable v2: number and title, customer (tap to call, area), status in the office's words (`JOB_STATUS_LABELS`) and priority, when, technicians. Filters status, type, priority, technician, customer, "Nobody on it", invoiced, scheduled dates; URL presets from `config/admin/jobViews.js` — Today, Unassigned, On hold, Completed not verified, Not invoiced; New job (`JobFormSheet`); a row's Schedule… / Assign… / Verify… |
+| `/admin/jobs/:id` | `JobDetailPage/` | the action bar and eight tabs (`?tab=`): **Overview** (customer and site with tap-to-call and Maps, where it came from — lead, quotation, survey, rework, case study — when and who, the work, Edit details), **Checklist** (tick, skip, add, edit, remove), **Photos** (grouped by kind; add from the library or upload under a chosen kind), **Materials** (issue from stock with quantity, billed rate and billable; reverse), **Time** (logs; the office adds time for a technician on the job; delete), **Costing** (`GET …/costing`: labour, materials at cost, expenses, total, invoiced, margin, and the lines each total is the sum of), **Events** (JobStatusEvent, with a Maps link where the field app sent a location), **History** (`jobs:history`) |
+| `/admin/dispatch` | `DispatchBoardPage/` | technicians × the day's hours (08–18) or × seven days; date, Day/Week, who, skill and area in the URL; the unassigned queue (`/dispatch/unassigned`, paged, searchable) and "Assigned, no time yet" beside it |
+| `/admin/stock` | `StockPage` | balances from movements, Low — reorder, value at cost; "Low stock only" filter and the header's low count; a row opens its movements (`StockMovementsSheet`, also `?open=<id>` — the low-stock notification's link); **Record movement** (purchase, return, adjustment with a sign, wastage) |
+| `/admin/technicians`, `/admin/job-templates`, `/admin/materials`, `/admin/material-categories`, `/admin/suppliers` | registry entries | see "Which screen is which" |
+
+- **`helpers/jobActions.js`** — `jobActions(job, { can })`: what a job's state allows, and why a button is disabled
+  (Complete while `openTasks(job)` is not empty, "Mark on the way" with nobody on it); a unit test holds every move to
+  `JOB_TRANSITIONS`. Also `jobWaitingFor(job)` (the line under the title) and `siteMapHref(site)`.
+- **`hooks/useJobActions.jsx`** — `const [runAction, dialogs] = useJobActions({ onDeleted })`: schedule, assign and
+  complete open their dialogs; hold and cancel ask why (required), reopen asks optionally; verify and delete confirm;
+  "Publish case study" drafts the project (title, name the customer — off) and opens `/admin/content/projects/:id`.
+  Status moves go through `PATCH /status`, `complete`, `verify`, `schedule` and `assign` only — never an edit.
+- **`helpers/dispatchBoard.js`** — the board without a DOM: Kathmandu days (`ktmDay`, `addDaysTo`,
+  `shiftBoardDate`), hour columns, `durationOf`, `windowAt`, **`dropWindow(job, { day, hour? })`** (an hour cell starts
+  it there; a day cell keeps its time of day, or 10:00; the length is kept), **`dropTechnicians(job, lane, fromLane)`**
+  (from the queue the lane's person leads and the rest stay; lane to lane swaps the person; within a lane nothing
+  changes), `isSameDrop`, `jobsInCell` (early and late jobs sit in the first and last hour), and
+  **`scheduleWarnings({ job, window, technicianIds, lanes, days })`** — overlaps, days past `dailyCapacity`,
+  unavailable people, and `unchecked` for a day the board is not showing; `warningText(w)` words each one.
+- **`hooks/useScheduleCommit.jsx`** — the one way a screen schedules: `const [commit, dialog] = useScheduleCommit({
+  lanes, days })`, then `await commit(job, { scheduledStart, scheduledEnd, technicianIds })`. It asks "Schedule …
+  anyway?" with the warnings **before** sending, and toasts any the API found that the board could not see.
+- **The board** (`DispatchBoardPage/`): `DispatchGrid` (a `role="grid"`; each cell a dnd-kit droppable named
+  "Hari KC, Fri 18 Sept, 10:00"; the lane header shows load against the daily limit, unavailable and clashes),
+  `DispatchJobCard` (drag handle + **Schedule…**, the keyboard and screen-reader path; work under way is not
+  draggable; "Clash" on overlapping cards) and `UnassignedQueue`. Pointer-within collision like the pipeline; the
+  keyboard sensor still works; auto-scroll only at the very edges, so a job dragged in from the queue does not scroll
+  the hours away. **Every drag has the dialog as its equivalent** — the rule for any board.
+- `api/jobsApi.js` — jobs, their parts, schedule (`{ job, warnings }`), the board, the queue, costing, publish, and the
+  technician picker (`getDispatchTechnicians`, never a rate). A move invalidates the job, the lists, `Dispatch`,
+  `Dashboard`, `History` and `Notification`; issuing material also `Stock`; anything with a cost the job's
+  `costing:<id>` tag. `api/stockApi.js` — stock, movements, record. Registry writes to materials and technicians
+  invalidate `Stock` / `Dispatch` through `cmsApi`'s `ALSO_READ_AS`.
+- Schemas: `form/schemas/job.schema.js` (create, details, schedule, assign, notes, complete, task, material, time
+  log, case-study start) and `ops.schema.js` (technician, template, material, category, supplier, stock movement)
+  mirror the API's `shared/schemas/ops.js`.
+- `config/constants.js` has `JOB_TRANSITIONS`, `JOB_STATUS_LABELS`, `JOB_TYPE_LABELS`, `JOB_PHOTO_KINDS`,
+  `STOCK_MOVEMENT_TYPES` / `_LABELS`, `MANUAL_STOCK_MOVEMENTS` (mirror-tested); `config/admin/jobViews.js` the presets,
+  the customer / technician / template / material relations and `technicianOption`;
+  `config/admin/resources/inUseCopy.js` the "In use / Retire" words the operations entries share.
+- Links: the customer page's Jobs tab, audit rows (`Job` and its parts, technicians, materials) and the dashboard's
+  job and `stockLow` cards now open these screens.
+- Tests: `pages/admin/OperationsScreens.test.jsx` (jobs presets, job actions and tabs with Devanagari and rupees, the
+  board's dialog path through the clash warning, stock and Record movement, technician availability and the hidden
+  rate), `helpers/dispatchBoard.test.js`, `helpers/jobActions.test.js`, and `e2e/operations-flow.spec.js`.
 
 ## Leads and customers (Phase E)
 
@@ -637,7 +700,8 @@ links, and which role may see each), `homeSections.js` (what each home
 section shows, where its content is edited, which ones take a `limit`, and `toSectionItems`), and `settingsForm.js`
 (the settings screen as data — see "Which screen is which").
 
-`helpers/` is behaviour with no state (Phase G added `auditDiff.js`, `sms.js`, `recordLinks.js` and
+`helpers/` is behaviour with no state (Phase H1 added `jobActions.js` and `dispatchBoard.js` — see "Operations
+(Phase H1)" — and `formatMinutes` in `format.js`; Phase G added `auditDiff.js`, `sms.js`, `recordLinks.js` and
 `capabilityMatrix.js` — see "Platform (Phase G)"): `format.js` (money — `rupeesToPaisa`, `parseRupees`,
 `formatRupees` — dates, Kathmandu time and `toKathmanduParts` / `fromKathmanduParts` for inputs),
 `slug.js` (a copy of the API's `slugify` — change both together), `prose.js` (`splitParagraphs`),
@@ -655,7 +719,7 @@ the API's map), `leadBoard.js` (`nextStatuses`, `canDrop`, `cardsForColumn`, `co
 `config/`, `helpers/` and `hooks/` have no barrel files (`config.js`, `helpers.js` and `hooks.js` had no importers
 and were removed in C2) — import the module itself.
 
-`hooks/` also holds the admin kit's behaviour: `useConfirm`, `useUnsavedChangesGuard`,
+`hooks/` also holds the admin kit's behaviour: `useJobActions` and `useScheduleCommit` (Phase H1), `useConfirm`, `useUnsavedChangesGuard`,
 `useDebouncedValue`, `useListParams` (whose `defaults` are compared by value), `useLeadStatusChange` (the one way a
 screen moves a lead: `const [changeStatus, dialog] = useLeadStatusChange()`; LOST asks why first; resolves false when
 refused or cancelled, so the board can put a card back), `useNavBadges`, and `useResourceEntry`

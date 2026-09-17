@@ -12,11 +12,11 @@ beforeAll(async () => {
   admin = await as('ADMIN');
 });
 
+/** A material's derived balance, found by its code on the paginated stock list. */
 const stockOf = async (materialId) => {
-  const body = expectStatus(await dispatcher.get('/admin/stock'), 200);
-  const rows = Array.isArray(body.data) ? body.data : body.data.items;
-  return rows.find((r) => (r.id ?? r.materialId) === materialId)?.balance
-    ?? rows.find((r) => (r.id ?? r.materialId) === materialId)?.onHand;
+  const { code } = await prisma.material.findUnique({ where: { id: materialId } });
+  const body = expectStatus(await dispatcher.get(`/admin/stock?q=${encodeURIComponent(code)}&limit=100`), 200);
+  return body.data.find((r) => r.id === materialId)?.balance;
 };
 
 describe('job templates', () => {

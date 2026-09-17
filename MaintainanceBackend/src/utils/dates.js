@@ -18,3 +18,16 @@ export const endOfDay = (date = new Date()) => dayjs(date).tz(env.business.timez
 /** Renders a UTC instant in Kathmandu local time. */
 export const local = (date, fmt = 'YYYY-MM-DD HH:mm') =>
   dayjs(date).tz(env.business.timezone).format(fmt);
+
+/**
+ * A Prisma range for `from` / `to` given as Kathmandu calendar days (`YYYY-MM-DD`), inclusive —
+ * "today" is the office's today whatever timezone the server runs in.
+ */
+export function kathmanduDayRange(from, to) {
+  if (!from && !to) return undefined;
+  const tz = env.business.timezone;
+  return {
+    ...(from ? { gte: dayjs.tz(from, tz).startOf('day').toDate() } : {}),
+    ...(to ? { lte: dayjs.tz(to, tz).endOf('day').toDate() } : {}),
+  };
+}

@@ -17,8 +17,16 @@ const listTag = (resource) => ({ type: 'Cms', id: resource });
 const itemTag = (resource, id) => ({ type: 'Cms', id: `${resource}:${id}` });
 const base = (resource) => `/admin/${resource}`;
 
-/** Other screens that read a resource through their own endpoint (the quotation builder reads the rate card). */
-const ALSO_READ_AS = { 'rate-card': [{ type: 'RateCard', id: 'LIST' }] };
+/**
+ * Other screens that read a resource through their own endpoint: the quotation builder reads the
+ * rate card, the stock page the materials, the board and the job pickers the technicians and templates.
+ */
+const ALSO_READ_AS = {
+  'rate-card': [{ type: 'RateCard', id: 'LIST' }],
+  materials: ['Stock'],
+  'material-categories': ['Stock'],
+  technicians: ['Dispatch', { type: 'Technician', id: 'LIST' }],
+};
 const alsoFor = (resource) => ALSO_READ_AS[resource] ?? [];
 
 /** The list and one record, plus the site's cache. */

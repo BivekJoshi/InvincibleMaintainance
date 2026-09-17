@@ -90,6 +90,58 @@ export const JOB_STATUSES = [
   'DRAFT', 'SCHEDULED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'VERIFIED', 'CANCELLED',
 ];
 export const JOB_TYPES = ['INSPECTION', 'REPAIR', 'INSTALLATION', 'RENOVATION', 'AMC_VISIT', 'WARRANTY'];
+
+/**
+ * Where a job may move next. Mirrors the API's `shared/stateMachines.js` (the parity test in
+ * `crmMirror.test.js`); the API asserts every move, this only decides what a screen offers.
+ */
+export const JOB_TRANSITIONS = {
+  DRAFT: ['SCHEDULED', 'ASSIGNED', 'CANCELLED'],
+  SCHEDULED: ['ASSIGNED', 'EN_ROUTE', 'CANCELLED'],
+  ASSIGNED: ['EN_ROUTE', 'IN_PROGRESS', 'SCHEDULED', 'CANCELLED'],
+  EN_ROUTE: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
+  IN_PROGRESS: ['ON_HOLD', 'COMPLETED', 'CANCELLED'],
+  ON_HOLD: ['IN_PROGRESS', 'SCHEDULED', 'CANCELLED'],
+  COMPLETED: ['VERIFIED', 'IN_PROGRESS'],
+  VERIFIED: [],
+  CANCELLED: [],
+};
+
+/** A job's status in the office's words. */
+export const JOB_STATUS_LABELS = {
+  DRAFT: 'Not scheduled',
+  SCHEDULED: 'Scheduled',
+  ASSIGNED: 'Assigned',
+  EN_ROUTE: 'On the way',
+  IN_PROGRESS: 'In progress',
+  ON_HOLD: 'On hold',
+  COMPLETED: 'Completed',
+  VERIFIED: 'Verified',
+  CANCELLED: 'Cancelled',
+};
+
+export const JOB_TYPE_LABELS = {
+  INSPECTION: 'Site inspection',
+  REPAIR: 'Repair',
+  INSTALLATION: 'Installation',
+  RENOVATION: 'Renovation',
+  AMC_VISIT: 'AMC visit',
+  WARRANTY: 'Warranty work',
+};
+
+/** The kinds a job photo is filed under. SIGNATURE is the customer's sign-off, taken at completion. */
+export const JOB_PHOTO_KINDS = ['BEFORE', 'DURING', 'AFTER', 'ISSUE', 'SIGNATURE'];
+export const JOB_PHOTO_KIND_LABELS = {
+  BEFORE: 'Before', DURING: 'During', AFTER: 'After', ISSUE: 'Issue found', SIGNATURE: 'Signature',
+};
+
+/** How stock moves. ISSUE_TO_JOB happens only from a job (the API refuses it on its own). */
+export const STOCK_MOVEMENT_TYPES = ['PURCHASE', 'ISSUE_TO_JOB', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
+export const STOCK_MOVEMENT_LABELS = {
+  PURCHASE: 'Purchase', ISSUE_TO_JOB: 'Issued to a job', RETURN: 'Returned', ADJUSTMENT: 'Adjustment', WASTAGE: 'Wastage',
+};
+/** What "Record movement" offers. */
+export const MANUAL_STOCK_MOVEMENTS = ['PURCHASE', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
 export const SURVEY_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'RETURNED', 'QUOTED', 'CANCELLED'];
 export const SURVEY_ITEM_KINDS = ['LABOUR', 'MATERIAL', 'SERVICE', 'OTHER'];
 export const SURVEY_METRICS = [

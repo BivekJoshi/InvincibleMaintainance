@@ -147,7 +147,8 @@ Every resource below gets the same eight endpoints from one factory: `GET /`, `G
 (see "Record history"), for `cms:read` only: SALES reads services through `services:read` but not their trail.
 
 Reads need `cms:read`, writes `cms:write`. One exception: `GET /admin/services` and `GET /admin/services/:id`
-also accept **`services:read`** (SALES), so a salesperson can put a service on a lead; every services write
+also accept **`services:read`** (SALES, MANAGER, and since H1 DISPATCHER), so a salesperson can put a service on a lead and a
+dispatcher on a job template; every services write
 stays `cms:write` (403 for SALES).
 
 `DELETE /:id?hard=true` removes the row for good and needs **`cms:purge`**, which only ADMIN holds;
@@ -421,6 +422,9 @@ GET /admin/jobs/:id/history         jobs:history
 GET /admin/invoices/:id/history     invoices:history
 GET /admin/rate-card/:id/history    quotations:history
 GET /admin/<cms resource>/:id/history   cms:read — every resource the CRUD factory mounts
+GET /admin/materials|material-categories|suppliers/:id/history   materials:read
+GET /admin/job-templates/:id/history    jobs:read
+GET /admin/technicians/:id/history      technicians:write
 GET /admin/users/:id/history        ADMIN
                                     ?page&limit (≤100) · newest first · 400 on a bad page/limit · 404 for an
                                     unknown or purged record (a soft-deleted record's history stays readable)
@@ -470,45 +474,189 @@ and returns anything unpriceable in `missing[]` with a reason rather than pricin
 
 ## Admin — Operations (`ADMIN`, `DISPATCHER`)
 
+Reads need `jobs:read` (SALES, MANAGER and ACCOUNTANT read jobs too), writes `jobs:write`, and the dispatch
+calls `jobs:dispatch` (DISPATCHER, ADMIN). A job's status moves only through `status`, `schedule`, `assign`,
+`complete` and `verify` — `PUT /admin/jobs/:id` edits the details and never the status.
+
 ```
-GET    /admin/jobs                  ?status&type&priority&technicianId&customerId&unassigned&from&to&q
+GET    /admin/jobs                  ?page&limit&q&status&type&priority&technicianId&customerId&quotationId
+                                    &unassigned=true|false&invoiced=true|false&from&to&sort
+                                    from / to: Kathmandu days (YYYY-MM-DD), inclusive, on scheduledStart
+                                    invoiced=false: COMPLETED|VERIFIED, isBillable, no invoicedAt yet
+                                    (a status filter narrows it further)
+                                    sort: createdAt|scheduledStart|number|priority|status|updatedAt, "-" for desc
+                                    anything else is 400 BAD_REQUEST
 POST   /admin/jobs                  a quotationId must belong to the customer and be APPROVED
                                     (it becomes CONVERTED); a templateId pulls its checklist
-GET    /admin/jobs/:id
+GET    /admin/jobs/:id              + lead, quotation (with status), survey { id, number, status },
+                                    project { id, title, isActive } (its case study), parentJob, childJobs,
+                                    createdBy, tasks, photos, timeLogs, materials, events (newest first), warranty
 GET    /admin/jobs/:id/history      jobs:history (DISPATCHER, ADMIN) · see "Record history"
-PUT    /admin/jobs/:id
-DELETE /admin/jobs/:id
+PUT    /admin/jobs/:id              details only (type, site, title, description, priority, window, isBillable);
+                                    422 once COMPLETED, VERIFIED or CANCELLED
+DELETE /admin/jobs/:id              DRAFT or CANCELLED only (400 otherwise); soft
 PATCH  /admin/jobs/:id/status       validated transition, writes JobStatusEvent;
                                     ON_HOLD and CANCELLED need a note
-POST   /admin/jobs/:id/assign       { technicianIds, leadTechnicianId }
+POST   /admin/jobs/:id/schedule     jobs:dispatch · see "Scheduling" below
+POST   /admin/jobs/:id/assign       jobs:dispatch · { technicianIds, leadTechnicianId }
 POST   /admin/jobs/:id/tasks        + PATCH /tasks/:taskId + DELETE /tasks/:taskId
-POST   /admin/jobs/:id/photos       { mediaId, kind } + DELETE /photos/:photoId
-POST   /admin/jobs/:id/materials    issues stock + DELETE /materials/:jobMaterialId (reverses it)
+POST   /admin/jobs/:id/photos       { mediaId, kind: BEFORE|DURING|AFTER|ISSUE|SIGNATURE, caption? }
+                                    + DELETE /photos/:photoId
+POST   /admin/jobs/:id/materials    { materialId, qty, rate? (rupees; default the sell rate), isBillable }
+                                    issues stock (ISSUE_TO_JOB) · 422 on a closed job
+DELETE /admin/jobs/:id/materials/:jobMaterialId   reverses it (a RETURN movement)
 POST   /admin/jobs/:id/time-logs    { technicianId, startedAt, endedAt | minutes, note }
                                     labour the office records by hand — the timer was never started.
                                     The technician must be assigned to the job (422 otherwise).
 DELETE /admin/jobs/:id/time-logs/:logId
-POST   /admin/jobs/:id/complete     { note, signatureMediaId, customerRating, ... }
-                                    checklist must be done -> creates Warranty, enables invoicing
+POST   /admin/jobs/:id/complete     { note, signatureMediaId, customerRating, customerFeedback,
+                                    warrantyDays, warrantyScope }
+                                    checklist must be done (422 with the open items in details)
+                                    -> creates Warranty, enables invoicing
 POST   /admin/jobs/:id/verify       COMPLETED -> VERIFIED
-GET    /admin/jobs/:id/costing      labour + materials + expenses vs invoiced
+GET    /admin/jobs/:id/costing      labour + materials + expenses vs invoiced (all paisa):
+                                    { cost: { materials, labour, expenses, total }, labourMinutes,
+                                      billable: { materials, invoiced }, margin, marginPct,
+                                      breakdown: { materials[] { name, code, unit, qty, rate, amount (billed),
+                                        cost (at purchase rate), isBillable }, labour[] { technician, startedAt,
+                                        minutes, cost }, expenses[], invoices[] } }
+                                    every total is the sum of its rounded lines, so the breakdown adds up
+                                    to the paisa (materials without a purchase rate are costed at the billed rate)
 POST   /admin/jobs/:id/publish-case-study   cms:write · COMPLETED|VERIFIED only · once (409)
                                     pre-fills problem/solution from the survey, duration from the
                                     job, images from its BEFORE/AFTER photos, and the cost as a
                                     +/-20% band. The customer's name is omitted unless opted in.
-
-GET    /admin/dispatch/board        ?date&view=day|week  technicians x timeslots
-GET    /admin/dispatch/unassigned
-/admin/technicians                  GET ?role&available, GET /:id, POST, PUT /:id, DELETE /:id
-                                    hourlyRate is returned only to callers with technicians:write
-/admin/job-templates                GET, GET /:id, POST, PUT /:id, DELETE /:id
-
-/admin/materials  /admin/material-categories  /admin/suppliers    CRUD + PATCH /reorder
-GET  /admin/stock                   derived balances
-GET  /admin/stock/low
-GET  /admin/stock/movements         ?materialId
-POST /admin/stock/movements
+                                    Answers 201 with the new, unpublished Project.
 ```
+
+The `:taskId`, `:photoId`, `:jobMaterialId` and `:logId` params are validated (400 on an empty one).
+
+### Scheduling
+
+`POST /admin/jobs/:id/schedule` (`jobs:dispatch`) is how the dispatch board's drop and its Schedule dialog
+put a job on the calendar:
+
+```
+{ scheduledStart, scheduledEnd,            required; end after start, at most 14 days apart (400)
+  technicianIds?: [id, …],                 1–20; replaces the assignment. Left out, the assignment stays
+  leadTechnicianId?,                       must be one of technicianIds (400); default the first
+  note?,                                   the status event's note (default "Scheduled for …" / "Rescheduled to …")
+  notifyCustomer?: true }                  false skips the customer's SMS
+→ 200 { data: job (as GET /admin/jobs/:id's list shape), meta: { warnings: [
+    { kind: 'conflict', technicianId, technician, day, with: 'JOB-…' },
+    { kind: 'capacity', technicianId, technician, day, load, capacity } ] } }
+```
+
+- **Status:** DRAFT and SCHEDULED become ASSIGNED once someone is on the job, else SCHEDULED; ON_HOLD returns to
+  SCHEDULED (its hold reason is cleared); ASSIGNED keeps its status. EN_ROUTE, IN_PROGRESS and closed jobs are
+  refused with 422 `UNPROCESSABLE`. A JobStatusEvent is written either way.
+- **Warnings, never a refusal:** an overlapping window with another of the technician's jobs, and a Kathmandu day
+  on which they would have more jobs than `dailyCapacity`. The board shows the same warnings before it sends.
+- **Messages:** newly assigned technicians get `job_assigned` (in-app + SMS). When the window moved and
+  `notifyCustomer` is not false, the customer gets **`job_scheduled`** by SMS in their `preferredLocale`
+  (English fallback) — `{{customerName}} {{number}} {{date}} {{time}} {{appName}}`, times in Kathmandu.
+- **Audit:** `job.scheduled` — status, window and technician ids before → after.
+
+### Dispatch
+
+```
+GET    /admin/dispatch/board        jobs:dispatch · ?date=YYYY-MM-DD (Kathmandu; default today)
+                                    &view=day|week (week = 7 days from date) &role &technicianId
+GET    /admin/dispatch/unassigned   jobs:dispatch · ?page&limit&q&sort=priority|createdAt|-createdAt
+                                    DRAFT or SCHEDULED jobs nobody is on; default most urgent first,
+                                    then oldest. Paginated, rows in the card shape below
+```
+
+The board:
+
+```
+{ from, to, view,                    UTC instants of the Kathmandu day bounds
+  days: ['2026-09-18', …],           1 or 7 Kathmandu dates
+  hours: { start: 8, end: 18 },      the working day the board draws
+  lanes: [{
+    technician: { id, name, phone, role, employeeCode, skills[], serviceAreas[], rating,
+                  dailyCapacity, isAvailable },     never hourlyRate
+    jobs: [JobCard],                 scheduled in range, not CANCELLED, assigned to this technician
+    loadByDay: { '2026-09-18': 2 },
+    overCapacityDays: ['2026-09-18'],
+    conflicts: [{ a: 'JOB-…', b: 'JOB-…', day }] }],
+  unscheduledAssigned: [JobCard],    open jobs with people but no window (first 50)
+  unassignedCount }                  the side list pages /dispatch/unassigned itself
+
+JobCard = { id, number, title, type, status, priority, scheduledStart, scheduledEnd, quotationId,
+            createdAt, customer: { id, name, phone }, site: { id, area, address } | null,
+            assignments: [{ technicianId, isLead }] }
+```
+
+Lanes are the live technician profiles of active users (surveyors included; filter with `role`).
+*Changed in H1:* the board used to embed the first 50 unassigned jobs as `unassigned`; it now says
+`unassignedCount`, and `/dispatch/unassigned` is paginated (it was capped at 100).
+
+### Technicians
+
+Mounted like a registry resource (`technicians:read` to read, `technicians:write` to change):
+
+```
+GET    /admin/technicians           ?page&limit&q (name, employee code, phone)&role&available=true|false
+                                    &skill&area (exact entries of the JSON lists)&deleted=true (Trash)
+                                    &sort=employeeCode|name|rating|dailyCapacity|isAvailable|createdAt
+                                    rows: the profile, user { id, name, email, phone, role, isActive },
+                                    loadThisWeek (live jobs scheduled this Kathmandu week, Sunday–Saturday).
+                                    Never hourlyRate, whoever asks.
+GET    /admin/technicians/:id       + loadThisWeek; hourlyRate (paisa) only for technicians:write
+GET    /admin/technicians/:id/history   technicians:write — the trail records rate changes
+POST   /admin/technicians           { userId, employeeCode?, skills?, certifications?, serviceAreas?,
+                                      hourlyRate? (rupees), dailyCapacity (1–20, default 4), isAvailable }
+                                    404 unknown user · 409 CONFLICT when the person has a profile
+                                    (details.technicianId; "restore it instead" when it is in Trash)
+PUT    /admin/technicians/:id       partial; userId cannot change (dropped)
+PATCH  /admin/technicians/:id/toggle    flips isAvailable (the registry's switch)
+DELETE /admin/technicians/:id       soft (cms.deleted) · ?hard=true is 403 for everyone
+PATCH  /admin/technicians/:id/restore   cms.restored
+PATCH  /admin/technicians/reorder   204, no effect (profiles have no manual order)
+GET    /admin/technicians/users     technicians:write · ?page&limit&q — active people with no live profile
+                                    (a dispatcher cannot read /admin/users): { id, name, email, role, label }
+GET    /admin/technicians/users/:id technicians:write · one of those, for a form's label
+```
+
+A TECHNICIAN or SURVEYOR account gets its profile when it is created (Phase G); `POST` is for older accounts
+and office staff who also go out.
+
+### Job templates, materials and stock
+
+`/admin/job-templates` (`jobs:read` / `jobs:write`), `/admin/materials`, `/admin/material-categories` and
+`/admin/suppliers` (`materials:read` / `materials:write`) answer the same nine calls as a CMS resource (see
+"Admin — CMS": list, get, create, partial update, toggle, reorder, soft delete, restore, history), through the
+same mounter (`routes/admin/mountResource.js`). *Changed in H1:* toggle, restore and history are new for these
+four; the history needs the resource's read capability. `?hard=true` still needs `cms:purge`.
+
+```
+/admin/job-templates                { name, serviceId?, description?, tasks: [{ title, description? }] (1–100),
+                                      isActive } · ?serviceId · rows carry service { id, name } · no manual order
+/admin/materials                    { code, name, unit, categoryId?, supplierId?, purchaseRate, sellRate (rupees
+                                      in, paisa out), reorderLevel, sortOrder, isActive } · ?categoryId&supplierId
+/admin/material-categories          { name, sortOrder, isActive }
+/admin/suppliers                    { name, phone?, email?, address?, notes?, isActive } · no manual order
+
+GET  /admin/stock                   ?page&limit&q (name, code)&categoryId&lowOnly=true&includeInactive=true
+                                    &sort=sortOrder|name|code|balance ("-" for desc)
+                                    rows: the material + category, supplier, balance (derived from movements),
+                                    stockValue (balance × purchaseRate, paisa), isLow (reorderLevel > 0 and
+                                    balance ≤ it) · meta.lowCount: low rows among the filtered ones
+GET  /admin/stock/low               every low material (unpaginated; the reorder list)
+GET  /admin/stock/movements         ?page&limit&materialId&jobId&type&from&to (Kathmandu days) — newest first;
+                                    rows + material { id, code, name, unit }, actor { id, name } | null,
+                                    job { id, number } | null
+POST /admin/stock/movements         materials:write · { materialId, type: PURCHASE|RETURN|ADJUSTMENT|WASTAGE,
+                                      qty (≠ 0; signed for ADJUSTMENT, magnitude otherwise), rate? (rupees),
+                                      jobId?, reference?, note? }
+                                    ISSUE_TO_JOB is 400 here — issue from the job, which writes its material
+                                    line in the same transaction
+```
+
+A movement that leaves a material at or below its reorder level notifies ADMIN and DISPATCHER in-app
+(`stock_low`, linking to `/admin/stock?lowOnly=true&open=<materialId>`). The dashboard's `stockLow` card
+(ADMIN, DISPATCHER) counts the low materials.
 
 ## Field app (`TECHNICIAN`, `SURVEYOR` — scoped to own assignments)
 
@@ -709,6 +857,8 @@ GET   /admin/dashboard              every role · role-aware widget payload
                                     quotationsChangesRequested, quotationsAwaitingCustomer (SALES, MANAGER,
                                     ADMIN) and acceptedJobsUnscheduled — DRAFT jobs from a quotation with no
                                     scheduledStart (DISPATCHER, MANAGER, ADMIN). MANAGER also gets funnel and sla.
+                                    added in Phase H1: stockLow — materials at or below their reorder level
+                                    (DISPATCHER, ADMIN).
 GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
 GET   /admin/reports/job-margin | /technicians | /warranty-claims   reports:ops
 ```
@@ -756,6 +906,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `job.created` | a job is created (admin, convert, quotation) | → number, type, status, customerId, quotationId, leadId, technicianIds |
 | `job.status_changed` | `PATCH …/jobs/:id/status` (admin or field app), except completion | status → status · note |
 | `job.assigned` | `POST /admin/jobs/:id/assign` | technicianIds, status → technicianIds, status |
+| `job.scheduled` | `POST /admin/jobs/:id/schedule` (the dispatch board) | status, scheduledStart, scheduledEnd, technicianIds → the same |
 | `job.completed` | a job is completed (admin, field app, survey submit) | status → COMPLETED · customerRating |
 | `job.verified` | `POST /admin/jobs/:id/verify` | COMPLETED → VERIFIED |
 | `invoice.created` | an invoice is created (admin or from a job) | → number, status, total, customerId, quotationId |
@@ -776,7 +927,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `auth.sessions_revoked` | `DELETE /admin/users/:id/sessions` | · count |
 | `settings.changed` | `PATCH /admin/settings`, once per save, only the keys whose value moved | { key: old } → { key: new } · keys |
 | `export.csv` | `GET /admin/leads/export.csv` | · the filters used |
-| `cms.deleted` | a soft delete through the CRUD factory (any resource it mounts) or `DELETE /admin/media/:id` | |
+| `cms.deleted` | a soft delete through the CRUD factory (any resource it mounts — content, materials, job templates), a technician profile, or `DELETE /admin/media/:id` | |
 | `cms.restored` | `PATCH …/:id/restore` | deletedAt → null |
 | `cms.purged` | `?hard=true` (needs `cms:purge`), or a delete on a resource with no soft delete | the removed row's scalars → |
 | `user.created` · `user.role_changed` · `user.disabled` | see `/admin/users` above | |

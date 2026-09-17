@@ -4,7 +4,7 @@ import { AppError, notFound, badRequest, forbidden, unprocessable } from '../uti
 import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
 import { sum } from '../utils/money.js';
-import { addDays, startOfDay, endOfDay } from '../utils/dates.js';
+import { addDays, dayjs, kathmanduDayRange, local, startOfDay, endOfDay } from '../utils/dates.js';
 import { JOB_TRANSITIONS, QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
@@ -13,20 +13,36 @@ import { markConverted } from './quotation.service.js';
 import { issueToJob } from './material.service.js';
 import { recordEvent } from './audit.service.js';
 import { webUrl } from '../utils/links.js';
+import { makeCrud } from './crud.service.js';
+
+/** Job templates: a named checklist, optionally for one service. A registry resource. */
+export const jobTemplates = makeCrud({
+  model: 'jobTemplate', label: 'Job template', searchFields: ['name', 'description'], sortable: false, defaultSort: 'name',
+  include: { service: { select: { id: true, name: true } } },
+  filter: (q) => (q.serviceId ? { serviceId: q.serviceId } : {}),
+});
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true, preferredLocale: true } },
   site: { select: { id: true, label: true, address: true, area: true, lat: true, lng: true, accessNotes: true } },
-  quotation: { select: { id: true, number: true, total: true } },
+  quotation: { select: { id: true, number: true, total: true, status: true } },
   assignments: {
     include: { technician: { include: { user: { select: { id: true, name: true, phone: true } } } } },
   },
   tasks: { orderBy: { sortOrder: 'asc' } },
 };
 
+/** Finished, billable work that no invoice has taken yet (`invoiced=false`), or the opposite. */
+function invoicedWhere(invoiced) {
+  if (invoiced === undefined) return {};
+  return invoiced
+    ? { invoicedAt: { not: null } }
+    : { invoicedAt: null, isBillable: true, status: { in: ['COMPLETED', 'VERIFIED'] } };
+}
+
 export async function listJobs(query) {
   const { page, limit, skip, take, orderBy, q } = parseListQuery(query, { defaultSort: '-createdAt' });
-  const scheduled = dateRange(query.from, query.to);
+  const scheduled = kathmanduDayRange(query.from, query.to);
   const where = {
     deletedAt: null,
     ...(query.status ? { status: query.status } : {}),
@@ -36,10 +52,13 @@ export async function listJobs(query) {
     ...(query.technicianId ? { assignments: { some: { technicianId: query.technicianId } } } : {}),
     ...(query.unassigned ? { assignments: { none: {} } } : {}),
     ...(scheduled ? { scheduledStart: scheduled } : {}),
+    ...invoicedWhere(query.invoiced),
     ...(q ? { OR: [...searchOr(q, ['number', 'title', 'description']), { customer: { name: { contains: q, mode: 'insensitive' } } }] } : {}),
   };
+  // A status preset and the not-invoiced filter both name statuses; the preset wins.
+  if (query.status) where.status = query.status;
   const [items, total] = await Promise.all([
-    prisma.job.findMany({ where, orderBy, skip, take, include: INCLUDE }),
+    prisma.job.findMany({ where, orderBy: [orderBy, { id: 'asc' }], skip, take, include: INCLUDE }),
     prisma.job.count({ where }),
   ]);
   return { items, meta: meta({ page, limit, total }) };
@@ -57,6 +76,10 @@ export async function getJob(id) {
       events: { orderBy: { createdAt: 'desc' }, include: { actor: { select: { id: true, name: true } } } },
       warranty: true,
       childJobs: { select: { id: true, number: true, type: true, status: true } },
+      parentJob: { select: { id: true, number: true, type: true, status: true } },
+      survey: { select: { id: true, number: true, status: true } },
+      project: { select: { id: true, title: true, isActive: true } },
+      createdBy: { select: { id: true, name: true } },
     },
   });
   if (!job) throw notFound('Job');
@@ -191,7 +214,7 @@ export async function announceAssignment(job, technicianIds) {
       data: {
         userId: t.userId, type: 'job_assigned',
         title: `New job — ${job.number}`,
-        body: `${job.title}${job.scheduledStart ? ` · ${new Date(job.scheduledStart).toLocaleString()}` : ''}`,
+        body: `${job.title}${job.scheduledStart ? ` · ${local(job.scheduledStart, 'D MMM HH:mm')}` : ''}`,
         link: `/tech/jobs/${job.id}`,
       },
     });
@@ -202,7 +225,7 @@ export async function announceAssignment(job, technicianIds) {
           techName: t.user.name, number: job.number, title: job.title,
           address: job.site?.address ?? '-', customer: job.customer?.name ?? '-',
           phone: job.customer?.phone ?? '-',
-          when: job.scheduledStart ? new Date(job.scheduledStart).toLocaleString() : 'TBC',
+          when: job.scheduledStart ? local(job.scheduledStart, 'D MMM YYYY HH:mm') : 'TBC',
         },
         related: { model: 'Job', id: job.id },
         fallbackBody: 'Job {{number}}: {{title}} at {{address}}. Customer {{customer}} {{phone}}. When: {{when}}',
@@ -545,7 +568,9 @@ export async function jobCosting(id) {
   });
   if (!job) throw notFound('Job');
 
-  const materialCost = sum(job.materials.map((m) => Math.round(m.qty * (m.material.purchaseRate || m.rate))));
+  // Each line's cost is rounded once and the total is their sum, so the breakdown adds up to the paisa.
+  const lineCost = (m) => Math.round(m.qty * (m.material.purchaseRate || m.rate));
+  const materialCost = sum(job.materials.map(lineCost));
   const materialBilled = sum(job.materials.filter((m) => m.isBillable).map((m) => Math.round(m.qty * m.rate)));
   const labourMinutes = sum(job.timeLogs.map((t) => t.minutes ?? 0));
   const labourCost = sum(job.timeLogs.map((t) => Math.round(((t.minutes ?? 0) / 60) * (t.technician.hourlyRate ?? 0))));
@@ -564,10 +589,10 @@ export async function jobCosting(id) {
     breakdown: {
       materials: job.materials.map((m) => ({
         name: m.material.name, code: m.material.code, unit: m.material.unit,
-        qty: m.qty, rate: m.rate, amount: Math.round(m.qty * m.rate), isBillable: m.isBillable,
+        qty: m.qty, rate: m.rate, amount: Math.round(m.qty * m.rate), cost: lineCost(m), isBillable: m.isBillable,
       })),
       labour: job.timeLogs.map((t) => ({
-        technician: t.technician.user.name, minutes: t.minutes ?? 0,
+        technician: t.technician.user.name, startedAt: t.startedAt, minutes: t.minutes ?? 0,
         cost: Math.round(((t.minutes ?? 0) / 60) * (t.technician.hourlyRate ?? 0)),
       })),
       expenses: job.expenses.map((e) => ({ category: e.category, amount: e.amount, vendor: e.vendor })),
@@ -586,80 +611,262 @@ export async function deleteJob(id) {
 
 // ── dispatch board
 
-export async function dispatchBoard({ date, view = 'day', technicianId, role }) {
-  const anchor = date ? new Date(date) : new Date();
-  const from = startOfDay(anchor);
-  const to = view === 'week' ? endOfDay(addDays(anchor, 6)) : endOfDay(anchor);
+/** The working day the board draws, in Kathmandu hours. */
+export const DISPATCH_HOURS = { start: 8, end: 18 };
 
-  const [technicians, jobs, unassigned] = await Promise.all([
-    prisma.technician.findMany({
-      where: {
-        deletedAt: null,
-        ...(technicianId ? { id: technicianId } : {}),
-        ...(role ? { user: { role } } : {}),
-      },
-      include: { user: { select: { id: true, name: true, phone: true, role: true, isActive: true } } },
-      orderBy: { employeeCode: 'asc' },
-    }),
-    prisma.job.findMany({
-      where: { deletedAt: null, scheduledStart: { gte: from, lte: to }, status: { not: 'CANCELLED' } },
-      include: INCLUDE,
-      orderBy: { scheduledStart: 'asc' },
-    }),
-    prisma.job.findMany({
-      where: { deletedAt: null, assignments: { none: {} }, status: { in: ['DRAFT', 'SCHEDULED'] } },
-      include: INCLUDE,
-      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
-      take: 50,
-    }),
-  ]);
+/** What a board card needs, and no more — the board loads a week of them. */
+const CARD = {
+  id: true, number: true, title: true, type: true, status: true, priority: true,
+  scheduledStart: true, scheduledEnd: true, quotationId: true, createdAt: true,
+  customer: { select: { id: true, name: true, phone: true } },
+  site: { select: { id: true, area: true, address: true } },
+  assignments: { select: { technicianId: true, isLead: true } },
+};
 
-  const lanes = technicians
-    .filter((t) => t.user.isActive)
-    .map((t) => {
-      const laneJobs = jobs.filter((j) => j.assignments.some((a) => a.technicianId === t.id));
-      return {
-        technician: { id: t.id, name: t.user.name, phone: t.user.phone, role: t.user.role, skills: t.skills, rating: t.rating, dailyCapacity: t.dailyCapacity },
-        jobs: laneJobs,
-        load: laneJobs.length,
-        overCapacity: view === 'day' && laneJobs.length > t.dailyCapacity,
-        conflicts: findConflicts(laneJobs),
-      };
-    });
+const OPEN_FOR_DISPATCH = ['DRAFT', 'SCHEDULED'];
+const unassignedWhere = { deletedAt: null, assignments: { none: {} }, status: { in: OPEN_FOR_DISPATCH } };
 
-  return { from, to, view, lanes, unassigned };
-}
+/** A Kathmandu calendar day, `YYYY-MM-DD`. */
+const ktmDay = (date) => local(date, 'YYYY-MM-DD');
 
-/** Flags overlapping scheduled windows on one technician's lane. */
-function findConflicts(jobs) {
-  const withTimes = jobs.filter((j) => j.scheduledStart && j.scheduledEnd);
-  const clashes = [];
-  for (let i = 0; i < withTimes.length; i += 1) {
-    for (let k = i + 1; k < withTimes.length; k += 1) {
-      const a = withTimes[i];
-      const b = withTimes[k];
+/**
+ * Overlapping scheduled windows among one technician's jobs, and the days they are booked past
+ * their daily capacity. The SPA runs the same rules before it commits a move
+ * (`helpers/dispatchBoard.js#scheduleWarnings`); this is the server's copy for the board and for
+ * `meta.warnings` on a schedule.
+ *
+ * @param {{ number: string, scheduledStart?: Date|string|null, scheduledEnd?: Date|string|null }[]} jobs
+ * @param {number} dailyCapacity
+ */
+export function laneWarnings(jobs, dailyCapacity) {
+  const conflicts = [];
+  const timed = jobs.filter((j) => j.scheduledStart && j.scheduledEnd);
+  for (let i = 0; i < timed.length; i += 1) {
+    for (let k = i + 1; k < timed.length; k += 1) {
+      const a = timed[i];
+      const b = timed[k];
       if (new Date(a.scheduledStart) < new Date(b.scheduledEnd) && new Date(b.scheduledStart) < new Date(a.scheduledEnd)) {
-        clashes.push({ a: a.number, b: b.number });
+        conflicts.push({ a: a.number, b: b.number, day: ktmDay(a.scheduledStart) });
       }
     }
   }
-  return clashes;
+  const loadByDay = {};
+  for (const j of jobs) {
+    if (!j.scheduledStart) continue;
+    const day = ktmDay(j.scheduledStart);
+    loadByDay[day] = (loadByDay[day] ?? 0) + 1;
+  }
+  const overCapacityDays = Object.keys(loadByDay).filter((day) => loadByDay[day] > dailyCapacity).sort();
+  return { conflicts, loadByDay, overCapacityDays };
+}
+
+/**
+ * GET /admin/dispatch/board — technicians × the day, or the seven days from `date`. The unassigned queue is paged separately (`/dispatch/unassigned`); the board only
+ * says how long it is.
+ */
+export async function dispatchBoard({ date, view = 'day', technicianId, role }) {
+  const anchor = date ? dayjs.tz(date, env.business.timezone).toDate() : new Date();
+  const dayCount = view === 'week' ? 7 : 1;
+  const from = startOfDay(anchor);
+  const to = endOfDay(addDays(from, dayCount - 1));
+  const days = Array.from({ length: dayCount }, (_, i) => ktmDay(addDays(from, i)));
+
+  const [technicians, jobs, unscheduledAssigned, unassignedCount] = await Promise.all([
+    prisma.technician.findMany({
+      where: {
+        deletedAt: null,
+        user: { isActive: true, deletedAt: null, ...(role ? { role } : {}) },
+        ...(technicianId ? { id: technicianId } : {}),
+      },
+      include: { user: { select: { id: true, name: true, phone: true, role: true } } },
+      orderBy: [{ employeeCode: 'asc' }, { id: 'asc' }],
+    }),
+    prisma.job.findMany({
+      where: { deletedAt: null, scheduledStart: { gte: from, lte: to }, status: { not: 'CANCELLED' } },
+      select: CARD,
+      orderBy: { scheduledStart: 'asc' },
+    }),
+    prisma.job.findMany({
+      where: {
+        deletedAt: null, scheduledStart: null, assignments: { some: {} },
+        status: { notIn: ['COMPLETED', 'VERIFIED', 'CANCELLED'] },
+      },
+      select: CARD,
+      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+      take: 50,
+    }),
+    prisma.job.count({ where: unassignedWhere }),
+  ]);
+
+  const lanes = technicians.map((t) => {
+    const laneJobs = jobs.filter((j) => j.assignments.some((a) => a.technicianId === t.id));
+    return {
+      technician: {
+        id: t.id, name: t.user.name, phone: t.user.phone, role: t.user.role, employeeCode: t.employeeCode,
+        skills: t.skills ?? [], serviceAreas: t.serviceAreas ?? [], rating: t.rating,
+        dailyCapacity: t.dailyCapacity, isAvailable: t.isAvailable,
+      },
+      jobs: laneJobs,
+      ...laneWarnings(laneJobs, t.dailyCapacity),
+    };
+  });
+
+  return {
+    from, to, view, days, hours: DISPATCH_HOURS, lanes, unscheduledAssigned, unassignedCount,
+  };
+}
+
+/** GET /admin/dispatch/unassigned — work nobody is on yet, most urgent first. Paginated. */
+export async function listUnassigned(query = {}) {
+  const { page, limit, skip, take, q } = parseListQuery(query, { defaultSort: 'createdAt' });
+  const where = {
+    ...unassignedWhere,
+    ...(q ? { OR: [...searchOr(q, ['number', 'title']), { customer: { name: { contains: q, mode: 'insensitive' } } }] } : {}),
+  };
+  const sort = String(query.sort || 'priority');
+  const dir = sort.startsWith('-') ? 'desc' : 'asc';
+  const orderBy = sort.replace(/^-/, '') === 'createdAt'
+    ? [{ createdAt: dir }, { id: 'asc' }]
+    // Most urgent first: URGENT sorts last in the enum, so priority runs descending.
+    : [{ priority: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }];
+  const [items, total] = await Promise.all([
+    prisma.job.findMany({ where, select: CARD, orderBy, skip, take }),
+    prisma.job.count({ where }),
+  ]);
+  return { items, meta: meta({ page, limit, total }) };
+}
+
+/**
+ * What would be wrong with these technicians doing a job in this window: overlaps with their
+ * other jobs, and days over their capacity. Warnings, never a refusal — dispatch knows things the
+ * schedule does not (a half-hour job, a technician who agreed to stay late).
+ *
+ * @returns {Promise<{ kind: 'conflict'|'capacity', technicianId: string, technician: string, day: string, with?: string, load?: number, capacity?: number }[]>}
+ */
+export async function scheduleWarnings({ jobId, number, scheduledStart, scheduledEnd, technicianIds }) {
+  if (!technicianIds.length || !scheduledStart) return [];
+  const from = startOfDay(scheduledStart);
+  const to = endOfDay(scheduledEnd ?? scheduledStart);
+  const technicians = await prisma.technician.findMany({
+    where: { id: { in: technicianIds } },
+    include: { user: { select: { name: true } } },
+  });
+  const others = await prisma.job.findMany({
+    where: {
+      id: { not: jobId }, deletedAt: null, status: { not: 'CANCELLED' },
+      scheduledStart: { gte: from, lte: to },
+      assignments: { some: { technicianId: { in: technicianIds } } },
+    },
+    select: { number: true, scheduledStart: true, scheduledEnd: true, assignments: { select: { technicianId: true } } },
+  });
+  const self = { number, scheduledStart, scheduledEnd };
+  const warnings = [];
+  for (const t of technicians) {
+    const lane = others.filter((j) => j.assignments.some((a) => a.technicianId === t.id));
+    const { conflicts, overCapacityDays, loadByDay } = laneWarnings([self, ...lane], t.dailyCapacity);
+    for (const c of conflicts.filter((x) => x.a === number || x.b === number)) {
+      warnings.push({ kind: 'conflict', technicianId: t.id, technician: t.user.name, day: c.day, with: c.a === number ? c.b : c.a });
+    }
+    for (const day of overCapacityDays) {
+      warnings.push({ kind: 'capacity', technicianId: t.id, technician: t.user.name, day, load: loadByDay[day], capacity: t.dailyCapacity });
+    }
+  }
+  return warnings;
+}
+
+/**
+ * POST /admin/jobs/:id/schedule — puts a job on the calendar, and on people, in one step: the
+ * dispatch board's drop and its Schedule dialog both land here.
+ *
+ * - Sets the window. `technicianIds`, when given, replaces the assignment (the first leads
+ *   unless `leadTechnicianId` says otherwise); left out, the assignment stays.
+ * - DRAFT and SCHEDULED move to ASSIGNED once someone is on the job, else to SCHEDULED; ON_HOLD
+ *   returns to SCHEDULED. ASSIGNED keeps its status; only its window moves. Work under way
+ *   (EN_ROUTE, IN_PROGRESS) or closed cannot be rescheduled.
+ * - The customer gets a `job_scheduled` SMS in their language when the window changed
+ *   (`notifyCustomer: false` skips it — a same-day shuffle the customer already agreed by phone).
+ * - Newly assigned technicians are told, as on an assignment.
+ *
+ * @returns {Promise<{ job: object, warnings: object[] }>}
+ */
+export async function scheduleJob(id, input, userId) {
+  const { scheduledStart, scheduledEnd, technicianIds, leadTechnicianId, note, notifyCustomer = true } = input;
+  const job = await getJob(id);
+  if (['EN_ROUTE', 'IN_PROGRESS', 'COMPLETED', 'VERIFIED', 'CANCELLED'].includes(job.status)) {
+    throw unprocessable(`A job that is ${job.status.toLowerCase().replace('_', ' ')} cannot be rescheduled`);
+  }
+  if (technicianIds) {
+    const found = await prisma.technician.count({ where: { id: { in: technicianIds }, deletedAt: null } });
+    if (found !== technicianIds.length) throw badRequest('One or more technicians do not exist');
+    if (leadTechnicianId && !technicianIds.includes(leadTechnicianId)) {
+      throw badRequest('The lead technician must be one of the technicians on the job', [{ path: ['leadTechnicianId'], message: 'Choose one of the technicians on the job' }]);
+    }
+  }
+
+  const before = job.assignments.map((a) => a.technicianId);
+  const after = technicianIds ?? before;
+  const assigned = after.length > 0;
+  // ON_HOLD may only return through SCHEDULED; the technicians stay on it and can set off from there.
+  const nextStatus = job.status === 'ON_HOLD' ? 'SCHEDULED'
+    : ['DRAFT', 'SCHEDULED'].includes(job.status) ? (assigned ? 'ASSIGNED' : 'SCHEDULED')
+      : job.status;
+  if (nextStatus !== job.status) assertTransition(JOB_TRANSITIONS, job.status, nextStatus, 'job');
+
+  const sameInstant = (a, b) => (a ? new Date(a).getTime() : null) === (b ? new Date(b).getTime() : null);
+  const moved = !sameInstant(job.scheduledStart, scheduledStart) || !sameInstant(job.scheduledEnd, scheduledEnd);
+  const added = after.filter((tid) => !before.includes(tid));
+  const leadChanged = technicianIds && (leadTechnicianId ?? technicianIds[0]) !== job.assignments.find((a) => a.isLead)?.technicianId;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (technicianIds && (added.length || before.length !== after.length || leadChanged)) {
+      await tx.jobAssignment.deleteMany({ where: { jobId: id } });
+      await tx.jobAssignment.createMany({
+        data: technicianIds.map((tid) => ({
+          jobId: id, technicianId: tid, isLead: tid === (leadTechnicianId ?? technicianIds[0]),
+        })),
+      });
+    }
+    const row = await tx.job.update({
+      where: { id },
+      data: { scheduledStart, scheduledEnd, status: nextStatus, ...(job.status === 'ON_HOLD' ? { holdReason: null } : {}) },
+      include: INCLUDE,
+    });
+    const when = `${local(scheduledStart, 'D MMM YYYY HH:mm')}–${local(scheduledEnd, 'HH:mm')}`;
+    await recordStatusEvent(tx, {
+      jobId: id, from: job.status, to: nextStatus, actorId: userId,
+      note: note ?? (job.scheduledStart ? `Rescheduled to ${when}` : `Scheduled for ${when}`),
+    });
+    await recordEvent('job.scheduled', {
+      model: 'Job',
+      recordId: id,
+      before: { status: job.status, scheduledStart: job.scheduledStart, scheduledEnd: job.scheduledEnd, technicianIds: before },
+      after: { status: nextStatus, scheduledStart, scheduledEnd, technicianIds: after },
+    }, tx);
+    return row;
+  });
+
+  if (added.length) await announceAssignment(updated, added);
+  if (moved && notifyCustomer && updated.customer?.phone) {
+    await notify({
+      templateKey: 'job_scheduled', channel: 'sms', to: updated.customer.phone, locale: updated.customer.preferredLocale,
+      vars: {
+        customerName: updated.customer.name, number: updated.number, appName: env.appName,
+        date: local(scheduledStart, 'D MMM YYYY'), time: `${local(scheduledStart, 'HH:mm')}–${local(scheduledEnd, 'HH:mm')}`,
+      },
+      related: { model: 'Job', id },
+      fallbackBody: 'Hi {{customerName}}, job {{number}} is booked for {{date}}, {{time}}. We will call before we come. - {{appName}}',
+    });
+  }
+
+  const warnings = await scheduleWarnings({
+    jobId: id, number: updated.number, scheduledStart, scheduledEnd, technicianIds: after,
+  });
+  return { job: updated, warnings };
 }
 
 // ── technician-scoped access
 
 /** Resolves the Technician row for a logged-in user, rejecting non-technicians. */
-/** One technician. The labour rate is returned only to a caller allowed to set it. */
-export async function getTechnician(id, { withRate = false } = {}) {
-  const tech = await prisma.technician.findFirst({
-    where: { id, deletedAt: null },
-    include: { user: { select: { id: true, name: true, email: true, phone: true, role: true, isActive: true } } },
-  });
-  if (!tech) throw notFound('Technician');
-  if (!withRate) delete tech.hourlyRate;
-  return tech;
-}
-
 export async function technicianForUser(userId) {
   const tech = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
   if (!tech) throw forbidden('Your account is not linked to a technician profile');

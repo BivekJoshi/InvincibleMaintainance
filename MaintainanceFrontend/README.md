@@ -52,13 +52,19 @@ uploads the Playwright trace when it fails.
   the only kind `useBlocker` works in — with `signedInAs(role)` for capability checks.
 - Money, phone numbers and Nepali text are the three things that break (CLAUDE.md rule 5). Test them.
 
-### End-to-end tests (Phase F2)
+### End-to-end tests (Phases F2, H1)
 
-`npm run test:e2e` runs [Playwright](https://playwright.dev) over the whole quotation loop in a real
-browser: a customer books at `/book` on a phone-sized screen, the office prices and approves the
-quotation, the customer asks for changes in Nepali, the office revises and approves again, the
-customer accepts — and the lead, the job in the dispatch queue and the notifications are checked
-over the API.
+`npm run test:e2e` runs [Playwright](https://playwright.dev) over two flows in a real browser:
+
+- `e2e/quotation-flow.spec.js` — the whole quotation loop: a customer books at `/book` on a phone-sized
+  screen, the office prices and approves the quotation, the customer asks for changes in Nepali, the office
+  revises and approves again, the customer accepts — and the lead, the job in the dispatch queue and the
+  notifications are checked over the API.
+- `e2e/operations-flow.spec.js` — the dispatcher's day: the job an accepted quotation made is dragged onto
+  Hari's 10:00 tomorrow, moved with the Schedule dialog, a second job dropped on the same slot is warned about
+  and not saved, 22 kg is issued (stock falls by 22), time is recorded, costing reconciles, completion waits for
+  the checklist, the job is completed and verified, and an admin drafts the case study. It clears Hari's
+  tomorrow of jobs earlier runs left, and accepts a warning about the ones it cannot move.
 
 ```bash
 npx playwright install chromium     # once
@@ -76,7 +82,9 @@ npm run test:e2e                    # or: npx playwright test --ui
 - `e2e/support/e2eEnv.js` holds the ports, the database URL and the API's environment;
   `e2e/support/api.js` has the signed-in HTTP helpers and `signIn(page, role)`.
 - Steps a person takes run in the browser; set-up that is not under test (the convert, the surveyor's
-  submission, the second approval round) runs over the API, which keeps the test about the screens.
+  submission, the second approval round, the quotation behind the dispatch flow) runs over the API, which
+  keeps the test about the screens. A drag moves the real pointer in small steps (dnd-kit starts a drag only
+  after the pointer moves) and measures the target cell again before dropping.
 
 ### Dependencies added in Phase C1
 
