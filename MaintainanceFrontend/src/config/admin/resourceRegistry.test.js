@@ -14,11 +14,12 @@ const cmsRoutes = readApi('cms.routes.js');
 const MOUNTED = new Set([...cmsRoutes.matchAll(/mountResource\(router, '([a-z-]+)'/g)].map((m) => m[1]));
 
 /**
- * The same eight endpoints, mounted by hand outside cms.routes.js (the rate card). Each
- * must answer every call the generic screens make.
+ * The same endpoints, mounted by hand outside cms.routes.js (the rate card): the eight the
+ * generic screens call, plus the History tab's. Each must answer every call the screens make.
  */
 const HAND_MOUNTED = { 'rate-card': readApi('crm.routes.js') };
 const GENERIC_CALLS = (r) => [
+  `router.get('/${r}/:id/history'`,
   `router.get('/${r}'`, `router.post('/${r}'`, `router.patch('/${r}/reorder'`, `router.get('/${r}/:id'`,
   `router.put('/${r}/:id'`, `router.patch('/${r}/:id/toggle'`, `router.patch('/${r}/:id/restore'`, `router.delete('/${r}/:id'`,
 ];
@@ -43,6 +44,8 @@ describe('resource registry', () => {
   it('reads the mounted CMS resources from the API', () => {
     expect(MOUNTED.has('faqs')).toBe(true);
     expect(MOUNTED.size).toBeGreaterThan(10);
+    // The factory gives every mounted resource its History endpoint.
+    expect(cmsRoutes).toContain('router.get(`/${path}/:id/history`');
   });
 
   it.each(entries.map((e) => [e.resource, e]))('%s is a complete, valid entry', (resource, entry) => {
@@ -53,6 +56,7 @@ describe('resource registry', () => {
 
     expect(CAPABILITIES.has(entry.capability), `unknown capability ${entry.capability}`).toBe(true);
     expect(CAPABILITIES.has(entry.writeCapability ?? 'cms:write')).toBe(true);
+    if (entry.historyCapability) expect(CAPABILITIES.has(entry.historyCapability), `unknown ${entry.historyCapability}`).toBe(true);
     expect(entry.model).toMatch(/^[a-z][A-Za-z]*$/);
     expect(entry.label).toBeTruthy();
     expect(entry.labelPlural).toBeTruthy();

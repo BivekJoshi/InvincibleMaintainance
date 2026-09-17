@@ -11,6 +11,22 @@ export const FIELD_ROLES = ['TECHNICIAN', 'SURVEYOR'];
  */
 export const OFFICE_ROLES = ['ADMIN', 'EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'ACCOUNTANT'];
 
+/** What each role is for, in the office's words — the users screen and the role matrix. */
+export const ROLE_DESCRIPTIONS = {
+  ADMIN: 'Everything, including users, settings and the audit log',
+  EDITOR: 'The website: pages, services, projects, blog and media',
+  SALES: 'Leads, customers and quotations (prepares and submits them)',
+  MANAGER: 'Everything sales does, plus approving quotations',
+  DISPATCHER: 'Jobs, technicians, dispatch and materials',
+  TECHNICIAN: 'The field app: the jobs assigned to them',
+  ACCOUNTANT: 'Invoices, payments, expenses and finance reports',
+  SURVEYOR: 'The field app: site visits and survey quantities, never prices',
+};
+
+/** MessageLog channels and delivery states (plain strings in the API). */
+export const MESSAGE_CHANNELS = ['sms', 'email'];
+export const MESSAGE_STATUSES = ['queued', 'sent', 'failed'];
+
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON', 'LOST'];
 export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];

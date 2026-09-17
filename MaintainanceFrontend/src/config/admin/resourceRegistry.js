@@ -37,6 +37,8 @@ import { pages } from './resources/pages';
  * @property {string} [description]   under the list page's title
  * @property {string} capability      needed to see the screens at all
  * @property {string} [writeCapability] needed to create, edit, reorder, toggle and delete (default `cms:write`)
+ * @property {string} [historyCapability] needed for the edit page's History tab (`GET <path>/:id/history`);
+ *                                    default `capability` — the API guards a CMS record's trail with `cms:read`
  * @property {object[]} columns       DataTable columns; the page appends the Active switch
  * @property {object[]} [filters]     DataTable filters
  * @property {object[]} fields        ResourceForm fields
@@ -103,6 +105,9 @@ export const RESOURCES = Object.fromEntries(
     features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard,
   ].map((entry) => [entry.resource, entry]),
 );
+
+/** Who may read a record's History tab. */
+export const historyCapabilityOf = (entry) => entry.historyCapability ?? entry.capability;
 
 /**
  * @param {string|undefined} resource

@@ -124,6 +124,8 @@ export const AUDIT_EVENTS = Object.freeze({
   AUTH_LOGOUT: 'auth.logout',
   AUTH_PASSWORD_CHANGED: 'auth.password_changed',
   AUTH_PASSWORD_RESET_REQUESTED: 'auth.password_reset_requested',
+  AUTH_UNLOCKED: 'auth.unlocked',
+  AUTH_SESSIONS_REVOKED: 'auth.sessions_revoked',
 
   SETTINGS_CHANGED: 'settings.changed',
   EXPORT_CSV: 'export.csv',
@@ -133,4 +135,12 @@ export const AUDIT_EVENTS = Object.freeze({
   USER_CREATED: 'user.created',
   USER_DISABLED: 'user.disabled',
   USER_ROLE_CHANGED: 'user.role_changed',
+  MESSAGE_RETRIED: 'message.retried',
 });
+
+/** The sign-in events: what the login activity screen lists. */
+export const AUTH_EVENT_NAMES = Object.values(AUDIT_EVENTS).filter((e) => e.startsWith('auth.'));
+
+/** MessageLog.channel and .status — plain strings in the database. `inapp` messages are Notifications, never logged. */
+export const MESSAGE_CHANNELS = ['sms', 'email'];
+export const MESSAGE_STATUSES = ['queued', 'sent', 'failed'];

@@ -7,11 +7,13 @@ import {
 } from '@/api/cmsApi';
 import { useResourceEntry } from '@/hooks/useResourceEntry';
 import { useConfirm } from '@/hooks/useConfirm';
-import { activeCopyOf, schemaOf, screenPathOf } from '@/config/admin/resourceRegistry';
+import { activeCopyOf, historyCapabilityOf, schemaOf, screenPathOf } from '@/config/admin/resourceRegistry';
+import { useAuth } from '@/hooks/useAuth';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { LocaleTabs } from '@/components/common/LocaleTabs';
+import { RecordHistory } from '@/components/common/RecordHistory';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
 import { flattenFields } from '@/components/common/ResourceForm/formValues';
 import { Button } from '@/components/ui/button';
@@ -31,7 +33,8 @@ const lockFields = (fields) => fields.map((f) => (f.type === 'group'
  * `ResourceForm`, inside `LocaleTabs` when it has translatable fields or tabs of its own. A
  * new record opens its own edit page once saved, which is where its Nepali tab and any
  * other tab (a project's Gallery) become available. A field marked `lockedOnEdit` is
- * read-only once the record exists; `intro(record)` shows read-only facts above the form.
+ * read-only once the record exists; `intro(record)` shows read-only facts above the form. Every
+ * saved record has a History tab (its audit trail) for a role holding the entry's history capability.
  *
  * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
  */
@@ -45,6 +48,7 @@ export default function ResourceEditPage({ resource }) {
 function ResourceEditor({ entry, canWrite }) {
   const { resource, label } = entry;
   const { id } = useParams();
+  const { can } = useAuth();
   const isNew = !id;
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -125,12 +129,20 @@ function ResourceEditor({ entry, canWrite }) {
         className={translatableFields.length || entry.tabs?.length ? 'pt-4' : undefined}
       />
     );
-    const extraTabs = (entry.tabs ?? []).map(({ value, label, component: Tab }) => ({
-      value,
-      label,
-      disabled: isNew,
-      content: record ? <Tab record={record} canWrite={canWrite} /> : null,
-    }));
+    const extraTabs = [
+      ...(entry.tabs ?? []).map(({ value, label, component: Tab }) => ({
+        value,
+        label,
+        disabled: isNew,
+        content: record ? <Tab record={record} canWrite={canWrite} /> : null,
+      })),
+      ...(can(historyCapabilityOf(entry)) ? [{
+        value: 'history',
+        label: 'History',
+        disabled: isNew,
+        content: record ? <RecordHistory endpoint={`${entry.path}/${record.id}/history`} /> : null,
+      }] : []),
+    ];
     body = translatableFields.length || extraTabs.length ? (
       <LocaleTabs model={entry.model} recordId={record?.id} fields={translatableFields} sourceValues={record} extraTabs={extraTabs}>
         {form}

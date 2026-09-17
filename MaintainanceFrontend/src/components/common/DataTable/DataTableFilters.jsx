@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarRange, X } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
@@ -31,9 +34,49 @@ function ChoiceFilter({ filter, value, onChange, options, allLabel }) {
       </SelectTrigger>
       <SelectContent>
         {hasDefault ? null : <SelectItem value={ALL}>{filter.allLabel ?? allLabel}</SelectItem>}
-        {options.map((o) => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}
+        {groupOptions(options).map(({ group, items }) => (group ? (
+          <SelectGroup key={group}>
+            <SelectLabel>{group}</SelectLabel>
+            {items.map((o) => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}
+          </SelectGroup>
+        ) : items.map((o) => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)))}
       </SelectContent>
     </Select>
+  );
+}
+
+/** Options in runs by their `group`, in the order given; options with no group stay loose. */
+function groupOptions(options) {
+  const runs = [];
+  for (const option of options) {
+    const last = runs.at(-1);
+    if (last && last.group === (option.group ?? null)) last.items.push(option);
+    else runs.push({ group: option.group ?? null, items: [option] });
+  }
+  return runs;
+}
+
+/**
+ * Free text — an id, an address. Applied on Enter or when the field loses focus, so the
+ * list does not reload on every keystroke.
+ */
+function TextFilter({ filter, value, onChange }) {
+  const [draft, setDraft] = useState(value ?? '');
+  useEffect(() => { setDraft(value ?? ''); }, [value]);
+  const apply = () => {
+    const next = draft.trim() || undefined;
+    if (next !== (value || undefined)) onChange({ [filter.key]: next });
+  };
+  return (
+    <Input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={apply}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }}
+      placeholder={filter.placeholder ?? filter.label}
+      aria-label={filter.label}
+      className={cn('h-9 w-[180px]', filter.className)}
+    />
   );
 }
 
@@ -84,8 +127,12 @@ function DateRangeFilter({ filter, params, onChange }) {
  * "Waiting for approval"); "Clear filters" returns to it, and it does not count as a
  * filter someone applied.
  *
- * @param {{ key: string, label: string, type: 'enum'|'relation'|'dateRange'|'boolean',
- *   options?: { value: string, label: string }[], relation?: object, allLabel?: string, defaultValue?: string,
+ * An enum option may name a `group`; consecutive options of one group are listed under its heading.
+ * A `text` filter is typed and applied on Enter (a request id, an ip).
+ *
+ * @param {{ key: string, label: string, type: 'enum'|'relation'|'dateRange'|'boolean'|'text',
+ *   options?: { value: string, label: string, group?: string }[], relation?: object, allLabel?: string,
+ *   defaultValue?: string, placeholder?: string,
  *   trueLabel?: string, falseLabel?: string, fromKey?: string, toKey?: string, className?: string }[]} props.filters
  * @param {object} props.params
  * @param {(patch: object) => void} props.onChange
@@ -128,6 +175,8 @@ export function DataTableFilters({ filters, params, onChange }) {
             );
           case 'dateRange':
             return <DateRangeFilter key={filter.key} filter={filter} params={params} onChange={onChange} />;
+          case 'text':
+            return <TextFilter key={filter.key} filter={filter} value={params[filter.key]} onChange={onChange} />;
           default:
             return null;
         }

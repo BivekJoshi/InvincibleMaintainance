@@ -54,6 +54,9 @@ split by route group: `(site)` public, `(admin)` staff, `(tech)` technician PWA.
   the controller (decision D5, 2026-09-14): it takes the validated request, calls a service and
   shapes the response. Route files never call Prisma directly; business logic stays in services.
   Raw Prisma calls still in some routers move into services when each router is next touched.
+  *Progress (Phase G, 2026-09-17):* prisma-free — `platform`, `cms`, `crm`, `finance`, `aftercare`,
+  `surveys`, `auth`, `public`. Still calling Prisma — `admin/ops.routes.js` (technicians) and
+  `tech.routes.js` (sync), both for Phase H. A record's history route is `routes/admin/historyRoute.js`.
 - Every route: `validate(schema)` → `authenticate` → `authorize(...roles)` → controller.
 - Errors: `throw new AppError(status, code, message)`. One error middleware serializes them.
 - Responses: `{ data, meta }` on success, `{ error: { code, message, details } }` on failure.

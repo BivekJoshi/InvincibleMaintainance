@@ -8,7 +8,8 @@ import {
   BlogPage, BlogPostPage, GenericPage, SettingsPage,
   LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SurveysPage,
   SurveyReviewPage, QuotationsPage, QuotationBuilderPage, ResourceListPage, ResourceEditPage,
-  HomeComposerPage, MediaLibraryPage,
+  HomeComposerPage, MediaLibraryPage, ResetPasswordPage,
+  UsersPage, RolesPage, AuditLogPage, LoginActivityPage, MessageLogsPage, MessageTemplatesPage, MessageTemplateEditPage,
   TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, NotFoundPage,
 } from './routeModules';
 import { AdminHome, ContentHome } from './AdminLanding';
@@ -54,6 +55,8 @@ export function AppRoutes() {
         </Route>
 
         <Route path="/login" element={<LoginPage />} />
+        {/* Where a reset link and a new account's invite land */}
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Back office — every role except the field app's */}
         <Route element={<RequireAuth roles={OFFICE_ROLES} />}>
@@ -95,6 +98,16 @@ export function AppRoutes() {
             {/* Anyone with settings:read sees the values; only ADMIN may save them (the API's rule) */}
             <Route element={<RequireAuth capability="settings:read" />}>
               <Route path="/admin/platform/settings" element={<SettingsPage />} />
+            </Route>
+            {/* ADMIN only — the API refuses every one of these to any other role */}
+            <Route element={<RequireAuth roles={['ADMIN']} />}>
+              <Route path="/admin/platform/users" element={<UsersPage />} />
+              <Route path="/admin/platform/roles" element={<RolesPage />} />
+              <Route path="/admin/platform/audit" element={<AuditLogPage />} />
+              <Route path="/admin/platform/login-activity" element={<LoginActivityPage />} />
+              <Route path="/admin/platform/messages" element={<MessageLogsPage />} />
+              <Route path="/admin/platform/message-templates" element={<MessageTemplatesPage />} />
+              <Route path="/admin/platform/message-templates/:key" element={<MessageTemplateEditPage />} />
             </Route>
           </Route>
         </Route>

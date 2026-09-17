@@ -161,6 +161,20 @@ links — ip and user agent say who), `system` (tasks, and scripts with no conte
 - CSP, HSTS, no inline scripts. Turnstile + honeypot + timing + IP rate limit on all public POSTs.
 - PII exports (`leads.csv`) are recorded as `export.csv` audit events with the actor and the filters used.
 - No access token, refresh cookie or password reaches a log line; see *Redaction* above.
+- **Sessions.** Each sign-in is one refresh token row (hashed, with ip and user agent), rotated on every refresh.
+  Ending sessions revokes the rows: an admin's "revoke all" (`DELETE /admin/users/:id/sessions`, event
+  `auth.sessions_revoked`), a password change or reset, and disabling or deleting an account. A revoked session
+  cannot be refreshed. An access token already issued stays valid for its 15 minutes — except that
+  `authenticate` re-reads the account on every request, so a **disabled** account is refused at once.
+- **Admins never set or see a password.** A new account gets a 72-hour "choose your password" link by email; a
+  forgotten one, the normal 1-hour reset link (`POST /admin/users/:id/send-password-reset`, event
+  `auth.password_reset_requested` with `by: admin`). The raw token exists only in that email: the database holds its
+  hash, the message log holds the message with the token replaced by `[redacted]` (such a message cannot be retried
+  from the log), and no response carries it. The link opens `<web origin>/reset-password`.
+- **Lockout.** Five failed sign-ins lock an account for 15 minutes (`auth.locked`); an admin can lift it early
+  (`auth.unlocked`). The login activity screen lists every `auth.*` event with ip and user agent.
+- **Admin screens hold no more than they need.** The message log shows a phone's last four digits and an email's
+  first two letters; a record's History tab has no ip or user agent (those stay in the ADMIN-only audit log).
 
 ## Environments
 

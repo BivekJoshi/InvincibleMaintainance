@@ -427,6 +427,8 @@ export const MESSAGE_TEMPLATES = [
   { key: 'amc_visit_due', channel: 'sms', locale: 'en', body: 'Your {{planName}} maintenance visit is due on {{date}}. We will confirm the time. - {{appName}}' },
   { key: 'password_reset', channel: 'email', locale: 'en', subject: 'Reset your {{appName}} password',
     body: 'Hi {{name}},\n\nReset your password using this link (valid for 1 hour):\n{{link}}\n\nIf you did not request this, ignore this email.' },
+  { key: 'account_invite', channel: 'email', locale: 'en', subject: 'Your {{appName}} account',
+    body: 'Hi {{name}},\n\nAn account has been created for you on {{appName}}. Choose your password using this link (valid for {{hours}} hours):\n{{link}}\n\nIf you were not expecting this, ignore this email.' },
 ];
 
 export const JOB_TEMPLATES = [

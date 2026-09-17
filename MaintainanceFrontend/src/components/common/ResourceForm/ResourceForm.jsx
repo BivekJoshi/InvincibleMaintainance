@@ -66,6 +66,8 @@ const LEAVE = {
  * @param {import('react').ReactNode} [props.intro]       shown above the fields, e.g. a record's preview in a sheet
  * @param {boolean} [props.stickyActions]                 page mode: keep Save in view at the bottom of a long form
  * @param {(dirty: boolean) => void} [props.onDirtyChange]  told when the form gains or loses unsaved changes
+ * @param {(values: object) => void} [props.onValuesChange]  told the form's current values (as typed) on every
+ *   change — a live preview beside the form. Pass a stable function (a state setter, or `useCallback`).
  */
 export function ResourceForm({
   schema,
@@ -87,6 +89,7 @@ export function ResourceForm({
   intro,
   stickyActions = false,
   onDirtyChange,
+  onValuesChange,
 }) {
   const formId = `form-${useId().replace(/[^\w-]/g, '')}`;
   const initial = useMemo(() => toFormValues(fields, defaultValues), [fields, defaultValues]);
@@ -100,6 +103,14 @@ export function ResourceForm({
 
   // A page that acts on the saved record (submit a quotation) holds its buttons while this form has edits.
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+
+  // A preview beside the form follows every keystroke, starting from the loaded values.
+  useEffect(() => {
+    if (!onValuesChange) return undefined;
+    onValuesChange(form.getValues());
+    const subscription = form.watch((values) => onValuesChange(values));
+    return () => subscription.unsubscribe();
+  }, [form, onValuesChange]);
 
   // A record that arrives or refetches after mount replaces the values — unless someone is mid-edit.
   const dirty = useRef(isDirty);

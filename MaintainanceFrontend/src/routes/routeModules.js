@@ -39,6 +39,7 @@ export const BlogPostPage = route(() => import('@/pages/public/BlogPostPage/Blog
 export const GenericPage = route(() => import('@/pages/public/GenericPage/GenericPage'));
 
 export const LoginPage = route(() => import('@/pages/public/LoginPage/LoginPage'));
+export const ResetPasswordPage = route(() => import('@/pages/public/ResetPasswordPage/ResetPasswordPage'));
 
 // Back office
 export const DashboardPage = route(() => import('@/pages/admin/DashboardPage'));
@@ -57,6 +58,13 @@ export const ResourceEditPage = route(() => import('@/pages/admin/ResourceEditPa
 export const HomeComposerPage = route(() => import('@/pages/admin/HomeComposerPage'));
 export const MediaLibraryPage = route(() => import('@/pages/admin/MediaLibraryPage'));
 export const SettingsPage = route(() => import('@/pages/admin/SettingsPage'));
+export const UsersPage = route(() => import('@/pages/admin/UsersPage'));
+export const RolesPage = route(() => import('@/pages/admin/RolesPage'));
+export const AuditLogPage = route(() => import('@/pages/admin/AuditLogPage'));
+export const LoginActivityPage = route(() => import('@/pages/admin/LoginActivityPage'));
+export const MessageLogsPage = route(() => import('@/pages/admin/MessageLogsPage'));
+export const MessageTemplatesPage = route(() => import('@/pages/admin/MessageTemplatesPage'));
+export const MessageTemplateEditPage = route(() => import('@/pages/admin/MessageTemplateEditPage/MessageTemplateEditPage'));
 
 // Field app
 export const TechTodayPage = route(() => import('@/pages/tech/TechTodayPage'));
@@ -75,7 +83,7 @@ const GROUPS = {
   public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage, BlogPage],
   admin: [
     LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
-    HomeComposerPage, MediaLibraryPage, SettingsPage,
+    HomeComposerPage, MediaLibraryPage, SettingsPage, UsersPage, AuditLogPage, MessageLogsPage,
   ],
   tech: [TechJobPage, SurveyListPage, SurveyFormPage],
 };

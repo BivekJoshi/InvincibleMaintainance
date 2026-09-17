@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import ResourceListPage from '@/pages/admin/ResourceListPage';
 import ResourceEditPage from '@/pages/admin/ResourceEditPage';
@@ -27,6 +28,12 @@ beforeEach(() => {
     const path = new URL(request.url, 'http://localhost').pathname.replace(/^\/api\/v1/, '');
     if (path === '/admin/rate-card') return json({ data: [RATE], meta: { page: 1, limit: 20, total: 1, pages: 1 } });
     if (path === '/admin/rate-card/r1') return json({ data: RATE });
+    if (path === '/admin/rate-card/r1/history') {
+      return json({
+        data: [{ id: 'h1', event: null, action: 'update', model: 'RateCardItem', recordId: 'r1', actorType: 'user', actor: { id: 'u1', name: 'Meena Manager', role: 'MANAGER' }, requestId: 'q1', before: { rate: 25000 }, after: { rate: 27550 }, changes: null, createdAt: '2026-09-17T04:00:00.000Z' }],
+        meta: { page: 1, limit: 20, total: 1, pages: 1 },
+      });
+    }
     return json({ data: {} });
   }));
 });
@@ -78,5 +85,23 @@ describe('rate card screens', () => {
   it('is not a content screen', async () => {
     renderAt('/admin/content/rate-card', 'ADMIN');
     expect(await screen.findByRole('heading', { name: 'We could not find that page' })).toBeInTheDocument();
+  });
+});
+
+describe('the History tab on a registry edit page', () => {
+  it('shows a record’s trail to a role with the entry’s history capability', async () => {
+    const user = userEvent.setup();
+    renderAt('/admin/rate-card/r1', 'SALES');
+    await user.click(await screen.findByRole('tab', { name: 'History' }));
+    expect(await screen.findByText('Rate changed')).toBeInTheDocument();
+    expect(screen.getByText('Meena Manager · Manager')).toBeInTheDocument();
+    const calls = fetch.mock.calls.map(([req]) => new URL(req.url, 'http://localhost').pathname);
+    expect(calls).toContain('/api/v1/admin/rate-card/r1/history');
+  });
+
+  it('has no History tab for a role that reads the record but not its trail', async () => {
+    renderAt('/admin/rate-card/r1', 'ACCOUNTANT');
+    expect(await screen.findByDisplayValue('Terrace membrane waterproofing')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'History' })).not.toBeInTheDocument();
   });
 });

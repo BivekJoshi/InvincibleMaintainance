@@ -71,6 +71,8 @@ The CRM files (Phase E):
   **`getCustomerRecords({ kind, customerId })`**: another domain's list filtered by the customer (`CUSTOMER_RECORD_PATHS`
   — quotations, jobs, invoices, warranties, AMC), so the customer page needs none of those domains' files.
 - `historyApi.js` — **`getRecordHistory({ endpoint, page, limit })`**, one query for every record's History tab (tag `History`).
+- `usersApi.js`, `auditApi.js`, `messagesApi.js` (Phase G, ADMIN) — see "Platform (Phase G)". `previewTemplate` is a
+  **query** although it is a POST: it reads, and caching by its arguments is what a live preview wants.
 - `dashboardApi.js` also holds **`getBreachedLeadCount`** (the SLA nav badge): the shell loads that file, and a count must
   not pull `leadsApi` into the main bundle.
 
@@ -89,6 +91,7 @@ The CRM files (Phase E):
 | `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
 | `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog`, `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (typed entries; shows the response result), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice), `ConvertResult` (what a convert made, with links). |
 | `customers/` | `CustomerFormSheet` (new customer) and `MapPinInput` ("use map pin": pasted coordinates fill a site's latitude and longitude — it sits in the site form's `intro`, inside the form). |
+| `platform/` | The admin platform screens' parts (Phase G): `AuditDiff` (a before/after, nested fields by path, each line marked added / removed / changed on the semantic surfaces and in words), `AuditRowDetails` (an audit row opened: the diff, request id, ip, browser, "Show everything from this request", "Open the record"), `UserFormSheet` (new / edit — no password field), `SessionsDialog` (where someone is signed in, "Sign out everywhere"). |
 | `public/`, `booking/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. |
 
 A component used by exactly one page can live beside its domain here; a component
@@ -125,7 +128,8 @@ Server-side paging, sorting and search over `?page&limit&sort&q`, with the param
 | `rowActions(row)` → `[{ label, icon?, onSelect(row), destructive?, disabled?, separator? }]` | a kebab menu per row |
 | `bulkActions` → `[{ label, icon?, destructive?, onSelect(rows, clearSelection) }]` | checkbox column, select-all-on-page, an actions bar. Selection clears when the page or filters change |
 | `pageSizes` (default `[10, 20, 50, 100]`) | "Rows per page", written to `limit` |
-| `filters` → `[{ key, label, type: 'enum' \| 'boolean' \| 'relation' \| 'dateRange', options?, allLabel?, defaultValue?, relation?: { path, labelKey?, params? }, fixedOptions?, fromKey?, toKey?, className? }]` | the filter bar; every value lives in the URL. A date range writes `from` / `to`. A choice with a `defaultValue` has no "all" of its own (give it an explicit option), is where the list starts, and is not counted as an applied filter — the caller puts the default in its list params. A relation's `fixedOptions` (`[{ value: 'none', label: 'Unassigned' }]`) are choices that are not records |
+| `filters` → `[{ key, label, type: 'enum' \| 'boolean' \| 'relation' \| 'dateRange' \| 'text', options?, allLabel?, defaultValue?, relation?: { path, labelKey?, params? }, fixedOptions?, fromKey?, toKey?, className? }]` | the filter bar; every value lives in the URL. A date range writes `from` / `to`. A choice with a `defaultValue` has no "all" of its own (give it an explicit option), is where the list starts, and is not counted as an applied filter — the caller puts the default in its list params. A relation's `fixedOptions` (`[{ value: 'none', label: 'Unassigned' }]`) are choices that are not records. An enum option's `group` lists consecutive options under that heading (the audit log's events). A `text` filter (a request id, an ip) is applied on Enter or blur, not per key |
+| `expandable` → `{ render(row) }` | a disclosure button per row (`aria-expanded`, `aria-controls`); an open row shows `render(row)` across the table beneath it. Open rows close when the params change |
 | `searchable` (default true) | false hides the search box — a short, complete list inside a page (duplicates, sites, a statement) |
 | `trash` → `{ onRestore(row), onPurge?(row), canPurge? }` | a Trash toggle (`?deleted=true`); rows offer Restore, and Delete forever (confirmed) to `cms:purge` |
 | `reorderDisabledReason` | when not `reorderable`, a disabled Reorder button with this reason beside it (list items: pick a list first) |
@@ -152,6 +156,8 @@ media sheet's preview).
 - A null value in a column the form has no field for is dropped from the form values (a schema's `.optional()` refuses
   null, and a hidden column must not block a save — a testimonial's `jobId`).
 - `stickyActions` keeps Save in view at the bottom of a long page-mode form.
+- `onValuesChange(values)` is told the typed values on every change — a live preview beside the form (the message
+  template editor). Pass a stable function (a state setter).
 
 One file per field type under `fields/`. Every spec has `name`, `type`, `label`, and optionally
 `description`, `placeholder`, `required`, `disabled`, `span: 'half'`, `defaultValue` — and, in a registry entry,
@@ -207,7 +213,8 @@ One file per field type under `fields/`. Every spec has `name`, `type`, `label`,
   "Customer (website or link)" / "System") and when (Kathmandu time), and "Show details" for the before/after table.
   `helpers/history.js#foldHistory` folds a request's plain row writes into that request's named event, so a status change
   reads once. Pages with the API's own paging. It takes any endpoint the API gives a history scope
-  (`services/history.service.js`); Phase G adds pages, not a new component. Every detail page carries one (ADMIN-PLAN §7).
+  (`services/history.service.js`) — since Phase G, any model (the API's `routes/admin/historyRoute.js`); every
+  registry edit page carries it automatically. Every detail page carries one (ADMIN-PLAN §7).
 
 ## The resource registry
 
@@ -290,6 +297,7 @@ An entry holds:
 | `reorderWithin`, `reorderHint` | Reorder only while that filter is set, and the reason shown beside the disabled button (list items: positions are per list) |
 | `intro(record)` | read-only facts above an existing record's form (a project's source job number) |
 | `tabs` | `[{ value, label, component }]` — panels beside the form on an existing record, rendered with `{ record, canWrite }` (a project's Gallery). Disabled on a new record |
+| `historyCapability` | who sees the edit page's **History** tab (default `capability`; the rate card's is `quotations:history`). Every saved record gets the tab — `RecordHistory` on `<path>/:id/history`, which the API's CRUD factory mounts. `historyCapabilityOf(entry)` answers |
 | `rowActions(row)` | extra list actions: `[{ label, icon?, capability?, endpoint, arg, done }]` — `endpoint` is a `cmsApi` mutation (`approveTestimonial`), dispatched with `arg`; `done` is the success toast. Hidden without `capability`. The registry test checks each endpoint exists |
 
 A role with `capability` but not `writeCapability` (ACCOUNTANT on the rate card) sees the list with disabled
@@ -372,6 +380,41 @@ reads is a trap for an editor.
 - `config/constants.js` mirrors the API's `QUOTATION_STATUSES`, `QUOTATION_TRANSITIONS`, the stage tabs and the
   status labels (the office's words, not the enum's); `crmMirror.test.js` fails if any of them drift.
 
+## Platform (Phase G)
+
+Every screen here is ADMIN only: the routes sit under `RequireAuth roles={['ADMIN']}`, the nav items need
+capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admin`), and the API refuses every other role.
+
+| Route | Page | Does |
+|---|---|---|
+| `/admin/platform/users` | `UsersPage` | DataTable: role, status, **Locked** badge, last sign-in; role and status filters; New user / Edit in `UserFormSheet` (name, email, phone, role, can sign in — a new person gets a 72-hour invite email); row actions Edit · Sessions · Send reset link (confirmed; the toast names the address) · Unlock (only when locked) · Activity (the audit log for that user) · Switch off / on · Remove. The admin's own row cannot be switched off or removed, and their own sheet locks role and status. `?open=<id>` opens a person's sheet |
+| `/admin/platform/roles` | `RolesPage` | the role → capability matrix from `helpers/capabilityMatrix.js`, which reads `helpers/permissions.js` (held to the API's by the parity test), plus the ADMIN-only capabilities `*` stands for. A fixed matrix, so a plain table |
+| `/admin/platform/login-activity` | `LoginActivityPage` | "Needs attention" (locked now, or failures in 24 h — each with Unlock), then every `auth.*` event: the account (or the address typed for an unknown one), the reason and attempt, ip, browser; filters account, event, ip, date; a row opens like an audit row |
+| `/admin/platform/audit` | `AuditLogPage` | DataTable over `GET /admin/audit-logs`: event (grouped by prefix, with "Every … event" = `prefix.*`), record type (`/audit-logs/models`), staff member, done by, record id, request id, date. A row expands into `AuditRowDetails`; "Show everything from this request" sets `requestId` and sorts oldest first. The record column links through `helpers/recordLinks.js` |
+| `/admin/platform/messages` | `MessageLogsPage` | every SMS and email: masked address, template, status chip with the error, what it was about (linked), the body when expanded; **Send again** for a failure — disabled for a message whose one-time link was redacted |
+| `/admin/platform/message-templates` | `MessageTemplatesPage` | one row per key (`/groups`): who gets it and when (`config/admin/messageKeys.js`), and a chip per version — in use, switched off, not written |
+| `/admin/platform/message-templates/:key` | `MessageTemplateEditPage/` | tabs SMS · English, SMS · नेपाली, Email · English, Email · नेपाली; the open tab only is mounted (one leave-guard). `sections/VariantEditor` is a `ResourceForm` (subject for email, message, in use; a version not written is created on save; Delete) beside `sections/PreviewPanel`: placeholder chips (a press copies `{{name}}`; a Nepali version also shows the English one's), an input per placeholder prefilled from `SAMPLE_VARS`, the API's rendering of the **unsaved** text (debounced), the empty ones, and for SMS `sections/SmsCounter`. `new` is a form for any key |
+| `/reset-password` | `pages/public/ResetPasswordPage/` | where a reset or invite link lands: choose a password twice (the API's rule, mirrored in `auth.schema.js`), then sign in. No token → "open the link from your email". It never sends links itself, and neither does the login screen |
+
+- **`helpers/auditDiff.js`** — `diffEntries(before, after)`: one line per changed field, walking nested objects to
+  the field that moved (`translations.name.en`) and arrays of objects by position; an array of plain values, a value
+  replaced by an object, or an added object is one line. `DIFF_KIND_STYLES` are the marks.
+- **`helpers/sms.js`** — `smsSegments(text)`: GSM-7 (160 / 153 a part, extension characters count twice) or Unicode
+  (70 / 67, astral characters twice); Devanagari is always Unicode. `nonGsm` says why.
+- **`helpers/recordLinks.js`** — `recordHref(row)`: an audit or message row's page (lead, customer, quotation, survey,
+  user, settings, any registry entry by its Prisma model); a child row (note, site, quotation line, project picture,
+  Nepali copy) links to its parent; jobs and invoices have no page yet → null.
+- **`config/admin/messageKeys.js`** — `MESSAGE_KEYS` (every key the API sends — a test scans its services),
+  `SAMPLE_VARS`, `placeholdersIn` (the API's pattern — a test checks the source), `nestVars`, `TEMPLATE_VARIANTS`,
+  `templateHref`.
+- `config/auditEvents.js` also has `AUDIT_EVENT_GROUPS`, `auditEventOptions()` and `AUTH_EVENT_NAMES`;
+  `config/constants.js` has `ROLE_DESCRIPTIONS`, `MESSAGE_CHANNELS`, `MESSAGE_STATUSES` (mirror-tested).
+- Schemas: `form/schemas/user.schema.js` (no password), `messageTemplate.schema.js`, and `resetPasswordSchema` in
+  `auth.schema.js`.
+- Tests: `pages/admin/PlatformScreens.test.jsx` (every screen above, with Devanagari names, a Nepali SMS and a
+  `+977` phone), the three helpers' tests, `capabilityMatrix.test.js`, `messageKeys.test.js`, and the History tab in
+  `ResourcePages.test.jsx`.
+
 ## Leads and customers (Phase E)
 
 | Route | Page | Does |
@@ -395,7 +438,8 @@ without a DOM in `adminNav.test.js`):
 - **`ADMIN_NAV`** — nine groups in business order: **Overview · Sales · Operations · Finance · Aftercare · Content ·
   Page blocks · Blog & pages · Platform**. The three content groups all point under `/admin/content/…` and need
   `cms:read`; Page blocks holds the pieces the home page's bands are made of (features, list items, content blocks,
-  process steps). Settings (Platform) is `/admin/platform/settings` for `settings:read`. An item is `{ to, label, icon, capability?, end?, soon? }`; `soon` renders greyed with a "Soon" tag,
+  process steps). Platform holds Users, Roles & permissions, Login activity, Audit log, Messages and Message templates (ADMIN only — Phase G)
+  and Settings (`/admin/platform/settings`, `settings:read`). An item is `{ to, label, icon, capability?, end?, soon? }`; `soon` renders greyed with a "Soon" tag,
   never as a link.
 - **`navForRole(role)`** — the items the role's capabilities allow, empty groups dropped. The same map the API
   enforces (`helpers/permissions.js`); the nav only hides, the API refuses.
@@ -593,7 +637,8 @@ links, and which role may see each), `homeSections.js` (what each home
 section shows, where its content is edited, which ones take a `limit`, and `toSectionItems`), and `settingsForm.js`
 (the settings screen as data — see "Which screen is which").
 
-`helpers/` is behaviour with no state: `format.js` (money — `rupeesToPaisa`, `parseRupees`,
+`helpers/` is behaviour with no state (Phase G added `auditDiff.js`, `sms.js`, `recordLinks.js` and
+`capabilityMatrix.js` — see "Platform (Phase G)"): `format.js` (money — `rupeesToPaisa`, `parseRupees`,
 `formatRupees` — dates, Kathmandu time and `toKathmanduParts` / `fromKathmanduParts` for inputs),
 `slug.js` (a copy of the API's `slugify` — change both together), `prose.js` (`splitParagraphs`),
 `links.js` (`siteHref` — an editor's typo must not become a dead CTA; a live page counts when its slug is passed —

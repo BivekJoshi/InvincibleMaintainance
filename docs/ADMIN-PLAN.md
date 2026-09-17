@@ -33,7 +33,7 @@ site is complete** and `vite build` succeeds. The **back office is the gap**: th
 | Materials, stock, suppliers | ✅ | ❌ none |
 | Invoices, payments, expenses, reports | ✅ | ❌ none |
 | Warranties, claims, AMC, reminders | ✅ | ❌ admin none (public token pages exist) |
-| Users, audit log, message templates/logs | ✅ | ❌ none |
+| Users, audit log, message templates/logs | ✅ | ✅ users, roles, login activity, audit log, delivery log, template editor (G) |
 | Notifications | ✅ | ⚠ unread count only; bell has no panel |
 
 Shared admin primitives: `components/common/DataTable.jsx` exists (server paging/sort/search) but has
@@ -94,9 +94,9 @@ Gaps against the intended business process:
 | ✅ 10 · A 2026-09-14 | Medium | Leads CSV export always 401s. It uses `window.open`, but the API accepts only a Bearer header. | `MaintainanceFrontend/src/pages/admin/LeadsPage.jsx` |
 | ✅ 11 · A 2026-09-14 | Medium | The booking wizard hardcodes `elapsedMs: 60_000`, which defeats the anti-spam timing check. | `components/booking/BookingWizard/BookingWizard.jsx` |
 | ✅ 12 · A 2026-09-14 | Low | `npm run lint` fails: eslint 9 with no `eslint.config.js` in the frontend. | `MaintainanceFrontend/` |
-| 13 | Low | Unvalidated `?sort` and `?status` reach Prisma. Sub-resource `:id` params are unvalidated in crm, ops and finance routes. Several lists are unpaginated. | routes |
+| 13 | Low | *(G 2026-09-17: users, audit log, login activity, message templates and message logs now validate `sort` and their filters.)* Unvalidated `?sort` and `?status` reach Prisma. Sub-resource `:id` params are unvalidated in crm, ops and finance routes. Several lists are unpaginated. | routes |
 | 14 | Low | `notify()` is awaited inside the request with no retry. Crons have no leader lock, so they are unsafe on more than one instance. | `notify.service.js`, `crons/index.js` |
-| 15 | Low | Raw Prisma calls in route files (technicians, users, tech sync) break the "routes never touch Prisma" rule. | `ops.routes.js:95-129`, `platform.routes.js:87-137`, `tech.routes.js:214-283` |
+| 15 | Low | *(G 2026-09-17: `platform.routes.js` is Prisma-free — users, notifications, message logs; ops technicians and tech sync remain for H.)* Raw Prisma calls in route files (technicians, users, tech sync) break the "routes never touch Prisma" rule. | `ops.routes.js:95-129`, `platform.routes.js:87-137`, `tech.routes.js:214-283` |
 
 ---
 
@@ -669,7 +669,7 @@ the new notifications are still sent in the request, after the commit.
 - **Index migration.** The second migration also adds indexes on `Quotation.parentId` and `leadId` (the version
   chain and lead pages).
 
-### Phase G — Audit, logs & platform screens · ~3 days
+### Phase G — Audit, logs & platform screens · ~3 days · ✅ done 2026-09-17
 
 - **Audit log viewer:** filters by event, model, record, actor, actor type, date and request id; a before/after diff view; links through to the record. A reusable `<RecordHistory model recordId>` tab on lead, customer, quotation, job, service and invoice detail pages.
 - **Message log** (SMS and email delivery status, provider error) and a login activity view (success, failure, lockouts).
@@ -677,6 +677,34 @@ the new notifications are still sent in the request, after the commit.
 - **Message templates** editor with placeholder preview in EN and NE.
 
 **Acceptance (v1 Phase 1):** an ADMIN traces any quotation from creation to customer approval, and every change, by request id. A SALES user gets 403 on users and audit logs, and their navigation hides both.
+
+**Deviations (Phase G, 2026-09-17)** — built differently from the plan, or beyond it. G narrowed #13 and #15 (above) and
+closed neither outright.
+- **History capabilities.** The prompt guards each history route with the resource's read capability. Following E's
+  `*:history` split instead: jobs use **`jobs:history`** (DISPATCHER), invoices **`invoices:history`** (ACCOUNTANT), the
+  rate card `quotations:history` — so SALES, who reads jobs, and ACCOUNTANT, who reads rates, do not read their trails.
+  CMS records use `cms:read` alone (SALES reads services through `services:read`, not their trail). One helper,
+  `routes/admin/historyRoute.js`; every model has a default scope (own rows and events, plus its Nepali copy), and
+  jobs, invoices and projects add their children. A job's first assignments are nested writes and not audited row by row.
+- **Admins never set passwords, on create either.** The prompt's create sheet has no password, so a user created
+  without one gets an unusable hash and a **72-hour invite** email (`account_invite`, seeded); `PUT` refuses a password
+  (400). `password` is still accepted on create for scripts and tests. The reset link was pointing at `APP_URL` (the
+  API) and the SPA had no page for it: links now use the web origin and open a new public **`/reset-password`** page.
+  The login screen still sends no links itself.
+- **Secrets in the message log.** A password link's token was stored in `MessageLog.body` in clear, so an admin reading
+  the log could have used someone's reset link. `notify({ secrets })` now logs such a message with `[redacted]`, older
+  rows are scrubbed on the way out, and a redacted message cannot be retried (`422 NOT_RETRYABLE`).
+- **Beyond the plan:** disabling or deleting a user also revokes their sessions; an admin cannot change their own role;
+  `GET /admin/users/:id` and `/users/:id/history`; `GET /admin/audit-logs/models` and an `event=prefix.*` filter;
+  `GET /admin/message-templates/groups` and a preview without a saved template; retry claims the row first so a
+  double click sends once; message keys must be `lower_snake`. New events `auth.unlocked`, `auth.sessions_revoked`,
+  `message.retried`. A read-only **Roles & permissions** page lists the ADMIN-only capabilities (`users:admin`,
+  `audit:read`, `messages:admin`, `settings:write`, `cms:purge`) the nav uses.
+- **Kit additions, generic:** DataTable `expandable` rows and a `text` filter; enum options with a `group`;
+  `ResourceForm onValuesChange`; the registry's `historyCapability` and an automatic History tab on every edit page.
+- **Not done here:** job and invoice History tabs wait for their pages (H, I); login activity's summary is paginated over
+  accounts, not sorted by failure count; the manual walk-through was scripted with Playwright against the `_test`
+  database rather than clicked by hand (below, in STATUS).
 
 ### Phase H — Operations screens · ~7 days
 
@@ -739,7 +767,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | D Services & CMS ✅ 2026-09-16 (D1 + D2) | 6 | 15 | Editors run the whole public site |
 | E Leads & CRM ✅ 2026-09-16 | 5 | 20 | Sales works entirely in the UI |
 | F Quotation approval ✅ 2026-09-17 (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
-| G Audit & platform UI | 3 | 28 | Traceability, users, templates |
+| G Audit & platform UI ✅ 2026-09-17 | 3 | 28 | Traceability, users, templates |
 | H Operations (H1 + H2) | 7 | 35 | Dispatch and job management |
 | I Finance & aftercare | 6 | 41 | Billing and retention |
 | J1 Nepali UI | 2 | 43 | Field app, site, customer pages in Nepali |

@@ -1,8 +1,8 @@
 import {
   Blocks, Briefcase, Building2, CalendarDays, ClipboardCheck, Coins, Contact, File, FileText, GalleryHorizontal,
-  HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, MessageSquareQuote,
-  Newspaper, Package, Receipt, Ruler, ScrollText, Settings, ShieldCheck, Sparkles, Tag, Tags, Timer, UserCog, Users,
-  Wallet, Wrench,
+  HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, LogIn,
+  MessageSquareQuote, MessageSquareText, Newspaper, Package, Receipt, Ruler, ScrollText, Send, Settings, ShieldCheck,
+  Sparkles, Tag, Tags, Timer, UserCog, Users, Wallet, Wrench,
 } from 'lucide-react';
 import { can } from '@/helpers/permissions';
 
@@ -112,9 +112,13 @@ export const ADMIN_NAV = [
     key: 'platform',
     label: 'Platform',
     items: [
-      // Users and the audit log are ADMIN-only routes; no other role holds these capabilities.
-      { to: '/admin/users', label: 'Users', icon: UserCog, capability: 'users:read', soon: true },
-      { to: '/admin/audit-log', label: 'Audit log', icon: ScrollText, capability: 'audit:read', soon: true },
+      // ADMIN only: these capabilities are held by ADMIN's `*` alone, and the API refuses every other role.
+      { to: '/admin/platform/users', label: 'Users', icon: UserCog, capability: 'users:admin' },
+      { to: '/admin/platform/roles', label: 'Roles & permissions', icon: ShieldCheck, capability: 'users:admin' },
+      { to: '/admin/platform/login-activity', label: 'Login activity', icon: LogIn, capability: 'users:admin' },
+      { to: '/admin/platform/audit', label: 'Audit log', icon: ScrollText, capability: 'audit:read' },
+      { to: '/admin/platform/messages', label: 'Messages', icon: Send, capability: 'messages:admin' },
+      { to: '/admin/platform/message-templates', label: 'Message templates', icon: MessageSquareText, capability: 'messages:admin', editLabel: 'Edit' },
       // EDITOR reads the settings; only ADMIN saves them (settings:write is held by ADMIN's `*` alone).
       { to: '/admin/platform/settings', label: 'Settings', icon: Settings, capability: 'settings:read' },
     ],

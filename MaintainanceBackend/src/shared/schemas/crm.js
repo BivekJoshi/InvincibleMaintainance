@@ -186,10 +186,7 @@ export const customerSiteSchema = z.object({
 
 export const customerSiteUpdateSchema = customerSiteSchema.extend({ isPrimary: z.coerce.boolean().optional() }).partial();
 
-export const historyQuery = z.object({
-  page: z.coerce.number().int().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-});
+export { historyQuery } from './common.js';
 
 export const rateCardItemSchema = z.object({
   // Stored upper-case, so `seep-chem` and `SEEP-CHEM` are one code (the column is unique).

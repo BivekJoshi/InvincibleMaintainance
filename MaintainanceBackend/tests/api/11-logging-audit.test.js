@@ -192,8 +192,10 @@ describe('audit extension', () => {
 
   it('secrets never reach before/after', async () => {
     const user = await throwawayUser();
+    const session = expectStatus(await anon().post('/auth/login').send({ email: user.email, password: PASSWORD }), 200);
     const requestId = rid();
-    expectStatus(await admin.put(`/admin/users/${user.id}`).set('X-Request-Id', requestId).send({ password: 'Another123' }), 200);
+    expectStatus(await withToken(session.data.accessToken).post('/auth/change-password').set('X-Request-Id', requestId)
+      .send({ currentPassword: PASSWORD, password: 'Another123' }), 200);
     const row = (await rowsFor(requestId)).find((r) => r.model === 'User' && r.action === 'update');
     expect(row.before.passwordHash).toBe('[redacted]');
     expect(row.after.passwordHash).toBe('[redacted]');

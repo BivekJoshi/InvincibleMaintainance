@@ -181,12 +181,20 @@ and customers at `/admin/customers` (profile, sites with one primary, timeline, 
 statement, History). The contact form and booking wizard take an optional email and send the site's language. See
 `src/STRUCTURE.md` → "Leads and customers (Phase E)".
 
+**Platform (Phase G, ADMIN only)** — users at `/admin/platform/users` (create with an emailed invite — admins never
+set passwords — edit, switch off, send a reset link, unlock, sessions with "sign out everywhere"), a read-only roles
+& permissions matrix, login activity (every sign-in event, and the accounts locked or failing now), the audit log
+(filters, a before/after diff per row, "everything from this request"), the message delivery log (masked addresses,
+Send again for a failure) and the message templates (EN | NE × SMS | Email, live preview, SMS part counter).
+Every registry edit page has a **History** tab. `/reset-password` is where a reset or invite link lands. See
+`src/STRUCTURE.md` → "Platform (Phase G)".
+
 **Technician** — mobile-first `/tech` with today's jobs, tap-to-call, tap-to-navigate, and
 one-tap status advance.
 
-**Not yet built** (backend endpoints exist and are documented in `../docs/API.md`): quotation approval (Phase F), job
+**Not yet built** (backend endpoints exist and are documented in `../docs/API.md`): job
 detail + dispatch board, materials, invoices, warranty and AMC screens (the customer page lists those records and says
-"Soon"), users and the audit log screen, and the offline sync queue for the technician PWA.
+"Soon"), and the offline sync queue for the technician PWA.
 
 ---
 

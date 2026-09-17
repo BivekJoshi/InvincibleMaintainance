@@ -32,6 +32,8 @@ export const rateCard = {
     deleteMany: 'They leave the pricing page and new quotations at once; lines already quoted keep their price.',
   },
   capability: 'quotations:read',
+  // An accountant reads the rates, not who changed them.
+  historyCapability: 'quotations:history',
   writeCapability: 'quotations:write',
   schema: rateCardItemSchema,
   sortable: true,

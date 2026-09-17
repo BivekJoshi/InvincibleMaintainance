@@ -45,7 +45,13 @@ It also seeds `quotation.validDays` (15 — the valid-until date a quotation get
 one quotation at each step of the approval loop — DRAFT (sent back once), PENDING_APPROVAL,
 OFFICE_APPROVED, SENT and CHANGES_REQUESTED (a Nepali customer's message) — the
 `quotation.makerChecker` / `quotation.autoApproveBelow` settings, and the `quotation_accepted`,
-`quotation_changes_received` and `quotation_changes_requested_staff` templates in English and Nepali.
+`quotation_changes_received` and `quotation_changes_requested_staff` templates in English and Nepali, and the
+`password_reset` and `account_invite` emails staff accounts receive.
+
+**Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
+"choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
+Both links open `<PUBLIC_WEB_ORIGIN>/reset-password`. With no `SMTP_HOST`, the email — link included — is
+printed to the API's console (`[MAIL:console]`); the message log keeps it with the token redacted.
 
 ## Commands
 
@@ -110,10 +116,12 @@ src/
   middleware/          validate, authenticate, authorize, upload, rateLimit, error
   services/            all business logic — controllers never touch Prisma
   routes/              public · auth · tech · admin/{cms,crm,ops,finance,aftercare,platform}
+                       admin/historyRoute.js — GET …/:id/history for any model
   queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders
 prisma/                schema.prisma · seed.js · seed-data.js
 tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging,
-                       notification links (a source scan: staff links are /admin/…, field links /tech/…)
+                       notification links (a source scan: staff links are /admin/…, field links /tech/…),
+                       message templates (placeholders, preview, address masking)
 tests/api/             every route over supertest, against a database whose name ends in _test
 tests/fixtures/        plain-data cases shared with the SPA's tests (the service schema's valid/invalid inputs)
 ```
