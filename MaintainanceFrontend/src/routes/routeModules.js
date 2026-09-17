@@ -34,18 +34,41 @@ export const ProjectDetailPage = route(() => import('@/pages/public/ProjectDetai
 export const QuotationPublicPage = route(() => import('@/pages/public/QuotationPublicPage/QuotationPublicPage'));
 export const InvoicePublicPage = route(() => import('@/pages/public/InvoicePublicPage/InvoicePublicPage'));
 export const WarrantyPublicPage = route(() => import('@/pages/public/WarrantyPublicPage/WarrantyPublicPage'));
+export const BlogPage = route(() => import('@/pages/public/BlogPage/BlogPage'));
+export const BlogPostPage = route(() => import('@/pages/public/BlogPostPage/BlogPostPage'));
+export const GenericPage = route(() => import('@/pages/public/GenericPage/GenericPage'));
 
 export const LoginPage = route(() => import('@/pages/public/LoginPage/LoginPage'));
+export const ResetPasswordPage = route(() => import('@/pages/public/ResetPasswordPage/ResetPasswordPage'));
 
 // Back office
 export const DashboardPage = route(() => import('@/pages/admin/DashboardPage'));
 export const LeadsPage = route(() => import('@/pages/admin/LeadsPage'));
 export const SlaBoardPage = route(() => import('@/pages/admin/SlaBoardPage'));
 export const LeadDetailPage = route(() => import('@/pages/admin/LeadDetailPage'));
+export const LeadBoardPage = route(() => import('@/pages/admin/LeadBoardPage/LeadBoardPage'));
+export const CustomersPage = route(() => import('@/pages/admin/CustomersPage'));
+export const CustomerDetailPage = route(() => import('@/pages/admin/CustomerDetailPage/CustomerDetailPage'));
 export const SurveysPage = route(() => import('@/pages/admin/SurveysPage'));
 export const SurveyReviewPage = route(() => import('@/pages/admin/SurveyReviewPage'));
 export const QuotationsPage = route(() => import('@/pages/admin/QuotationsPage'));
-export const QuotationBuilderPage = route(() => import('@/pages/admin/QuotationBuilderPage'));
+export const QuotationBuilderPage = route(() => import('@/pages/admin/QuotationBuilderPage/QuotationBuilderPage'));
+export const ResourceListPage = route(() => import('@/pages/admin/ResourceListPage'));
+export const ResourceEditPage = route(() => import('@/pages/admin/ResourceEditPage'));
+export const HomeComposerPage = route(() => import('@/pages/admin/HomeComposerPage'));
+export const MediaLibraryPage = route(() => import('@/pages/admin/MediaLibraryPage'));
+export const SettingsPage = route(() => import('@/pages/admin/SettingsPage'));
+export const UsersPage = route(() => import('@/pages/admin/UsersPage'));
+export const RolesPage = route(() => import('@/pages/admin/RolesPage'));
+export const AuditLogPage = route(() => import('@/pages/admin/AuditLogPage'));
+export const LoginActivityPage = route(() => import('@/pages/admin/LoginActivityPage'));
+export const MessageLogsPage = route(() => import('@/pages/admin/MessageLogsPage'));
+export const MessageTemplatesPage = route(() => import('@/pages/admin/MessageTemplatesPage'));
+export const JobsPage = route(() => import('@/pages/admin/JobsPage'));
+export const JobDetailPage = route(() => import('@/pages/admin/JobDetailPage/JobDetailPage'));
+export const DispatchBoardPage = route(() => import('@/pages/admin/DispatchBoardPage/DispatchBoardPage'));
+export const StockPage = route(() => import('@/pages/admin/StockPage'));
+export const MessageTemplateEditPage = route(() => import('@/pages/admin/MessageTemplateEditPage/MessageTemplateEditPage'));
 
 // Field app
 export const TechTodayPage = route(() => import('@/pages/tech/TechTodayPage'));
@@ -61,8 +84,12 @@ export const NotFoundPage = route(() => import('@/pages/NotFoundPage'));
  * chunks worth having stays intact.
  */
 const GROUPS = {
-  public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage],
-  admin: [LeadsPage, LeadDetailPage, SlaBoardPage, SurveysPage, QuotationsPage],
+  public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage, BlogPage],
+  admin: [
+    LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
+    HomeComposerPage, MediaLibraryPage, SettingsPage, UsersPage, AuditLogPage, MessageLogsPage,
+    JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
+  ],
   tech: [TechJobPage, SurveyListPage, SurveyFormPage],
 };
 
@@ -74,6 +101,7 @@ const BY_PATH = {
   '/contact': ContactPage,
   '/book': BookingPage,
   '/projects': ProjectsPage,
+  '/blog': BlogPage,
   '/login': LoginPage,
 };
 
@@ -84,6 +112,7 @@ export function preloadGroup(name) {
 
 /** Starts the chunk behind a path — call it on hover or focus of a link. */
 export function preloadPath(path) {
-  const page = BY_PATH[path] ?? (path?.startsWith('/services/') ? ServiceDetailPage : undefined);
+  const page = BY_PATH[path]
+    ?? (path?.startsWith('/services/') ? ServiceDetailPage : path?.startsWith('/blog/') ? BlogPostPage : undefined);
   page?.preload();
 }

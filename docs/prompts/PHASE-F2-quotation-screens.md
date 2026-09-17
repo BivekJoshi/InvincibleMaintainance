@@ -92,11 +92,11 @@ The whole loop works from the UI exactly as decided, the customer responds in on
 and the Playwright test proves it locally (and in CI once you push).
 
 GIT
-- Work on a local branch `admin/phase-f2-quotation-screens` created from DEVELOPMENT.
+- Work on a local branch `admin/phase-f2-quotation-screens` created from `prabesh`.
 - ASK ME BEFORE EVERY COMMIT. When a logical chunk of work is ready, show `git status --short`,
   a one-line summary of the change, and the proposed message in the repo's style
   (`feat(api): …`, `fix(web): …`); commit only after I say yes. If I say no, keep working uncommitted.
-- Before starting, check that Phase F1's work is present on DEVELOPMENT (its files and migrations
+- Before starting, check that Phase F1's work is present on `prabesh` (its files and migrations
   exist). If it is not, STOP and tell me.
 - Do NOT push, open a pull request or merge. I review the work and handle git myself.
 

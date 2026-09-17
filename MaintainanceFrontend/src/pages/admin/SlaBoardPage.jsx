@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
-import { Phone, AlertTriangle, Timer, CheckCircle2 } from 'lucide-react';
-import { useGetSlaBoardQuery, useAddLeadActivityMutation } from '@/api/leadsApi';
+import { Phone, AlertTriangle, Timer, CheckCircle2, ArrowRight } from 'lucide-react';
+import { useGetSlaBoardQuery } from '@/api/leadsApi';
+import { ActivityComposer } from '@/components/leads/ActivityComposer';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -11,27 +13,13 @@ import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { PageTransition, Stagger, AnimatePresence } from '@/three/motion/motionKit';
-import { toastSuccess, toastError } from '@/redux/slices/uiSlice';
 import { formatDateTime } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
-function LeadCard({ lead, tone }) {
+function LeadCard({ lead, tone, onLog }) {
   // The board is route-guarded on leads:read, but logging a response writes.
   const { can } = useAuth();
   const canWrite = can('leads:write');
-  const dispatch = useDispatch();
-  const [logCall, { isLoading }] = useAddLeadActivityMutation();
-
-  // Logging the call is what stamps firstResponseAt and stops the clock —
-  // changing the status is not enough, by design.
-  const onLogCall = async () => {
-    try {
-      await logCall({ id: lead.id, type: 'call', summary: 'Called customer from the SLA board' }).unwrap();
-      dispatch(toastSuccess('Response logged', `${lead.name} marked as contacted.`));
-    } catch (err) {
-      dispatch(toastError('Could not log the call', err?.data?.error?.message));
-    }
-  };
 
   return (
     <Stagger.Item>
@@ -59,10 +47,14 @@ function LeadCard({ lead, tone }) {
               <a href={`tel:${lead.phone}`}><Phone className="h-4 w-4" /> {lead.phone}</a>
             </Button>
             {canWrite ? (
-              <Button size="sm" variant="outline" onClick={onLogCall} loading={isLoading}>
+              // Logging the contact is what stops the clock — changing the status is not enough, by design.
+              <Button size="sm" variant="outline" onClick={() => onLog(lead)}>
                 <CheckCircle2 className="h-4 w-4" /> Log response
               </Button>
             ) : null}
+            <Button asChild size="sm" variant="ghost">
+              <Link to={`/admin/leads/${lead.id}`} aria-label={`Open ${lead.name}`}>Open <ArrowRight className="h-4 w-4" /></Link>
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -70,7 +62,7 @@ function LeadCard({ lead, tone }) {
   );
 }
 
-function Column({ title, icon: Icon, tone, leads, emptyText }) {
+function Column({ title, icon: Icon, tone, leads, emptyText, onLog }) {
   return (
     <section>
       <h2 className={cn('mb-3 flex items-center gap-2 text-sm font-semibold', tone === 'breach' ? 'text-destructive' : 'text-sla-warn')}>
@@ -81,7 +73,7 @@ function Column({ title, icon: Icon, tone, leads, emptyText }) {
       {leads.length ? (
         <Stagger className="space-y-3">
           <AnimatePresence mode="popLayout">
-            {leads.map((lead) => <LeadCard key={lead.id} lead={lead} tone={tone} />)}
+            {leads.map((lead) => <LeadCard key={lead.id} lead={lead} tone={tone} onLog={onLog} />)}
           </AnimatePresence>
         </Stagger>
       ) : (
@@ -97,6 +89,7 @@ function Column({ title, icon: Icon, tone, leads, emptyText }) {
  */
 export default function SlaBoardPage() {
   const { data, isLoading, error, refetch } = useGetSlaBoardQuery(undefined, { pollingInterval: 30000 });
+  const [logging, setLogging] = useState(null);
 
   if (error) return <ErrorState error={error} onRetry={refetch} />;
 
@@ -125,14 +118,25 @@ export default function SlaBoardPage() {
         <div className="grid gap-6 lg:grid-cols-2">
           <Column
             title="Deadline passed" icon={AlertTriangle} tone="breach" leads={breached}
-            emptyText="No breaches. Good."
+            emptyText="No breaches. Good." onLog={setLogging}
           />
           <Column
             title="Due soon" icon={Timer} tone="warn" leads={atRisk}
-            emptyText="Nothing approaching a deadline."
+            emptyText="Nothing approaching a deadline." onLog={setLogging}
           />
         </div>
       )}
+
+      <Dialog open={Boolean(logging)} onOpenChange={(o) => { if (!o) setLogging(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Log the response to {logging?.name}</DialogTitle>
+            <DialogDescription>A call, SMS, WhatsApp message, email or visit stops the response clock.</DialogDescription>
+          </DialogHeader>
+          {/* The toast carries the result ("Responded in 34 min…"); the board drops the lead once it is answered. */}
+          {logging ? <ActivityComposer lead={logging} onLogged={() => setLogging(null)} /> : null}
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   );
 }

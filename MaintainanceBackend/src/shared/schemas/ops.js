@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { isActive, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
+import { isActive, listQuery, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
 import {
-  INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES, PAYMENT_METHODS,
+  INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES, MESSAGE_CHANNELS, MESSAGE_STATUSES, PAYMENT_METHODS,
   PRIORITIES, ROLES, STOCK_MOVEMENT_TYPES,
 } from '../enums.js';
 
@@ -90,6 +90,13 @@ export const jobAssignSchema = z.object({
   note: z.string().trim().max(1000).optional(),
 });
 
+/** `/admin/jobs/:id/<child>/:childId` — both ids checked before the service looks. */
+const childParams = (name) => z.object({ id: z.string().min(1), [name]: z.string().min(1).max(64) });
+export const jobTaskParams = childParams('taskId');
+export const jobPhotoParams = childParams('photoId');
+export const jobMaterialParams = childParams('jobMaterialId');
+export const jobTimeLogParams = childParams('logId');
+
 export const jobTaskSchema = z.object({
   title: z.string().trim().min(2).max(300),
   note: z.string().trim().max(2000).optional(),
@@ -139,32 +146,73 @@ export const jobCompleteSchema = z.object({
   warrantyScope: z.string().trim().max(2000).optional(),
 });
 
-export const technicianListQuery = z.object({
+/** `true` / `false` in a query string. `z.coerce.boolean()` reads the string 'false' as true. */
+const flag = z.enum(['true', 'false']).transform((v) => v === 'true');
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-09-18');
+
+/** GET /admin/technicians — paginated (at most 100 a page). */
+export const technicianListQuery = listQuery.pick({ page: true, limit: true, q: true, deleted: true }).extend({
+  sort: z.enum([
+    'employeeCode', '-employeeCode', 'name', '-name', 'rating', '-rating',
+    'dailyCapacity', '-dailyCapacity', 'isAvailable', '-isAvailable', 'createdAt', '-createdAt',
+  ]).optional(),
   role: z.enum(ROLES).optional(),
-  available: z.coerce.boolean().optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
+  available: flag.optional(),
+  skill: z.string().trim().max(60).optional(),
+  area: z.string().trim().max(80).optional(),
 });
 
+/** GET /admin/technicians/users — people a new profile can be for. */
+export const linkableUserQuery = listQuery.pick({ page: true, limit: true, q: true });
+
 export const dispatchQuery = z.object({
-  date: z.string().optional(),
+  date: day.optional(),
   view: z.enum(['day', 'week']).default('day'),
   technicianId: z.string().optional(),
   role: z.enum(ROLES).optional(),
 });
 
+/** GET /admin/dispatch/unassigned — most urgent first unless sorted by age. */
+export const unassignedQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  sort: z.enum(['priority', 'createdAt', '-createdAt']).optional(),
+});
+
+/**
+ * POST /admin/jobs/:id/schedule — the board's drop and its Schedule dialog. `technicianIds`
+ * replaces the assignment when given (the first one leads unless `leadTechnicianId` says).
+ */
+export const jobScheduleSchema = z.object({
+  scheduledStart: z.coerce.date(),
+  scheduledEnd: z.coerce.date(),
+  technicianIds: z.array(z.string().min(1)).min(1, 'Choose at least one technician').max(20).optional(),
+  leadTechnicianId: z.string().min(1).optional(),
+  note: z.string().trim().max(1000).optional(),
+  notifyCustomer: z.boolean().default(true),
+}).refine((v) => v.scheduledEnd > v.scheduledStart, {
+  message: 'End time must be after the start time', path: ['scheduledEnd'],
+}).refine((v) => v.scheduledEnd - v.scheduledStart <= 14 * 86_400_000, {
+  message: 'A visit cannot be longer than 14 days', path: ['scheduledEnd'],
+});
+
+/** GET /admin/jobs. `from` / `to` are Kathmandu days; `invoiced=false` is finished billable work not yet invoiced. */
 export const jobListQuery = z.object({
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  sort: z.string().optional(),
+  sort: z.enum([
+    'createdAt', '-createdAt', 'scheduledStart', '-scheduledStart', 'number', '-number',
+    'priority', '-priority', 'status', '-status', 'updatedAt', '-updatedAt',
+  ]).optional(),
   q: z.string().trim().max(200).optional(),
   status: z.enum(JOB_STATUSES).optional(),
   type: z.enum(JOB_TYPES).optional(),
   priority: z.enum(PRIORITIES).optional(),
   technicianId: z.string().optional(),
   customerId: z.string().optional(),
-  unassigned: z.coerce.boolean().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  quotationId: z.string().optional(),
+  unassigned: flag.optional(),
+  invoiced: flag.optional(),
+  from: day.optional(),
+  to: day.optional(),
 });
 
 // ── materials
@@ -197,10 +245,29 @@ export const materialSchema = z.object({
   isActive,
 });
 
+/** GET /admin/stock — every material with its derived balance, paginated. */
+export const stockQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  sort: z.enum(['name', '-name', 'code', '-code', 'balance', '-balance', 'sortOrder']).optional(),
+  categoryId: z.string().optional(),
+  lowOnly: flag.optional(),
+  includeInactive: flag.optional(),
+});
+
+/** GET /admin/stock/movements — newest first. */
+export const stockMovementListQuery = listQuery.pick({ page: true, limit: true, from: true, to: true }).extend({
+  materialId: z.string().optional(),
+  jobId: z.string().optional(),
+  type: z.enum(STOCK_MOVEMENT_TYPES).optional(),
+});
+
+/**
+ * POST /admin/stock/movements. ISSUE_TO_JOB is refused here: stock goes to a job only through
+ * the job (`POST /admin/jobs/:id/materials`), which writes the job's material line with it.
+ */
 export const stockMovementSchema = z.object({
   materialId: z.string().min(1),
-  type: z.enum(STOCK_MOVEMENT_TYPES),
-  qty: z.coerce.number().refine((v) => v !== 0, 'Quantity cannot be zero'),
+  type: z.enum(STOCK_MOVEMENT_TYPES).refine((v) => v !== 'ISSUE_TO_JOB', 'Issue stock to a job from the job itself'),
+  qty: z.coerce.number().min(-1_000_000).max(1_000_000).refine((v) => v !== 0, 'Quantity cannot be zero'),
   rate: optionalRupees,
   jobId: z.string().optional().nullable(),
   reference: z.string().trim().max(120).optional(),
@@ -250,6 +317,10 @@ export const paymentSchema = z.object({
 });
 
 export const invoiceVoidSchema = z.object({ reason: z.string().trim().min(3).max(500) });
+
+/** A payment is never deleted; voiding it keeps the row and says why. */
+export const paymentVoidSchema = z.object({ reason: z.string().trim().min(3).max(500) });
+export const paymentParams = z.object({ id: z.string().min(1), paymentId: z.string().min(1) });
 
 export const expenseSchema = z.object({
   category: z.string().trim().min(2).max(80),
@@ -330,10 +401,45 @@ export const serviceReminderSchema = z.object({
 });
 
 export const messageTemplateSchema = z.object({
-  key: z.string().trim().min(2).max(80),
+  // The key the code sends by (`quotation_sent`): lower-case words joined by underscores.
+  key: z.string().trim().min(2).max(80).regex(/^[a-z][a-z0-9_]*$/, 'Use lower-case letters, digits and underscores'),
   channel: z.enum(['sms', 'email', 'inapp']),
   locale: z.enum(['en', 'ne']).default('en'),
   subject: z.string().trim().max(250).optional(),
   body: z.string().trim().min(2).max(5000),
   isActive,
+});
+
+/** GET /admin/message-templates */
+export const messageTemplateListQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  sort: z.enum(['key', '-key', 'updatedAt', '-updatedAt']).optional(),
+  key: z.string().trim().max(80).optional(),
+  channel: z.enum(['sms', 'email', 'inapp']).optional(),
+  locale: z.enum(['en', 'ne']).optional(),
+});
+
+/** GET /admin/message-templates/groups */
+export const messageTemplateGroupQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  channel: z.enum(['sms', 'email', 'inapp']).optional(),
+});
+
+/**
+ * POST /admin/message-templates/:id/preview — `subject` / `body` are unsaved text that wins
+ * over the stored template. Without an id, `body` is required.
+ */
+export const messagePreviewSchema = z.object({
+  vars: z.record(z.string(), z.unknown()).default({}),
+  subject: z.string().max(250).optional(),
+  body: z.string().max(5000).optional(),
+});
+export const messageDraftPreviewSchema = messagePreviewSchema.extend({ body: z.string().min(1).max(5000) });
+
+/** GET /admin/message-logs */
+export const messageLogQuery = listQuery.pick({ page: true, limit: true, q: true, from: true, to: true }).extend({
+  sort: z.enum(['createdAt', '-createdAt']).optional(),
+  channel: z.enum(MESSAGE_CHANNELS).optional(),
+  status: z.enum(MESSAGE_STATUSES).optional(),
+  templateKey: z.string().trim().max(80).optional(),
+  relatedModel: z.string().trim().max(60).optional(),
+  relatedId: z.string().trim().max(64).optional(),
 });

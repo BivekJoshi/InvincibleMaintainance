@@ -1,16 +1,19 @@
 import { enqueue } from '../queues/index.js';
 import { logger } from '../lib/logger.js';
+import { runWithContext } from '../lib/requestContext.js';
 
 const MINUTE = 60_000;
 
 /**
  * Lightweight interval scheduler. Deliberately not a cron library: this system
- * has six recurring tasks and setInterval expresses them clearly.
+ * has seven recurring tasks and setInterval expresses them clearly.
  * Runs only in the process that owns background work.
  */
 const SCHEDULE = [
   { name: 'sla:sweep', everyMs: 5 * MINUTE, immediate: true },
   { name: 'invoice:sweepOverdue', everyMs: 60 * MINUTE },
+  // Decide-time checks already refuse a lapsed quotation; this keeps the lists honest.
+  { name: 'quotation:expire', everyMs: 60 * MINUTE, immediate: true },
   { name: 'warranty:sweepExpired', everyMs: 6 * 60 * MINUTE },
   { name: 'amc:sweepContracts', everyMs: 12 * 60 * MINUTE },
   { name: 'amc:materialiseVisits', everyMs: 6 * 60 * MINUTE },
@@ -19,12 +22,16 @@ const SCHEDULE = [
 
 const timers = [];
 
+/** A tick runs as the system actor; the job it enqueues gets its own `<task>:<job id>` context when it runs. */
+function tick(task) {
+  return runWithContext({ actorType: 'system', requestId: `cron:${task.name}:${Date.now()}` }, () =>
+    enqueue(task.name).catch((err) => logger.error({ err, task: task.name }, 'cron enqueue failed')));
+}
+
 export function startCrons() {
   for (const task of SCHEDULE) {
-    if (task.immediate) enqueue(task.name).catch(() => {});
-    const t = setInterval(() => {
-      enqueue(task.name).catch((err) => logger.error({ err: err.message, task: task.name }, 'cron enqueue failed'));
-    }, task.everyMs);
+    if (task.immediate) tick(task);
+    const t = setInterval(() => tick(task), task.everyMs);
     t.unref?.();
     timers.push(t);
   }

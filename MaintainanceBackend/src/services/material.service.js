@@ -3,6 +3,8 @@ import { notFound, badRequest } from '../utils/AppError.js';
 import { makeCrud } from './crud.service.js';
 import { toPaisa } from '../utils/money.js';
 import { notifyRoles } from './notify.service.js';
+import { meta, parseListQuery, searchOr } from '../utils/pagination.js';
+import { kathmanduDayRange } from '../utils/dates.js';
 
 export const suppliers = makeCrud({ model: 'supplier', label: 'Supplier', searchFields: ['name', 'phone', 'email'], sortable: false, defaultSort: 'name' });
 export const materialCategories = makeCrud({ model: 'materialCategory', label: 'Material category', searchFields: ['name'] });
@@ -26,10 +28,17 @@ export async function stockBalances(materialIds) {
   return Object.fromEntries(grouped.map((g) => [g.materialId, Number(g._sum.qty ?? 0)]));
 }
 
-export async function stockReport(query = {}) {
+/** Each live material with its balance, its value at purchase rate and whether it is at its reorder level. */
+async function stockRows(query = {}) {
+  const q = query.q?.trim();
   const rows = await prisma.material.findMany({
-    where: { deletedAt: null, ...(query.categoryId ? { categoryId: query.categoryId } : {}), ...(query.includeInactive ? {} : { isActive: true }) },
-    include: { category: { select: { id: true, name: true } } },
+    where: {
+      deletedAt: null,
+      ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+      ...(query.includeInactive ? {} : { isActive: true }),
+      ...(q ? { OR: searchOr(q, ['name', 'code']) } : {}),
+    },
+    include: { category: { select: { id: true, name: true } }, supplier: { select: { id: true, name: true } } },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
   });
   const balances = await stockBalances(rows.map((r) => r.id));
@@ -44,22 +53,74 @@ export async function stockReport(query = {}) {
   });
 }
 
-export async function lowStock() {
-  return (await stockReport()).filter((r) => r.isLow);
+const STOCK_SORTS = {
+  name: (a, b) => a.name.localeCompare(b.name),
+  code: (a, b) => a.code.localeCompare(b.code),
+  balance: (a, b) => a.balance - b.balance,
+};
+
+/**
+ * GET /admin/stock — paginated. The balance is derived, so the page is cut after it is worked
+ * out: `lowOnly` and a balance sort need every row's balance first. The catalogue is a few hundred
+ * materials, not a ledger.
+ */
+export async function stockReport(query = {}) {
+  const { page, limit, skip, take } = parseListQuery(query, { defaultSort: 'sortOrder' });
+  let rows = await stockRows(query);
+  if (query.lowOnly) rows = rows.filter((r) => r.isLow);
+  const raw = String(query.sort || 'sortOrder');
+  const compare = STOCK_SORTS[raw.replace(/^-/, '')];
+  if (compare) {
+    rows = [...rows].sort(compare);
+    if (raw.startsWith('-')) rows.reverse();
+  }
+  return {
+    items: rows.slice(skip, skip + take),
+    meta: { ...meta({ page, limit, total: rows.length }), lowCount: rows.filter((r) => r.isLow).length },
+  };
 }
 
+/** Every material at or below its reorder level. */
+export async function lowStock() {
+  return (await stockRows()).filter((r) => r.isLow);
+}
+
+/** How many materials are at or below their reorder level — the dispatcher's dashboard card. */
+export async function lowStockCount() {
+  return (await lowStock()).length;
+}
+
+/** GET /admin/stock/movements — newest first, paginated, with who recorded each and the job it went to. */
 export async function listMovements(query = {}) {
+  const { page, limit, skip, take } = parseListQuery(query);
+  const range = kathmanduDayRange(query.from, query.to);
   const where = {
     ...(query.materialId ? { materialId: query.materialId } : {}),
     ...(query.jobId ? { jobId: query.jobId } : {}),
     ...(query.type ? { type: query.type } : {}),
+    ...(range ? { createdAt: range } : {}),
   };
-  return prisma.stockMovement.findMany({
-    where,
-    include: { material: { select: { id: true, code: true, name: true, unit: true } } },
-    orderBy: { createdAt: 'desc' },
-    take: Number(query.limit) || 200,
-  });
+  const [rows, total] = await Promise.all([
+    prisma.stockMovement.findMany({
+      where,
+      include: { material: { select: { id: true, code: true, name: true, unit: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip,
+      take,
+    }),
+    prisma.stockMovement.count({ where }),
+  ]);
+  // StockMovement stores bare ids; name the people and jobs for the drawer.
+  const [actors, jobs] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.actorId).filter(Boolean))] } }, select: { id: true, name: true } }),
+    prisma.job.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.jobId).filter(Boolean))] } }, select: { id: true, number: true } }),
+  ]);
+  const actorById = new Map(actors.map((a) => [a.id, a]));
+  const jobById = new Map(jobs.map((j) => [j.id, j]));
+  return {
+    items: rows.map((r) => ({ ...r, actor: actorById.get(r.actorId) ?? null, job: jobById.get(r.jobId) ?? null })),
+    meta: meta({ page, limit, total }),
+  };
 }
 
 /** Signs the quantity according to movement type so the balance sum is always correct. */
@@ -109,7 +170,7 @@ async function checkReorder(material) {
       type: 'stock_low',
       title: `Low stock — ${material.name}`,
       body: `${balance} ${material.unit} left (reorder at ${material.reorderLevel})`,
-      link: `/materials/${material.id}`,
+      link: `/admin/stock?lowOnly=true&open=${material.id}`,
     });
   }
 }

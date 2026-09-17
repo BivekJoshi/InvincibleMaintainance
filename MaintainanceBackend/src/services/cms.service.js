@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { HOME_SECTION_KEYS } from '../shared/enums.js';
 import { invalidatePublic } from './cache.service.js';
 import { badRequest } from '../utils/AppError.js';
+import { toPaisa } from '../utils/money.js';
 
 export const heroSlides = makeCrud({
   model: 'heroSlide', label: 'Hero slide', searchFields: ['title', 'subtitle'],
@@ -12,7 +13,7 @@ export const serviceCategories = makeCrud({
   model: 'serviceCategory', label: 'Service category', searchFields: ['name', 'slug'], slugFrom: 'name',
 });
 
-export const services = makeCrud({
+const serviceCrud = makeCrud({
   model: 'service',
   label: 'Service',
   searchFields: ['name', 'slug', 'excerpt'],
@@ -26,6 +27,27 @@ export const services = makeCrud({
   }),
 });
 
+export const services = {
+  ...serviceCrud,
+  /**
+   * PUT is partial, so the schema's range rule only sees the prices the body carries.
+   * Here the range is checked against the stored price the body leaves out.
+   */
+  async update(id, data) {
+    if (data.priceFrom != null || data.priceTo != null) {
+      const row = await serviceCrud.get(id);
+      const from = data.priceFrom != null ? toPaisa(data.priceFrom) : row.priceFrom;
+      const to = data.priceTo != null ? toPaisa(data.priceTo) : row.priceTo;
+      if (from != null && to != null && to < from) {
+        throw badRequest('Validation failed', [
+          { path: 'priceTo', message: 'Maximum price must be greater than or equal to the minimum' },
+        ]);
+      }
+    }
+    return serviceCrud.update(id, data);
+  },
+};
+
 export const projects = makeCrud({
   model: 'project',
   label: 'Project',
@@ -35,6 +57,8 @@ export const projects = makeCrud({
   include: {
     category: { select: { id: true, name: true, slug: true } },
     service: { select: { id: true, name: true, slug: true } },
+    // A case study published from a job keeps the link; the edit screen shows its number.
+    job: { select: { id: true, number: true } },
     images: { orderBy: { sortOrder: 'asc' } },
   },
   filter: (q) => ({
@@ -47,8 +71,12 @@ export const projects = makeCrud({
 export const offers = makeCrud({ model: 'offer', label: 'Offer', searchFields: ['title', 'description'], moneyFields: ['priceMin', 'priceMax'] });
 export const pricingPlans = makeCrud({ model: 'pricingPlan', label: 'Pricing plan', searchFields: ['title', 'description'], moneyFields: ['priceMin', 'priceMax'] });
 export const features = makeCrud({ model: 'feature', label: 'Feature', searchFields: ['title', 'description'], filter: (q) => (q.group ? { group: q.group } : {}) });
-// A numbered list: the order IS the number a visitor reads, so it lives in `position`.
-export const listItems = makeCrud({ model: 'listItem', label: 'List item', searchFields: ['text'], orderField: 'position', filter: (q) => (q.group ? { group: q.group } : {}) });
+// A numbered list: the order IS the number a visitor reads, so it lives in `position`, counted from 1 —
+// the reorder body counts from 0, and the site would otherwise print "0" beside the first item.
+export const listItems = makeCrud({
+  model: 'listItem', label: 'List item', searchFields: ['text'], orderField: 'position', orderBase: 1,
+  filter: (q) => (q.group ? { group: q.group } : {}),
+});
 export const contentBlocks = makeCrud({ model: 'contentBlock', label: 'Content block', searchFields: ['key', 'heading', 'body'] });
 export const processSteps = makeCrud({ model: 'processStep', label: 'Process step', searchFields: ['title', 'description'], defaultSort: 'stepNo' });
 export const galleryImages = makeCrud({ model: 'galleryImage', label: 'Gallery image', searchFields: ['caption'], filter: (q) => (q.projectId ? { projectId: q.projectId } : {}) });

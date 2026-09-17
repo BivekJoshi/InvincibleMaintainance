@@ -1,5 +1,6 @@
 import { AlertCircle } from 'lucide-react';
-import { Input, Textarea } from '@/components/ui/input';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
 /** One labelled field with its error, so four of them cannot drift apart. */
@@ -44,6 +45,13 @@ export function StepDetails({ form, onSubmit, serverError }) {
           />
         </Field>
       </div>
+
+      <Field id="book-email" label="Email (optional)" error={errors.email?.message}>
+        <Input
+          id="book-email" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com"
+          aria-invalid={Boolean(errors.email)} {...register('email')}
+        />
+      </Field>
 
       <Field id="book-address" label="Address" required error={errors.address?.message}>
         <Input

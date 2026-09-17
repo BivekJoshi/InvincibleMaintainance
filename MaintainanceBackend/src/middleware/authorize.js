@@ -10,11 +10,11 @@ export const authorize = (...roles) => (req, _res, next) => {
   next();
 };
 
-/** Capability gate: requires('leads:write') */
-export const requires = (capability) => (req, _res, next) => {
+/** Capability gate: requires('leads:write'); with several, holding any one of them is enough. */
+export const requires = (...capabilities) => (req, _res, next) => {
   if (!req.user) return next(unauthorized());
-  if (!can(req.user.role, capability)) {
-    return next(forbidden(`Missing permission: ${capability}`));
+  if (!capabilities.some((capability) => can(req.user.role, capability))) {
+    return next(forbidden(`Missing permission: ${capabilities.join(' or ')}`));
   }
   next();
 };

@@ -59,7 +59,7 @@ healthchecks; uptime monitor instructions.
 J3.5 · CI
 Phase A created .github/workflows/ci.yml; C1 added frontend tests and F2 the end-to-end job. Extend
 it: docker image builds for the API, worker and nginx frontend images; `npm audit --audit-level=high`
-as a non-blocking report; document the branch-protection rule for DEVELOPMENT (required checks) in
+as a non-blocking report; document the branch-protection rules for `prabesh` and DEVELOPMENT (required checks) in
 docs/OPERATIONS.md.
 
 J3.6 · Docs
@@ -78,11 +78,11 @@ Security review documented with every High fixed; backups verified by an actual 
 reproducible from the repo plus env files; CI green; runbook and user guide written.
 
 GIT
-- Work on a local branch `admin/phase-j3-launch` created from DEVELOPMENT.
+- Work on a local branch `admin/phase-j3-launch` created from `prabesh`.
 - ASK ME BEFORE EVERY COMMIT. When a logical chunk of work is ready, show `git status --short`,
   a one-line summary of the change, and the proposed message in the repo's style
   (`feat(api): …`, `fix(web): …`); commit only after I say yes. If I say no, keep working uncommitted.
-- Before starting, check that Phase J2's work is present on DEVELOPMENT (its files and migrations
+- Before starting, check that Phase J2's work is present on `prabesh` (its files and migrations
   exist). If it is not, STOP and tell me.
 - Do NOT push, open a pull request or merge. I review the work and handle git myself.
 

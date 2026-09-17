@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { validate } from '../middleware/validate.js';
-import { leadLimiter } from '../middleware/rateLimit.js';
+import { decisionLimiter, leadLimiter } from '../middleware/rateLimit.js';
 import { cached } from '../services/cache.service.js';
 import { ok, created } from '../utils/response.js';
 import * as pub from '../services/public.service.js';
@@ -35,10 +35,10 @@ router.get('/availability', cached(30, 'availability'), asyncHandler(async (req,
 router.get('/pricing', cached(TTL, 'pricing'), asyncHandler(async (req, res) => ok(res, await pub.pricing(locale(req)))));
 router.get('/gallery', cached(TTL, 'gallery'), asyncHandler(async (_req, res) => ok(res, await pub.listGallery())));
 router.get('/testimonials', cached(TTL, 'testimonials'), asyncHandler(async (req, res) => ok(res, await pub.listTestimonials(locale(req)))));
-router.get('/faqs', cached(TTL, 'faqs'), asyncHandler(async (req, res) => ok(res, { items: await pub.listFaqs(req.query.group) })));
-router.get('/posts', cached(TTL, 'posts'), asyncHandler(async (req, res) => ok(res, await pub.listPosts(req.query))));
-router.get('/posts/:slug', cached(TTL, 'posts'), validate({ params: slugParam }), asyncHandler(async (req, res) => ok(res, await pub.getPost(req.params.slug))));
-router.get('/pages/:slug', cached(TTL, 'pages'), validate({ params: slugParam }), asyncHandler(async (req, res) => ok(res, await pub.getPage(req.params.slug))));
+router.get('/faqs', cached(TTL, 'faqs'), asyncHandler(async (req, res) => ok(res, { items: await pub.listFaqs(req.query.group, locale(req)) })));
+router.get('/posts', cached(TTL, 'posts'), asyncHandler(async (req, res) => ok(res, await pub.listPosts(req.query, locale(req)))));
+router.get('/posts/:slug', cached(TTL, 'posts'), validate({ params: slugParam }), asyncHandler(async (req, res) => ok(res, await pub.getPost(req.params.slug, locale(req)))));
+router.get('/pages/:slug', cached(TTL, 'pages'), validate({ params: slugParam }), asyncHandler(async (req, res) => ok(res, await pub.getPage(req.params.slug, locale(req)))));
 
 // ── conversion
 router.post('/estimate', validate({ body: estimateSchema }), asyncHandler(async (req, res) => ok(res, await estimate(req.body))));
@@ -51,8 +51,9 @@ router.post('/leads', leadLimiter, validate({ body: publicLeadSchema }), asyncHa
 
 // ── customer self-service via single-purpose tokens
 router.get('/quotations/:token', validate({ params: tokenParam }), asyncHandler(async (req, res) => ok(res, await quotations.getByPublicToken(req.params.token))));
-router.post('/quotations/:token/decide', validate({ params: tokenParam, body: quotationDecisionSchema }), asyncHandler(async (req, res) =>
-  ok(res, await quotations.decideByToken(req.params.token, req.body, req.ip))));
+// Accept · Ask for changes · Decline. No login and no OTP (decision D4); the IP and user agent are kept.
+router.post('/quotations/:token/decide', decisionLimiter, validate({ params: tokenParam, body: quotationDecisionSchema }), asyncHandler(async (req, res) =>
+  ok(res, await quotations.decideByToken(req.params.token, req.body, { ip: req.ip, userAgent: req.get('user-agent') }))));
 
 router.get('/invoices/:token', validate({ params: tokenParam }), asyncHandler(async (req, res) => ok(res, await invoices.getByPublicToken(req.params.token))));
 

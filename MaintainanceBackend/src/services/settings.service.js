@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { cacheGet, cacheSet, cacheInvalidate } from './cache.service.js';
+import { recordEvent } from './audit.service.js';
 
 const CACHE_KEY = 'settings:all';
 
@@ -29,15 +30,27 @@ export async function groupedSettings() {
 export async function updateSettings(values) {
   const keys = Object.keys(values);
   if (!keys.length) return allSettings();
-  await prisma.$transaction(
-    keys.map((key) =>
-      prisma.setting.upsert({
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.setting.findMany({ where: { key: { in: keys } }, select: { key: true, value: true } });
+    const old = Object.fromEntries(existing.map((r) => [r.key, r.value]));
+    for (const key of keys) {
+      await tx.setting.upsert({
         where: { key },
         create: { key, group: 'custom', label: key, value: values[key] },
         update: { value: values[key] },
-      }),
-    ),
-  );
+      });
+    }
+    // One event for the whole save, listing only the keys whose value actually moved.
+    const changed = keys.filter((k) => JSON.stringify(old[k] ?? null) !== JSON.stringify(values[k] ?? null));
+    if (changed.length) {
+      await recordEvent('settings.changed', {
+        model: 'Setting',
+        before: Object.fromEntries(changed.map((k) => [k, old[k] ?? null])),
+        after: Object.fromEntries(changed.map((k) => [k, values[k] ?? null])),
+        meta: { keys: changed },
+      }, tx);
+    }
+  });
   await cacheInvalidate('settings', 'public');
   return allSettings();
 }

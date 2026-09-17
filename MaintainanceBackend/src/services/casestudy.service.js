@@ -32,7 +32,7 @@ function durationDays(start, end) {
   return Math.max(1, Math.round((new Date(end) - new Date(start)) / 86_400_000));
 }
 
-export async function publishJobAsCaseStudy(jobId, input = {}, userId) {
+export async function publishJobAsCaseStudy(jobId, input = {}, _userId) {
   const job = await prisma.job.findFirst({
     where: { id: jobId, deletedAt: null },
     include: {

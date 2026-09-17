@@ -48,10 +48,13 @@ export function PackagePlans({ plans }) {
 
                   <p className="mt-5">
                     <span className="text-2xl font-semibold tabular-nums tracking-tight">
-                      {formatNpr(plan.priceMin, { compact: true })}
+                      {plan.priceMin == null ? 'On inspection' : formatNpr(plan.priceMin, { compact: true })}
                     </span>
                     <span className={cn('text-sm', featured ? 'text-ink-muted' : 'text-muted-foreground')}>
-                      {' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false })} {plan.unit}
+                      {plan.priceMin != null && plan.priceMax && plan.priceMax !== plan.priceMin
+                        ? <>{' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false })} </>
+                        : ' '}
+                      {plan.unit}
                     </span>
                   </p>
 

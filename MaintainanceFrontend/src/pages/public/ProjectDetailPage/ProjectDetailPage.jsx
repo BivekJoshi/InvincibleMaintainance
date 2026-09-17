@@ -24,8 +24,9 @@ export default function ProjectDetailPage() {
   const project = data?.project;
 
   useSeo({
-    title: project?.metaTitle ?? project?.title,
-    description: project?.metaDescription ?? project?.problem ?? project?.summary,
+    // `||`, not `??`: an SEO field left empty in the admin is saved as ''.
+    title: project?.metaTitle || project?.title,
+    description: project?.metaDescription || project?.problem || project?.summary,
   });
 
   if (error) return <PageTransition><SectionShell><ErrorState error={error} onRetry={refetch} /></SectionShell></PageTransition>;

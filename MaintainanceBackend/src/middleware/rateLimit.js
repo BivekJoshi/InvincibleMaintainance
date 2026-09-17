@@ -26,4 +26,15 @@ export const leadLimiter = rateLimit({
     }),
 });
 
+/** A customer answering a quotation link: a handful of taps, never hundreds. */
+export const decisionLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60_000,
+  limit: 20,
+  handler: (_req, res) =>
+    res.status(429).json({
+      error: { code: 'RATE_LIMITED', message: 'Too many attempts. Please wait a few minutes or call us.' },
+    }),
+});
+
 export const uploadLimiter = rateLimit({ ...base, windowMs: 60_000, limit: 60 });

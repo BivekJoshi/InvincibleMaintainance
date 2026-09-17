@@ -7,7 +7,6 @@ import { AnimatePresence, motion, useReducedMotion } from '@/three/motion/motion
 import { useAuth } from '@/hooks/useAuth';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { FIELD_ROLES } from '@/config/constants';
-import { SITE_NAV } from '@/config/site/siteNav';
 import { preloadPath } from '@/routes/routeModules';
 import { Button } from '@/components/ui/button';
 import { LocaleSwitch } from '@/components/common/LocaleSwitch';
@@ -42,7 +41,7 @@ export function SiteHeader() {
   const reduced = useReducedMotion();
   const { pathname, search: qs } = useLocation();
   const [params] = useSearchParams();
-  const { name: company, initial, phone, mobile, categories } = useSiteSettings();
+  const { name: company, initial, phone, mobile, categories, nav } = useSiteSettings();
   const { isAuthenticated, role } = useAuth();
 
   const [scrolled, setScrolled] = useState(false);
@@ -58,11 +57,11 @@ export function SiteHeader() {
   const appHome = FIELD_ROLES.includes(role) ? '/tech' : '/admin';
   const query = params.get('q') ?? '';
 
-  const activeTo = SITE_NAV.find((n) => pathname === n.to || pathname.startsWith(`${n.to}/`))?.to ?? null;
+  const activeTo = nav.find((n) => pathname === n.to || pathname.startsWith(`${n.to}/`))?.to ?? null;
   // The pill parks on the trade panel's trigger while that panel is open, so
   // the two read as one object even once the pointer has left the bar.
-  const megaTo = SITE_NAV.find((n) => n.mega)?.to ?? null;
-  const pillAt = hovered ?? (mega ? megaTo : null) ?? activeTo ?? SITE_NAV[0].to;
+  const megaTo = nav.find((n) => n.mega)?.to ?? null;
+  const pillAt = hovered ?? (mega ? megaTo : null) ?? activeTo ?? nav[0].to;
   const pillLit = Boolean(hovered) || mega;
   const transition = reduced ? { duration: 0 } : SLIDE;
 
@@ -155,7 +154,7 @@ export function SiteHeader() {
             onMouseLeave={() => setHovered(null)}
             aria-label="Main"
           >
-            {SITE_NAV.map((item) => {
+            {nav.map((item) => {
               const isActive = activeTo === item.to;
               const hasMega = item.mega && categories.length > 0;
               const showPill = pillAt === item.to;
@@ -272,6 +271,7 @@ export function SiteHeader() {
             focusSearch={drawer === 'search'}
             query={query}
             categories={categories}
+            nav={nav}
             company={company}
             phone={phone}
             mobile={mobile}

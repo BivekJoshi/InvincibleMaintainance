@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { can } from '../src/shared/permissions.js';
+import { can, PERMISSIONS } from '../src/shared/permissions.js';
+import { ROLES } from '../src/shared/enums.js';
 
 describe('role capabilities', () => {
   it('gives ADMIN everything', () => {
@@ -18,6 +19,13 @@ describe('role capabilities', () => {
   it('keeps EDITOR inside content', () => {
     expect(can('EDITOR', 'cms:write')).toBe(true);
     expect(can('EDITOR', 'leads:read')).toBe(false);
+  });
+
+  it('keeps permanent delete (cms:purge) with ADMIN alone', () => {
+    expect(can('ADMIN', 'cms:purge')).toBe(true);
+    for (const role of ['EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'ACCOUNTANT', 'TECHNICIAN', 'SURVEYOR']) {
+      expect(can(role, 'cms:purge')).toBe(false);
+    }
   });
 
   it('gives TECHNICIAN only their own jobs', () => {
@@ -50,5 +58,40 @@ describe('role capabilities', () => {
   it('keeps ACCOUNTANT out of dispatch', () => {
     expect(can('ACCOUNTANT', 'invoices:write')).toBe(true);
     expect(can('ACCOUNTANT', 'jobs:write')).toBe(false);
+  });
+
+  it('gives record history to the people who work the record, not to every reader', () => {
+    expect(can('SALES', 'leads:history')).toBe(true);
+    expect(can('SALES', 'customers:history')).toBe(true);
+    // DISPATCHER reads a lead to plan the visit and ACCOUNTANT reads a customer to bill it;
+    // neither reads who changed what.
+    expect(can('DISPATCHER', 'leads:read')).toBe(true);
+    expect(can('DISPATCHER', 'leads:history')).toBe(false);
+    expect(can('ACCOUNTANT', 'customers:history')).toBe(false);
+    // Quotations: the people who prepare and approve them read the trail; accounts reads the figures only.
+    expect(can('SALES', 'quotations:history')).toBe(true);
+    expect(can('MANAGER', 'quotations:history')).toBe(true);
+    expect(can('ACCOUNTANT', 'quotations:read')).toBe(true);
+    expect(can('ACCOUNTANT', 'quotations:history')).toBe(false);
+  });
+
+  it('gives MANAGER every SALES capability plus quotation approval', () => {
+    for (const c of PERMISSIONS.SALES) expect(can('MANAGER', c), c).toBe(true);
+    expect(can('MANAGER', 'quotations:approve')).toBe(true);
+    expect(can('MANAGER', 'reports:sales')).toBe(true);
+    expect(can('MANAGER', 'invoices:write')).toBe(false);
+    expect(can('MANAGER', 'jobs:write')).toBe(false);
+    expect(can('MANAGER', 'users:write')).toBe(false);
+  });
+
+  it('keeps quotation approval with MANAGER and ADMIN only', () => {
+    expect(can('ADMIN', 'quotations:approve')).toBe(true);
+    for (const role of ['EDITOR', 'SALES', 'DISPATCHER', 'ACCOUNTANT', 'TECHNICIAN', 'SURVEYOR']) {
+      expect(can(role, 'quotations:approve'), role).toBe(false);
+    }
+  });
+
+  it('knows every role in the ROLES list', () => {
+    expect(Object.keys(PERMISSIONS).sort()).toEqual([...ROLES].sort());
   });
 });

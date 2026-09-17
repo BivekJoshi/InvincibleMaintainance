@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { publicLeadSchema } from '../src/shared/schemas/crm.js';
 import { serviceSchema } from '../src/shared/schemas/cms.js';
 import { toPartial } from '../src/shared/schemas/common.js';
+import { SERVICE_BASE, SERVICE_SCHEMA_CASES } from './fixtures/serviceSchemaCases.js';
 
 describe('public lead form validation', () => {
   const valid = { name: 'Deepak Rai', phone: '+977 9845112233', elapsedMs: 40000 };
@@ -59,6 +60,12 @@ describe('service copy quality gate', () => {
     expect(serviceSchema.safeParse({ ...base, excerpt: 'Too short' }).success).toBe(false);
   });
 
+  it('rejects copy longer than the card shows', () => {
+    const r = serviceSchema.safeParse({ ...base, excerpt: 'Rust treatment and repainting. '.repeat(7) });
+    expect(r.success).toBe(false);
+    expect(r.error.issues[0].path).toEqual(['excerpt']);
+  });
+
   it('accepts genuine copy', () => {
     expect(serviceSchema.safeParse({
       ...base,
@@ -73,6 +80,14 @@ describe('service copy quality gate', () => {
       priceFrom: 500, priceTo: 100,
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe('service schema cases shared with the SPA', () => {
+  it.each(SERVICE_SCHEMA_CASES.map((c) => [c.name, c]))('%s', (_name, c) => {
+    const r = serviceSchema.safeParse({ ...SERVICE_BASE, ...c.input });
+    expect(r.success).toBe(c.valid);
+    if (!c.valid && c.path) expect(r.error.issues.map((i) => i.path.join('.'))).toContain(c.path);
   });
 });
 

@@ -12,11 +12,11 @@ beforeAll(async () => {
   admin = await as('ADMIN');
 });
 
+/** A material's derived balance, found by its code on the paginated stock list. */
 const stockOf = async (materialId) => {
-  const body = expectStatus(await dispatcher.get('/admin/stock'), 200);
-  const rows = Array.isArray(body.data) ? body.data : body.data.items;
-  return rows.find((r) => (r.id ?? r.materialId) === materialId)?.balance
-    ?? rows.find((r) => (r.id ?? r.materialId) === materialId)?.onHand;
+  const { code } = await prisma.material.findUnique({ where: { id: materialId } });
+  const body = expectStatus(await dispatcher.get(`/admin/stock?q=${encodeURIComponent(code)}&limit=100`), 200);
+  return body.data.find((r) => r.id === materialId)?.balance;
 };
 
 describe('job templates', () => {
@@ -198,9 +198,18 @@ describe('technicians', () => {
     expect(surveyors.data.every((t) => t.user.role === 'SURVEYOR')).toBe(true);
   });
 
-  it('POST/PUT/DELETE /admin/technicians', async () => {
+  it('a TECHNICIAN account comes with its profile, and a person has one profile', async () => {
     const user = expectStatus(await admin.post('/admin/users').send({
       name: 'New Technician', email: `${uid('tech')}@example.com`, phone: phone(), password: PASSWORD, role: 'TECHNICIAN',
+    }), 201).data;
+    expect(expectStatus(await dispatcher.get(`/admin/technicians/${user.technician.id}`), 200).data.user.id).toBe(user.id);
+    expectStatus(await dispatcher.post('/admin/technicians').send({ userId: user.id }), 409);
+  });
+
+  it('POST/PUT/DELETE /admin/technicians', async () => {
+    // An account from before Phase G, which has no profile yet.
+    const user = expectStatus(await admin.post('/admin/users').send({
+      name: 'New Technician', email: `${uid('tech')}@example.com`, phone: phone(), password: PASSWORD, role: 'SALES',
     }), 201).data;
     const tech = expectStatus(await dispatcher.post('/admin/technicians').send({
       userId: user.id, employeeCode: uid('E-'), skills: ['plumbing'], hourlyRate: 450,

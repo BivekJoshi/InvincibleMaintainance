@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
-import { prisma, requestContext } from '../lib/prisma.js';
+import { prisma } from '../lib/prisma.js';
+import { setContext } from '../lib/requestContext.js';
 import { unauthorized, forbidden } from '../utils/AppError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -8,6 +9,9 @@ function bearer(req) {
   const header = req.headers.authorization || '';
   return header.startsWith('Bearer ') ? header.slice(7) : null;
 }
+
+/** From here on, logs and audit rows of this request name the user. */
+const actAs = (user) => setContext({ userId: user.id, role: user.role, actorType: 'user' });
 
 export const authenticate = asyncHandler(async (req, _res, next) => {
   const token = bearer(req);
@@ -28,7 +32,8 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
   if (!user.isActive) throw forbidden('Account is disabled');
 
   req.user = user;
-  requestContext.run({ actor: user, ip: req.ip }, () => next());
+  actAs(user);
+  next();
 });
 
 /** Attaches req.user when a valid token is present, but never rejects. */
@@ -43,7 +48,7 @@ export const optionalAuth = asyncHandler(async (req, _res, next) => {
     });
     if (user) {
       req.user = user;
-      return requestContext.run({ actor: user, ip: req.ip }, () => next());
+      actAs(user);
     }
   } catch {
     /* ignore — treated as anonymous */

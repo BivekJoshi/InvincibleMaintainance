@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { validate } from '../../middleware/validate.js';
 import { requires } from '../../middleware/authorize.js';
+import { historyRoute } from './historyRoute.js';
 import { ok, created, noContent } from '../../utils/response.js';
 import { idParam, listQuery, toPartial } from '../../shared/schemas/common.js';
 import * as invoices from '../../services/invoice.service.js';
@@ -26,6 +27,8 @@ router.post('/invoices/from-job/:jobId', writeInv, validate({ body: s.invoiceFro
 router.get('/invoices/:id', readInv, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await invoices.getInvoice(req.params.id))));
 
+router.get('/invoices/:id/history', ...historyRoute('Invoice', 'invoices:history'));
+
 router.put('/invoices/:id', writeInv, validate({ params: idParam, body: s.invoiceUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await invoices.updateInvoice(req.params.id, req.body))));
 
@@ -38,8 +41,10 @@ router.post('/invoices/:id/void', writeInv, validate({ params: idParam, body: s.
 router.post('/invoices/:id/payments', requires('payments:write'), validate({ params: idParam, body: s.paymentSchema }),
   asyncHandler(async (req, res) => created(res, await invoices.recordPayment(req.params.id, req.body, req.user.id))));
 
-router.delete('/invoices/:id/payments/:paymentId', requires('payments:write'),
-  asyncHandler(async (req, res) => { await invoices.deletePayment(req.params.id, req.params.paymentId); noContent(res); }));
+// Payments are voided, never deleted: the row stays, flagged, and the paid total ignores it.
+router.post('/invoices/:id/payments/:paymentId/void', requires('payments:write'),
+  validate({ params: s.paymentParams, body: s.paymentVoidSchema }),
+  asyncHandler(async (req, res) => ok(res, await invoices.voidPayment(req.params.id, req.params.paymentId, req.body.reason, req.user.id))));
 
 router.get('/payments', requires('payments:read'), validate({ query: s.paymentListQuery }), asyncHandler(async (req, res) => {
   const { items, meta } = await invoices.listPayments(req.validatedQuery);

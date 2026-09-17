@@ -45,6 +45,24 @@ export const publicApi = apiSlice.injectEndpoints({
       query: (group) => ({ url: '/public/faqs', params: group ? { group } : {} }),
       transformResponse: (r) => r.data,
     }),
+    /** Published posts, newest first, and the categories that have any. `{ locale, category?, limit? }`. */
+    getPublicPosts: build.query({
+      query: (params = {}) => ({ url: '/public/posts', params }),
+      transformResponse: (r) => r.data,
+      providesTags: ['Public'],
+    }),
+    /** One published post; a draft, scheduled or hidden post is 404. */
+    getPublicPost: build.query({
+      query: ({ slug, locale = 'en' }) => ({ url: `/public/posts/${encodeURIComponent(slug)}`, params: { locale } }),
+      transformResponse: (r) => r.data,
+      providesTags: ['Public'],
+    }),
+    /** A generic page served at `/:slug`; 404 when there is none, or it is switched off. */
+    getPublicPage: build.query({
+      query: ({ slug, locale = 'en' }) => ({ url: `/public/pages/${encodeURIComponent(slug)}`, params: { locale } }),
+      transformResponse: (r) => r.data,
+      providesTags: ['Public'],
+    }),
     /** Live cost estimate — the conversion feature the old site lacked. */
     getAvailability: build.query({
       query: (params = {}) => ({ url: '/public/availability', params }),
@@ -87,6 +105,7 @@ export const {
   useGetBootstrapQuery, useGetHomeQuery, useGetPublicServicesQuery, useGetPublicServiceQuery,
   useGetPublicProjectsQuery, useGetPublicProjectQuery, useGetPublicPricingQuery,
   useGetPublicGalleryQuery, useGetPublicFaqsQuery,
+  useGetPublicPostsQuery, useGetPublicPostQuery, useGetPublicPageQuery,
   useGetAvailabilityQuery,
   useEstimateMutation, useSubmitLeadMutation,
   useGetQuotationByTokenQuery, useDecideQuotationMutation,
