@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { validate } from '../../middleware/validate.js';
 import { requires } from '../../middleware/authorize.js';
+import { historyRoute } from './historyRoute.js';
 import { ok, created, noContent } from '../../utils/response.js';
 import { idParam, listQuery, reorderBody, toPartial } from '../../shared/schemas/common.js';
 import * as jobs from '../../services/job.service.js';
@@ -37,6 +38,8 @@ router.post('/jobs', writeJobs, validate({ body: s.jobSchema }),
 
 router.get('/jobs/:id', readJobs, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await jobs.getJob(req.params.id))));
+
+router.get('/jobs/:id/history', ...historyRoute('Job', 'jobs:history'));
 
 router.post('/jobs/:id/publish-case-study', requires('cms:write'),
   validate({ params: idParam, body: caseStudySchema }),

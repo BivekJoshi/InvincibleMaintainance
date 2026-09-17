@@ -23,6 +23,12 @@ export const listQuery = z.object({
   deleted: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
 });
 
+/** `…/:id/history` — a record's audit trail, sorted by time only. */
+export const historyQuery = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 export const nepaliPhone = z
   .string()
   .trim()

@@ -9,7 +9,10 @@ describe('admin nav', () => {
     expect(Object.keys(navOf('ADMIN'))).toEqual([
       'Overview', 'Sales', 'Operations', 'Finance', 'Aftercare', 'Content', 'Page blocks', 'Blog & pages', 'Platform',
     ]);
-    expect(navOf('ADMIN').Platform).toEqual(['Users', 'Audit log', 'Settings']);
+    expect(navOf('ADMIN').Platform).toEqual([
+      'Users', 'Roles & permissions', 'Login activity', 'Audit log', 'Messages', 'Message templates', 'Settings',
+    ]);
+    expect(navForRole('ADMIN').find((g) => g.key === 'platform').items.filter((i) => i.soon)).toEqual([]);
     expect(landingPathFor('ADMIN')).toBe('/admin');
   });
 
@@ -33,6 +36,18 @@ describe('admin nav', () => {
   it('shows ACCOUNTANT the rate card, read-only by capability', () => {
     expect(navOf('ACCOUNTANT').Sales).toContain('Rate card');
     expect(navOf('ACCOUNTANT').Content).toBeUndefined();
+  });
+
+  it('shows the admin platform screens to ADMIN alone', () => {
+    const adminOnly = ['Users', 'Roles & permissions', 'Login activity', 'Audit log', 'Messages', 'Message templates'];
+    for (const role of ['EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'ACCOUNTANT', 'TECHNICIAN', 'SURVEYOR']) {
+      const platform = navOf(role).Platform ?? [];
+      for (const label of adminOnly) expect(platform, `${role} sees ${label}`).not.toContain(label);
+    }
+    expect(breadcrumbsFor('/admin/platform/message-templates/quotation_sent')).toEqual([
+      { label: 'Platform' }, { label: 'Message templates', to: '/admin/platform/message-templates' }, { label: 'Edit' },
+    ]);
+    expect(breadcrumbsFor('/admin/platform/audit')).toEqual([{ label: 'Platform' }, { label: 'Audit log', to: '/admin/platform/audit' }]);
   });
 
   it('shows Settings (read-only) to EDITOR and ADMIN only', () => {

@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronsUpDown, Inbox, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Fragment, useEffect, useState } from 'react';
+import {
+  ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, ChevronsUpDown, Inbox, RotateCcw, Search, Trash2,
+} from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { arrayMove } from '@dnd-kit/sortable';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -35,6 +37,8 @@ const rowIdOf = (row) => row.id;
  *                        Delete forever to anyone with `cms:purge`.
  * - `reorderable`      → a Reorder mode: drag handles plus Move up / Move down. The new
  *                        order shows at once; if `onReorder` rejects, it snaps back.
+ * - `expandable`       → a disclosure button per row; an open row shows `render(row)` beneath
+ *                        it, across the table (an audit row's before/after).
  *
  * @param {object} props
  * @param {{ key: string, header: string, sortable?: boolean, className?: string, cell?: (row: object) => any }[]} props.columns
@@ -57,6 +61,7 @@ const rowIdOf = (row) => row.id;
  *   the new order of this page, offset by the rows on earlier pages — the body `PATCH /reorder` takes
  * @param {(row: object, index: number) => string} [props.rowLabel] names a row for screen readers in reorder mode
  * @param {boolean} [props.searchable] false hides the search box (a short list that is already complete)
+ * @param {{ render: (row: object) => import('react').ReactNode }} [props.expandable]
  */
 export function DataTable({
   columns,
@@ -85,6 +90,7 @@ export function DataTable({
   onReorder,
   rowLabel,
   searchable = true,
+  expandable,
 }) {
   const { can } = useAuth();
   const [confirm, confirmDialog] = useConfirm();
@@ -92,6 +98,7 @@ export function DataTable({
   const [selected, setSelected] = useState(() => new Set());
   const [reordering, setReordering] = useState(false);
   const [order, setOrder] = useState(null);
+  const [expanded, setExpanded] = useState(() => new Set());
 
   // The URL is the source of truth: Back, a shared link or "Clear filters" all change q without typing.
   useEffect(() => { setSearch(params.q ?? ''); }, [params.q]);
@@ -111,7 +118,7 @@ export function DataTable({
   useEffect(() => { if (!reorderable) setReordering(false); }, [reorderable]);
 
   const paramsKey = JSON.stringify(params);
-  useEffect(() => { setSelected(new Set()); }, [paramsKey]);
+  useEffect(() => { setSelected(new Set()); setExpanded(new Set()); }, [paramsKey]);
 
   const inTrash = params.deleted === 'true' || params.deleted === true;
   const rows = order ?? data ?? [];
@@ -164,6 +171,12 @@ export function DataTable({
   const showSelect = Boolean(bulkActions?.length) && !inTrash && !reordering;
   const showActions = !reordering && (inTrash ? Boolean(trash) : Boolean(rowActions));
   const clickable = Boolean(onRowClick) && !inTrash;
+  const showExpand = Boolean(expandable) && !reordering;
+  const toggleExpanded = (id) => setExpanded((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const trashActionsFor = (row) => [
     { label: 'Restore', icon: RotateCcw, onSelect: () => trash.onRestore?.(row) },
@@ -203,7 +216,7 @@ export function DataTable({
   const pages = meta?.pages ?? 1;
   const total = meta?.total ?? 0;
   const limit = meta?.limit ?? params.limit ?? 20;
-  const columnCount = columns.length + (showSelect ? 1 : 0) + (showActions ? 1 : 0) + (reordering ? 1 : 0);
+  const columnCount = columns.length + (showSelect ? 1 : 0) + (showActions ? 1 : 0) + (reordering ? 1 : 0) + (showExpand ? 1 : 0);
 
   return (
     <div className="space-y-4">
@@ -291,6 +304,7 @@ export function DataTable({
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
                 {reordering ? <TableHead className="w-[120px]"><span className="sr-only">Order</span></TableHead> : null}
+                {showExpand ? <TableHead className="w-10"><span className="sr-only">Details</span></TableHead> : null}
                 {showSelect ? (
                   <TableHead className="w-10">
                     <Checkbox
@@ -330,43 +344,63 @@ export function DataTable({
                 {rows.map((row, i) => {
                   const id = getRowId(row);
                   const isSelected = selected.has(id);
+                  const isOpen = showExpand && expanded.has(id);
+                  const detailsId = `row-details-${String(id ?? i).replace(/[^\w-]/g, '')}`;
                   return (
-                    <motion.tr
-                      key={id ?? i}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2, delay: Math.min(i * 0.015, 0.2) }}
-                      onClick={clickable ? () => onRowClick(row) : undefined}
-                      data-state={isSelected ? 'selected' : undefined}
-                      className={cn(
-                        'border-b transition-colors last:border-0 hover:bg-muted/50 data-[state=selected]:bg-muted/60',
-                        clickable && 'cursor-pointer',
-                      )}
-                    >
-                      {showSelect ? (
-                        <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={(v) => toggleRow(id, v === true)}
-                            aria-label={`Select ${rowLabel ? rowLabel(row, i) : `row ${i + 1}`}`}
-                          />
-                        </TableCell>
+                    <Fragment key={id ?? i}>
+                      <motion.tr
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2, delay: Math.min(i * 0.015, 0.2) }}
+                        onClick={clickable ? () => onRowClick(row) : undefined}
+                        data-state={isSelected ? 'selected' : undefined}
+                        className={cn(
+                          'border-b transition-colors last:border-0 hover:bg-muted/50 data-[state=selected]:bg-muted/60',
+                          clickable && 'cursor-pointer',
+                        )}
+                      >
+                        {showExpand ? (
+                          <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              type="button" variant="ghost" size="icon" className="h-7 w-7"
+                              aria-expanded={isOpen} aria-controls={isOpen ? detailsId : undefined}
+                              aria-label={`${isOpen ? 'Hide' : 'Show'} details of ${rowLabel ? rowLabel(row, i) : `row ${i + 1}`}`}
+                              onClick={() => toggleExpanded(id)}
+                            >
+                              <ChevronRight className={cn('transition-transform motion-reduce:transition-none', isOpen && 'rotate-90')} aria-hidden />
+                            </Button>
+                          </TableCell>
+                        ) : null}
+                        {showSelect ? (
+                          <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(v) => toggleRow(id, v === true)}
+                              aria-label={`Select ${rowLabel ? rowLabel(row, i) : `row ${i + 1}`}`}
+                            />
+                          </TableCell>
+                        ) : null}
+                        {columns.map((col) => (
+                          <TableCell key={col.key} className={col.className}>
+                            {col.cell ? col.cell(row) : row[col.key] ?? '—'}
+                          </TableCell>
+                        ))}
+                        {showActions ? (
+                          <TableCell className="w-12 text-right">
+                            <DataTableRowActions
+                              row={row}
+                              actions={inTrash ? trashActionsFor(row) : rowActions(row)}
+                              label={`Actions for ${rowLabel ? rowLabel(row, i) : `row ${i + 1}`}`}
+                            />
+                          </TableCell>
+                        ) : null}
+                      </motion.tr>
+                      {isOpen ? (
+                        <TableRow id={detailsId} className="bg-muted/20 hover:bg-muted/20">
+                          <TableCell colSpan={columnCount} className="p-0">{expandable.render(row)}</TableCell>
+                        </TableRow>
                       ) : null}
-                      {columns.map((col) => (
-                        <TableCell key={col.key} className={col.className}>
-                          {col.cell ? col.cell(row) : row[col.key] ?? '—'}
-                        </TableCell>
-                      ))}
-                      {showActions ? (
-                        <TableCell className="w-12 text-right">
-                          <DataTableRowActions
-                            row={row}
-                            actions={inTrash ? trashActionsFor(row) : rowActions(row)}
-                            label={`Actions for ${rowLabel ? rowLabel(row, i) : `row ${i + 1}`}`}
-                          />
-                        </TableCell>
-                      ) : null}
-                    </motion.tr>
+                    </Fragment>
                   );
                 })}
               </TableBody>

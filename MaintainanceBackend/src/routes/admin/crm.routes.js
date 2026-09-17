@@ -8,7 +8,7 @@ import * as leads from '../../services/lead.service.js';
 import * as customers from '../../services/customer.service.js';
 import * as quotations from '../../services/quotation.service.js';
 import { convertLead, customerMatches } from '../../services/convert.service.js';
-import { recordHistory } from '../../services/history.service.js';
+import { historyRoute } from './historyRoute.js';
 import { can } from '../../shared/permissions.js';
 import { makeCrud } from '../../services/crud.service.js';
 import { recordEvent } from '../../services/audit.service.js';
@@ -67,11 +67,7 @@ router.get('/leads/:id/duplicates', readLeads, validate({ params: idParam }),
 router.get('/leads/:id/customer-matches', readLeads, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await customerMatches(req.params.id))));
 
-router.get('/leads/:id/history', requires('leads:history'), validate({ params: idParam, query: s.historyQuery }),
-  asyncHandler(async (req, res) => {
-    const { items, meta } = await recordHistory('Lead', req.params.id, req.validatedQuery);
-    ok(res, items, meta);
-  }));
+router.get('/leads/:id/history', ...historyRoute('Lead', 'leads:history'));
 
 router.put('/leads/:id', writeLeads, validate({ params: idParam, body: s.leadUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await leads.updateLead(req.params.id, req.body))));
@@ -109,11 +105,7 @@ router.get('/customers/:id', readCust, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await customers.getCustomer(req.params.id))));
 router.get('/customers/:id/timeline', readCust, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await customers.customerTimeline(req.params.id))));
-router.get('/customers/:id/history', requires('customers:history'), validate({ params: idParam, query: s.historyQuery }),
-  asyncHandler(async (req, res) => {
-    const { items, meta } = await recordHistory('Customer', req.params.id, req.validatedQuery);
-    ok(res, items, meta);
-  }));
+router.get('/customers/:id/history', ...historyRoute('Customer', 'customers:history'));
 router.put('/customers/:id', writeCust, validate({ params: idParam, body: s.customerUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await customers.updateCustomer(req.params.id, req.body))));
 router.delete('/customers/:id', writeCust, validate({ params: idParam }),
@@ -146,6 +138,7 @@ router.get('/rate-card/:id', readRate, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await rateCard.get(req.params.id))));
 router.put('/rate-card/:id', writeRate, validate({ params: idParam, body: toPartial(s.rateCardItemSchema) }),
   asyncHandler(async (req, res) => ok(res, await rateCard.update(req.params.id, req.body))));
+router.get('/rate-card/:id/history', ...historyRoute('RateCardItem', 'quotations:history'));
 router.patch('/rate-card/:id/toggle', writeRate, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await rateCard.toggle(req.params.id))));
 router.patch('/rate-card/:id/restore', writeRate, validate({ params: idParam }),
@@ -171,11 +164,7 @@ router.post('/quotations', writeQ, validate({ body: s.quotationSchema }),
   asyncHandler(async (req, res) => created(res, await quotations.createQuotation(req.body, req.user.id))));
 router.get('/quotations/:id', readQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await quotations.getQuotation(req.params.id))));
-router.get('/quotations/:id/history', requires('quotations:history'), validate({ params: idParam, query: s.historyQuery }),
-  asyncHandler(async (req, res) => {
-    const { items, meta } = await recordHistory('Quotation', req.params.id, req.validatedQuery);
-    ok(res, items, meta);
-  }));
+router.get('/quotations/:id/history', ...historyRoute('Quotation', 'quotations:history'));
 router.put('/quotations/:id', writeQ, validate({ params: idParam, body: s.quotationUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await quotations.updateQuotation(req.params.id, req.body))));
 // Internal approval: no quotation is sent until a MANAGER/ADMIN (or the auto-approval limit) approves it.

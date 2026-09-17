@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { isActive, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
+import { isActive, listQuery, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
 import {
-  INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES, PAYMENT_METHODS,
+  INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES, MESSAGE_CHANNELS, MESSAGE_STATUSES, PAYMENT_METHODS,
   PRIORITIES, ROLES, STOCK_MOVEMENT_TYPES,
 } from '../enums.js';
 
@@ -334,10 +334,45 @@ export const serviceReminderSchema = z.object({
 });
 
 export const messageTemplateSchema = z.object({
-  key: z.string().trim().min(2).max(80),
+  // The key the code sends by (`quotation_sent`): lower-case words joined by underscores.
+  key: z.string().trim().min(2).max(80).regex(/^[a-z][a-z0-9_]*$/, 'Use lower-case letters, digits and underscores'),
   channel: z.enum(['sms', 'email', 'inapp']),
   locale: z.enum(['en', 'ne']).default('en'),
   subject: z.string().trim().max(250).optional(),
   body: z.string().trim().min(2).max(5000),
   isActive,
+});
+
+/** GET /admin/message-templates */
+export const messageTemplateListQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  sort: z.enum(['key', '-key', 'updatedAt', '-updatedAt']).optional(),
+  key: z.string().trim().max(80).optional(),
+  channel: z.enum(['sms', 'email', 'inapp']).optional(),
+  locale: z.enum(['en', 'ne']).optional(),
+});
+
+/** GET /admin/message-templates/groups */
+export const messageTemplateGroupQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  channel: z.enum(['sms', 'email', 'inapp']).optional(),
+});
+
+/**
+ * POST /admin/message-templates/:id/preview — `subject` / `body` are unsaved text that wins
+ * over the stored template. Without an id, `body` is required.
+ */
+export const messagePreviewSchema = z.object({
+  vars: z.record(z.string(), z.unknown()).default({}),
+  subject: z.string().max(250).optional(),
+  body: z.string().max(5000).optional(),
+});
+export const messageDraftPreviewSchema = messagePreviewSchema.extend({ body: z.string().min(1).max(5000) });
+
+/** GET /admin/message-logs */
+export const messageLogQuery = listQuery.pick({ page: true, limit: true, q: true, from: true, to: true }).extend({
+  sort: z.enum(['createdAt', '-createdAt']).optional(),
+  channel: z.enum(MESSAGE_CHANNELS).optional(),
+  status: z.enum(MESSAGE_STATUSES).optional(),
+  templateKey: z.string().trim().max(80).optional(),
+  relatedModel: z.string().trim().max(60).optional(),
+  relatedId: z.string().trim().max(64).optional(),
 });

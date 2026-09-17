@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   CONTACT_ACTIVITY_TYPES, CUSTOMER_TYPES, LEAD_SOURCES, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_SOURCE_LABELS,
   LEAD_TRANSITIONS, LOGGABLE_ACTIVITY_TYPES, PREFERRED_LOCALE_OPTIONS,
-  QUOTATION_STAGE_TABS, QUOTATION_STATUSES, QUOTATION_STATUS_LABELS, QUOTATION_TRANSITIONS, ROLES,
+  MESSAGE_CHANNELS, MESSAGE_STATUSES, QUOTATION_STAGE_TABS, QUOTATION_STATUSES, QUOTATION_STATUS_LABELS,
+  QUOTATION_TRANSITIONS, ROLE_DESCRIPTIONS, ROLES,
 } from '@/config/constants';
 import { AUDIT_EVENT_LABELS } from '@/config/auditEvents';
 import { PERMISSIONS } from '@/helpers/permissions';
@@ -46,6 +47,12 @@ describe('the CRM rules mirror the API', () => {
 
   it('roles are the API’s', () => {
     expect(ROLES).toEqual(API_ENUMS.ROLES);
+    expect(Object.keys(ROLE_DESCRIPTIONS).sort()).toEqual([...ROLES].sort());
+  });
+
+  it('message channels and delivery states are the API’s', () => {
+    expect(MESSAGE_CHANNELS).toEqual(API_ENUMS.MESSAGE_CHANNELS);
+    expect(MESSAGE_STATUSES).toEqual(API_ENUMS.MESSAGE_STATUSES);
   });
 
   it('the capability map is the API’s', () => {

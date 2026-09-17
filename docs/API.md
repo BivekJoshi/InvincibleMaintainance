@@ -128,8 +128,10 @@ while that slug is in `bootstrap.nav.pages` (otherwise it goes to `/book`).
 POST /auth/login            -> { user, accessToken } + httpOnly refresh cookie
 POST /auth/refresh          rotates the cookie; the previous one stops working
 POST /auth/logout           revokes the refresh token
-POST /auth/forgot-password  same answer for known and unknown emails
-POST /auth/reset-password
+POST /auth/forgot-password  same answer for known and unknown emails; emails a 1-hour link to
+                            <web origin>/reset-password?token=…
+POST /auth/reset-password   { token, password } — the forgot-password link, an admin's reset link or a
+                            new account's invite; revokes every existing session
 POST /auth/change-password  revokes every existing session
 GET  /auth/me
 ```
@@ -141,7 +143,8 @@ on its next authenticated request.
 
 Every resource below gets the same eight endpoints from one factory: `GET /`, `GET /:id`,
 `POST /`, `PUT /:id` (partial), `PATCH /:id/toggle`, `PATCH /reorder { items: [{ id, sortOrder }] }`,
-`DELETE /:id` (soft) and `PATCH /:id/restore`.
+`DELETE /:id` (soft) and `PATCH /:id/restore` — plus **`GET /:id/history`**, the record's audit trail
+(see "Record history"), for `cms:read` only: SALES reads services through `services:read` but not their trail.
 
 Reads need `cms:read`, writes `cms:write`. One exception: `GET /admin/services` and `GET /admin/services/:id`
 also accept **`services:read`** (SALES), so a salesperson can put a service on a lead; every services write
@@ -226,7 +229,7 @@ or any subfolder — only an empty folder is deleted.
 
 Capabilities: leads — `leads:read` (SALES, DISPATCHER), `leads:write` (SALES); customers — `customers:read`
 (SALES, DISPATCHER, ACCOUNTANT), `customers:write` (SALES); history — `leads:history` / `customers:history` /
-`quotations:history` (SALES, MANAGER); quotations — `quotations:read` (SALES, ACCOUNTANT), `quotations:write` (SALES),
+`quotations:history` (SALES, MANAGER), `jobs:history` (DISPATCHER), `invoices:history` (ACCOUNTANT); quotations — `quotations:read` (SALES, ACCOUNTANT), `quotations:write` (SALES),
 `quotations:approve` (MANAGER only). **MANAGER** holds every SALES capability plus `quotations:approve`, and can be
 assigned leads. ADMIN holds all of them.
 
@@ -333,7 +336,8 @@ DELETE /admin/customers/:id/sites/:siteId     soft; 400 while jobs use the site
 /admin/rate-card                    GET (?q searches code, name, category; ?deleted=true is Trash), GET /:id,
                                     POST, PUT /:id (partial), PATCH /:id/toggle, PATCH /reorder { items },
                                     PATCH /:id/restore, DELETE /:id (soft) — read: quotations:read,
-                                    write: quotations:write. The same eight endpoints as a CMS resource.
+                                    write: quotations:write. The same eight endpoints as a CMS resource,
+                                    plus GET /:id/history (quotations:history — not ACCOUNTANT).
                                     DELETE ?hard=true needs cms:purge (ADMIN); quotation and survey lines
                                     that used the item keep their copy and lose the link.
                                     Body { code, name, description?, category?, unit, rate (rupees), sortOrder?,
@@ -412,19 +416,37 @@ POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only —
 ```
 GET /admin/leads/:id/history        leads:history
 GET /admin/customers/:id/history    customers:history
-                                    ?page&limit (≤100) · newest first · 404 for an unknown record (a
-                                    soft-deleted record's history stays readable)
+GET /admin/quotations/:id/history   quotations:history
+GET /admin/jobs/:id/history         jobs:history
+GET /admin/invoices/:id/history     invoices:history
+GET /admin/rate-card/:id/history    quotations:history
+GET /admin/<cms resource>/:id/history   cms:read — every resource the CRUD factory mounts
+GET /admin/users/:id/history        ADMIN
+                                    ?page&limit (≤100) · newest first · 400 on a bad page/limit · 404 for an
+                                    unknown or purged record (a soft-deleted record's history stays readable)
                                     row: { id, event, action, model, recordId, actorType, requestId,
                                            before, after, changes, createdAt,
                                            actor: { id, name, role } | null }
                                     — an AuditLog row without ip and userAgent (those stay in the audit log)
 ```
 
-What belongs to a record: a lead — its own `Lead` rows and events (`lead.*`) and its notes' `LeadNote` rows;
-a customer — its own `Customer` rows and events (`customer.email_confirmed`) and its sites' `CustomerSite`
-rows. A child row is matched by the parent id in its before/after snapshot. Timeline entries (`LeadActivity`)
-are not audited row by row; staff-logged ones arrive as `lead.activity_logged`. Scopes live in
-`services/history.service.js` (`HISTORY_SCOPES`); a later detail page adds a scope, not an endpoint shape.
+What belongs to a record: always its own rows and events (`model` + `recordId`) and the rows of its Nepali
+copy (`Translation`). Some records also include their children, matched by the parent id in the child row's
+before/after snapshot:
+
+| Record | Children |
+|---|---|
+| Lead | `LeadNote` |
+| Customer | `CustomerSite` |
+| Quotation | `QuotationItem` |
+| Job | `JobAssignment`, `JobTask`, `JobPhoto`, `TimeLog`, `JobMaterial` |
+| Invoice | `InvoiceItem`, `Payment` (and `payment.voided`, whose invoice is in `changes`) |
+| Project | `ProjectImage` |
+
+Children written as part of their parent's create (a job's first assignments) are not audited row by row;
+the parent's event lists them. Timeline entries (`LeadActivity`) are not audited row by row either;
+staff-logged ones arrive as `lead.activity_logged`. Scopes live in `services/history.service.js`
+(`HISTORY_SCOPES`); the route is `routes/admin/historyRoute.js`.
 
 ## Admin — Site surveys (`ADMIN`, `SALES`; `DISPATCHER` reads)
 
@@ -453,6 +475,7 @@ GET    /admin/jobs                  ?status&type&priority&technicianId&customerI
 POST   /admin/jobs                  a quotationId must belong to the customer and be APPROVED
                                     (it becomes CONVERTED); a templateId pulls its checklist
 GET    /admin/jobs/:id
+GET    /admin/jobs/:id/history      jobs:history (DISPATCHER, ADMIN) · see "Record history"
 PUT    /admin/jobs/:id
 DELETE /admin/jobs/:id
 PATCH  /admin/jobs/:id/status       validated transition, writes JobStatusEvent;
@@ -528,6 +551,7 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
 ```
 /admin/invoices                     GET ?status&customerId&overdueOnly&from&to&q, POST, GET /:id, PUT /:id
                                     no DELETE — an invoice is voided, never removed
+GET    /admin/invoices/:id/history  invoices:history (ACCOUNTANT, ADMIN) · see "Record history"
 POST   /admin/invoices/:id/send
 POST   /admin/invoices/:id/void     { reason }
 POST   /admin/invoices/from-job/:jobId          once per job — a second is 422
@@ -566,21 +590,105 @@ GET  /admin/customers/:id/statement             ledger of invoices and payments 
 
 ## Admin — Platform
 
+Everything here except notifications, the dashboard and the reports is **ADMIN only**: any other role gets 403.
+
 ```
-/admin/users                        ADMIN · GET, POST, PUT /:id, PATCH /:id/toggle, DELETE /:id
-                                    an admin cannot disable or delete their own account (400)
-                                    events: user.created · user.role_changed · user.disabled (toggle off,
-                                    PUT isActive=false, DELETE)
-GET   /admin/audit-logs             ADMIN · paginated, newest first
-                                    ?event&actorType=user|public|system&requestId&model&recordId&actorId
+GET    /admin/users                 ?q (name, email, phone) &role &isActive=true|false &page &limit
+                                    &sort=name|email|role|lastLoginAt|createdAt (± for descending; default name)
+                                    400 on an unknown role or sort
+                                    row: { id, name, email, phone, role, isActive, lastLoginAt, failedLogins,
+                                           lockedUntil (null once it has passed), isLocked, createdAt,
+                                           technicianId, technician: { id, employeeCode } | null }
+GET    /admin/users/:id             one row, same shape
+POST   /admin/users                 { name, email, phone?, role, isActive?, password? } -> 201 row + invited
+                                    Without a password (the admin screen) the account gets an unusable one and
+                                    a 72-hour "choose your password" email (template account_invite); invited:
+                                    true. A TECHNICIAN or SURVEYOR also gets a Technician profile (restored if
+                                    the person had one). 409 on a taken email.
+PUT    /admin/users/:id             { name?, email?, phone?, role?, isActive? } (partial)
+                                    400 if the body has password ("send a reset link instead"); 400 if an
+                                    admin disables themselves or changes their own role. A change to a field
+                                    role creates or restores the Technician profile; one away from it keeps it.
+                                    isActive=false also revokes every session.
+PATCH  /admin/users/:id/toggle      enable ⇄ disable; disabling revokes every session; 400 on yourself
+DELETE /admin/users/:id             soft delete; revokes every session; 400 on yourself
+POST   /admin/users/:id/send-password-reset
+                                    emails the normal 1-hour reset link -> { sent: true, email }
+                                    The token is never in a response or a log. 422 USER_DISABLED for a
+                                    disabled account.
+POST   /admin/users/:id/unlock      clears failedLogins and lockedUntil -> the user row
+GET    /admin/users/:id/sessions    live refresh tokens, newest first:
+                                    [{ id, createdAt, expiresAt, ip, userAgent }] — never the token
+DELETE /admin/users/:id/sessions    revokes them all -> { revoked: n }. No session can be refreshed; an access
+                                    token already issued lives out its 15 minutes (disable the account to
+                                    stop it at once).
+GET    /admin/users/:id/history     see "Record history"
+                                    404 on any unknown :id.
+                                    events: user.created (meta.invited) · user.role_changed · user.disabled
+                                    (toggle off, PUT isActive=false, DELETE; meta.sessionsRevoked, meta.deleted)
+                                    · auth.password_reset_requested (meta.by=admin, meta.purpose=invite)
+                                    · auth.unlocked · auth.sessions_revoked (meta.count)
+
+GET    /admin/login-activity        the auth.* events, newest first
+                                    ?userId &event (an auth.* name; anything else is 400) &ip &from &to
+                                    &q (a user's name or email, or the address typed on a failed sign-in)
+                                    &page &limit &sort=createdAt|-createdAt
+                                    row: { id, event, createdAt, user: { id, name, email, role, isActive } | null,
+                                           email, reason, attempt, actorType, actorId, ip, userAgent, requestId,
+                                           before, after, changes }
+                                    user is null for an address with no account; email is what was typed.
+GET    /admin/login-activity/summary
+                                    one row per account: { user, lastLoginAt, failures24h, lockedUntil, isLocked }
+                                    ?attention=true (locked now, or a failure in the last 24 hours) &q &page &limit
+                                    locked accounts first, then by name
+
+GET    /admin/audit-logs            paginated, newest first
+                                    ?event (a name, or prefix.* for every event of a prefix — auth.*)
+                                     &actorType=user|public|system&requestId&model&recordId&actorId
                                      &action&from&to&q&page&limit&sort=createdAt|-createdAt
                                     q matches event/model/action (contains) or recordId/requestId (exact)
-                                    400 on an unknown actorType or sort
+                                    400 on an unknown actorType or sort, or a malformed event
                                     row: { id, event, action, model, recordId, actorId, actorType,
                                            requestId, ip, userAgent, before, after, changes, createdAt,
                                            actor: { id, name, role } | null }
-/admin/message-templates            ADMIN · GET, POST, PUT /:id, DELETE /:id
-GET   /admin/message-logs           ADMIN · ?status&channel
+GET    /admin/audit-logs/models     every model the log has rows for, e.g. ['Customer', 'Lead', …] (the model filter)
+
+GET    /admin/message-templates     ?key &channel=sms|email|inapp &locale=en|ne &q (key, subject, body)
+                                    &sort=key|updatedAt (±) &page &limit
+GET    /admin/message-templates/groups
+                                    one row per key, a page of keys at a time:
+                                    [{ key, variants: [{ id, channel, locale, subject, isActive, updatedAt }] }]
+                                    ?q (key or body) &channel &page &limit
+POST   /admin/message-templates     { key, channel, locale?, subject?, body, isActive? } — key is lower-case
+                                    letters, digits and _; 409 on a taken key+channel+locale
+GET    /admin/message-templates/:id
+PUT    /admin/message-templates/:id (partial)
+DELETE /admin/message-templates/:id removed for good (event cms.purged); the code falls back to its own text
+POST   /admin/message-templates/:id/preview
+                                    { vars?, subject?, body? } — subject/body are unsaved text that wins over
+                                    the stored template
+POST   /admin/message-templates/preview
+                                    { vars?, subject?, body } — text not saved yet (body required, else 400)
+                                    -> { subject | null, body, placeholders: ['name', 'quotation.number'],
+                                         missing: ['link'] }
+                                    Placeholders are {{name}} or {{ dotted.path }}; a missing or empty var
+                                    renders as ''. 404 for an unknown :id.
+
+GET    /admin/message-logs          newest first · ?channel=sms|email &status=queued|sent|failed &templateKey
+                                    &relatedModel &relatedId &from &to &q (part of the address)
+                                    &page &limit &sort=createdAt|-createdAt · 400 on anything else
+                                    row: { id, channel, templateKey, toAddress (masked: a phone keeps its last
+                                           four digits — ******4567; an email its first two letters and its
+                                           domain — ra***@example.com), subject, body, provider, providerId,
+                                           status, error, relatedModel, relatedId, createdAt }
+                                    A one-time link's token is never shown: messages carrying one are logged
+                                    with it replaced by [redacted], and older rows are scrubbed on the way out.
+POST   /admin/message-logs/:id/retry
+                                    sends a failed message again from its log -> the row, status sent or failed
+                                    422 NOT_RETRYABLE unless status is failed, or when the log had a secret
+                                    taken out (a password link — send a new one); 404 for an unknown id.
+                                    event: message.retried (before { status, error } → after { status })
+
 GET   /admin/notifications          own only · ?unreadOnly · meta.unread
                                     `link` is an SPA path the panel opens as it is: `/admin/...` for office
                                     staff (`/admin/leads/:id`, `/admin/quotations/:id`, `/admin/surveys/:id`,
@@ -663,13 +771,16 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `auth.locked` | the fifth consecutive failure locks the account | → lockedUntil · attempts |
 | `auth.logout` | `POST /auth/logout` with a live refresh cookie (actor = the user) | |
 | `auth.password_changed` | `POST /auth/change-password` or `POST /auth/reset-password` | · via: change_password \| reset_link |
-| `auth.password_reset_requested` | `POST /auth/forgot-password` for an existing, active account (nothing is written for an unknown email) | |
+| `auth.password_reset_requested` | `POST /auth/forgot-password` for an existing, active account (nothing is written for an unknown email); an admin's `send-password-reset` (actor = the admin); a new account's invite | · by: admin, purpose: invite |
+| `auth.unlocked` | `POST /admin/users/:id/unlock` | failedLogins, lockedUntil → 0, null |
+| `auth.sessions_revoked` | `DELETE /admin/users/:id/sessions` | · count |
 | `settings.changed` | `PATCH /admin/settings`, once per save, only the keys whose value moved | { key: old } → { key: new } · keys |
 | `export.csv` | `GET /admin/leads/export.csv` | · the filters used |
 | `cms.deleted` | a soft delete through the CRUD factory (any resource it mounts) or `DELETE /admin/media/:id` | |
 | `cms.restored` | `PATCH …/:id/restore` | deletedAt → null |
 | `cms.purged` | `?hard=true` (needs `cms:purge`), or a delete on a resource with no soft delete | the removed row's scalars → |
 | `user.created` · `user.role_changed` · `user.disabled` | see `/admin/users` above | |
+| `message.retried` | `POST /admin/message-logs/:id/retry` (model `MessageLog`) | status, error → status · channel, templateKey |
 
 Every name above is emitted (Phase F1 implemented the ones that were reserved). The list lives in
 `MaintainanceBackend/src/shared/enums.js` (`AUDIT_EVENTS`); `recordEvent` refuses any other name.

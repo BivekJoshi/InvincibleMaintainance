@@ -150,4 +150,55 @@ describe('DataTable', () => {
     await user.click(screen.getByRole('button', { name: 'Trash' }));
     expect(onParamsChange).toHaveBeenCalledWith({ page: 1, deleted: 'true' });
   });
+
+  it('expands a row into its details, one row at a time, and closes it again', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <DataTable
+        columns={columns} data={rows} meta={onePage} params={{}} onParamsChange={vi.fn()} rowLabel={rowLabel}
+        expandable={{ render: (row) => <p>Details of {row.name}</p> }}
+      />,
+    );
+    const toggle = screen.getByRole('button', { name: 'Show details of Bravo' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    expect(screen.getByText('Details of Bravo')).toBeInTheDocument();
+    expect(screen.queryByText('Details of Alpha')).not.toBeInTheDocument();
+    const open = screen.getByRole('button', { name: 'Hide details of Bravo' });
+    expect(open).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById(open.getAttribute('aria-controls'))).toHaveTextContent('Details of Bravo');
+    await user.click(open);
+    expect(screen.queryByText('Details of Bravo')).not.toBeInTheDocument();
+  });
+
+  it('applies a text filter on Enter, not on every key', async () => {
+    const user = userEvent.setup();
+    const onParamsChange = vi.fn();
+    renderWithProviders(
+      <DataTable
+        columns={columns} data={rows} meta={onePage} params={{ page: 3 }} onParamsChange={onParamsChange}
+        filters={[{ key: 'requestId', label: 'Request id', type: 'text' }]}
+      />,
+    );
+    await user.type(screen.getByRole('textbox', { name: 'Request id' }), '  req-123 ');
+    expect(onParamsChange).not.toHaveBeenCalled();
+    await user.keyboard('{Enter}');
+    expect(onParamsChange).toHaveBeenLastCalledWith({ page: 1, requestId: 'req-123' });
+  });
+
+  it('lists enum options under their group headings', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <DataTable
+        columns={columns} data={rows} meta={onePage} params={{}} onParamsChange={vi.fn()}
+        filters={[{
+          key: 'event', label: 'Event', type: 'enum',
+          options: [{ value: 'lead.*', label: 'Every lead event', group: 'Leads' }, { value: 'auth.login', label: 'Signed in', group: 'Sign-in' }],
+        }]}
+      />,
+    );
+    await user.click(screen.getByRole('combobox', { name: 'Event' }));
+    const groups = await screen.findAllByRole('group');
+    expect(groups.map((g) => g.textContent)).toEqual(['LeadsEvery lead event', 'Sign-inSigned in']);
+  });
 });

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { validate } from '../../middleware/validate.js';
 import { requires } from '../../middleware/authorize.js';
+import { historyRoute } from './historyRoute.js';
 import { ok, created, noContent } from '../../utils/response.js';
 import { idParam, listQuery, toPartial } from '../../shared/schemas/common.js';
 import * as invoices from '../../services/invoice.service.js';
@@ -25,6 +26,8 @@ router.post('/invoices/from-job/:jobId', writeInv, validate({ body: s.invoiceFro
 
 router.get('/invoices/:id', readInv, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await invoices.getInvoice(req.params.id))));
+
+router.get('/invoices/:id/history', ...historyRoute('Invoice', 'invoices:history'));
 
 router.put('/invoices/:id', writeInv, validate({ params: idParam, body: s.invoiceUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await invoices.updateInvoice(req.params.id, req.body))));

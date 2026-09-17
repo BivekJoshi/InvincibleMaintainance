@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { email, optionalPhone } from './common.js';
+import { email, listQuery, optionalPhone } from './common.js';
 import { ROLES } from '../enums.js';
 
 const password = z
@@ -25,16 +25,29 @@ export const changePasswordSchema = z.object({
   password,
 });
 
+/**
+ * A staff account. The admin screen sends no password: the person gets an email to choose
+ * one. `password` stays accepted here for scripts and tests.
+ */
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email,
   phone: optionalPhone,
-  password,
+  password: password.optional(),
   role: z.enum(ROLES),
   isActive: z.coerce.boolean().default(true),
   avatarId: z.string().optional(),
 });
 
-export const updateUserSchema = createUserSchema.partial().omit({ password: true }).extend({
-  password: password.optional(),
+/** Admins never set a password on an existing account — they send the reset link. */
+export const updateUserSchema = createUserSchema.omit({ password: true }).partial().extend({
+  isActive: z.boolean().optional(),
+  password: z.any().refine((v) => v === undefined, 'Admins do not set passwords. Send a reset link instead.'),
+});
+
+/** GET /admin/users */
+export const userListQuery = listQuery.pick({ page: true, limit: true, q: true }).extend({
+  sort: z.enum(['name', '-name', 'email', '-email', 'role', '-role', 'lastLoginAt', '-lastLoginAt', 'createdAt', '-createdAt']).optional(),
+  role: z.enum(ROLES).optional(),
+  isActive: z.enum(['true', 'false']).optional(),
 });

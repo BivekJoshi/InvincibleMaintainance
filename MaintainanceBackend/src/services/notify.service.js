@@ -92,13 +92,51 @@ function mailer() {
 
 // ── Templates ───────────────────────────────────────────────────────────────
 
+/** `{{name}}`, `{{ quotation.number }}` — a dotted path into the vars. */
+const PLACEHOLDER = /\{\{\s*([\w.]+)\s*\}\}/g;
+
+const lookup = (vars, key) => key.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), vars);
+
 /** Replaces {{var}} placeholders. Missing variables render as an empty string. */
 export function renderTemplate(body, vars = {}) {
-  return String(body).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, key) => {
-    const value = key.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), vars);
+  return String(body).replace(PLACEHOLDER, (_m, key) => {
+    const value = lookup(vars, key);
     return value == null ? '' : String(value);
   });
 }
+
+/** The placeholder names in a text, in order of first use. */
+export function placeholdersIn(...texts) {
+  const found = new Set();
+  for (const text of texts) {
+    for (const [, key] of String(text ?? '').matchAll(PLACEHOLDER)) found.add(key);
+  }
+  return [...found];
+}
+
+/**
+ * What a template would send with these vars, for the editor's preview: the rendered
+ * subject and body, every placeholder, and the ones the vars leave empty.
+ */
+export function previewTemplate({ subject, body }, vars = {}) {
+  const placeholders = placeholdersIn(subject, body);
+  return {
+    subject: subject ? renderTemplate(subject, vars) : null,
+    body: renderTemplate(body, vars),
+    placeholders,
+    missing: placeholders.filter((key) => {
+      const value = lookup(vars, key);
+      return value == null || value === '';
+    }),
+  };
+}
+
+/** What a MessageLog keeps in place of a secret (a password link's token). */
+export const REDACTED_TEXT = '[redacted]';
+
+const redact = (text, secrets) => (text && secrets.length
+  ? secrets.reduce((out, secret) => out.split(secret).join(REDACTED_TEXT), text)
+  : text);
 
 /**
  * The template for this language, else the English one, else none (the caller's
@@ -118,9 +156,12 @@ export async function loadTemplate(key, channel, locale = 'en') {
  *
  * A message to a customer or a lead passes `locale`: that record's `preferredLocale`.
  * Staff messages stay English (the back office is English — decision D7).
+ * `secrets` are values (a password link's token) sent in the message but replaced by
+ * `[redacted]` in the log — such a message cannot be retried from the log.
+ *
  * @param {{templateKey:string, channel:'sms'|'email'|'inapp', to:string, vars?:object,
  *          locale?:string, userId?:string, related?:{model:string,id:string},
- *          fallbackBody?:string, fallbackSubject?:string}} opts
+ *          secrets?:string[], fallbackBody?:string, fallbackSubject?:string}} opts
  */
 export async function notify(opts) {
   const { templateKey, channel, to, vars = {}, userId, related } = opts;
@@ -142,13 +183,26 @@ export async function notify(opts) {
     });
   }
 
+  // A secret (a password link) is sent but never stored: the log keeps the message without it.
+  const secrets = (opts.secrets ?? []).filter(Boolean);
   const log = await prisma.messageLog.create({
     data: {
-      channel, templateKey, toAddress: to, subject: subject || null, body,
+      channel, templateKey, toAddress: to, subject: redact(subject, secrets) || null, body: redact(body, secrets),
       status: 'queued', relatedModel: related?.model ?? null, relatedId: related?.id ?? null,
     },
   });
+  return deliver(log, { subject, body });
+}
 
+/**
+ * Sends one logged message and records the outcome on its row. `content` is what goes
+ * out when it differs from what the log kept (a redacted secret). Never throws.
+ *
+ * @param {{ id: string, channel: string, toAddress: string, templateKey?: string|null }} log
+ * @param {{ subject?: string|null, body: string }} content
+ */
+export async function deliver(log, { subject, body }) {
+  const { channel, toAddress: to, templateKey } = log;
   try {
     let providerId = null;
     let provider = null;
@@ -162,18 +216,16 @@ export async function notify(opts) {
       const info = await t.sendMail({ from: env.mail.from, to, subject: subject || env.appName, text: body });
       providerId = info?.messageId ?? null;
     }
-    await prisma.messageLog.update({
+    return await prisma.messageLog.update({
       where: { id: log.id },
-      data: { status: 'sent', provider, providerId },
+      data: { status: 'sent', provider, providerId, error: null },
     });
-    return log;
   } catch (err) {
     logger.error({ err: err.message, channel, to, templateKey }, 'message delivery failed');
-    await prisma.messageLog.update({
+    return prisma.messageLog.update({
       where: { id: log.id },
       data: { status: 'failed', error: String(err.message).slice(0, 900) },
     });
-    return log;
   }
 }
 

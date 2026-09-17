@@ -6,10 +6,13 @@ import { ok, created, noContent } from '../../utils/response.js';
 import { idParam, listQuery, reorderBody, toPartial } from '../../shared/schemas/common.js';
 import * as cms from '../../services/cms.service.js';
 import * as schemas from '../../shared/schemas/cms.js';
+import { historyRoute } from './historyRoute.js';
 
 /**
- * Mounts the standard 8 endpoints for a CRUD service. Every CMS resource in the
- * system is registered through this function — there is no second pattern.
+ * Mounts the standard endpoints for a CRUD service — the eight the generic screens call,
+ * plus the record's history (`GET /:id/history`, for `<capability>:read` alone: a role that
+ * reads a resource through `readAlso` reads its records, not their trail). Every CMS
+ * resource in the system is registered through this function — there is no second pattern.
  */
 function mountResource(router, path, service, schema, { capability = 'cms', readAlso = [], extra } = {}) {
   const read = requires(`${capability}:read`, ...readAlso);
@@ -26,6 +29,9 @@ function mountResource(router, path, service, schema, { capability = 'cms', read
 
   router.get(`/${path}/:id`, read, validate({ params: idParam }),
     asyncHandler(async (req, res) => ok(res, await service.get(req.params.id))));
+
+  const modelName = service.model.charAt(0).toUpperCase() + service.model.slice(1);
+  router.get(`/${path}/:id/history`, ...historyRoute(modelName, `${capability}:read`));
 
   router.post(`/${path}`, write, validate({ body: schema }),
     asyncHandler(async (req, res) => created(res, await service.create(req.body))));

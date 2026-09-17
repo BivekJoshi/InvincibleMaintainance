@@ -9,6 +9,7 @@ import { addDays } from '../utils/dates.js';
 import { notify } from './notify.service.js';
 import { recordEvent } from './audit.service.js';
 import { setContext } from '../lib/requestContext.js';
+import { webUrl } from '../utils/links.js';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -120,32 +121,58 @@ export async function logout(token) {
   });
 }
 
-export async function logoutAll(userId) {
-  await prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+/** Ends every session of a user; returns how many were live. Pass a transaction client to join one. */
+export async function logoutAll(userId, tx = prisma) {
+  const { count } = await tx.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+  return count;
+}
+
+const RESET_MINUTES = 60;
+const INVITE_HOURS = 72;
+
+/**
+ * Creates a single-use password link and emails it. The raw token exists only in the
+ * email: the database keeps its hash, and the MessageLog keeps the message with the
+ * token redacted — so nobody, an admin included, can read a working link back.
+ *
+ * `invite` is a new account's first password (72 hours); otherwise a reset (1 hour).
+ * `by: 'admin'` marks a link an admin sent; the actor is that admin.
+ *
+ * @param {{ id: string, name: string, email: string }} user
+ * @param {{ invite?: boolean, by?: 'admin' }} [opts]
+ */
+export async function issuePasswordLink(user, { invite = false, by } = {}) {
+  const raw = crypto.randomBytes(32).toString('base64url');
+  const minutes = invite ? INVITE_HOURS * 60 : RESET_MINUTES;
+  await prisma.$transaction(async (tx) => {
+    await tx.passwordReset.create({
+      data: { userId: user.id, tokenHash: hashToken(raw), expiresAt: new Date(Date.now() + minutes * 60000) },
+    });
+    const meta = { ...(by ? { by } : {}), ...(invite ? { purpose: 'invite' } : {}) };
+    await recordEvent('auth.password_reset_requested', { model: 'User', recordId: user.id, meta }, tx);
+  });
+  const link = webUrl(`/reset-password?token=${raw}`);
+  await notify({
+    templateKey: invite ? 'account_invite' : 'password_reset',
+    channel: 'email',
+    to: user.email,
+    vars: { name: user.name, link, appName: env.appName, hours: invite ? INVITE_HOURS : 1 },
+    related: { model: 'User', id: user.id },
+    secrets: [raw],
+    fallbackSubject: invite ? `Your ${env.appName} account` : `Reset your ${env.appName} password`,
+    fallbackBody: invite
+      ? 'Hi {{name}},\n\nAn account has been created for you on {{appName}}. Choose your password using this link '
+        + '(valid for {{hours}} hours):\n{{link}}\n\nIf you were not expecting this, ignore this email.'
+      : 'Hi {{name}},\n\nReset your password using this link (valid for 1 hour):\n{{link}}\n\n'
+        + 'If you did not request this, ignore this email.',
+  });
 }
 
 export async function forgotPassword(email) {
   const user = await prisma.user.findFirst({ where: { email: email.toLowerCase(), deletedAt: null, isActive: true } });
   // Always report success — never reveal whether the address exists.
   if (!user) return;
-
-  const raw = crypto.randomBytes(32).toString('base64url');
-  await prisma.$transaction(async (tx) => {
-    await tx.passwordReset.create({
-      data: { userId: user.id, tokenHash: hashToken(raw), expiresAt: new Date(Date.now() + 60 * 60000) },
-    });
-    await recordEvent('auth.password_reset_requested', { model: 'User', recordId: user.id }, tx);
-  });
-  await notify({
-    templateKey: 'password_reset',
-    channel: 'email',
-    to: user.email,
-    vars: { name: user.name, link: `${env.appUrl}/reset-password?token=${raw}`, appName: env.appName },
-    fallbackSubject: `Reset your ${env.appName} password`,
-    fallbackBody:
-      `Hi {{name}},\n\nReset your password using this link (valid for 1 hour):\n{{link}}\n\n` +
-      `If you did not request this, ignore this email.`,
-  });
+  await issuePasswordLink(user);
 }
 
 export async function resetPassword({ token, password }) {
