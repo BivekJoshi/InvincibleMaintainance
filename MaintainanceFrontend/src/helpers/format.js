@@ -124,6 +124,14 @@ export function relativeTime(iso) {
 }
 
 /** "1h 42m left" / "2h 10m overdue" for the SLA chip. */
+/** A length of time worked: 95 → "1 h 35 min", 0 → "0 min". */
+export function formatMinutes(minutes) {
+  if (!minutes) return '0 min';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return [h ? `${h} h` : null, m ? `${m} min` : null].filter(Boolean).join(' ');
+}
+
 export function formatCountdown(minutes) {
   if (minutes == null) return '—';
   const overdue = minutes < 0;

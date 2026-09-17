@@ -15,9 +15,16 @@ import { contentBlocks } from './resources/contentBlocks';
 import { posts } from './resources/posts';
 import { postCategories } from './resources/postCategories';
 import { pages } from './resources/pages';
+import { technicians } from './resources/technicians';
+import { jobTemplates } from './resources/jobTemplates';
+import { materials } from './resources/materials';
+import { materialCategories } from './resources/materialCategories';
+import { suppliers } from './resources/suppliers';
 
 /**
- * Every CMS resource the back office manages through the generic pages
+ * Every registry resource — the CMS, the rate card and, since Phase H1, the operations lists
+ * (technicians, job templates, materials, material categories, suppliers) — the back office manages
+ * through the generic pages
  * (`pages/admin/ResourceListPage`, `ResourceEditPage`). One file per resource under
  * `resources/`; register it here and give it a nav item in `adminNav.js`.
  *
@@ -62,8 +69,12 @@ import { pages } from './resources/pages';
  * @property {string} [emptyTitle]
  * @property {string} [emptyDescription]
  *
+ * @property {string} [activeField] the boolean the list's switch and Hide/Show act on (default `isActive`); the
+ *                                    API's `PATCH /:id/toggle` flips the same column (technicians: `isAvailable`)
+ *
  * Field specs may also say `lockedOnEdit: true`: editable on a new record, read-only once saved
- * (a content block's key, which the site looks blocks up by).
+ * (a content block's key, which the site looks blocks up by), and `capability`: shown only to a user
+ * holding it (a technician's labour rate, which the API hides from everyone else).
  *
  * @typedef {{ pageSlugs: string[] }} SchemaContext
  *
@@ -103,6 +114,7 @@ export const RESOURCES = Object.fromEntries(
   [
     serviceCategories, services, heroSlides, projects, offers, pricingPlans, testimonials, faqs, galleryImages,
     features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard,
+    technicians, jobTemplates, materials, materialCategories, suppliers,
   ].map((entry) => [entry.resource, entry]),
 );
 
@@ -132,3 +144,6 @@ export const screenPathOf = (entry) => entry.basePath ?? `/admin/content/${entry
 
 /** @returns {ActiveCopy} */
 export const activeCopyOf = (entry) => ({ ...WEBSITE_COPY, ...entry.activeCopy });
+
+/** The column the list's on/off switch reads. */
+export const activeFieldOf = (entry) => entry.activeField ?? 'isActive';

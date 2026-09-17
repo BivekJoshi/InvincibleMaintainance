@@ -18,6 +18,7 @@ export const MESSAGE_KEYS = {
   quotation_rejected_staff: { audience: 'staff', when: 'A customer declined — to sales.' },
   survey_returned: { audience: 'staff', when: 'The office sends a survey back — to the surveyor.' },
   job_assigned: { audience: 'staff', when: 'A job is assigned — to each technician.' },
+  job_scheduled: { audience: 'customer', when: 'Dispatch puts the job on the calendar, or moves it.' },
   job_en_route: { audience: 'customer', when: 'The technician sets off.' },
   job_completed: { audience: 'customer', when: 'The job is finished.' },
   invoice_sent: { audience: 'customer', when: 'An invoice is sent — with the link to view it.' },
@@ -57,6 +58,7 @@ export const SAMPLE_VARS = {
   title: 'New quotation to approve',
   body: 'QT-2083-0001 v2 · NPR 45,200',
   hours: '72',
+  time: '10:00–12:00',
   link: 'https://gharjatan.com.np/quotation/abc123',
 };
 

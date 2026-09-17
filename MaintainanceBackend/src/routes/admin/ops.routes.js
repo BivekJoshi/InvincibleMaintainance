@@ -4,15 +4,14 @@ import { validate } from '../../middleware/validate.js';
 import { requires } from '../../middleware/authorize.js';
 import { historyRoute } from './historyRoute.js';
 import { ok, created, noContent } from '../../utils/response.js';
-import { idParam, listQuery, reorderBody, toPartial } from '../../shared/schemas/common.js';
+import { idParam, toPartial } from '../../shared/schemas/common.js';
 import * as jobs from '../../services/job.service.js';
 import * as materials from '../../services/material.service.js';
-import { makeCrud } from '../../services/crud.service.js';
-import { prisma } from '../../lib/prisma.js';
+import * as technicians from '../../services/technician.service.js';
 import * as s from '../../shared/schemas/ops.js';
 import { caseStudySchema } from '../../shared/schemas/cms.js';
 import { publishJobAsCaseStudy } from '../../services/casestudy.service.js';
-import { can } from '../../shared/permissions.js';
+import { mountResource } from './mountResource.js';
 
 const router = Router();
 const readJobs = requires('jobs:read');
@@ -28,9 +27,9 @@ router.get('/jobs', readJobs, validate({ query: s.jobListQuery }), asyncHandler(
 router.get('/dispatch/board', dispatch, validate({ query: s.dispatchQuery }),
   asyncHandler(async (req, res) => ok(res, await jobs.dispatchBoard(req.validatedQuery))));
 
-router.get('/dispatch/unassigned', dispatch, asyncHandler(async (_req, res) => {
-  const { items } = await jobs.listJobs({ unassigned: true, limit: 100 });
-  ok(res, items);
+router.get('/dispatch/unassigned', dispatch, validate({ query: s.unassignedQuery }), asyncHandler(async (req, res) => {
+  const { items, meta } = await jobs.listUnassigned(req.validatedQuery);
+  ok(res, items, meta);
 }));
 
 router.post('/jobs', writeJobs, validate({ body: s.jobSchema }),
@@ -54,6 +53,13 @@ router.put('/jobs/:id', writeJobs, validate({ params: idParam, body: s.jobUpdate
 router.patch('/jobs/:id/status', writeJobs, validate({ params: idParam, body: s.jobStatusSchema }),
   asyncHandler(async (req, res) => ok(res, await jobs.changeStatus(req.params.id, req.body, req.user.id))));
 
+// The board's drop and its Schedule dialog: window + (optionally) people, in one step.
+router.post('/jobs/:id/schedule', dispatch, validate({ params: idParam, body: s.jobScheduleSchema }),
+  asyncHandler(async (req, res) => {
+    const { job, warnings } = await jobs.scheduleJob(req.params.id, req.body, req.user.id);
+    ok(res, job, { warnings });
+  }));
+
 router.post('/jobs/:id/assign', dispatch, validate({ params: idParam, body: s.jobAssignSchema }),
   asyncHandler(async (req, res) => ok(res, await jobs.assignTechnicians(req.params.id, req.body, req.user.id))));
 
@@ -65,116 +71,67 @@ router.post('/jobs/:id/verify', writeJobs, validate({ params: idParam }),
 
 router.post('/jobs/:id/tasks', writeJobs, validate({ params: idParam, body: s.jobTaskSchema }),
   asyncHandler(async (req, res) => created(res, await jobs.addTask(req.params.id, req.body))));
-router.patch('/jobs/:id/tasks/:taskId', writeJobs, validate({ body: s.jobTaskUpdateSchema }),
+router.patch('/jobs/:id/tasks/:taskId', writeJobs, validate({ params: s.jobTaskParams, body: s.jobTaskUpdateSchema }),
   asyncHandler(async (req, res) => ok(res, await jobs.updateTask(req.params.id, req.params.taskId, req.body))));
-router.delete('/jobs/:id/tasks/:taskId', writeJobs,
+router.delete('/jobs/:id/tasks/:taskId', writeJobs, validate({ params: s.jobTaskParams }),
   asyncHandler(async (req, res) => { await jobs.deleteTask(req.params.id, req.params.taskId); noContent(res); }));
 
 router.post('/jobs/:id/photos', writeJobs, validate({ params: idParam, body: s.jobPhotoSchema }),
   asyncHandler(async (req, res) => created(res, await jobs.addPhoto(req.params.id, req.body))));
-router.delete('/jobs/:id/photos/:photoId', writeJobs,
+router.delete('/jobs/:id/photos/:photoId', writeJobs, validate({ params: s.jobPhotoParams }),
   asyncHandler(async (req, res) => { await jobs.deletePhoto(req.params.id, req.params.photoId); noContent(res); }));
 
 router.post('/jobs/:id/materials', writeJobs, validate({ params: idParam, body: s.jobMaterialSchema }),
   asyncHandler(async (req, res) => created(res, await jobs.addMaterial(req.params.id, req.body, req.user.id))));
-router.delete('/jobs/:id/materials/:jobMaterialId', writeJobs,
+router.delete('/jobs/:id/materials/:jobMaterialId', writeJobs, validate({ params: s.jobMaterialParams }),
   asyncHandler(async (req, res) => { await jobs.removeMaterial(req.params.id, req.params.jobMaterialId, req.user.id); noContent(res); }));
 
 router.post('/jobs/:id/time-logs', writeJobs, validate({ params: idParam, body: s.timeLogCreateSchema }),
   asyncHandler(async (req, res) => created(res, await jobs.addTimeLog(req.params.id, req.body))));
-router.delete('/jobs/:id/time-logs/:logId', writeJobs,
+router.delete('/jobs/:id/time-logs/:logId', writeJobs, validate({ params: s.jobTimeLogParams }),
   asyncHandler(async (req, res) => { await jobs.removeTimeLog(req.params.id, req.params.logId); noContent(res); }));
 
 router.delete('/jobs/:id', writeJobs, validate({ params: idParam }),
   asyncHandler(async (req, res) => { await jobs.deleteJob(req.params.id); noContent(res); }));
 
-// ── technicians
-const readTech = requires('technicians:read');
-const writeTech = requires('technicians:write');
-
-// `role` is selected so callers can tell a surveyor from a repair technician —
-// the Technician row itself carries no role.
-router.get('/technicians', readTech, validate({ query: s.technicianListQuery }),
-  asyncHandler(async (req, res) => ok(res, await prisma.technician.findMany({
-    where: {
-      deletedAt: null,
-      ...(req.validatedQuery?.role ? { user: { role: req.validatedQuery.role } } : {}),
-      ...(req.validatedQuery?.available ? { isAvailable: true } : {}),
-    },
-    // No hourlyRate: SALES reads this list to pick a surveyor and has no business
-    // seeing labour cost. Rates stay on the write path, for the roles that set them.
-    select: {
-      id: true, employeeCode: true, skills: true, certifications: true, serviceAreas: true,
-      dailyCapacity: true, rating: true, ratingCount: true, isAvailable: true,
-      user: { select: { id: true, name: true, email: true, phone: true, role: true, isActive: true } },
-    },
-    orderBy: { employeeCode: 'asc' },
-  }))));
-
-router.get('/technicians/:id', readTech, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await jobs.getTechnician(req.params.id, {
-    withRate: can(req.user.role, 'technicians:write'),
-  }))));
-
-router.post('/technicians', writeTech, validate({ body: s.technicianSchema }),
-  asyncHandler(async (req, res) => created(res, await prisma.technician.create({
-    data: { ...req.body, hourlyRate: req.body.hourlyRate != null ? Math.round(req.body.hourlyRate * 100) : null },
-    include: { user: { select: { id: true, name: true } } },
-  }))));
-
-router.put('/technicians/:id', writeTech, validate({ params: idParam, body: toPartial(s.technicianSchema) }),
-  asyncHandler(async (req, res) => ok(res, await prisma.technician.update({
-    where: { id: req.params.id },
-    data: { ...req.body, ...(req.body.hourlyRate != null ? { hourlyRate: Math.round(req.body.hourlyRate * 100) } : {}) },
-    include: { user: { select: { id: true, name: true } } },
-  }))));
-
-router.delete('/technicians/:id', writeTech, validate({ params: idParam }),
-  asyncHandler(async (req, res) => {
-    await prisma.technician.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
-    noContent(res);
-  }));
+// ── technicians (routes/admin/mountResource.js; the switch is availability)
+mountResource(router, 'technicians', technicians, s.technicianSchema, {
+  capability: 'technicians',
+  // The trail records rate changes, so it is read by the roles that set the rate.
+  historyCapability: 'technicians:write',
+  query: s.technicianListQuery,
+  // The person a profile belongs to is fixed once it exists.
+  updateSchema: toPartial(s.technicianSchema).omit({ userId: true }),
+  extra: (r, { write }) => {
+    r.get('/technicians/users', write, validate({ query: s.linkableUserQuery }), asyncHandler(async (req, res) => {
+      const { items, meta } = await technicians.linkableUsers(req.validatedQuery);
+      ok(res, items, meta);
+    }));
+    r.get('/technicians/users/:id', write, validate({ params: idParam }),
+      asyncHandler(async (req, res) => ok(res, await technicians.linkableUser(req.params.id))));
+  },
+});
 
 // ── job templates
-const templates = makeCrud({ model: 'jobTemplate', label: 'Job template', searchFields: ['name'], sortable: false, defaultSort: 'name' });
-router.get('/job-templates', readJobs, asyncHandler(async (req, res) => {
-  const { items, meta } = await templates.list(req.query); ok(res, items, meta);
-}));
-router.get('/job-templates/:id', readJobs, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await templates.get(req.params.id))));
-router.post('/job-templates', writeJobs, validate({ body: s.jobTemplateSchema }),
-  asyncHandler(async (req, res) => created(res, await templates.create(req.body))));
-router.put('/job-templates/:id', writeJobs, validate({ params: idParam, body: toPartial(s.jobTemplateSchema) }),
-  asyncHandler(async (req, res) => ok(res, await templates.update(req.params.id, req.body))));
-router.delete('/job-templates/:id', writeJobs, validate({ params: idParam }),
-  asyncHandler(async (req, res) => { await templates.remove(req.params.id); noContent(res); }));
+mountResource(router, 'job-templates', jobs.jobTemplates, s.jobTemplateSchema, { capability: 'jobs' });
 
 // ── materials & stock
+mountResource(router, 'suppliers', materials.suppliers, s.supplierSchema, { capability: 'materials' });
+mountResource(router, 'material-categories', materials.materialCategories, s.materialCategorySchema, { capability: 'materials' });
+mountResource(router, 'materials', materials.materials, s.materialSchema, { capability: 'materials' });
+
 const readMat = requires('materials:read');
 const writeMat = requires('materials:write');
 
-function mountSimple(path, service, schema) {
-  router.get(`/${path}`, readMat, validate({ query: listQuery.passthrough() }),
-    asyncHandler(async (req, res) => { const { items, meta } = await service.list(req.query); ok(res, items, meta); }));
-  router.post(`/${path}`, writeMat, validate({ body: schema }),
-    asyncHandler(async (req, res) => created(res, await service.create(req.body))));
-  router.get(`/${path}/:id`, readMat, validate({ params: idParam }),
-    asyncHandler(async (req, res) => ok(res, await service.get(req.params.id))));
-  router.put(`/${path}/:id`, writeMat, validate({ params: idParam, body: toPartial(schema) }),
-    asyncHandler(async (req, res) => ok(res, await service.update(req.params.id, req.body))));
-  router.delete(`/${path}/:id`, writeMat, validate({ params: idParam }),
-    asyncHandler(async (req, res) => { await service.remove(req.params.id); noContent(res); }));
-  router.patch(`/${path}/reorder`, writeMat, validate({ body: reorderBody }),
-    asyncHandler(async (req, res) => { await service.reorder(req.body.items); noContent(res); }));
-}
-
-mountSimple('suppliers', materials.suppliers, s.supplierSchema);
-mountSimple('material-categories', materials.materialCategories, s.materialCategorySchema);
-mountSimple('materials', materials.materials, s.materialSchema);
-
-router.get('/stock', readMat, asyncHandler(async (req, res) => ok(res, await materials.stockReport(req.query))));
+router.get('/stock', readMat, validate({ query: s.stockQuery }), asyncHandler(async (req, res) => {
+  const { items, meta } = await materials.stockReport(req.validatedQuery);
+  ok(res, items, meta);
+}));
 router.get('/stock/low', readMat, asyncHandler(async (_req, res) => ok(res, await materials.lowStock())));
-router.get('/stock/movements', readMat, asyncHandler(async (req, res) => ok(res, await materials.listMovements(req.query))));
+router.get('/stock/movements', readMat, validate({ query: s.stockMovementListQuery }), asyncHandler(async (req, res) => {
+  const { items, meta } = await materials.listMovements(req.validatedQuery);
+  ok(res, items, meta);
+}));
 router.post('/stock/movements', writeMat, validate({ body: s.stockMovementSchema }),
   asyncHandler(async (req, res) => created(res, await materials.createMovement(req.body, req.user.id))));
 

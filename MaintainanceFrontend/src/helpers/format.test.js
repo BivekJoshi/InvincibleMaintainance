@@ -67,3 +67,14 @@ describe('Kathmandu time (+05:45) for date and time inputs', () => {
     expect(fromKathmanduParts('')).toBeNull();
   });
 });
+
+describe('formatMinutes', () => {
+  it('reads as hours and minutes', async () => {
+    const { formatMinutes } = await import('@/helpers/format');
+    expect(formatMinutes(95)).toBe('1 h 35 min');
+    expect(formatMinutes(120)).toBe('2 h');
+    expect(formatMinutes(45)).toBe('45 min');
+    expect(formatMinutes(0)).toBe('0 min');
+    expect(formatMinutes(null)).toBe('0 min');
+  });
+});

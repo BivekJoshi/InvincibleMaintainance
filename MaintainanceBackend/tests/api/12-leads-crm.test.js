@@ -84,7 +84,10 @@ describe('the service picker', () => {
     expectStatus(await sales.get(`/admin/services/${rows[0].id}`), 200);
     expectStatus(await sales.put(`/admin/services/${rows[0].id}`).send({ name: 'Nope' }), 403);
     expectStatus(await sales.get('/admin/faqs'), 403);
-    expectStatus(await dispatcher.get('/admin/services'), 403);
+    // Since H1 a dispatcher reads the catalogue too (a job template belongs to a service), and changes nothing.
+    expectStatus(await dispatcher.get('/admin/services'), 200);
+    expectStatus(await dispatcher.put(`/admin/services/${rows[0].id}`).send({ name: 'Nope' }), 403);
+    expectStatus(await dispatcher.get(`/admin/services/${rows[0].id}/history`), 403);
   });
 });
 

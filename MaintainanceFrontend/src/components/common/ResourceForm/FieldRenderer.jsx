@@ -18,6 +18,7 @@ import { GroupField } from './fields/GroupField';
 import { WeekdaysField } from './fields/WeekdaysField';
 import { ObjectListField } from './fields/ObjectListField';
 import { LineItemsField } from './fields/LineItemsField';
+import { ChecklistField } from './fields/ChecklistField';
 
 /**
  * Field type → component. `markdown` is an alias of `prose`: the public site renders
@@ -45,6 +46,7 @@ const FIELD_TYPES = {
   weekdays: WeekdaysField,
   objectList: ObjectListField,
   lineItems: LineItemsField,
+  checklist: ChecklistField,
 };
 
 /** A safe DOM id for a field, from the form's `useId()` prefix and the field name. */

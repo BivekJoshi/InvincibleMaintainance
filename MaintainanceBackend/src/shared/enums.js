@@ -105,6 +105,7 @@ export const AUDIT_EVENTS = Object.freeze({
   JOB_CREATED: 'job.created',
   JOB_STATUS_CHANGED: 'job.status_changed',
   JOB_ASSIGNED: 'job.assigned',
+  JOB_SCHEDULED: 'job.scheduled',
   JOB_COMPLETED: 'job.completed',
   JOB_VERIFIED: 'job.verified',
 

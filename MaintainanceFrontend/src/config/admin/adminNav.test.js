@@ -59,7 +59,8 @@ describe('admin nav', () => {
     const nav = navOf('SALES');
     expect(Object.keys(nav)).toEqual(['Overview', 'Sales', 'Operations', 'Aftercare']);
     expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations', 'Rate card']);
-    expect(nav.Operations).toEqual(['Jobs']);
+    // SALES reads jobs, templates and technicians (to pick a surveyor); dispatch and stock are not theirs.
+    expect(nav.Operations).toEqual(['Jobs', 'Technicians', 'Job templates']);
     expect(landingPathFor('SALES')).toBe('/admin');
     expect(contentHomeFor('SALES')).toBe('/admin');
   });
@@ -69,7 +70,21 @@ describe('admin nav', () => {
     expect(sales.find((i) => i.label === 'Customers').soon).toBeFalsy();
     expect(sales.find((i) => i.label === 'Leads').soon).toBeFalsy();
     const ops = navForRole('SALES').find((g) => g.key === 'operations').items;
-    expect(ops.find((i) => i.label === 'Jobs').soon).toBe(true);
+    expect(ops.find((i) => i.label === 'Jobs').soon).toBeFalsy();
+    const finance = navForRole('ADMIN').find((g) => g.key === 'finance').items;
+    expect(finance.find((i) => i.label === 'Invoices').soon).toBe(true);
+  });
+
+  it('gives the dispatcher the whole of Operations (Phase H1)', () => {
+    const nav = navOf('DISPATCHER');
+    expect(nav.Operations).toEqual([
+      'Jobs', 'Dispatch board', 'Technicians', 'Job templates', 'Stock', 'Materials', 'Material categories', 'Suppliers',
+    ]);
+    expect(navOf('ACCOUNTANT').Operations).toEqual(['Jobs', 'Job templates']);
+    expect(breadcrumbsFor('/admin/jobs/cl1')).toEqual([{ label: 'Operations' }, { label: 'Jobs', to: '/admin/jobs' }, { label: 'Details' }]);
+    expect(breadcrumbsFor('/admin/material-categories/new').at(-2)).toEqual({ label: 'Material categories', to: '/admin/material-categories' });
+    expect(breadcrumbsFor('/admin/materials/cl1').at(-1)).toEqual({ label: 'Edit' });
+    expect(activeNavPath('/admin/dispatch')).toBe('/admin/dispatch');
   });
 
   it('builds the breadcrumb from the path', () => {

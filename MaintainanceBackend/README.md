@@ -34,7 +34,7 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 | `editor@gharjatan.com.np` | EDITOR | CMS + media only |
 | `sales@gharjatan.com.np` | SALES | leads, customers, quotations (prepares and submits them) |
 | `manager@gharjatan.com.np` | MANAGER | everything SALES sees, plus approving quotations |
-| `dispatch@gharjatan.com.np` | DISPATCHER | jobs, technicians, materials |
+| `dispatch@gharjatan.com.np` | DISPATCHER | jobs, the dispatch board, technicians, materials and stock; reads the service catalogue |
 | `accounts@gharjatan.com.np` | ACCOUNTANT | invoices, payments, reports |
 | `hari@gharjatan.com.np` | TECHNICIAN | only jobs assigned to them |
 
@@ -133,8 +133,10 @@ or divides money. VAT is computed once at document level, never per line, so rou
 accumulate. Rupees appear only at the API boundary.
 
 **2. One CRUD factory.** `services/crud.service.js` builds list/get/create/update/delete/
-toggle/restore/reorder for any model; `routes/admin/cms.routes.js` mounts eight endpoints from
-it. Eighteen CMS resources, one pattern — there is no second way to write a CRUD screen.
+toggle/restore/reorder for any model; `routes/admin/mountResource.js` mounts those endpoints plus the
+record's history. The CMS resources (`cms.routes.js`) and, since Phase H1, materials, material
+categories, suppliers, job templates and technicians (`ops.routes.js`, technicians through
+`services/technician.service.js`) are all mounted this way — there is no second way to write a CRUD screen.
 
 **3. Status is the server's decision.** Transitions live in `shared/stateMachines.js` and are
 asserted in the service layer. A client cannot set a job to `COMPLETED`; it calls the complete

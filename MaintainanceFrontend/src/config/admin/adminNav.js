@@ -1,5 +1,5 @@
 import {
-  Blocks, Briefcase, Building2, CalendarDays, ClipboardCheck, Coins, Contact, File, FileText, GalleryHorizontal,
+  Blocks, Boxes, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
   HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, LogIn,
   MessageSquareQuote, MessageSquareText, Newspaper, Package, Receipt, Ruler, ScrollText, Send, Settings, ShieldCheck,
   Sparkles, Tag, Tags, Timer, UserCog, Users, Wallet, Wrench,
@@ -50,9 +50,14 @@ export const ADMIN_NAV = [
     key: 'operations',
     label: 'Operations',
     items: [
-      { to: '/admin/jobs', label: 'Jobs', icon: Briefcase, capability: 'jobs:read', soon: true },
-      { to: '/admin/dispatch', label: 'Dispatch board', icon: CalendarDays, capability: 'jobs:dispatch', soon: true },
-      { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', soon: true },
+      { to: '/admin/jobs', label: 'Jobs', icon: Briefcase, capability: 'jobs:read' },
+      { to: '/admin/dispatch', label: 'Dispatch board', icon: CalendarDays, capability: 'jobs:dispatch', editLabel: 'Board' },
+      { to: '/admin/technicians', label: 'Technicians', icon: HardHat, capability: 'technicians:read', editLabel: 'Edit' },
+      { to: '/admin/job-templates', label: 'Job templates', icon: ClipboardList, capability: 'jobs:read', editLabel: 'Edit' },
+      { to: '/admin/stock', label: 'Stock', icon: Boxes, capability: 'materials:read' },
+      { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', editLabel: 'Edit' },
+      { to: '/admin/material-categories', label: 'Material categories', icon: FolderTree, capability: 'materials:read', editLabel: 'Edit' },
+      { to: '/admin/suppliers', label: 'Suppliers', icon: Truck, capability: 'materials:read', editLabel: 'Edit' },
     ],
   },
   {

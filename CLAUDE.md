@@ -54,9 +54,11 @@ split by route group: `(site)` public, `(admin)` staff, `(tech)` technician PWA.
   the controller (decision D5, 2026-09-14): it takes the validated request, calls a service and
   shapes the response. Route files never call Prisma directly; business logic stays in services.
   Raw Prisma calls still in some routers move into services when each router is next touched.
-  *Progress (Phase G, 2026-09-17):* prisma-free — `platform`, `cms`, `crm`, `finance`, `aftercare`,
-  `surveys`, `auth`, `public`. Still calling Prisma — `admin/ops.routes.js` (technicians) and
-  `tech.routes.js` (sync), both for Phase H. A record's history route is `routes/admin/historyRoute.js`.
+  *Progress (Phase H1, 2026-09-17):* prisma-free — `platform`, `cms`, `crm`, `ops` (technicians moved to
+  `services/technician.service.js`), `finance`, `aftercare`, `surveys`, `auth`, `public`. Still calling
+  Prisma — `tech.routes.js` (sync), for Phase H2. A record's history route is `routes/admin/historyRoute.js`;
+  every registry resource (content, materials, job templates, technicians) is mounted by
+  `routes/admin/mountResource.js`.
 - Every route: `validate(schema)` → `authenticate` → `authorize(...roles)` → controller.
 - Errors: `throw new AppError(status, code, message)`. One error middleware serializes them.
 - Responses: `{ data, meta }` on success, `{ error: { code, message, details } }` on failure.
@@ -90,8 +92,8 @@ split by route group: `(site)` public, `(admin)` staff, `(tech)` technician PWA.
 - Forms: react-hook-form + `zodResolver`, using the schemas mirrored from the backend.
 
 **Backend** (`MaintainanceBackend`) — see its README for the full picture. Three rules matter
-most: money is integer paisa and only `utils/money.js` does arithmetic on it; every CMS
-resource is mounted through the CRUD factory rather than hand-written; status transitions are
+most: money is integer paisa and only `utils/money.js` does arithmetic on it; every registry
+resource (CMS and, since H1, the operations lists) is mounted through `routes/admin/mountResource.js` rather than hand-written; status transitions are
 asserted server-side from `shared/stateMachines.js`.
 
 **Database**
@@ -114,7 +116,7 @@ npm test               # vitest
 cd MaintainanceFrontend
 npm run dev            # Vite on :5400
 npm test               # vitest (jsdom)
-npm run test:e2e       # playwright: the quotation loop end to end (starts its own API :4010 + Vite :5410)
+npm run test:e2e       # playwright: the quotation loop and the dispatch walk-through (starts its own API :4010 + Vite :5410)
 ```
 
 Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password123`).

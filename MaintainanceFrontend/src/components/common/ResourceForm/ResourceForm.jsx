@@ -46,7 +46,7 @@ const LEAVE = {
  *
  * Field types: text, textarea, prose (alias markdown), number, money, switch,
  * select/enum, relation, date, datetime, slug, stringList, keyValue, media,
- * mediaList, weekdays, objectList, lineItems, and `group` for sections. See `FieldRenderer.jsx`.
+ * mediaList, weekdays, objectList, lineItems, checklist, and `group` for sections. See `FieldRenderer.jsx`.
  *
  * @param {object} props
  * @param {import('zod').ZodTypeAny} props.schema          validates the form values (money in rupees)

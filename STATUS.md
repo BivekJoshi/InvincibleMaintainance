@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-17 (Phase G). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-17 (Phase H1). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -13,8 +13,8 @@ Updated 2026-09-17 (Phase G). **Current build order: [`docs/ADMIN-PLAN.md`](docs
 | 3 Public site | Storefront: search, catalogue, service pages, pricing, estimator, online booking, SEO; blog and generic pages (v2 D2) | ✅ |
 | 4 Lead CRM + SLA | Capture, spam defence, SLA engine, board, pipeline, notifications, export | ✅ backend · ✅ admin UI (v2 E) |
 | 5 Customers & quotes | Customers, sites, rate card, quotations, public approval | ✅ backend · customers, sites and rate card UI (v2 D1, E) · quotation approval UI in F |
-| 6 Jobs & dispatch | Work orders, templates, assignment, dispatch board, technician flow, offline sync | ✅ backend · `/tech` today screen built |
-| 7 Materials | Catalog, derived stock, issue-to-job, job costing | ✅ backend · UI pending |
+| 6 Jobs & dispatch | Work orders, templates, assignment, dispatch board, technician flow, offline sync | ✅ backend · ✅ admin UI (v2 H1) · `/tech` today screen built (field gaps: H2) |
+| 7 Materials | Catalog, derived stock, issue-to-job, job costing | ✅ backend · ✅ admin UI (v2 H1) |
 | 8 Finance | Invoices from actual consumption, payments, VAT, expenses, aging | ✅ backend · UI pending |
 | 9 Aftercare | Warranty auto-creation, claims, AMC contracts + auto-scheduled visits, reminders | ✅ backend · public pages built |
 | 10 Reports | Lead source, funnel, SLA compliance, margin, technician, warranty, dashboards | ✅ backend · dashboard built |
@@ -26,6 +26,7 @@ Updated 2026-09-17 (Phase G). **Current build order: [`docs/ADMIN-PLAN.md`](docs
 | **v2 · D1 Services, rate card, media & home page** | Registry screens for service categories (icon picker, Nepali name), services (category/type/featured filters, price range in rupees, unit, warranty, image, SEO, Nepali name/card text/page text, View on site) and hero slides (CTA link checked against the site's routes); the rate card as a registry entry under Sales at `/admin/rate-card` (`basePath`, quotations:read/write, read-only for ACCOUNTANT, "In use"/Retire); bespoke home composer (`/admin/content/home`: drag or Move up/down, visibility, item limit, Save/Discard, empty-section flag) and media library (`/admin/content/media`: folder tree, search, drag-and-drop upload with required alt, dimensions and WebP variants, copy URL, alt/caption/folder edit, soft delete, Delete forever for ADMIN). API: the four missing rate-card endpoints, upper-case codes; service excerpt 40–200 and the price range checked on partial updates; home `limit` 1–50; non-empty media alt; validated folders, subfolders block a folder delete. Kit fixes: clean form after a save, toasts no longer close sheets | ✅ 2026-09-16 |
 | **v2 · E Leads & CRM** | **Leads** open on My leads with one-click All leads; filters (status, priority, source, service, owner incl. Unassigned, response state, requested visit, date), URL-saved views (Breached, Unassigned, Bookings this week), New lead sheet, bulk Assign in one request, Export filtered or selected. **Pipeline board** at `/admin/leads/board`: drag or "Move to" only where the state machine allows, LOST asks why, refused moves go back with a toast. **Lead detail**: edit, change status, assign, delete, typed activity log with the response result, duplicates with a merge preview, convert with an inspection or without a visit, a History tab. **Customers**: list (sites, open jobs, balance for finance), new, profile, sites with one primary and "use map pin", timeline, quotations / jobs / invoices / warranties / AMC tabs by role, statement, History. **Safe matching (D8)**: a shared phone makes staff choose same or different person; an email moves onto an existing customer only when ticked (`customer.email_confirmed`); emails stored lower-case; the contact form and booking take an optional email. **Language (D7)**: `preferredLocale` on leads and customers (migration `contact_preferred_locale`), captured from the site, copied on convert, used by every customer SMS and email with an English fallback. API: `assignedToId=me\|none`, `requestedVisit`, `bulk-assign`, `assignees`, `customer-matches`, lead and customer `history` (`leads:history` / `customers:history`), `lead.activity_logged`, `/admin/...` notification links and web-origin email links, `services:read` on the service list. Shell: Pipeline and Customers in the nav, a breached-leads badge, one 60 s poll for the badges and the dashboard | ✅ 2026-09-16 |
 | **v2 · G Audit, logs & platform screens** | **Record history everywhere:** `GET …/:id/history` for every CMS resource (through the CRUD factory), the rate card, jobs (`jobs:history`, DISPATCHER), invoices (`invoices:history`, ACCOUNTANT) and users; every registry edit page has a History tab. **Users** (`/admin/platform/users`): create with an emailed 72-hour invite (admins never set or see passwords), edit, switch off (signs them out everywhere; not yourself), send the normal reset link, unlock, sessions with "sign out everywhere", a technician profile for field roles; a read-only **roles & permissions** matrix. **Login activity**: every `auth.*` event with ip and browser, and the accounts locked or failing now, with Unlock. **Audit log**: filters (event groups, record type, staff, done by, record id, request id, date), a nested before/after diff per row, "everything from this request", links to the record. **Messages**: the delivery log with masked addresses, errors, the record it was about and Send again (audited); **templates** by key with EN · NE × SMS · Email versions, a live preview of unsaved text and an SMS part counter (Devanagari = Unicode, 70 a part). Public **`/reset-password`** page; reset links use the web origin; one-time links are redacted in the message log. `platform.routes.js` is Prisma-free (`user`, `message`, `notification` services). | ✅ 2026-09-17 |
+| **v2 · H1 Operations back office** | **Jobs** (`/admin/jobs`): filters status, type, priority, technician, customer, nobody on it, invoiced, dates; presets Today · Unassigned · On hold · Completed not verified · Not invoiced; New job sheet (site and accepted quotation follow the customer; template; technicians). **Job page**: a state-driven action bar (schedule, assign, on the way, start, hold and cancel with a reason, complete with sign-off — blocked while the checklist is open —, verify, reopen, publish case study, delete) and tabs Overview (tap to call, Maps, where it came from) · Checklist · Photos (by kind) · Materials (issue from stock, reverse) · Time (the office adds time) · Costing (to the paisa) · Events (with location) · History. **Dispatch board** (`/admin/dispatch`): technicians × hours or × a week, drag or **Schedule…** on every card, clashes / full days / unavailable people warned about before anything is saved, the paged unassigned queue, skill and area filters, all in the URL. **Technicians, job templates, materials, material categories, suppliers** as registry entries (availability switch; labour rate and History only for `technicians:write`). **Stock** (`/admin/stock`): balances, low filter and count, movements drawer, Record movement (purchase, return, adjustment, wastage). The dispatcher's **Materials to reorder** card; the job cards and the customer's Jobs tab now link. API: `technician.service.js` (D5 — `ops.routes.js` is Prisma-free) and the shared `mountResource.js`; paginated technicians (with this week's load), `/dispatch/unassigned`, `/stock`, `/stock/movements`; **`POST /admin/jobs/:id/schedule`** (window + people in one step, `job.scheduled`, `job_scheduled` SMS in the customer's language, warnings in `meta`); the board's new shape; Kathmandu-day `from`/`to` and `invoiced=false` on jobs; per-line material cost; toggle/restore/history for the ops resources; `stockLow`; DISPATCHER reads the service catalogue; a manual issue-to-job is refused. Kit: the `checklist` field, registry `activeField`, field `capability`. Second Playwright spec: the dispatcher's day. | ✅ 2026-09-17 |
 | **v2 · F2 Quotation screens & the first end-to-end test** | **Quotations list** under the API's stage queues (Drafts · Needs approval · Ready to send · With customer · Customer asked for changes · Won · Declined/Expired · All): an approver opens on Needs approval and sees its count, a row's menu offers only what its state allows. **Builder** rebuilt on `ResourceForm` with a new **`lineItems`** field: read-only unless DRAFT, a state-driven action bar (Submit · Approve · Send back · Pull back · Send · Revise · Convert to job) with the reason a button is disabled, the customer's change message and what a revision answers, an auto-approved badge, the send panel (link, Copy, Open, each SMS/email with its delivery state), the version switcher, the trail and a **History** tab (`quotations:history`). **Customer page**: Accept · Ask for changes · Decline, each with one confirm step (Accept repeats the total, a change request takes 5–1000 characters), the replaced and expired notices (with a call button), every word in one content object for Phase J1, checked at 360px. **Dashboard** gains the four F1 counts, each linking to its queue. **First Playwright test** (`e2e/quotation-flow.spec.js`) drives the whole loop in a browser and asserts the CRM, the job and the notifications over the API, plus a CI job. API: the detail now carries the `survey`, the customer `messages` and `makerChecker`; new `GET /admin/quotations/:id/history`; new setting `quotation.validDays` (15) so a quotation built from a survey can be submitted as it is. Fixes: the booking wizard no longer widens the page on a phone. | ✅ 2026-09-17 |
 | **v2 · F1 Quotation approval (backend)** | **Internal approval:** new **MANAGER** role (SALES + `quotations:approve`); `QuotationStatus` gains PENDING_APPROVAL, OFFICE_APPROVED, CHANGES_REQUESTED and SUPERSEDED (migrations `quotation_approval_enums`, `quotation_approval_fields`); `submit · approve · send-back · pull-back` endpoints, `send` only from OFFICE_APPROVED, no self-approval (`quotation.makerChecker`, 403 `SELF_APPROVAL`), auto-approval below `quotation.autoApproveBelow` (paisa, 0 = off) recorded as the system, every revision approved again. **Customer answer:** the link offers Accept · Ask for changes (message 5–1000) · Decline, with no login, and records IP and user agent; it has its own rate limit and an allowlisted public view (`version`, `status`, `replaced`, `requestedChanges`, `actions`). **Accept** runs one transaction: SENT → APPROVED → CONVERTED, lead WON, one unscheduled DRAFT job with the service's checklist (guarded, so a double tap makes one job). It then notifies, once each, the customer (SMS + email, their language), the salesperson and author, every dispatcher (with the job link) and the approving manager. **Ask for changes** acknowledges the customer by SMS and notifies sales; **revise** supersedes the old version, whose link then points to the new one. `?stage=` queues on the list, a version chain on the detail, customer-timeline answers, four new role-aware dashboard counts, a seeded manager and a demo quotation at every step. | ✅ 2026-09-16 |
 | **v2 · D2 Projects, content, blog & settings** | Registry screens for projects (story, cost band in rupees, client-name consent note, SEO, linked job number read-only, and a **Gallery** tab: add from the library or upload, drag or Move earlier/later, remove), offers (Nepali-ready title, bullets, price range, start/end in Nepal time with a Live / Scheduled / Ended column), pricing plans, testimonials (a moderation queue that opens on "Waiting for approval", Approve / Withdraw for `testimonials:moderate`), gallery, features and list items (by band; list items reorder one list at a time), content blocks (key fixed once saved, bullets, a label + link button), posts (draft / scheduled / published), post categories and pages (reserved addresses refused); the nav gains **Page blocks** and **Blog & pages**. Bespoke **site settings** at `/admin/platform/settings`: a card per group, inputs by setting type, Nepali phone rule, weekday checkboxes, editable badge and counter rows; ADMIN saves only what changed, EDITOR reads. Public **`/blog`**, **`/blog/:slug`** and a catch-all **`/:slug`** page; Blog in the nav once a post is published; CMS links may point at a live page. API: list-item positions count from 1 after a reorder, projects carry their job number, `ogImageId` no longer 500s on projects/pages/posts, Nepali copy on the home page's grouped sections and on posts and pages, `nav.blog` / `nav.pages` in bootstrap, blog and pages in the sitemap, a seeded blog and About page. Fixes: public pages ignore an empty SEO title, one session restore per page load in dev | ✅ 2026-09-16 |
@@ -114,30 +115,71 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A, B, C (C1 + C2), D (D1 + D2), E, F (F1 + F2) and **G** are done — the business flow runs end to end from the
-UI, and an ADMIN can trace any record and any request. Next is **Phase H — operations screens** (jobs, dispatch,
-technicians, materials; `docs/prompts/`), which also moves the last raw Prisma calls (ops technicians, tech sync) into
-services.
+Phases A, B, C (C1 + C2), D (D1 + D2), E, F (F1 + F2), G and **H1** are done — the business flow runs end to end from the
+UI, an ADMIN can trace any record, and a dispatcher runs the day from the board. Next is **Phase H2 — the field app's
+gaps** (photo upload, material logging, job mutations on the offline queue, job history; `docs/prompts/`), which also
+moves the last raw Prisma calls (tech sync, #15) into a service.
 
-Left from G for later phases: job and invoice History tabs (their pages come in H and I — the endpoints exist); the
+Left from H1 for later phases: the costing tab shows labour cost to every role that reads jobs (SALES, ACCOUNTANT), from
+which a rate can be worked out; a checklist cannot be reordered (no endpoint); `casestudy.service` stores
+`costBandMin/Max` as sent although its schema calls them rupees; the quotation page's "Convert to job" toasts the new
+job's number instead of opening it. The **`_test`** database has grown with every run since Phase G's reset — 112
+office accounts now, which pushes the seeded salesperson off the first page of `/admin/leads/assignees` and fails one
+`12-leads-crm` test (below). **`npm run test:api:prepare` needs to be run by a person** (Prisma refuses `migrate reset`
+from an agent); after it, the whole API suite is expected green. The H1 runs also left customers ("ग्राहक E2E …",
+"राम बहादुर …"), jobs, technicians ("Test Tech …"), materials and stock movements there.
+
+Left from G for later phases: the invoice History tab (its page comes in I — the endpoint exists; the job's is built in H1); the
 login-activity summary is paginated over accounts rather than sorted by failures; a job's first assignments are not
 audited row by row (its `job.created` event lists them). The Phase G walk-through left a quotation, a customer
 ("Walk Customer …"), a job and a Nepali `lead_ack` SMS text in the **`_test`** database (the e2e seed resets the
 template), and many throwaway accounts from the API suite.
 
-Left from F for later phases: the "Accepted jobs to schedule" dashboard card and the dispatcher's notification link
-point at `/admin/jobs`, which Phase H builds (the card is marked Soon); a job created by an acceptance is always
+Left from F for later phases: a job created by an acceptance is always
 type REPAIR, because nothing maps a service to a job type; quotation notifications are still sent inside the
 request (defect #14); `/services` scrolls sideways at 360px (a pre-existing storefront bug, not the quotation
 pages). The F1 and F2 walk-throughs left their quotations, customers ("Walk F2 …", Anjali Karki) and jobs in the
 **dev** database.
 
 Left from E for later phases: pages for jobs, invoices, warranties and AMC (the customer tabs say "Soon"); a map picker
-for sites (a pasted pin for now); `?from` / `?to` on lists still use the server's local day rather than Kathmandu's;
+for sites (a pasted pin for now); `?from` / `?to` on lists other than jobs and stock movements still use the server's local
+day rather than Kathmandu's;
 walk-through records in the dev
 database (below).
 
 ## Verification
+
+- **Phase H1 (2026-09-17):** backend unit **163** (unchanged); API 578 → **603** in 15 files —
+  `15-operations-admin.test.js` (25): technicians paged, searched, filtered by role, availability (`'false'`), skill and
+  area in Devanagari, a bad sort refused, the rate never on the list and only to `technicians:write` on a profile, the
+  trail for `technicians:write` only, availability toggle, trash / restore (`cms.restored` audited) / no purge, the person
+  fixed on update, the linkable-people list; scheduling a draft (SCHEDULED, `job.scheduled` with the request id, the
+  Nepali `job_scheduled` SMS with the Kathmandu time), assign + schedule in one step, a double booking and a full day in
+  `meta.warnings`, a bad window / lead / empty crew / SALES / work in progress refused, ON_HOLD back to SCHEDULED with no
+  SMS when asked; the unassigned queue paged, most urgent first; the board's days, hours, lanes, load and warnings; jobs
+  `from`/`to` as Kathmandu days (00:30 NPT), `invoiced=false`; costing to the paisa (12.345 → 1235 paisa, 1.5 × 1235 →
+  1853, 50 min at Rs 333.33 → 27778); toggle / restore / history for materials, suppliers, categories and templates
+  (Devanagari name, rupees → paisa); paged stock with `lowCount`, `lowOnly`, `balance` sort; a manual issue refused; 22 kg
+  issued and named in the movements; the `stockLow` card. `05-ops` now finds stock by code on the paged list;
+  `12-leads-crm` expects a dispatcher to read (not change) the catalogue. **The full API run: 602 of 603 pass** — the
+  one failure is `12-leads-crm › assignees`, caused by the grown `_test` database (see Next), not by this phase; it
+  passed on the reset database this phase started from. Frontend 355 → **409** in 46 files (`OperationsScreens.test.jsx`
+  16, `dispatchBoard.test.js` 19 — the conflict / capacity / unavailable helper, drop windows and crews, Kathmandu days —,
+  `jobActions.test.js` 10 held to `JOB_TRANSITIONS`, mirrors of the job and stock enums, the nav, record links,
+  `formatMinutes`). `npm run lint`: backend clean, frontend 0 errors (25 warnings, unchanged); `npm run build` succeeds
+  and the operations pages are their own chunks; `npm run test:e2e` — **2 passed** (the quotation loop and the new
+  dispatch walk-through), run twice.
+- **Phase H1 walk-through**, scripted with Playwright (`e2e/operations-flow.spec.js`, Chrome, the `_test` database) as
+  dispatch@gharjatan.com.np: a quotation accepted by its link made one DRAFT job; it was **dragged onto Hari's 10:00
+  tomorrow** (ASSIGNED, the Nepali SMS logged), then **moved with the Schedule dialog** to 11:00–13:00; a second job
+  dropped on Hari's 11:00 raised "Schedule … anyway? Hari Technician already has JOB-… 11:00–13:00" and, on Go back,
+  stayed unscheduled; **22 kg of WP-CRYST issued — stock fell by exactly 22**; 90 minutes recorded by hand; **costing**
+  showed labour and materials whose totals equal their lines (materials = 22 × purchase rate); after "Start work",
+  **Complete stayed disabled while a checklist item was open** ("Complete: 1 checklist item is still open."), then
+  completed and **verified**; admin@gharjatan.com.np **published the case study** and landed in the project editor
+  with the draft (not on the site). One bug found and fixed on the way: dragging from the queue scrolled the hours
+  away under the pointer (dnd-kit auto-scroll), so the job landed an hour late — the board now scrolls only at the
+  very edge. The flow's first drag accepts a warning about jobs earlier runs left on Hari's day.
 
 - **Phase G (2026-09-17):** backend unit 153 → **163** (message templates: placeholders, preview, address masking);
   API 547 → **578** (`14-platform-admin.test.js`: history RBAC for CMS, services, projects, jobs, invoices and the

@@ -2,7 +2,7 @@ import { RESOURCES, screenPathOf } from '@/config/admin/resourceRegistry';
 
 /**
  * Where an audit row's record can be opened in the back office, or null when it has no
- * screen (yet — jobs and invoices get theirs in Phases H and I).
+ * screen (yet — invoices get theirs in Phase I).
  *
  * A child row (a lead's note, a project's picture, a record's Nepali copy) links to its
  * parent, found in the row's own snapshot.
@@ -13,6 +13,7 @@ const byModel = {
   Customer: (id) => `/admin/customers/${id}`,
   Quotation: (id) => `/admin/quotations/${id}`,
   SiteSurvey: (id) => `/admin/surveys/${id}`,
+  Job: (id) => `/admin/jobs/${id}`,
   User: (id) => `/admin/platform/users?open=${id}`,
   Setting: () => '/admin/platform/settings',
   HomeSection: () => '/admin/content/home',
@@ -26,6 +27,11 @@ const PARENTS = {
   CustomerSite: ['customerId', 'Customer'],
   QuotationItem: ['quotationId', 'Quotation'],
   ProjectImage: ['projectId', 'Project'],
+  JobAssignment: ['jobId', 'Job'],
+  JobTask: ['jobId', 'Job'],
+  JobPhoto: ['jobId', 'Job'],
+  JobMaterial: ['jobId', 'Job'],
+  TimeLog: ['jobId', 'Job'],
 };
 
 /** `faq` → the registry screen; the Prisma client name is what Translation rows carry. */

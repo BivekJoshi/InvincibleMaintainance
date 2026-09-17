@@ -9,6 +9,7 @@ import {
   LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SurveysPage,
   SurveyReviewPage, QuotationsPage, QuotationBuilderPage, ResourceListPage, ResourceEditPage,
   HomeComposerPage, MediaLibraryPage, ResetPasswordPage,
+  JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
   UsersPage, RolesPage, AuditLogPage, LoginActivityPage, MessageLogsPage, MessageTemplatesPage, MessageTemplateEditPage,
   TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, NotFoundPage,
 } from './routeModules';
@@ -84,6 +85,30 @@ export function AppRoutes() {
               <Route path="/admin/rate-card" element={<ResourceListPage resource="rate-card" />} />
               <Route path="/admin/rate-card/new" element={<ResourceEditPage resource="rate-card" />} />
               <Route path="/admin/rate-card/:id" element={<ResourceEditPage resource="rate-card" />} />
+            </Route>
+            {/* Operations (Phase H1). The registry entries have their own addresses (their basePath). */}
+            <Route element={<RequireAuth capability="jobs:read" />}>
+              <Route path="/admin/jobs" element={<JobsPage />} />
+              <Route path="/admin/jobs/:id" element={<JobDetailPage />} />
+              <Route path="/admin/job-templates" element={<ResourceListPage resource="job-templates" />} />
+              <Route path="/admin/job-templates/new" element={<ResourceEditPage resource="job-templates" />} />
+              <Route path="/admin/job-templates/:id" element={<ResourceEditPage resource="job-templates" />} />
+            </Route>
+            <Route element={<RequireAuth capability="jobs:dispatch" />}>
+              <Route path="/admin/dispatch" element={<DispatchBoardPage />} />
+            </Route>
+            <Route element={<RequireAuth capability="technicians:read" />}>
+              <Route path="/admin/technicians" element={<ResourceListPage resource="technicians" />} />
+              <Route path="/admin/technicians/new" element={<ResourceEditPage resource="technicians" />} />
+              <Route path="/admin/technicians/:id" element={<ResourceEditPage resource="technicians" />} />
+            </Route>
+            <Route element={<RequireAuth capability="materials:read" />}>
+              <Route path="/admin/stock" element={<StockPage />} />
+              {['materials', 'material-categories', 'suppliers'].map((resource) => [
+                <Route key={resource} path={`/admin/${resource}`} element={<ResourceListPage resource={resource} />} />,
+                <Route key={`${resource}-new`} path={`/admin/${resource}/new`} element={<ResourceEditPage resource={resource} />} />,
+                <Route key={`${resource}-id`} path={`/admin/${resource}/:id`} element={<ResourceEditPage resource={resource} />} />,
+              ])}
             </Route>
             {/* CMS resources from config/admin/resourceRegistry.js; each page checks its entry's own capability */}
             <Route element={<RequireAuth capability="cms:read" />}>

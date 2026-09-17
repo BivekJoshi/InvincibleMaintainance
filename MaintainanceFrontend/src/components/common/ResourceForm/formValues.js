@@ -16,7 +16,7 @@ function emptyValue(type) {
     case 'text': case 'textarea': case 'prose': case 'markdown': case 'slug': return '';
     case 'switch': return false;
     case 'relation': return null;
-    case 'stringList': case 'mediaList': case 'weekdays': case 'objectList': case 'lineItems': return [];
+    case 'stringList': case 'mediaList': case 'weekdays': case 'objectList': case 'lineItems': case 'checklist': return [];
     case 'keyValue': return {};
     default: return undefined;
   }

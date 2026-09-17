@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
 import {
   Users, Timer, AlertTriangle, Briefcase, Receipt, ShieldCheck, RefreshCw, TrendingUp,
-  FileCheck2, MessageSquareWarning, Send, Wrench,
+  Boxes, FileCheck2, MessageSquareWarning, Send, Wrench,
 } from 'lucide-react';
+import { ktmDay } from '@/helpers/dispatchBoard';
 import { SHELL_POLL_MS } from '@/config/constants';
 import { useGetDashboardQuery } from '@/api/dashboardApi';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,15 +15,18 @@ import { PageTransition, Stagger, CountUp } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
+/** The jobs list's Today preset: Kathmandu's today, whenever the card is drawn. */
+const todayQuery = () => `from=${ktmDay()}&to=${ktmDay()}`;
+
 /** Card definitions keyed by the API's card names; the API decides which appear. */
 const CARDS = {
   leadsToday: { label: 'Leads today', icon: Users, to: '/admin/leads' },
   leadsOpen: { label: 'Open leads', icon: Users, to: '/admin/leads' },
   slaBreached: { label: 'SLA breached', icon: AlertTriangle, to: '/admin/sla', tone: 'danger' },
   slaAtRisk: { label: 'Response due soon', icon: Timer, to: '/admin/sla', tone: 'warn' },
-  jobsToday: { label: 'Jobs today', icon: Briefcase, to: '/admin/jobs', soon: true },
-  jobsOpen: { label: 'Open jobs', icon: Briefcase, to: '/admin/jobs', soon: true },
-  jobsUnassigned: { label: 'Unassigned jobs', icon: AlertTriangle, to: '/admin/jobs', tone: 'warn', soon: true },
+  jobsToday: { label: 'Jobs today', icon: Briefcase, to: () => `/admin/jobs?${todayQuery()}` },
+  jobsOpen: { label: 'Open jobs', icon: Briefcase, to: '/admin/jobs' },
+  jobsUnassigned: { label: 'Unassigned jobs', icon: AlertTriangle, to: '/admin/dispatch', tone: 'warn' },
   outstandingAmount: { label: 'Outstanding', icon: Receipt, to: '/admin/invoices', money: true, soon: true },
   outstandingInvoices: { label: 'Unpaid invoices', icon: Receipt, to: '/admin/invoices', soon: true },
   warrantiesActive: { label: 'Active warranties', icon: ShieldCheck, to: '/admin/warranties', soon: true },
@@ -31,8 +35,9 @@ const CARDS = {
   quotationsPendingApproval: { label: 'Quotations to approve', icon: FileCheck2, to: '/admin/quotations?stage=approval', tone: 'warn' },
   quotationsChangesRequested: { label: 'Customers asked for changes', icon: MessageSquareWarning, to: '/admin/quotations?stage=changes_requested', tone: 'warn' },
   quotationsAwaitingCustomer: { label: 'Quotations with customers', icon: Send, to: '/admin/quotations?stage=with_customer' },
-  // The jobs screen comes in Phase H.
-  acceptedJobsUnscheduled: { label: 'Accepted jobs to schedule', icon: Wrench, to: '/admin/jobs', tone: 'warn', soon: true },
+  // Phase H1: accepted quotations wait on the board's unassigned queue.
+  acceptedJobsUnscheduled: { label: 'Accepted jobs to schedule', icon: Wrench, to: '/admin/dispatch', tone: 'warn' },
+  stockLow: { label: 'Materials to reorder', icon: Boxes, to: '/admin/stock?lowOnly=true', tone: 'warn' },
 };
 
 const TONES = {
@@ -69,7 +74,7 @@ function StatCard({ name, value }) {
   // the page you are already on reads as broken.
   return (
     <Stagger.Item>
-      {def.soon ? card : <Link to={def.to} className="block">{card}</Link>}
+      {def.soon ? card : <Link to={typeof def.to === 'function' ? def.to() : def.to} className="block">{card}</Link>}
     </Stagger.Item>
   );
 }

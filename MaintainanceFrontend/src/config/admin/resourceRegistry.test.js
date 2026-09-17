@@ -10,8 +10,10 @@ import { PERMISSIONS } from '@/helpers/permissions';
 
 /** The resources the API's CRUD factory mounts, read from the route files themselves (tests run from MaintainanceFrontend/). */
 const readApi = (file) => readFileSync(resolve(cwd(), '../MaintainanceBackend/src/routes/admin', file), 'utf8');
-const cmsRoutes = readApi('cms.routes.js');
-const MOUNTED = new Set([...cmsRoutes.matchAll(/mountResource\(router, '([a-z-]+)'/g)].map((m) => m[1]));
+const mounter = readApi('mountResource.js');
+/** Every file that mounts registry resources through `mountResource` (content, and operations since H1). */
+const MOUNTING_FILES = ['cms.routes.js', 'ops.routes.js'].map(readApi);
+const MOUNTED = new Set(MOUNTING_FILES.flatMap((src) => [...src.matchAll(/mountResource\(router, '([a-z-]+)'/g)].map((m) => m[1])));
 
 /**
  * The same endpoints, mounted by hand outside cms.routes.js (the rate card): the eight the
@@ -44,8 +46,8 @@ describe('resource registry', () => {
   it('reads the mounted CMS resources from the API', () => {
     expect(MOUNTED.has('faqs')).toBe(true);
     expect(MOUNTED.size).toBeGreaterThan(10);
-    // The factory gives every mounted resource its History endpoint.
-    expect(cmsRoutes).toContain('router.get(`/${path}/:id/history`');
+    // The shared mounter gives every resource its History endpoint.
+    expect(mounter).toContain('router.get(`/${path}/:id/history`');
   });
 
   it.each(entries.map((e) => [e.resource, e]))('%s is a complete, valid entry', (resource, entry) => {
