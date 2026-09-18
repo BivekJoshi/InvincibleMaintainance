@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addDaysTo, dropTechnicians, dropWindow, isSameDrop, durationOf, filterLanes, hoursOf, jobsInCell, ktmDay, laneOptions,
-  scheduleWarnings, shiftBoardDate, warningText, windowAt, windowLabel,
+  addDaysTo, boardStats, dropTechnicians, dropWindow, isSameDrop, durationOf, filterLanes, hoursOf, jobsInCell, ktmDay, laneOptions,
+  isDayOff, personToneStyle, scheduleWarnings, shiftBoardDate, warningText, windowAt, windowLabel,
 } from '@/helpers/dispatchBoard';
 
 /** An instant on a Kathmandu day at a Kathmandu time. */
@@ -164,5 +164,28 @@ describe('filters and labels', () => {
   it('labels a card’s window in Kathmandu time', () => {
     expect(windowLabel(job('j', 'J', DAY, '09:45', '11:15'))).toBe('09:45–11:15');
     expect(windowLabel(job('j', 'J'))).toBe('No time yet');
+  });
+});
+
+describe('the board strip', () => {
+  const lane = (id, jobs, loadByDay, conflicts = []) => ({
+    technician: { id, dailyCapacity: 2 }, jobs: jobs.map((j) => ({ id: j })), loadByDay, conflicts,
+  });
+
+  it('counts a crew job once, adds the clashes and measures how full the days are', () => {
+    const board = { days: ['2026-09-18'], unassignedCount: 3 };
+    const lanes = [
+      lane('a', ['j1', 'j2'], { '2026-09-18': 2 }, [{ a: 'J1', b: 'J2' }]),
+      lane('b', ['j2'], { '2026-09-18': 1 }),
+    ];
+    expect(boardStats(board, lanes)).toEqual({ people: 2, jobs: 2, unassigned: 3, clashes: 1, utilisation: 75 });
+    expect(boardStats(board, [])).toMatchObject({ people: 0, jobs: 0, utilisation: 0 });
+  });
+
+  it('gives a technician the same colour every time, and knows Saturday is the day off', () => {
+    expect(personToneStyle('t-hari')).toEqual(personToneStyle('t-hari'));
+    expect(personToneStyle('t-hari')['--tone']).toMatch(/^var\(--/);
+    expect(isDayOff('2026-09-19')).toBe(true);
+    expect(isDayOff('2026-09-18')).toBe(false);
   });
 });

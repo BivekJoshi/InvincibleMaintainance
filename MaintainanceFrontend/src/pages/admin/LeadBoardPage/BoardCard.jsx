@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useDraggable } from '@dnd-kit/core';
-import { Clock, GripVertical, MoreHorizontal, Phone } from 'lucide-react';
+import { Clock, GripVertical, MoreHorizontal, Phone, Snowflake } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,7 +10,7 @@ import {
 import { SlaChip } from '@/components/common/SlaChip';
 import { PriorityBadge } from '@/components/ui/badge';
 import { LEAD_STATUS_LABELS } from '@/config/constants';
-import { nextStatuses } from '@/helpers/leadBoard';
+import { isGoingCold, leadAgeDays, nextStatuses } from '@/helpers/leadBoard';
 import { initials, relativeTime } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
@@ -20,6 +20,7 @@ import { cn } from '@/helpers/utils';
  */
 export const BoardCardFace = forwardRef(function BoardCardFace({ lead, dragging, handle, menu, className, ...props }, ref) {
   const closed = ['WON', 'LOST'].includes(lead.status);
+  const cold = isGoingCold(lead);
   return (
     <article
       ref={ref}
@@ -60,6 +61,14 @@ export const BoardCardFace = forwardRef(function BoardCardFace({ lead, dragging,
         <div className="mt-2 flex flex-wrap items-center gap-1.5 empty:hidden">
           {!closed ? <SlaChip sla={lead.sla} /> : null}
           {lead.priority !== 'NORMAL' ? <PriorityBadge priority={lead.priority} /> : null}
+          {cold ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-info-border bg-info-surface px-2 py-0.5 text-[11px] font-medium text-info-foreground"
+              title={`Open for ${leadAgeDays(lead)} days — follow up before it is lost`}
+            >
+              <Snowflake className="h-3 w-3" aria-hidden /> Going cold · {leadAgeDays(lead)} d
+            </span>
+          ) : null}
         </div>
       ) : null}
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-dotted border-border pt-2 text-xs text-muted-foreground">

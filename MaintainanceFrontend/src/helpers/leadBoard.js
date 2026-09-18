@@ -21,6 +21,19 @@ export const BOARD_COLUMNS = LEAD_STATUSES;
 /** Columns folded by default: closed leads need no work, but stay a drop target (a lead is lost from anywhere). */
 export const FOLDABLE_COLUMNS = ['WON', 'LOST'];
 
+/** Each stage's colour — a theme variable, so it follows light and dark. */
+const STATUS_TONES = {
+  NEW: '--info',
+  CONTACTED: '--chart-1',
+  INSPECTION_SCHEDULED: '--gold',
+  QUOTED: '--note-purple-edge',
+  WON: '--success',
+  LOST: '--destructive',
+};
+
+/** The inline style that sets `--tone` for a status; the column, its cards and the drag overlay read it. */
+export const toneStyle = (status) => ({ '--tone': `var(${STATUS_TONES[status] ?? '--primary'})` });
+
 /**
  * The status each card is shown under: the server's, unless a move is in flight.
  *
@@ -86,4 +99,50 @@ export function leadsInScope(leads, scope, userId) {
   if (scope === 'mine') return leads.filter((l) => (l.assignedToId ?? l.assignedTo?.id) === userId);
   if (scope === 'unassigned') return leads.filter((l) => !(l.assignedToId ?? l.assignedTo?.id));
   return leads;
+}
+
+/**
+ * How far a waiting lead is through its response window, for the SLA board's bar: `ratio`
+ * 0–1 of the window used, and `overdueMinutes` once the deadline has passed.
+ *
+ * @param {{ createdAt: string, sla?: { dueAt?: string } }} lead
+ * @param {number} [now]  ms since the epoch
+ * @returns {{ ratio: number, overdueMinutes: number }|null}
+ */
+export function slaProgress(lead, now = Date.now()) {
+  const start = new Date(lead?.createdAt).getTime();
+  const due = new Date(lead?.sla?.dueAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(due) || due <= start) return null;
+  const ratio = Math.min(1, Math.max(0, (now - start) / (due - start)));
+  return { ratio, overdueMinutes: Math.max(0, Math.round((now - due) / 60000)) };
+}
+
+/** Statuses still being worked. */
+export const OPEN_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED'];
+
+/** An open lead this many days old or more is going cold. */
+export const COLD_AFTER_DAYS = 7;
+
+/** Whole days since a lead came in. */
+export const leadAgeDays = (lead, now = Date.now()) => Math.max(0, Math.floor((now - new Date(lead.createdAt).getTime()) / 86_400_000));
+
+/** An open lead left too long: the board flags it before it is lost by default. */
+export const isGoingCold = (lead, now = Date.now()) => OPEN_STATUSES.includes(lead.status) && leadAgeDays(lead, now) >= COLD_AFTER_DAYS;
+
+/**
+ * The pipeline's summary from each column's total: how many leads, how many still open,
+ * each stage's share, and the win rate of the closed ones (null until one has closed).
+ *
+ * @param {Record<string, number>} totals  status → the column's total
+ */
+export function funnelSummary(totals) {
+  const count = (s) => totals[s] ?? 0;
+  const total = LEAD_STATUSES.reduce((n, s) => n + count(s), 0);
+  const closed = count('WON') + count('LOST');
+  return {
+    total,
+    open: OPEN_STATUSES.reduce((n, s) => n + count(s), 0),
+    winRate: closed ? Math.round((count('WON') / closed) * 100) : null,
+    shares: Object.fromEntries(LEAD_STATUSES.map((s) => [s, total ? Math.round((count(s) / total) * 100) : 0])),
+  };
 }

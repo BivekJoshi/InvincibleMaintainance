@@ -12,11 +12,14 @@ import { PageTransition } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useListParams } from '@/hooks/useListParams';
 import { useLeadStatusChange } from '@/hooks/useLeadStatusChange';
-import { BOARD_COLUMNS, FOLDABLE_COLUMNS, canDrop, cardsForColumn } from '@/helpers/leadBoard';
+import {
+  BOARD_COLUMNS, FOLDABLE_COLUMNS, canDrop, cardsForColumn, funnelSummary, isGoingCold, toneStyle,
+} from '@/helpers/leadBoard';
 import { DEFAULT_LEAD_VIEW, LEAD_VIEWS, leadQueryFor } from '@/config/admin/leadViews';
 import { LEAD_STATUS_LABELS } from '@/config/constants';
 import { BoardColumn } from './BoardColumn';
 import { BoardCardFace } from './BoardCard';
+import { FunnelStrip } from './FunnelStrip';
 
 /** The board's search box. It applies after a pause in typing, or on Enter, not on every key. */
 function BoardSearch({ value, onChange }) {
@@ -39,7 +42,7 @@ function BoardSearch({ value, onChange }) {
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onChange(draft.trim() || undefined); } }}
         placeholder="Search name, phone, address…"
         aria-label="Search the pipeline"
-        className="h-9 pl-8"
+        className="h-9 rounded-full pl-8"
       />
     </div>
   );
@@ -64,8 +67,11 @@ export default function LeadBoardPage() {
   const [pending, setPending] = useState({});
   const [active, setActive] = useState(null);
 
-  const onLoaded = useCallback((status, items) => {
+  const [totals, setTotals] = useState({});
+
+  const onLoaded = useCallback((status, items, total) => {
     setByColumn((prev) => ({ ...prev, [status]: items }));
+    setTotals((prev) => (prev[status] === total ? prev : { ...prev, [status]: total }));
     // A move is settled once the server lists the lead under its new status.
     setPending((prev) => {
       const done = Object.keys(prev).filter((id) => prev[id] === status && items.some((l) => l.id === id));
@@ -117,6 +123,8 @@ export default function LeadBoardPage() {
   const showClosed = params.closed === 'show';
   const setShowClosed = (show) => setParams({ ...params, closed: show ? 'show' : undefined });
   const onSearch = useCallback((q) => setParams({ ...params, q }), [params, setParams]);
+  const summary = useMemo(() => funnelSummary(totals), [totals]);
+  const cold = useMemo(() => leads.filter((lead) => isGoingCold(lead)).length, [leads]);
 
   return (
     <PageTransition>
@@ -129,15 +137,21 @@ export default function LeadBoardPage() {
         <ToggleGroup
           type="single" variant="outline" size="sm" value={view} aria-label="Whose leads"
           onValueChange={(v) => v && setParams({ view: v, q: params.q, closed: params.closed })}
-          className="justify-start"
+          className="justify-start rounded-full bg-muted/50 p-1"
         >
-          {LEAD_VIEWS.map((v) => <ToggleGroupItem key={v.value} value={v.value}>{v.label}</ToggleGroupItem>)}
+          {LEAD_VIEWS.map((v) => (
+            <ToggleGroupItem key={v.value} value={v.value} className="rounded-full border-0 px-4 data-[state=on]:bg-background data-[state=on]:shadow-[var(--elevation-1)]">
+              {v.label}
+            </ToggleGroupItem>
+          ))}
         </ToggleGroup>
         <BoardSearch value={params.q} onChange={onSearch} />
-        <Button variant="ghost" size="sm" onClick={() => setShowClosed(!showClosed)} aria-pressed={showClosed}>
+        <Button variant="outline" size="sm" className="rounded-full" onClick={() => setShowClosed(!showClosed)} aria-pressed={showClosed}>
           {showClosed ? <EyeOff /> : <Eye />} {showClosed ? 'Fold won and lost' : 'Show won and lost'}
         </Button>
       </div>
+
+      <FunnelStrip totals={totals} cold={cold} />
 
       <DndContext
         sensors={sensors}
@@ -161,8 +175,8 @@ export default function LeadBoardPage() {
           },
         }}
       >
-        <div className="-mx-4 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6">
-          <div className="flex min-w-max items-stretch gap-3">
+        <div className="overflow-x-auto rounded-2xl border bg-card shadow-[var(--elevation-1)] [scrollbar-width:thin]">
+          <div className="flex min-w-full items-stretch divide-x-2 divide-dotted divide-border">
             {BOARD_COLUMNS.map((status) => (
               <BoardColumn
                 key={status}
@@ -175,13 +189,21 @@ export default function LeadBoardPage() {
                 onMove={move}
                 pending={pending}
                 folded={!showClosed && FOLDABLE_COLUMNS.includes(status)}
+                share={summary.total ? summary.shares[status] : null}
+                first={status === BOARD_COLUMNS[0]}
                 onUnfold={() => setShowClosed(true)}
               />
             ))}
           </div>
         </div>
         <DragOverlay dropAnimation={null}>
-          {active ? <BoardCardFace lead={active} className="w-72 rotate-1 shadow-lg" /> : null}
+          {active ? (
+            <BoardCardFace
+              lead={active}
+              style={toneStyle(active.status)}
+              className="w-72 rotate-2 scale-[1.03] cursor-grabbing shadow-[var(--elevation-3)] ring-2 ring-[hsl(var(--tone)/0.35)] motion-reduce:rotate-0 motion-reduce:scale-100"
+            />
+          ) : null}
         </DragOverlay>
       </DndContext>
       {statusDialog}

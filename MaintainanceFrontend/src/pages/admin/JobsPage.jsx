@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CalendarDays, ExternalLink, MapPin, Plus } from 'lucide-react';
+import {
+  BadgeCheck, CalendarClock, CalendarDays, ExternalLink, LayoutList, MapPin, PauseCircle, Plus, ReceiptText, UserX,
+} from 'lucide-react';
 import { useGetJobsQuery } from '@/api/jobsApi';
 import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,6 +21,7 @@ import {
 } from '@/config/admin/jobViews';
 import { jobActions } from '@/helpers/jobActions';
 import { formatDate, formatTime, titleCase } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 /** The people on a job, lead first. */
 const crew = (job) => [...(job.assignments ?? [])]
@@ -80,17 +83,56 @@ const columns = [
   },
 ];
 
+/** A dot colour per status and priority in the filter panel (`CustomTableFilterPanel` tones). */
+const STATUS_TONE = {
+  DRAFT: 'muted', SCHEDULED: 'info', ASSIGNED: 'info', EN_ROUTE: 'warning', IN_PROGRESS: 'warning',
+  ON_HOLD: 'danger', COMPLETED: 'success', VERIFIED: 'success', CANCELLED: 'muted',
+};
+const PRIORITY_TONE = { LOW: 'muted', NORMAL: 'info', HIGH: 'warning', URGENT: 'danger' };
+
 const filters = [
-  { key: 'status', label: 'Status', type: 'enum', allLabel: 'All statuses', options: JOB_STATUSES.map((s) => ({ value: s, label: JOB_STATUS_LABELS[s] })) },
-  { key: 'type', label: 'Type', type: 'enum', allLabel: 'All types', className: 'w-[160px]', options: JOB_TYPES.map((t) => ({ value: t, label: JOB_TYPE_LABELS[t] })) },
-  { key: 'priority', label: 'Priority', type: 'enum', allLabel: 'Any priority', className: 'w-[140px]', options: PRIORITIES.map((p) => ({ value: p, label: titleCase(p) })) },
+  { key: 'status', label: 'Status', type: 'enum', options: JOB_STATUSES.map((s) => ({ value: s, label: JOB_STATUS_LABELS[s], tone: STATUS_TONE[s] })) },
+  { key: 'priority', label: 'Priority', type: 'enum', options: PRIORITIES.map((p) => ({ value: p, label: titleCase(p), tone: PRIORITY_TONE[p] })) },
+  { key: 'type', label: 'Type of work', type: 'enum', options: JOB_TYPES.map((t) => ({ value: t, label: JOB_TYPE_LABELS[t] })) },
+  { key: 'scheduled', label: 'Scheduled', type: 'dateRange' },
   { key: 'technicianId', label: 'Technician', type: 'relation', relation: TECHNICIAN_RELATION },
   { key: 'customerId', label: 'Customer', type: 'relation', relation: CUSTOMER_RELATION },
   // The API filters only for `true`; there is no "has technicians" query.
-  { key: 'unassigned', label: 'People', type: 'enum', allLabel: 'Anyone', className: 'w-[150px]', options: [{ value: 'true', label: 'Nobody on it' }] },
-  { key: 'invoiced', label: 'Invoiced', type: 'boolean', trueLabel: 'Invoiced', falseLabel: 'Finished, not invoiced', className: 'w-[190px]' },
-  { key: 'scheduled', label: 'Scheduled', type: 'dateRange' },
+  { key: 'unassigned', label: 'People', type: 'enum', options: [{ value: 'true', label: 'Nobody on it', tone: 'danger' }] },
+  { key: 'invoiced', label: 'Invoiced', type: 'boolean', trueLabel: 'Invoiced', falseLabel: 'Finished, not invoiced' },
 ];
+
+/** Each saved view's icon and colour. */
+const VIEW_LOOK = {
+  all: { icon: LayoutList, tone: 'text-primary' },
+  today: { icon: CalendarClock, tone: 'text-info' },
+  unassigned: { icon: UserX, tone: 'text-destructive' },
+  'on-hold': { icon: PauseCircle, tone: 'text-warning' },
+  'to-verify': { icon: BadgeCheck, tone: 'text-success' },
+  'not-invoiced': { icon: ReceiptText, tone: 'text-gold' },
+};
+
+/** One tab in the saved-views bar. */
+function ViewTab({ view, active, onClick, children }) {
+  const { icon: Icon, tone } = VIEW_LOOK[view];
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-all motion-reduce:transition-none',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active
+          ? 'bg-background text-foreground shadow-[var(--elevation-1)] ring-1 ring-border'
+          : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+      )}
+    >
+      <Icon className={cn('h-4 w-4', active ? tone : 'opacity-70')} aria-hidden />
+      {children}
+    </button>
+  );
+}
 
 /**
  * Every job, with the presets dispatch works from (Today, Unassigned, On hold, Completed not
@@ -128,22 +170,17 @@ export default function JobsPage() {
         )}
       />
 
-      <nav aria-label="Saved views" className="mb-4 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">Views:</span>
-        <Button
-          type="button" size="sm" variant={!preset && !params.q ? 'secondary' : 'ghost'}
-          onClick={() => setParams({ limit: params.limit, sort: params.sort })}
-        >
+      <nav
+        aria-label="Saved views"
+        className="mb-4 flex max-w-full gap-1 overflow-x-auto rounded-xl border bg-muted/50 p-1 [scrollbar-width:none] sm:inline-flex"
+      >
+        <ViewTab view="all" active={!preset && !params.q} onClick={() => setParams({ limit: params.limit, sort: params.sort })}>
           All jobs
-        </Button>
+        </ViewTab>
         {JOB_PRESETS.map((p) => (
-          <Button
-            key={p.key} type="button" size="sm" variant={preset === p.key ? 'secondary' : 'ghost'}
-            aria-pressed={preset === p.key}
-            onClick={() => setParams(applyJobPreset(params, p))}
-          >
+          <ViewTab key={p.key} view={p.key} active={preset === p.key} onClick={() => setParams(applyJobPreset(params, p))}>
             {p.label}
-          </Button>
+          </ViewTab>
         ))}
       </nav>
 
@@ -165,6 +202,7 @@ export default function JobsPage() {
         emptyTitle="No jobs match"
         emptyDescription="Clear the filters — or wait for a customer to accept a quotation."
         filters={filters}
+        filterLayout="panel"
         rowActions={rowActions}
       />
 

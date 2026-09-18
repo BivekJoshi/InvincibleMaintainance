@@ -190,3 +190,59 @@ export function filterLanes(lanes = [], { skill, area } = {}) {
 export const windowLabel = (job) => (job.scheduledStart
   ? `${timeOf(job.scheduledStart)}${job.scheduledEnd ? `–${timeOf(job.scheduledEnd)}` : ''}`
   : 'No time yet');
+
+/** A job card's colour per status — a theme variable, so it follows light and dark. */
+const JOB_STATUS_TONES = {
+  DRAFT: '--muted-foreground',
+  SCHEDULED: '--info',
+  ASSIGNED: '--chart-1',
+  EN_ROUTE: '--gold',
+  IN_PROGRESS: '--warning',
+  ON_HOLD: '--destructive',
+  COMPLETED: '--success',
+  VERIFIED: '--success',
+  CANCELLED: '--muted-foreground',
+};
+
+/** The inline style that sets `--tone` for a job's status; the card and the drag overlay read it. */
+export const jobToneStyle = (status) => ({ '--tone': `var(${JOB_STATUS_TONES[status] ?? '--primary'})` });
+
+/** A technician's avatar colour, the same for them on every visit. */
+const PERSON_TONES = ['--info', '--chart-1', '--gold', '--note-purple-edge', '--success', '--note-pink-edge'];
+export function personToneStyle(id = '') {
+  let hash = 0;
+  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return { '--tone': `var(${PERSON_TONES[hash % PERSON_TONES.length]})` };
+}
+
+/**
+ * The strip above the board: who is on it, the jobs it holds (a crew job counted once),
+ * how full the days are, and the clashes.
+ *
+ * @param {{ days: string[], unassignedCount?: number }} board
+ * @param {object[]} lanes  the lanes on show
+ */
+export function boardStats(board, lanes = []) {
+  const jobs = new Set(lanes.flatMap((l) => l.jobs.map((j) => j.id)));
+  let load = 0;
+  let capacity = 0;
+  for (const lane of lanes) {
+    for (const day of board.days) {
+      load += lane.loadByDay?.[day] ?? 0;
+      capacity += lane.technician.dailyCapacity ?? 0;
+    }
+  }
+  return {
+    people: lanes.length,
+    jobs: jobs.size,
+    unassigned: board.unassignedCount ?? 0,
+    clashes: lanes.reduce((n, l) => n + (l.conflicts?.length ?? 0), 0),
+    utilisation: capacity ? Math.round((load / capacity) * 100) : 0,
+  };
+}
+
+/** Kathmandu's hour right now, 0–23. */
+export const ktmHour = (instant = new Date()) => Number(toKathmanduParts(new Date(instant).toISOString()).time.slice(0, 2));
+
+/** Saturday — the day off in Nepal. */
+export const isDayOff = (day) => new Date(`${day}T00:00:00Z`).getUTCDay() === 6;

@@ -21,7 +21,7 @@ export function AdminBreadcrumb({ className }) {
               {i > 0 ? <BreadcrumbSeparator /> : null}
               <BreadcrumbItem className="min-w-0">
                 {last ? (
-                  <BreadcrumbPage className="truncate">{crumb.label}</BreadcrumbPage>
+                  <BreadcrumbPage className="truncate text-gold"><b>{crumb.label}</b></BreadcrumbPage>
                 ) : crumb.to ? (
                   <BreadcrumbLink asChild><Link to={crumb.to} className="truncate">{crumb.label}</Link></BreadcrumbLink>
                 ) : (
