@@ -12,7 +12,7 @@ const matrix = capabilityMatrix(ROLES);
  * `/admin/platform/roles` (ADMIN) — what each role can do, read from the same permission map
  * the navigation uses (`helpers/permissions.js`, held to the API's by a parity test).
  * Read-only: roles are decided in code, not here. A fixed matrix, not a server list, so it
- * is a plain table rather than a DataTable.
+ * is a plain table rather than a CustomTable.
  */
 export default function RolesPage() {
   return (

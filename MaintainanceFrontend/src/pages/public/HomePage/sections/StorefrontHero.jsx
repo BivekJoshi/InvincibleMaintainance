@@ -5,6 +5,7 @@ import { ArrowRight, CalendarCheck, Phone, Search, ShieldCheck } from 'lucide-re
 import { useGetBootstrapQuery, useGetPublicServicesQuery } from '@/api/publicApi';
 import { selectLocale } from '@/redux/slices/uiSlice';
 import { Badge } from '@/components/ui/badge';
+import { DataIcon } from '@/components/site/DataIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -37,6 +38,8 @@ export function StorefrontHero({ section, settings, media }) {
   const countFor = (slug) => items.filter((s) => s.category?.slug === slug).length || null;
   const mobile = settings?.['contact.phoneSecondary'];
   const stats = (settings?.['stats.items'] ?? []).slice(0, 3);
+  // Settings → Brand and home page → Hero trust badges.
+  const badges = Array.isArray(settings?.['badges.items']) ? settings['badges.items'] : [];
 
   return (
     <section className="relative isolate overflow-hidden border-b">
@@ -128,6 +131,17 @@ export function StorefrontHero({ section, settings, media }) {
                 </Button>
               ) : null}
             </div>
+
+            {badges.length ? (
+              <ul className="mt-5 flex flex-wrap justify-center gap-x-5 gap-y-2 text-[13px] text-muted-foreground lg:justify-start">
+                {badges.map((b) => (
+                  <li key={b.label} className="flex items-center gap-1.5">
+                    <DataIcon name={b.icon} className="h-3.5 w-3.5 text-gold" />
+                    {b.label}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             {stats.length ? (
               <div className="mt-9">

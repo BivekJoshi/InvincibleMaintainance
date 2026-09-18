@@ -4,6 +4,7 @@ import { CountUp, EASE, Spotlight, motion, useMinWidth, useMotionVariants, useRe
 import { cn } from '@/helpers/utils';
 import { LOGIN_RISE, STATS } from '../loginContent';
 import { LoginCredo } from './LoginCredo';
+import { BrandMark } from '@/components/site/BrandMark';
 
 // three.js is ~120kB gzipped and nothing on this page needs it to sign in, so it
 // gets its own chunk and only starts downloading once the form is already usable.
@@ -29,7 +30,7 @@ function Crosshair({ className }) {
  * `hidden lg:block` would still mount the component and fetch three.js on a
  * phone that will never show it.
  */
-export function LoginStage({ company }) {
+export function LoginStage({ company, logoUrl }) {
   const reduced = useReducedMotion();
   const wideEnough = useMinWidth(1024);
   const rise = useMotionVariants(LOGIN_RISE);
@@ -71,9 +72,11 @@ export function LoginStage({ company }) {
       <div className="relative z-10 flex h-full flex-col justify-between p-12 xl:p-16">
         <motion.div initial="hidden" animate="show" variants={rise}>
           <Link to="/" className="group inline-flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-xl border border-gold/40 bg-gold/10 font-extrabold text-gold transition-colors group-hover:bg-gold/20">
-              {company.charAt(0)}
-            </span>
+            <BrandMark
+              logoUrl={logoUrl}
+              initial={company.charAt(0)}
+              className="h-11 w-11 rounded-xl border border-gold/40 bg-gold/10 font-extrabold text-gold transition-colors group-hover:bg-gold/20"
+            />
             <span>
               <span className="block text-lg font-semibold tracking-tight">{company}</span>
               <span className="eyebrow block text-ink-muted">Back office</span>

@@ -12,7 +12,9 @@ import { flattenFields } from '../formValues';
  * their values.
  *
  * `variant: 'card'` is a section that is always open — a titled card, for a form that is
- * a set of panels (the settings page) rather than a record with optional extras.
+ * a set of panels (the settings page) rather than a record with optional extras. With
+ * `hidden: true` the card stays mounted — its fields keep their values and still validate —
+ * but is not shown, so a page can show one panel at a time.
  */
 export function GroupField({ field, children }) {
   const { formState: { errors } } = useFormContext();
@@ -23,7 +25,7 @@ export function GroupField({ field, children }) {
 
   if (field.variant === 'card') {
     return (
-      <section aria-labelledby={headingId} className="rounded-xl border bg-card">
+      <section aria-labelledby={headingId} hidden={field.hidden} className="rounded-xl border bg-card">
         <header className="border-b px-4 py-3 sm:px-5">
           <h2 id={headingId} className="text-sm font-semibold">{field.label}</h2>
           {field.description ? <p className="mt-0.5 text-xs text-muted-foreground">{field.description}</p> : null}

@@ -61,7 +61,7 @@ export const cmsApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       invalidatesTags: listAndRecord,
     }),
-    /** `items` is `[{ id, sortOrder }]` — what DataTable's reorder mode hands over. */
+    /** `items` is `[{ id, sortOrder }]` — what CustomTable's reorder mode hands over. */
     reorderResource: build.mutation({
       query: ({ resource, items }) => ({ url: `${base(resource)}/reorder`, method: 'PATCH', body: { items } }),
       invalidatesTags: (result, error, { resource }) => [listTag(resource), 'Public', ...alsoFor(resource)],

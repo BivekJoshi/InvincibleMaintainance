@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetCustomerRecordsQuery } from '@/api/customersApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 
 /** One domain's records for this customer (quotations, jobs, …), from that domain's list endpoint. */
 export function CustomerRecordsTab({ customerId, tab }) {
@@ -10,7 +10,7 @@ export function CustomerRecordsTab({ customerId, tab }) {
   const { data, isLoading, isFetching, error, refetch } = useGetCustomerRecordsQuery({ kind: tab.kind, customerId, params });
 
   return (
-    <DataTable
+    <CustomTable
       columns={tab.columns}
       data={data?.items}
       meta={data?.meta}

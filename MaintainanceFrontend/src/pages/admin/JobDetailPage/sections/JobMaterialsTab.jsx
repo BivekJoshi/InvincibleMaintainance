@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { PackageMinus, Undo2 } from 'lucide-react';
 import { useIssueJobMaterialMutation, useReverseJobMaterialMutation } from '@/api/jobsApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { FormDialog } from '@/components/common/FormDialog';
 import { StateBadge } from '@/components/common/StateBadge';
 import { Button } from '@/components/ui/button';
@@ -76,7 +76,7 @@ export function JobMaterialsTab({ job, canWrite }) {
 
   return (
     <div className="space-y-3">
-      <DataTable
+      <CustomTable
         columns={columns}
         data={rows}
         meta={{ page: 1, pages: 1, total: rows.length, limit: rows.length || 1 }}

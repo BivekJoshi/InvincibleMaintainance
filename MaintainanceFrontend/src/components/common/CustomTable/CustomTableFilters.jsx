@@ -137,7 +137,7 @@ function DateRangeFilter({ filter, params, onChange }) {
  * @param {object} props.params
  * @param {(patch: object) => void} props.onChange
  */
-export function DataTableFilters({ filters, params, onChange }) {
+export function CustomTableFilters({ filters, params, onChange }) {
   const isSet = (f, k) => params[k] != null && params[k] !== '' && String(params[k]) !== String(f.defaultValue ?? '');
   const active = filters.some((f) => filterKeys(f).some((k) => isSet(f, k)));
 

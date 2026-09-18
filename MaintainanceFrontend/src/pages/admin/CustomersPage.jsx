@@ -5,7 +5,7 @@ import { useGetCustomersQuery } from '@/api/customersApi';
 import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { CustomerFormSheet } from '@/components/customers/CustomerFormSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -89,7 +89,9 @@ export default function CustomersPage() {
         description="People and companies, their sites, and everything done for them."
         actions={can('customers:write') ? <Button size="sm" onClick={() => setCreating(true)}><Plus /> New customer</Button> : null}
       />
-      <DataTable
+      <CustomTable
+        storageKey="customers"
+        exportable
         columns={columnsFor({ withBalance, onTag: setTag })}
         data={data?.items}
         meta={data?.meta}

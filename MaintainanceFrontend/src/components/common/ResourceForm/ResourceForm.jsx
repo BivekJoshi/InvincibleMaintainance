@@ -68,6 +68,8 @@ const LEAVE = {
  * @param {(dirty: boolean) => void} [props.onDirtyChange]  told when the form gains or loses unsaved changes
  * @param {(values: object) => void} [props.onValuesChange]  told the form's current values (as typed) on every
  *   change — a live preview beside the form. Pass a stable function (a state setter, or `useCallback`).
+ * @param {(errors: object, helpers: { form: object }) => void} [props.onInvalid]  told the field errors when a
+ *   save is refused before it is sent — a form split into panels shows the panel holding the first one.
  */
 export function ResourceForm({
   schema,
@@ -90,6 +92,7 @@ export function ResourceForm({
   stickyActions = false,
   onDirtyChange,
   onValuesChange,
+  onInvalid,
 }) {
   const formId = `form-${useId().replace(/[^\w-]/g, '')}`;
   const initial = useMemo(() => toFormValues(fields, defaultValues), [fields, defaultValues]);
@@ -138,7 +141,7 @@ export function ResourceForm({
     } finally {
       setBypass(false);
     }
-  });
+  }, (errors) => onInvalid?.(errors, { form }));
 
   const closeSheet = async () => {
     if (guard && isDirty && !(await confirm(LEAVE))) return;

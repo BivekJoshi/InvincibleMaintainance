@@ -87,7 +87,7 @@ const JSON_FIELDS = {
 const HINTS = {
   'badges.items': 'The strip under the hero.',
   'stats.items': 'The counters band; the hero shows the first three.',
-  'branding.logoId': 'Kept for the brand; the site header draws the company’s initial for now.',
+  'branding.logoId': 'Shown in the site header and footer, the login page and the back office. A square PNG or SVG works best; without one, the company’s initial is shown.',
   'contact.mapEmbed': 'The address from Google Maps → Share → Embed a map (the src of the iframe).',
 };
 
@@ -215,6 +215,7 @@ export function buildSettingsForm(grouped = {}) {
     if (!described.length) continue;
     rows.push(...described);
     fields.push({
+      key: group,
       type: 'group',
       variant: 'card',
       label: groupLabel(group),

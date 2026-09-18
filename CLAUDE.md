@@ -126,7 +126,7 @@ Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password1
 1. Work phase by phase from `docs/ADMIN-PLAN.md` (prompts in `docs/prompts/`). Finish a phase's acceptance criteria before starting the next.
 2. Before adding a model or field, update `docs/DATA-MODEL.prisma` and `docs/API.md` in the same change.
 3. New admin CRUD screens are built from the admin kit in `MaintainanceFrontend/src/components/common/`:
-   **DataTable v2** (filters, row and bulk actions, page size, trash, reorder) and **`<ResourceForm>`** (declarative
+   **`<CustomTable>`** (TanStack Table + shadcn, the Material React Table feature set: filters, row and bulk actions, page size, trash, reorder, column actions — pin / move / resize / hide — density, full screen, CSV export, remembered layout) and **`<ResourceForm>`** (declarative
    fields, server-error mapping, unsaved-changes guard), with `LocaleTabs`, `MediaPicker` and `useConfirm`. A CMS
    resource screen is a **registry entry** — one file in `MaintainanceFrontend/src/config/admin/resources/`,
    registered in `resourceRegistry.js` with a nav item in `adminNav.js` — rendered by the generic

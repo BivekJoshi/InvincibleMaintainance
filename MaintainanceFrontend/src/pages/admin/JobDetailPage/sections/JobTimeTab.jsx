@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Plus, Trash2 } from 'lucide-react';
 import { useAddJobTimeLogMutation, useDeleteJobTimeLogMutation } from '@/api/jobsApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { FormDialog } from '@/components/common/FormDialog';
 import { StateBadge } from '@/components/common/StateBadge';
 import { Button } from '@/components/ui/button';
@@ -73,7 +73,7 @@ export function JobTimeTab({ job, canWrite }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">Total recorded: <span className="font-medium text-foreground">{formatMinutes(total)}</span></p>
-      <DataTable
+      <CustomTable
         columns={columns}
         data={logs}
         meta={{ page: 1, pages: 1, total: logs.length, limit: logs.length || 1 }}

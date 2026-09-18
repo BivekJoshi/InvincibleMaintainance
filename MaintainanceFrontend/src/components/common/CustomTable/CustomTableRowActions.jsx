@@ -16,7 +16,7 @@ import { cn } from '@/helpers/utils';
  *   destructive?: boolean, disabled?: boolean, separator?: boolean }[]} props.actions
  * @param {string} [props.label] accessible name for the trigger
  */
-export function DataTableRowActions({ row, actions, label = 'Row actions' }) {
+export function CustomTableRowActions({ row, actions, label = 'Row actions' }) {
   if (!actions?.length) return null;
 
   return (

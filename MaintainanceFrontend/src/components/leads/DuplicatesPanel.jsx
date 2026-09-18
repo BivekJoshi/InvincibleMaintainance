@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Merge } from 'lucide-react';
 import { useGetLeadDuplicatesQuery, useMergeLeadsMutation } from '@/api/leadsApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StatusBadge } from '@/components/ui/badge';
 import { useConfirm } from '@/hooks/useConfirm';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
@@ -58,7 +58,7 @@ export function DuplicatesPanel({ lead, canWrite }) {
   const rows = data ?? [];
   return (
     <>
-      <DataTable
+      <CustomTable
         columns={columns}
         data={rows}
         meta={{ page: 1, pages: 1, limit: rows.length || 1, total: rows.length }}

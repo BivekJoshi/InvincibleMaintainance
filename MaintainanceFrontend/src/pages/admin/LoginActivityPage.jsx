@@ -5,7 +5,7 @@ import { useGetLoginActivityQuery, useGetLoginSummaryQuery } from '@/api/auditAp
 import { useUnlockUserMutation } from '@/api/usersApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StateBadge } from '@/components/common/StateBadge';
 import { AuditRowDetails } from '@/components/platform/AuditRowDetails';
 import { Button } from '@/components/ui/button';
@@ -144,7 +144,9 @@ export default function LoginActivityPage() {
         description="Sign-ins, failures and lockouts. Five failures in a row lock an account for 15 minutes."
       />
       <NeedsAttention onShow={(userId) => setParams({ ...params, userId, page: 1 })} />
-      <DataTable
+      <CustomTable
+        storageKey="login-activity"
+        exportable
         columns={columns}
         data={data?.items}
         meta={data?.meta}

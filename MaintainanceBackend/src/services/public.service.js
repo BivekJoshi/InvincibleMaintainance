@@ -14,7 +14,7 @@ function collectMediaIds(obj, acc = []) {
   if (Array.isArray(obj)) { obj.forEach((o) => collectMediaIds(o, acc)); return acc; }
   if (typeof obj !== 'object') return acc;
   for (const [k, v] of Object.entries(obj)) {
-    if (/^(imageId|coverId|photoId|mediaId|ogImageId|signatureId)$/.test(k) && typeof v === 'string') acc.push(v);
+    if (/^(imageId|coverId|photoId|mediaId|ogImageId|signatureId|logoId)$/.test(k) && typeof v === 'string') acc.push(v);
     else if (v && typeof v === 'object') collectMediaIds(v, acc);
   }
   return acc;
@@ -47,6 +47,8 @@ export async function bootstrap(locale = 'en') {
   return withMedia({
     settings,
     locale,
+    // The logo is a media id in settings; named here so `withMedia` resolves it to its URLs.
+    brand: { logoId: settings['branding.logoId'] || null },
     nav: {
       categories: await withLocale('serviceCategory', categories, locale),
       // The site links to the blog only once there is something in it.

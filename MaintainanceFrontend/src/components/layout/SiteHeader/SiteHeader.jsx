@@ -6,6 +6,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { BrandMark } from '@/components/site/BrandMark';
 import { FIELD_ROLES } from '@/config/constants';
 import { preloadPath } from '@/routes/routeModules';
 import { Button } from '@/components/ui/button';
@@ -41,7 +42,7 @@ export function SiteHeader() {
   const reduced = useReducedMotion();
   const { pathname, search: qs } = useLocation();
   const [params] = useSearchParams();
-  const { name: company, initial, phone, mobile, categories, nav } = useSiteSettings();
+  const { name: company, initial, logoUrl, phone, mobile, categories, nav } = useSiteSettings();
   const { isAuthenticated, role } = useAuth();
 
   const [scrolled, setScrolled] = useState(false);
@@ -137,13 +138,16 @@ export function SiteHeader() {
 
         <div className="container flex h-16 items-center gap-2">
           <Link to="/" className="group flex shrink-0 items-center gap-2.5" aria-label={`${company} — home`}>
-            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-hairline">
-              {initial}
+            <BrandMark
+              logoUrl={logoUrl}
+              initial={initial}
+              className="relative h-9 w-9 overflow-hidden rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-hairline"
+            >
               <span
                 aria-hidden
                 className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/35 to-transparent transition-transform duration-700 group-hover:translate-x-full"
               />
-            </span>
+            </BrandMark>
             <span className="max-w-[9rem] truncate text-[15px] font-bold leading-none tracking-tight sm:max-w-none">
               {company}
             </span>

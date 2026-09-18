@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useGetJobCostingQuery } from '@/api/jobsApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { ErrorState } from '@/components/common/ErrorState';
 import { StatusBadge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -47,7 +47,7 @@ export function JobCostingTab({ job }) {
 
   const { materials, labour, expenses, invoices } = c.breakdown;
   const table = (columns, rows, empty, label) => (
-    <DataTable
+    <CustomTable
       columns={columns} data={rows} meta={meta(rows)} params={params} onParamsChange={setParams}
       searchable={false} pageSizes={[]} emptyTitle={empty} rowLabel={label}
     />

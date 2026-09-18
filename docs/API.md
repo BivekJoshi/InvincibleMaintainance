@@ -20,7 +20,7 @@ Every route below is exercised over HTTP by `npm run test:api`
 Content endpoints take `?locale=en|ne`.
 
 ```
-GET  /public/bootstrap              ⚡ settings + nav + home sections + booking rules in one call
+GET  /public/bootstrap              ⚡ settings + nav + home sections + booking rules + brand.logoId (resolved in media) in one call
                                       nav: { categories, blog, pages } — `blog` is true while at least one
                                       post is published; `pages` is [{ slug, title }] of the live generic
                                       pages (title in the requested locale), which the site serves at /:slug

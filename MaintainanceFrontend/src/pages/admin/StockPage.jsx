@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import { History, Package, Pencil, Plus } from 'lucide-react';
 import { useGetStockQuery, useRecordStockMovementMutation } from '@/api/stockApi';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
 import { StateBadge } from '@/components/common/StateBadge';
 import { StockMovementsSheet } from '@/components/stock/StockMovementsSheet';
@@ -133,7 +133,9 @@ export default function StockPage() {
         ) : null}
       </PageHeader>
 
-      <DataTable
+      <CustomTable
+        storageKey="stock"
+        exportable
         columns={columns}
         data={data?.items}
         meta={data?.meta}

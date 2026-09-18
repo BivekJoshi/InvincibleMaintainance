@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { motion, useMotionVariants, useReducedMotion } from '@/three/motion/motionKit';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { BrandMark } from '@/components/site/BrandMark';
 import { ThemeModeSwitch } from '@/components/theme/ThemeModeSwitch';
 import { LOGIN_RISE } from './loginContent';
 import { useLoginFlow } from './useLoginFlow';
@@ -23,7 +24,7 @@ import { LoginStage } from './sections/LoginStage';
 export default function LoginPage() {
   const flow = useLoginFlow();
   const reduced = useReducedMotion();
-  const { name: company } = useSiteSettings();
+  const { name: company, logoUrl } = useSiteSettings();
   // Framer animates in JS, so the global reduced-motion CSS cannot reach it —
   // these variants have to collapse to a plain fade themselves.
   const rise = useMotionVariants(LOGIN_RISE);
@@ -41,7 +42,7 @@ export default function LoginPage() {
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-background lg:grid lg:grid-cols-[1.04fr_minmax(0,0.96fr)]">
-      <LoginStage company={company} />
+      <LoginStage company={company} logoUrl={logoUrl} />
 
       <main className="glow-paper relative flex min-h-dvh flex-col">
         <div className="blueprint-fine pointer-events-none absolute inset-0 mask-b opacity-70" aria-hidden />
@@ -69,9 +70,11 @@ export default function LoginPage() {
           >
             {/* The stage is desktop-only; on a phone the wordmark still has to appear. */}
             <motion.div variants={rise} className="mb-7 flex items-center gap-3 lg:hidden">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary font-extrabold text-primary-foreground">
-                {company.charAt(0)}
-              </span>
+              <BrandMark
+                logoUrl={logoUrl}
+                initial={company.charAt(0)}
+                className="h-10 w-10 rounded-xl bg-primary font-extrabold text-primary-foreground"
+              />
               <span>
                 <span className="block font-semibold tracking-tight">{company}</span>
                 <span className="eyebrow block text-muted-foreground">Back office</span>

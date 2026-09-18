@@ -6,7 +6,7 @@ import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
 import { useJobActions } from '@/hooks/useJobActions';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { JobFormSheet } from '@/components/jobs/JobFormSheet';
 import { PriorityBadge, StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -147,7 +147,9 @@ export default function JobsPage() {
         ))}
       </nav>
 
-      <DataTable
+      <CustomTable
+        storageKey="jobs"
+        exportable
         columns={columns}
         data={data?.items}
         meta={data?.meta}

@@ -8,6 +8,7 @@ import { activeNavPath, activeNavTab, navForRole, navTabsForRole } from '@/confi
 import { useNavBadges } from '@/hooks/useNavBadges';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { initials } from '@/helpers/format';
+import { BrandMark } from '@/components/site/BrandMark';
 import { cn } from '@/helpers/utils';
 
 const EASE = [0.16, 1, 0.3, 1];
@@ -177,7 +178,7 @@ function SectionSwitch({ tabs, current, onSelect, badges, rail, scope }) {
  */
 export function AdminSidebar({ role, user, rail = false, scope = 'desk', onToggleRail, onClose, onNavigate, onLogout }) {
   const { pathname } = useLocation();
-  const { name, initial } = useSiteSettings();
+  const { name, initial, logoUrl } = useSiteSettings();
   const badges = useNavBadges(role);
   const activeTo = activeNavPath(pathname);
   const tabs = useMemo(() => navTabsForRole(role), [role]);
@@ -209,10 +210,13 @@ export function AdminSidebar({ role, user, rail = false, scope = 'desk', onToggl
           className="flex min-w-0 items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-gold"
           aria-label={rail ? `${name} — dashboard` : undefined}
         >
-          <span className="relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-gold text-sm font-black text-gold-foreground shadow-hairline">
+          <BrandMark
+            logoUrl={logoUrl}
+            initial={initial}
+            className="relative h-9 w-9 overflow-hidden rounded-xl bg-gold text-sm font-black text-gold-foreground shadow-hairline"
+          >
             <span className="absolute inset-0 bg-gradient-to-br from-ink-foreground/25 to-transparent" aria-hidden />
-            <span className="relative">{initial}</span>
-          </span>
+          </BrandMark>
           {rail ? null : (
             <span className="min-w-0 leading-tight">
               <span className="block truncate text-sm font-extrabold tracking-tight">{name}</span>

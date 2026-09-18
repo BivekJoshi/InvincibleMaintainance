@@ -26,4 +26,17 @@ export const SETTINGS_KEYS = {
   address: 'contact.address',
   city: 'contact.city',
   mapEmbed: 'contact.mapEmbed',
+  whatsapp: 'contact.whatsapp',
+  viber: 'contact.viber',
+  badges: 'badges.items',
+  seoTitle: 'seo.defaultTitle',
+  seoDescription: 'seo.defaultDescription',
 };
+
+/** The social profiles the footer links to, in this order, when their setting holds an address. */
+export const SOCIAL_KEYS = [
+  { key: 'social.facebook', label: 'Facebook' },
+  { key: 'social.instagram', label: 'Instagram' },
+  { key: 'social.tiktok', label: 'TikTok' },
+  { key: 'social.youtube', label: 'YouTube' },
+];

@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 import { useGetAuditLogsQuery, useGetAuditModelsQuery } from '@/api/auditApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StateBadge } from '@/components/common/StateBadge';
 import { AuditRowDetails } from '@/components/platform/AuditRowDetails';
 import { Button } from '@/components/ui/button';
@@ -101,7 +101,9 @@ export default function AuditLogPage() {
         title="Audit log"
         description="Every change and every named step — who, when, from where, and exactly what moved."
       />
-      <DataTable
+      <CustomTable
+        storageKey="audit-log"
+        exportable
         columns={columns}
         data={data?.items}
         meta={data?.meta}

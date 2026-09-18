@@ -11,7 +11,7 @@ import { useListParams } from '@/hooks/useListParams';
 import { useConfirm } from '@/hooks/useConfirm';
 import { activeCopyOf, activeFieldOf, screenPathOf } from '@/config/admin/resourceRegistry';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { PageTransition } from '@/three/motion/motionKit';
@@ -175,7 +175,8 @@ function ResourceList({ entry, canWrite }) {
           <span>{entry.notice}</span>
         </p>
       ) : null}
-      <DataTable
+      <CustomTable
+        storageKey={`content:${entry.resource}`}
         columns={[...entry.columns, activeColumn]}
         data={data?.items}
         meta={data?.meta}

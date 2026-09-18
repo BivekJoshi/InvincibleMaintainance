@@ -450,7 +450,7 @@
 }
 
 @layer utilities {
-  /* The indeterminate bar on <DataTable>. Deliberately CSS and not Framer: an
+  /* The indeterminate bar on <CustomTable>. Deliberately CSS and not Framer: an
      infinite `repeat` never resolves its exit promise, and a motion element
      that cannot finish exiting blocks the <AnimatePresence> above it forever. */
   @keyframes indeterminate-slide {

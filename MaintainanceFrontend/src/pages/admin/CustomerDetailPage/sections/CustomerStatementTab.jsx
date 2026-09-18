@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useGetCustomerStatementQuery } from '@/api/customersApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDate, formatNpr, titleCase } from '@/helpers/format';
 
@@ -32,7 +32,7 @@ export function CustomerStatementTab({ customerId }) {
           ))}
         </div>
       ) : null}
-      <DataTable
+      <CustomTable
         columns={columns}
         data={ledger}
         meta={{ page: 1, pages: 1, total: ledger.length, limit: ledger.length || 1 }}

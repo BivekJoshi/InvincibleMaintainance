@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
  * @param {(page: number) => void} props.onPageChange
  * @param {(limit: number) => void} props.onLimitChange
  */
-export function DataTablePagination({ page, pages, total, limit, pageSizes, onPageChange, onLimitChange }) {
+export function CustomTablePagination({ page, pages, total, limit, pageSizes, onPageChange, onLimitChange }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-muted-foreground">

@@ -9,7 +9,7 @@ import { cn } from '@/helpers/utils';
 
 /**
  * Picks one record from an admin list endpoint, searching it with `?q=` as you type.
- * The relation filter in `<DataTable>` and the relation field in `<ResourceForm>`
+ * The relation filter in `<CustomTable>` and the relation field in `<ResourceForm>`
  * are both this. Search happens on the server (`shouldFilter={false}`), so it finds
  * rows beyond the first page.
  *

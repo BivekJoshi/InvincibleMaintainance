@@ -3,7 +3,7 @@ import { Ruler } from 'lucide-react';
 import { useGetSurveysQuery } from '@/api/surveysApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StatusBadge } from '@/components/ui/badge';
 import { PageTransition } from '@/three/motion/motionKit';
 import { SURVEY_STATUSES } from '@/config/constants';
@@ -72,7 +72,9 @@ export default function SurveysPage() {
         description="What the surveyor measured on site, waiting to be priced."
       />
 
-      <DataTable
+      <CustomTable
+        storageKey="surveys"
+        exportable
         columns={columns}
         data={data?.items}
         meta={data?.meta}

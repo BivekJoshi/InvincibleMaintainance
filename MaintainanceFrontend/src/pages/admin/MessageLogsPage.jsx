@@ -4,7 +4,7 @@ import { Mail, MessageSquare, RotateCw } from 'lucide-react';
 import { useGetMessageLogsQuery, useRetryMessageMutation } from '@/api/messagesApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StateBadge } from '@/components/common/StateBadge';
 import { PageTransition } from '@/three/motion/motionKit';
 import { MESSAGE_CHANNELS, MESSAGE_STATUSES } from '@/config/constants';
@@ -137,7 +137,9 @@ export default function MessageLogsPage() {
         title="Messages"
         description="Every SMS and email: whether it went, and why not when it did not."
       />
-      <DataTable
+      <CustomTable
+        storageKey="message-logs"
+        exportable
         columns={columns}
         data={data?.items}
         meta={data?.meta}

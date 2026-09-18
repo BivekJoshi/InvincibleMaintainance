@@ -7,7 +7,7 @@ import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
 import { toastError } from '@/redux/slices/uiSlice';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { SlaChip } from '@/components/common/SlaChip';
 import { LeadFormSheet } from '@/components/leads/LeadFormSheet';
 import { AssignLeadDialog } from '@/components/leads/AssignLeadDialog';
@@ -167,7 +167,8 @@ export default function LeadsPage() {
         ))}
       </nav>
 
-      <DataTable
+      <CustomTable
+        storageKey="leads"
         columns={columns}
         data={data?.items}
         meta={data?.meta}

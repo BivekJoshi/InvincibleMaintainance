@@ -10,13 +10,14 @@ import { CSS } from '@dnd-kit/utilities';
 import { TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/helpers/utils';
+import { CustomTableCell, cellsOf } from './CustomTableCell';
 
-function SortableRow({ id, row, index, count, columns, onMove, rowLabel }) {
+function SortableRow({ row, index, count, onMove, rowLabel, density }) {
   const {
     attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id: row.id });
   const reduced = useReducedMotion();
-  const name = rowLabel(row, index);
+  const name = rowLabel(row.original, index);
 
   return (
     <tr
@@ -50,11 +51,7 @@ function SortableRow({ id, row, index, count, columns, onMove, rowLabel }) {
           </Button>
         </div>
       </TableCell>
-      {columns.map((col) => (
-        <TableCell key={col.key} className={col.className}>
-          {col.cell ? col.cell(row) : row[col.key] ?? '—'}
-        </TableCell>
-      ))}
+      {cellsOf(row).map((cell) => <CustomTableCell key={cell.id} cell={cell} density={density} />)}
     </tr>
   );
 }
@@ -65,18 +62,17 @@ function SortableRow({ id, row, index, count, columns, onMove, rowLabel }) {
  * has plain Move up / Move down buttons for anyone who would rather not drag.
  *
  * @param {object} props
- * @param {object[]} props.rows
- * @param {(row: object) => string} props.getRowId
- * @param {object[]} props.columns
+ * @param {import('@tanstack/react-table').Row<object>[]} props.rows  the table's row model, in display order
  * @param {(from: number, to: number) => void} props.onMove
  * @param {(row: object, index: number) => string} [props.rowLabel] how a row is named to a screen reader
+ * @param {string} [props.density] row padding, as the table's
  */
-export function DataTableReorderBody({ rows, getRowId, columns, onMove, rowLabel = (_row, i) => `row ${i + 1}` }) {
+export function CustomTableReorderBody({ rows, onMove, rowLabel = (_row, i) => `row ${i + 1}`, density }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const ids = rows.map(getRowId);
+  const ids = rows.map((row) => row.id);
 
   const onDragEnd = ({ active, over }) => {
     if (!over || active.id === over.id) return;
@@ -94,10 +90,7 @@ export function DataTableReorderBody({ rows, getRowId, columns, onMove, rowLabel
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <TableBody>
           {rows.map((row, i) => (
-            <SortableRow
-              key={ids[i]} id={ids[i]} row={row} index={i} count={rows.length}
-              columns={columns} onMove={onMove} rowLabel={rowLabel}
-            />
+            <SortableRow key={row.id} row={row} index={i} count={rows.length} onMove={onMove} rowLabel={rowLabel} density={density} />
           ))}
         </TableBody>
       </SortableContext>

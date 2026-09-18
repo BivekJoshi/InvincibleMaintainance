@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
-import { DataTablePagination } from '@/components/common/DataTable/DataTablePagination';
+import { CustomTablePagination } from '@/components/common/CustomTable/CustomTablePagination';
 import { describeHistoryEntry, diffRows, fieldLabel, foldHistory, formatDiffValue } from '@/helpers/history';
 import { formatDateTime, titleCase } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
@@ -103,7 +103,7 @@ export function RecordHistory({ endpoint, pageSize = 20, className }) {
         {items.map((entry) => <HistoryItem key={entry.id} entry={entry} />)}
       </ol>
       {meta?.total > limit || page > 1 ? (
-        <DataTablePagination
+        <CustomTablePagination
           page={meta.page} pages={meta.pages} total={meta.total} limit={meta.limit}
           pageSizes={[10, 20, 50, 100]}
           onPageChange={setPage}

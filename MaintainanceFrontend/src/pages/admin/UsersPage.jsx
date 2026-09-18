@@ -12,7 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StateBadge } from '@/components/common/StateBadge';
 import { UserFormSheet } from '@/components/platform/UserFormSheet';
 import { SessionsDialog } from '@/components/platform/SessionsDialog';
@@ -167,7 +167,8 @@ export default function UsersPage() {
           </>
         )}
       />
-      <DataTable
+      <CustomTable
+        storageKey="users"
         columns={columns}
         data={data?.items}
         meta={data?.meta}

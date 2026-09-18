@@ -5,7 +5,7 @@ import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
 import { useQuotationActions } from '@/hooks/useQuotationActions';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StateBadge } from '@/components/common/StateBadge';
 import { StatusBadge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -114,7 +114,9 @@ export default function QuotationsPage() {
           </TabsList>
         </div>
       </Tabs>
-      <DataTable
+      <CustomTable
+        storageKey="quotations"
+        exportable
         columns={columns}
         data={data?.items}
         meta={data?.meta}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useGetStockMovementsQuery } from '@/api/stockApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { STOCK_MOVEMENT_LABELS, STOCK_MOVEMENT_TYPES } from '@/config/constants';
 import { formatDateTime, formatNpr } from '@/helpers/format';
@@ -70,7 +70,7 @@ export function StockMovementsSheet({ materialId, material, onOpenChange }) {
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {materialId ? (
-            <DataTable
+            <CustomTable
               columns={columns}
               data={data?.items}
               meta={data?.meta}

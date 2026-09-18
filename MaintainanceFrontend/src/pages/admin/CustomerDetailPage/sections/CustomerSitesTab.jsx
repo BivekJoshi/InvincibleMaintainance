@@ -4,7 +4,7 @@ import { MapPin, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import {
   useCreateSiteMutation, useDeleteSiteMutation, useGetCustomerSitesQuery, useUpdateSiteMutation,
 } from '@/api/customersApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
 import { StateBadge } from '@/components/common/StateBadge';
 import { MapPinInput } from '@/components/customers/MapPinInput';
@@ -106,7 +106,7 @@ export function CustomerSitesTab({ customer, canWrite }) {
 
   return (
     <div className="space-y-3">
-      <DataTable
+      <CustomTable
         columns={columns}
         data={sites}
         meta={{ page: 1, pages: 1, total: sites.length, limit: sites.length || 1 }}

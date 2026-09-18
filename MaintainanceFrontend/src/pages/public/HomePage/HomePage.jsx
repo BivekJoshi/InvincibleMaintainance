@@ -1,6 +1,7 @@
 import { useSelector } from 'react-redux';
 import { useGetHomeQuery } from '@/api/publicApi';
 import { selectLocale } from '@/redux/slices/uiSlice';
+import { useSeo } from '@/hooks/useSeo';
 import { ErrorState } from '@/components/common/ErrorState';
 import { PageTransition } from '@/three/motion/motionKit';
 import { HomeSkeleton } from './HomeSkeleton';
@@ -79,6 +80,8 @@ function isEmpty(data) {
 export default function HomePage() {
   const locale = useSelector(selectLocale);
   const { data, isLoading, error, refetch } = useGetHomeQuery(locale);
+  // No title of its own: the default title and description from Settings.
+  useSeo();
 
   if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
   if (isLoading) return <HomeSkeleton />;

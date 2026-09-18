@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Pencil, Plus, SkipForward, Trash2, Undo2 } from 'lucide-react';
 import { useAddJobTaskMutation, useDeleteJobTaskMutation, useUpdateJobTaskMutation } from '@/api/jobsApi';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { FormDialog } from '@/components/common/FormDialog';
 import { StateBadge } from '@/components/common/StateBadge';
 import { Button } from '@/components/ui/button';
@@ -99,7 +99,7 @@ export function JobChecklistTab({ job, canWrite }) {
           ? open ? `${open} of ${tasks.length} still open — the job cannot be completed until each is done or skipped.` : `All ${tasks.length} done or skipped.`
           : 'No checklist on this job.'}
       </p>
-      <DataTable
+      <CustomTable
         columns={columns}
         data={tasks}
         meta={{ page: 1, pages: 1, total: tasks.length, limit: tasks.length || 1 }}

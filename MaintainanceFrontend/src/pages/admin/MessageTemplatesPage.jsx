@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { useGetTemplateGroupsQuery } from '@/api/messagesApi';
 import { useListParams } from '@/hooks/useListParams';
 import { PageHeader } from '@/components/common/PageHeader';
-import { DataTable } from '@/components/common/DataTable/DataTable';
+import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StateBadge } from '@/components/common/StateBadge';
 import { Button } from '@/components/ui/button';
 import { PageTransition } from '@/three/motion/motionKit';
@@ -67,7 +67,8 @@ export default function MessageTemplatesPage() {
         description="The words of every SMS and email. Customers get their own language; a missing Nepali version falls back to English."
         actions={<Button asChild><Link to={templateHref('new')}><Plus aria-hidden /> New template</Link></Button>}
       />
-      <DataTable
+      <CustomTable
+        storageKey="message-templates"
         columns={columns}
         data={data?.items}
         meta={data?.meta}

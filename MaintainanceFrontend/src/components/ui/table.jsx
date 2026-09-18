@@ -1,9 +1,12 @@
 import * as React from 'react';
 import { cn } from '@/helpers/utils';
 
-/** Wide tables scroll inside their own container; the page body never scrolls sideways. */
-const Table = React.forwardRef(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-x-auto">
+/**
+ * Wide tables scroll inside their own container; the page body never scrolls sideways.
+ * `containerClassName` / `containerStyle` size that container (a max height for a sticky header).
+ */
+const Table = React.forwardRef(({ className, containerClassName, containerStyle, ...props }, ref) => (
+  <div className={cn('relative w-full overflow-x-auto', containerClassName)} style={containerStyle}>
     <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
   </div>
 ));

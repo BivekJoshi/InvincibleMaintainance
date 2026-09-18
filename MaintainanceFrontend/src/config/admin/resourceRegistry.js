@@ -46,8 +46,8 @@ import { suppliers } from './resources/suppliers';
  * @property {string} [writeCapability] needed to create, edit, reorder, toggle and delete (default `cms:write`)
  * @property {string} [historyCapability] needed for the edit page's History tab (`GET <path>/:id/history`);
  *                                    default `capability` — the API guards a CMS record's trail with `cms:read`
- * @property {object[]} columns       DataTable columns; the page appends the Active switch
- * @property {object[]} [filters]     DataTable filters
+ * @property {object[]} columns       CustomTable columns; the page appends the Active switch
+ * @property {object[]} [filters]     CustomTable filters
  * @property {object[]} fields        ResourceForm fields
  * @property {import('zod').ZodTypeAny | ((ctx: SchemaContext) => import('zod').ZodTypeAny)} schema
  *                                    from `form/schemas/cms.schema.js`; a function when a rule needs what the

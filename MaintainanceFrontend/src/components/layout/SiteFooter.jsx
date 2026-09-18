@@ -1,9 +1,13 @@
 import { Link } from 'react-router-dom';
-import { Mail, MapPin, Phone } from 'lucide-react';
+import { Mail, MapPin, MessageCircle, Phone } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { FIELD_ROLES } from '@/config/constants';
 import { PromiseList } from '@/components/site/PromiseList';
+import { BrandMark } from '@/components/site/BrandMark';
+
+/** A Nepali mobile as stored (`9808338255`, `+977 980…`) → `9779808338255` for chat links. */
+const intlDigits = (phone) => `977${String(phone).replace(/\D/g, '').replace(/^977/, '')}`;
 
 /** One contact line. `href` is optional — an address is not something to dial. */
 function ContactLine({ icon: Icon, children, href, align = 'center' }) {
@@ -28,7 +32,9 @@ function ContactLine({ icon: Icon, children, href, align = 'center' }) {
  * `useSiteSettings`, so the phone number here is the phone number in the header.
  */
 export function SiteFooter() {
-  const { name: company, initial, tagline, phone, mobile, email, address, city, categories, nav } = useSiteSettings();
+  const {
+    name: company, initial, logoUrl, tagline, phone, mobile, email, address, city, whatsapp, viber, social, categories, nav,
+  } = useSiteSettings();
   const { isAuthenticated, role } = useAuth();
   const appHome = FIELD_ROLES.includes(role) ? '/tech' : '/admin';
 
@@ -37,13 +43,27 @@ export function SiteFooter() {
       <div className="container grid gap-10 py-14 text-sm md:grid-cols-2 lg:grid-cols-12">
         <div className="lg:col-span-4">
           <div className="flex items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-md bg-gold text-sm font-bold text-gold-foreground">
-              {initial}
-            </span>
+            <BrandMark logoUrl={logoUrl} initial={initial} className="h-9 w-9 rounded-md bg-gold text-sm font-bold text-gold-foreground" />
             <span className="text-[15px] font-bold tracking-tight">{company}</span>
           </div>
           <p className="mt-4 max-w-xs leading-relaxed text-ink-muted">{tagline}</p>
           <PromiseList variant="chips" tone="ink" className="mt-5" />
+          {social.length ? (
+            <ul className="mt-5 flex flex-wrap gap-2" aria-label="Follow us">
+              {social.map((s) => (
+                <li key={s.key}>
+                  <a
+                    href={s.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex rounded-md border border-ink-foreground/15 px-2.5 py-1 text-xs text-ink-muted transition-colors hover:border-gold/50 hover:text-ink-foreground"
+                  >
+                    {s.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
 
         <div className="lg:col-span-3">
@@ -51,6 +71,12 @@ export function SiteFooter() {
           <ul className="mt-4 space-y-3 text-ink-muted">
             <li><ContactLine icon={Phone} href={`tel:${phone}`}>{phone}</ContactLine></li>
             <li><ContactLine icon={Phone} href={`tel:${mobile}`}>{mobile}</ContactLine></li>
+            {whatsapp ? (
+              <li><ContactLine icon={MessageCircle} href={`https://wa.me/${intlDigits(whatsapp)}`}>WhatsApp {whatsapp}</ContactLine></li>
+            ) : null}
+            {viber ? (
+              <li><ContactLine icon={MessageCircle} href={`viber://chat?number=%2B${intlDigits(viber)}`}>Viber {viber}</ContactLine></li>
+            ) : null}
             {email ? <li><ContactLine icon={Mail} href={`mailto:${email}`}>{email}</ContactLine></li> : null}
             {address ? <li><ContactLine icon={MapPin} align="start">{address}</ContactLine></li> : null}
           </ul>
