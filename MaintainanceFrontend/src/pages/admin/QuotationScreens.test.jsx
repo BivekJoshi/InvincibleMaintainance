@@ -51,7 +51,8 @@ describe('QuotationsPage', () => {
     expect(await within(screen.getByRole('tab', { name: /Needs approval/ })).findByText('3')).toBeInTheDocument();
     expect(within(screen.getByRole('tab', { name: /asked for changes/ })).getByText('2')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: 'Ready to send' }));
+    expect(within(screen.getByRole('tab', { name: /With customer/ })).getByText('2')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /Ready to send/ }));
     await waitFor(() => expect(lists().at(-1).query).toMatchObject({ stage: 'ready' }));
     expect(router.state.location.search).toContain('stage=ready');
   });
@@ -66,6 +67,24 @@ describe('QuotationsPage', () => {
     expect(calls.find((c) => c.path === '/admin/quotations' && c.query.limit === '20').query.stage).toBe('all');
     expect(screen.getByRole('tab', { name: 'Needs approval' })).toBeInTheDocument();
     expect(calls.some((c) => c.query.stage === 'approval' && c.query.limit === '1')).toBe(false);
+    // Sales sends quotations, so what is ready to send is counted for them.
+    expect(await within(screen.getByRole('tab', { name: /Ready to send/ })).findByText('4')).toBeInTheDocument();
+  });
+
+  it('nudges a follow-up on a sent quotation, and flags one about to run out', async () => {
+    const day = 86_400_000;
+    const sent = {
+      ...QUOTATION, status: 'SENT',
+      sentAt: new Date(Date.now() - 5.5 * day).toISOString(),
+      validUntil: new Date(Date.now() + 1.5 * day).toISOString(),
+    };
+    mockApi(({ path, query }) => {
+      if (path !== '/admin/quotations') return undefined;
+      return query.limit === '1' ? json({ data: [], meta: { total: 0 } }) : page([sent]);
+    });
+    renderWithProviders(<QuotationsPage />, { path: '/admin/quotations', preloadedState: signedInAs('SALES') });
+    expect(await screen.findByText('Sent 5 days ago')).toBeInTheDocument();
+    expect(screen.getByText('Expires in 1 day')).toBeInTheDocument();
   });
 
   it('offers a row the actions its state allows and runs Submit', async () => {

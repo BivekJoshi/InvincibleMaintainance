@@ -573,6 +573,20 @@ describe('customers', () => {
     expect(forAccounts[0].balanceDue).toBe(0);
   });
 
+  it('filters to customers with open jobs, and to those who owe money for finance only', async () => {
+    const tag = uid('flt');
+    const customer = expectStatus(await sales.post('/admin/customers').send({ name: `Filter ${uid()}`, phone: phone(), tags: [tag] }), 201).data;
+
+    expect(expectStatus(await sales.get(`/admin/customers?tag=${tag}&hasOpenJobs=true`), 200).data).toEqual([]);
+    expect(expectStatus(await accountant.get(`/admin/customers?tag=${tag}&owing=true`), 200).data).toEqual([]);
+    // Sales cannot read invoices, so `owing` is ignored for them rather than leaking who owes.
+    expect(expectStatus(await sales.get(`/admin/customers?tag=${tag}&owing=true`), 200).data.map((r) => r.id)).toEqual([customer.id]);
+
+    await prisma.job.create({ data: { number: uid('JOB'), customerId: customer.id, title: 'Open job', type: 'REPAIR', status: 'SCHEDULED' } });
+    expect(expectStatus(await sales.get(`/admin/customers?tag=${tag}&hasOpenJobs=true`), 200).data.map((r) => r.id)).toEqual([customer.id]);
+    expectStatus(await sales.get('/admin/customers?hasOpenJobs=yes'), 400);
+  });
+
   it('keeps exactly one primary site', async () => {
     const customer = await createCustomer(sales);
     const first = expectStatus(await sales.post(`/admin/customers/${customer.id}/sites`).send({ label: 'First', address: 'Baluwatar' }), 201).data;

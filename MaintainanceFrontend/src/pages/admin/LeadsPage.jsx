@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { CalendarCheck, Download, KanbanSquare, Plus, UserPlus } from 'lucide-react';
+import {
+  AlarmClock, CalendarCheck, CalendarDays, Download, Flame, KanbanSquare, Plus, Sparkles, UserPlus, UserX,
+} from 'lucide-react';
 import { useGetLeadsQuery, useLazyExportLeadsCsvQuery } from '@/api/leadsApi';
 import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,6 +23,7 @@ import {
   DEFAULT_LEAD_VIEW, LEAD_PRESETS, LEAD_VIEWS, activePreset, applyPreset, leadQueryFor,
 } from '@/config/admin/leadViews';
 import { formatDate, formatDateTime, titleCase } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 const columns = [
   {
@@ -63,22 +66,40 @@ const columns = [
   { key: 'createdAt', header: 'Received', sortable: true, cell: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</span> },
 ];
 
+const PRIORITY_TONES = { LOW: 'muted', NORMAL: 'info', HIGH: 'warning', URGENT: 'danger' };
+
+// Ordered by what sales checks first: is anything late, where is it in the pipeline,
+// who has it — then the finer cuts. Shown in the Filters panel, as chips.
 const filters = [
-  { key: 'status', label: 'Status', type: 'enum', allLabel: 'All statuses', options: LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_LABELS[s] })) },
-  { key: 'priority', label: 'Priority', type: 'enum', allLabel: 'Any priority', className: 'w-[140px]', options: PRIORITIES.map((p) => ({ value: p, label: titleCase(p) })) },
-  { key: 'source', label: 'Source', type: 'enum', allLabel: 'All sources', className: 'w-[160px]', options: LEAD_SOURCES.map((s) => ({ value: s, label: LEAD_SOURCE_LABELS[s] })) },
-  { key: 'serviceId', label: 'Service', type: 'relation', relation: SERVICE_RELATION },
+  {
+    key: 'slaRisk', label: 'Response', type: 'enum', hint: '2-hour clock',
+    options: [
+      { value: 'breached', label: 'Deadline passed', tone: 'danger' },
+      { value: 'at_risk', label: 'Due soon', tone: 'warning' },
+      { value: 'ok', label: 'On track', tone: 'success' },
+    ],
+  },
+  { key: 'status', label: 'Status', type: 'enum', options: LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_LABELS[s] })) },
+  { key: 'priority', label: 'Priority', type: 'enum', options: PRIORITIES.map((p) => ({ value: p, label: titleCase(p), tone: PRIORITY_TONES[p] })) },
   {
     key: 'assignedToId', label: 'Owner', type: 'relation', relation: ASSIGNEE_RELATION,
     fixedOptions: [{ value: 'none', label: 'Unassigned' }],
   },
-  {
-    key: 'slaRisk', label: 'Response', type: 'enum', allLabel: 'Any response state', className: 'w-[180px]',
-    options: [{ value: 'breached', label: 'Deadline passed' }, { value: 'at_risk', label: 'Due soon' }, { value: 'ok', label: 'On track' }],
-  },
-  { key: 'requestedVisit', label: 'Requested visit', type: 'boolean', trueLabel: 'Asked for a visit', falseLabel: 'No visit asked', className: 'w-[170px]' },
+  { key: 'serviceId', label: 'Service', type: 'relation', relation: SERVICE_RELATION },
+  { key: 'source', label: 'Source', type: 'enum', options: LEAD_SOURCES.map((s) => ({ value: s, label: LEAD_SOURCE_LABELS[s] })) },
+  { key: 'requestedVisit', label: 'Requested visit', type: 'boolean', trueLabel: 'Asked for a visit', falseLabel: 'No visit asked' },
   { key: 'received', label: 'Received', type: 'dateRange' },
 ];
+
+/** Each quick view's icon, and the colour it takes when on. */
+const PRESET_LOOK = {
+  breached: { icon: AlarmClock, active: 'border-destructive/40 bg-destructive/10 text-destructive' },
+  'due-soon': { icon: AlarmClock, active: 'border-warning-border bg-warning-surface text-warning-foreground' },
+  unassigned: { icon: UserX, active: 'border-primary/40 bg-primary/10 text-primary' },
+  urgent: { icon: Flame, active: 'border-destructive/40 bg-destructive/10 text-destructive' },
+  'new-today': { icon: Sparkles, active: 'border-primary/40 bg-primary/10 text-primary' },
+  'bookings-week': { icon: CalendarDays, active: 'border-success-border bg-success-surface text-success-foreground' },
+};
 
 /** Leads, opening on "My leads" (D6), with saved views, bulk assign and export. */
 export default function LeadsPage() {
@@ -154,17 +175,27 @@ export default function LeadsPage() {
         }
       />
 
-      <nav aria-label="Saved views" className="mb-4 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">Views:</span>
-        {LEAD_PRESETS.map((p) => (
-          <Button
-            key={p.key} type="button" size="sm" variant={preset === p.key ? 'secondary' : 'ghost'}
-            aria-pressed={preset === p.key}
-            onClick={() => setParams(applyPreset(params, p))}
-          >
-            {p.label}
-          </Button>
-        ))}
+      <nav aria-label="Saved views" className="-mx-1 mb-4 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+        <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">Quick views</span>
+        {LEAD_PRESETS.map((p) => {
+          const look = PRESET_LOOK[p.key] ?? {};
+          const Icon = look.icon;
+          const on = preset === p.key;
+          return (
+            <button
+              key={p.key} type="button" title={p.hint} aria-pressed={on}
+              onClick={() => setParams(on ? { limit: params.limit, sort: params.sort, view: 'all', page: 1 } : applyPreset(params, p))}
+              className={cn(
+                'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                on ? look.active : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden /> : null}
+              {p.label}
+            </button>
+          );
+        })}
       </nav>
 
       <CustomTable
@@ -185,6 +216,7 @@ export default function LeadsPage() {
           ? 'Switch to All leads, or clear the filters.'
           : 'Clear the filters, or wait for the next enquiry from the website.'}
         filters={filters}
+        filterLayout="panel"
         toolbar={toolbar}
         bulkActions={bulkActions}
         rowLabel={(r) => r.name}

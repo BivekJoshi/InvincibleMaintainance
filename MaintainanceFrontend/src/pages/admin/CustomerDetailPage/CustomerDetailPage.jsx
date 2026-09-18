@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ArrowLeft, Mail, Phone, Trash2 } from 'lucide-react';
+import { ArrowLeft, Mail, MessageCircle, Phone, Plus, Trash2 } from 'lucide-react';
 import { useDeleteCustomerMutation, useGetCustomerQuery, useUpdateCustomerMutation } from '@/api/customersApi';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -20,6 +21,9 @@ import { CUSTOMER_RECORD_TABS } from '@/config/admin/customerTabs';
 import { PREFERRED_LOCALE_OPTIONS } from '@/config/constants';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { titleCase } from '@/helpers/format';
+import { JobFormSheet } from '@/components/jobs/JobFormSheet';
+import { whatsappHref } from '@/helpers/contact';
+import { cn } from '@/helpers/utils';
 import { CustomerSitesTab } from './sections/CustomerSitesTab';
 import { CustomerTimelineTab } from './sections/CustomerTimelineTab';
 import { CustomerRecordsTab } from './sections/CustomerRecordsTab';
@@ -40,6 +44,7 @@ export default function CustomerDetailPage() {
   const [updateCustomer] = useUpdateCustomerMutation();
   const [deleteCustomer] = useDeleteCustomerMutation();
   const [confirm, confirmDialog] = useConfirm();
+  const [newJob, setNewJob] = useState(false);
 
   const recordTabs = CUSTOMER_RECORD_TABS.filter((t) => t.allowed({ can, role }));
   const tabs = [
@@ -71,6 +76,12 @@ export default function CustomerDetailPage() {
 
   const language = PREFERRED_LOCALE_OPTIONS.find((o) => o.value === customer.preferredLocale)?.label;
   const counts = customer._count ?? {};
+  const whatsapp = whatsappHref(customer.phone);
+  // Each count opens the tab that lists it, when this user has that tab.
+  const tiles = [
+    ['Enquiries', counts.leads, 'timeline'], ['Quotations', counts.quotations, 'quotations'],
+    ['Jobs', counts.jobs, 'jobs'], ['Invoices', counts.invoices, 'invoices'],
+  ];
 
   return (
     <PageTransition>
@@ -80,6 +91,7 @@ export default function CustomerDetailPage() {
         actions={
           <>
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin/customers')}><ArrowLeft /> Customers</Button>
+            {can('jobs:write') ? <Button size="sm" onClick={() => setNewJob(true)}><Plus /> New job</Button> : null}
             {canWrite ? (
               <Button variant="ghost" size="icon" onClick={onDelete} aria-label="Delete customer"><Trash2 className="text-destructive" /></Button>
             ) : null}
@@ -88,18 +100,34 @@ export default function CustomerDetailPage() {
       >
         <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
           <a href={`tel:${customer.phone}`} className="inline-flex items-center gap-1.5 hover:text-primary"><Phone className="h-4 w-4" aria-hidden /> {customer.phone}</a>
+          {whatsapp ? (
+            <a href={whatsapp} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-primary">
+              <MessageCircle className="h-4 w-4" aria-hidden /> WhatsApp
+            </a>
+          ) : null}
           {customer.email ? <a href={`mailto:${customer.email}`} className="inline-flex items-center gap-1.5 hover:text-primary"><Mail className="h-4 w-4" aria-hidden /> {customer.email}</a> : null}
           {(customer.tags ?? []).map((t) => <StateBadge key={t}>{t}</StateBadge>)}
         </div>
       </PageHeader>
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[['Enquiries', counts.leads], ['Quotations', counts.quotations], ['Jobs', counts.jobs], ['Invoices', counts.invoices]].map(([label, n]) => (
-          <Card key={label}><CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-lg font-semibold tabular-nums">{n ?? 0}</p>
-          </CardContent></Card>
-        ))}
+        {tiles.map(([label, n, target]) => {
+          const body = (
+            <>
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="text-lg font-semibold tabular-nums">{n ?? 0}</p>
+            </>
+          );
+          return (
+            <Card key={label} className={cn(tab === target && 'ring-2 ring-primary')}>
+              {tabs.includes(target) ? (
+                <button type="button" onClick={() => setTab(target)} className="w-full rounded-lg p-3 text-left hover:bg-muted/50" aria-label={`${label}: ${n ?? 0} — open the tab`}>
+                  {body}
+                </button>
+              ) : <CardContent className="p-3">{body}</CardContent>}
+            </Card>
+          );
+        })}
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -151,6 +179,14 @@ export default function CustomerDetailPage() {
           </TabsContent>
         ) : null}
       </Tabs>
+      {can('jobs:write') ? (
+        <JobFormSheet
+          open={newJob}
+          onOpenChange={setNewJob}
+          defaults={{ customerId: customer.id, siteId: customer.sites?.find((s) => s.isPrimary)?.id }}
+          onCreated={(job) => navigate(`/admin/jobs/${job.id}`)}
+        />
+      ) : null}
       {confirmDialog}
     </PageTransition>
   );

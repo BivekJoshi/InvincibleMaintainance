@@ -27,6 +27,7 @@ function api() {
     if (path === '/admin/customers/c1') return json({ data: CUSTOMER });
     if (path === '/admin/customers/c1/sites' && method === 'POST') return json({ data: { ...body, id: 's2' } }, 201);
     if (path === '/admin/customers/c1/sites') return json({ data: CUSTOMER.sites });
+    if (path === '/admin/technicians' || path === '/admin/job-templates') return page([]);
     if (path === '/admin/quotations') return page([{ id: 'q1', number: 'QT-2083-0001', status: 'SENT', total: 282557, createdAt: '2026-09-01T00:00:00Z' }]);
     return undefined;
   });
@@ -53,6 +54,24 @@ describe('customers list', () => {
     expect(await screen.findByText('Himal Traders')).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Balance due' })).not.toBeInTheDocument();
     expect(screen.getByText('नेपाली')).toHaveAttribute('lang', 'ne');
+  });
+
+  it('asks the two common questions in one click: open jobs, and — for accounts — who owes', async () => {
+    const user = userEvent.setup();
+    const calls = api();
+    const customerQueries = () => calls.filter((c) => c.method === 'GET' && c.path === '/admin/customers').map((c) => c.query);
+    const { unmount } = renderWithProviders(<CustomersPage />, { path: '/admin/customers', preloadedState: signedInAs('SALES') });
+    await screen.findByText('Himal Traders');
+    expect(screen.queryByRole('button', { name: /^Owes money$/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Open jobs$/ }));
+    await waitFor(() => expect(customerQueries().at(-1)).toMatchObject({ hasOpenJobs: 'true' }));
+    expect(screen.getByRole('button', { name: /^Open jobs$/ })).toHaveAttribute('aria-pressed', 'true');
+    unmount();
+
+    renderWithProviders(<CustomersPage />, { path: '/admin/customers', preloadedState: signedInAs('ACCOUNTANT') });
+    await screen.findByText('Himal Traders');
+    await user.click(screen.getByRole('button', { name: /^Owes money$/ }));
+    await waitFor(() => expect(customerQueries().at(-1)).toMatchObject({ owing: 'true' }));
   });
 
   it('filters by a tag from the row', async () => {
@@ -132,5 +151,30 @@ describe('customer page', () => {
     await user.click(within(sheet).getByRole('button', { name: 'Add site' }));
     await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/admin/customers/c1/sites')?.body)
       .toMatchObject({ label: 'Warehouse', address: 'Balaju Industrial Area', lat: 27.7349, lng: 85.3035, isPrimary: false }));
+  });
+});
+
+describe('customer page shortcuts', () => {
+  it('opens a record tab from its count, and starts a job for this customer', async () => {
+    const user = userEvent.setup();
+    api();
+    renderDetail('ADMIN');
+    expect(await screen.findByRole('heading', { name: 'Himal Traders' })).toBeInTheDocument();
+    // A landline has no WhatsApp.
+    expect(screen.queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Quotations: 1/ }));
+    expect(await screen.findByText('QT-2083-0001')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Quotations' })).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByRole('button', { name: /New job/ }));
+    expect(await screen.findByRole('dialog', { name: 'New job' })).toBeInTheDocument();
+  });
+
+  it('offers no New job to sales, who cannot create one', async () => {
+    api();
+    renderDetail('SALES');
+    await screen.findByRole('heading', { name: 'Himal Traders' });
+    expect(screen.queryByRole('button', { name: /New job/ })).not.toBeInTheDocument();
   });
 });

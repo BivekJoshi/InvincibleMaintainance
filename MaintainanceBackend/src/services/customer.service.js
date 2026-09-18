@@ -20,6 +20,8 @@ export async function listCustomers(query, { withBalance = false } = {}) {
     deletedAt: null,
     ...(query.type ? { type: query.type } : {}),
     ...(query.tag ? { tags: { array_contains: [query.tag] } } : {}),
+    ...(query.hasOpenJobs ? { jobs: { some: OPEN_JOB } } : {}),
+    ...(query.owing && withBalance ? { invoices: { some: { deletedAt: null, status: { in: UNPAID } } } } : {}),
     ...(q ? { OR: searchOr(q, ['name', 'phone', 'altPhone', 'email', 'panVatNo']) } : {}),
   };
   const [rows, total] = await Promise.all([

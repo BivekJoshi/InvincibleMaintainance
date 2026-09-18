@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { BadgeCheck, CircleCheck, Copy, FileText, Send, Undo2, Wrench } from 'lucide-react';
+import { BadgeCheck, CircleCheck, Clock, Copy, FileText, Send, Undo2, Wrench } from 'lucide-react';
 import { useGetQuotationStageCountQuery, useGetQuotationsQuery } from '@/api/quotationsApi';
 import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,7 +11,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageTransition } from '@/three/motion/motionKit';
 import { QUOTATION_STAGE_TABS, QUOTATION_STATUS_LABELS } from '@/config/constants';
-import { quotationActions } from '@/helpers/quotationActions';
+import { quotationActions, sentAge, validityWarning } from '@/helpers/quotationActions';
 import { formatDate, formatDateTime, formatNpr } from '@/helpers/format';
 
 const ACTION_ICONS = {
@@ -33,7 +33,12 @@ const columns = [
     cell: (r) => (
       <div className="min-w-0">
         <p className="truncate font-medium">{r.customer?.name}</p>
-        <p className="truncate text-xs text-muted-foreground">{r.site?.area ?? r.site?.address ?? r.customer?.phone}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          {r.customer?.phone ? (
+            <a href={`tel:${r.customer.phone}`} onClick={(e) => e.stopPropagation()} className="hover:text-primary hover:underline">{r.customer.phone}</a>
+          ) : null}
+          {r.site?.area ?? r.site?.address ? ` · ${r.site?.area ?? r.site?.address}` : null}
+        </p>
       </div>
     ),
   },
@@ -43,6 +48,8 @@ const columns = [
       <div className="flex flex-wrap items-center gap-1.5">
         <StatusBadge status={r.status} label={QUOTATION_STATUS_LABELS[r.status]} />
         {r.autoApproved && ['OFFICE_APPROVED', 'SENT'].includes(r.status) ? <StateBadge tone="info">Auto-approved</StateBadge> : null}
+        {/* How long the customer has had it: the cue to call and follow up. */}
+        {sentAge(r) ? <span className="w-full text-[11px] text-muted-foreground">{sentAge(r)}</span> : null}
       </div>
     ),
   },
@@ -56,7 +63,22 @@ const columns = [
       </div>
     ),
   },
-  { key: 'validUntil', header: 'Valid until', sortable: true, cell: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDate(r.validUntil)}</span> },
+  {
+    key: 'validUntil', header: 'Valid until', sortable: true,
+    cell: (r) => {
+      const warning = validityWarning(r);
+      return (
+        <div className="min-w-0">
+          <p className="whitespace-nowrap text-xs text-muted-foreground">{formatDate(r.validUntil)}</p>
+          {warning ? (
+            <StateBadge tone="warning" className={warning.tone === 'expired' ? 'mt-1 text-destructive' : 'mt-1'}>
+              <Clock className="mr-1 h-3 w-3" aria-hidden />{warning.label}
+            </StateBadge>
+          ) : null}
+        </div>
+      );
+    },
+  },
   { key: 'updatedAt', header: 'Last change', sortable: true, cell: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(r.updatedAt)}</span> },
 ];
 

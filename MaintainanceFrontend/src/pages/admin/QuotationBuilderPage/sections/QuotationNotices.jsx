@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
-import { MessageSquareWarning, ShieldCheck, Undo2, UserX } from 'lucide-react';
+import { Clock, MessageSquareWarning, ShieldCheck, Undo2, UserX } from 'lucide-react';
 import { DocumentNotice } from '@/components/documents/DocumentNotice';
 import { formatDateTime } from '@/helpers/format';
-import { isSelfApproval } from '@/helpers/quotationActions';
+import { isSelfApproval, sentAge, validityWarning } from '@/helpers/quotationActions';
 
 /**
  * What a reader must see before touching a quotation: the customer's change request
@@ -53,6 +53,17 @@ export function QuotationNotices({ quotation: q, can, userId }) {
     notices.push(
       <DocumentNotice key="self" tone="muted" icon={UserX} animate={false} title="You prepared this quotation">
         Another manager or admin must approve it.
+      </DocumentNotice>,
+    );
+  }
+
+  const validity = validityWarning(q);
+  if (validity) {
+    notices.push(
+      <DocumentNotice key="validity" tone="warning" icon={Clock} animate={false} title={validity.label}>
+        {validity.tone === 'expired'
+          ? 'The customer can no longer accept it. Revise it with a new date to send it again.'
+          : `${q.status === 'SENT' ? `${sentAge(q)}. ` : ''}Call the customer before it runs out, or revise it with a later date.`}
       </DocumentNotice>,
     );
   }

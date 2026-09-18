@@ -18,6 +18,9 @@ export const needsReason = (to) => to === 'LOST';
 /** The board's columns: every status, in funnel order. */
 export const BOARD_COLUMNS = LEAD_STATUSES;
 
+/** Columns folded by default: closed leads need no work, but stay a drop target (a lead is lost from anywhere). */
+export const FOLDABLE_COLUMNS = ['WON', 'LOST'];
+
 /**
  * The status each card is shown under: the server's, unless a move is in flight.
  *
@@ -59,4 +62,28 @@ export function columnTableHref(query, status) {
     status,
   };
   return `/admin/leads?${new URLSearchParams(params)}`;
+}
+
+/** Who a lead can be given to — the API's ASSIGNABLE_ROLES. Only they can take a lead. */
+export const ASSIGNABLE_ROLES = ['SALES', 'MANAGER', 'ADMIN'];
+
+/** The SLA board's "whose" switch. */
+export const SLA_SCOPES = [
+  { value: 'all', label: 'Everyone' },
+  { value: 'mine', label: 'Mine' },
+  { value: 'unassigned', label: 'Unassigned' },
+];
+
+/**
+ * The SLA board's leads for a scope. The board holds at most fifty per column, so this
+ * filters in the browser instead of asking the API again.
+ *
+ * @param {object[]} leads
+ * @param {'all'|'mine'|'unassigned'} scope
+ * @param {string} [userId]
+ */
+export function leadsInScope(leads, scope, userId) {
+  if (scope === 'mine') return leads.filter((l) => (l.assignedToId ?? l.assignedTo?.id) === userId);
+  if (scope === 'unassigned') return leads.filter((l) => !(l.assignedToId ?? l.assignedTo?.id));
+  return leads;
 }

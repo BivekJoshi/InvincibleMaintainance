@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { can as roleCan } from '@/helpers/permissions';
 import { QUOTATION_STATUSES, QUOTATION_TRANSITIONS } from '@/config/constants';
-import { isSelfApproval, quotationActions, waitingFor } from './quotationActions';
+import { isSelfApproval, quotationActions, sentAge, validityWarning, waitingFor } from './quotationActions';
 
 const as = (role, userId = 'me') => ({ can: (c) => roleCan(role, c), userId });
 const keys = (status, role, extra = {}) =>
@@ -65,5 +65,31 @@ describe('quotation action bar', () => {
 
   it('has a waiting line for every status', () => {
     for (const status of QUOTATION_STATUSES) expect(waitingFor({ status }, as('SALES')), status).toBeTruthy();
+  });
+});
+
+describe('validity and follow-up', () => {
+  const now = Date.parse('2026-09-18T06:00:00.000Z');
+  const at = (days) => new Date(now + days * 86_400_000).toISOString();
+
+  it('flags a quotation the customer can still answer when it is close to, or past, its date', () => {
+    expect(validityWarning({ status: 'SENT', validUntil: at(10) }, now)).toBeNull();
+    expect(validityWarning({ status: 'SENT', validUntil: at(2.5) }, now)).toEqual({ tone: 'soon', label: 'Expires in 2 days' });
+    expect(validityWarning({ status: 'OFFICE_APPROVED', validUntil: at(1.2) }, now)).toEqual({ tone: 'soon', label: 'Expires in 1 day' });
+    expect(validityWarning({ status: 'SENT', validUntil: at(0.2) }, now)).toEqual({ tone: 'soon', label: 'Expires today' });
+    expect(validityWarning({ status: 'SENT', validUntil: at(-1) }, now)).toEqual({ tone: 'expired', label: 'Past its validity date' });
+  });
+
+  it('says nothing once the customer has answered, or with no date', () => {
+    expect(validityWarning({ status: 'APPROVED', validUntil: at(-1) }, now)).toBeNull();
+    expect(validityWarning({ status: 'DRAFT', validUntil: at(1) }, now)).toBeNull();
+    expect(validityWarning({ status: 'SENT' }, now)).toBeNull();
+  });
+
+  it('counts the days a sent quotation has waited', () => {
+    expect(sentAge({ status: 'SENT', sentAt: at(-6.5) }, now)).toBe('Sent 6 days ago');
+    expect(sentAge({ status: 'SENT', sentAt: at(-1) }, now)).toBe('Sent 1 day ago');
+    expect(sentAge({ status: 'SENT', sentAt: at(-0.3) }, now)).toBe('Sent today');
+    expect(sentAge({ status: 'CHANGES_REQUESTED', sentAt: at(-6) }, now)).toBeNull();
   });
 });

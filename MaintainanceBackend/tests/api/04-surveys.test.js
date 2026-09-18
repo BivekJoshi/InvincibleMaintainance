@@ -46,6 +46,11 @@ describe('admin survey inbox', () => {
     const body = expectStatus(await sales.get('/admin/surveys'), 200);
     expect(body.data.length).toBeGreaterThan(0);
     expectStatus(await sales.get('/admin/surveys?status=SUBMITTED'), 200);
+    // A work queue is several statuses at once.
+    const queue = expectStatus(await sales.get('/admin/surveys?status=SUBMITTED,IN_REVIEW&limit=100'), 200).data;
+    expect(queue.map((s) => s.id)).toContain(inbox.id);
+    expect(queue.every((s) => ['SUBMITTED', 'IN_REVIEW'].includes(s.status))).toBe(true);
+    expectStatus(await sales.get('/admin/surveys?status=SUBMITTED,MAYBE'), 400);
   });
 
   it('GET /admin/surveys/:id returns readings and items', async () => {

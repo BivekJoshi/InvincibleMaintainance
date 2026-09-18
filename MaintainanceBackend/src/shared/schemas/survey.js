@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { id, listQuery, optionalText, unit } from './common.js';
-import { PRIORITIES, SURVEY_ITEM_KINDS, SURVEY_METRICS } from '../enums.js';
+import { PRIORITIES, SURVEY_ITEM_KINDS, SURVEY_METRICS, SURVEY_STATUSES } from '../enums.js';
 
 /**
  * The site survey is the one document in the system a field user writes.
@@ -106,7 +106,10 @@ export const surveyCreateSchema = z.object({
 }).strict();
 
 export const surveyListQuery = listQuery.extend({
-  status: z.string().optional(),
+  /** One status, or several comma separated — a work queue such as `SUBMITTED,IN_REVIEW`. */
+  status: z.string().optional()
+    .transform((v) => (v ? v.split(',').map((x) => x.trim()).filter(Boolean) : undefined))
+    .pipe(z.array(z.enum(SURVEY_STATUSES)).optional()),
   surveyorId: z.string().optional(),
   customerId: z.string().optional(),
 });

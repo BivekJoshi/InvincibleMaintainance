@@ -41,7 +41,11 @@ describe('leads', () => {
 
   it('GET /admin/leads/sla-board separates breached from at-risk', async () => {
     const body = expectStatus(await sales.get('/admin/leads/sla-board'), 200);
-    expect(body.data).toBeTypeOf('object');
+    expect(body.data).toMatchObject({
+      breached: expect.any(Array), atRisk: expect.any(Array),
+      newToday: expect.any(Number), answeredToday: expect.any(Number), metToday: expect.any(Number),
+    });
+    expect(body.data.metToday).toBeLessThanOrEqual(body.data.answeredToday);
   });
 
   it('GET /admin/leads/export.csv', async () => {

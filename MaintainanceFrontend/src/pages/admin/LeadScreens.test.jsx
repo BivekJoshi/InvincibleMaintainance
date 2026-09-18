@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LeadsPage from '@/pages/admin/LeadsPage';
 import LeadBoardPage from '@/pages/admin/LeadBoardPage/LeadBoardPage';
+import SlaBoardPage from '@/pages/admin/SlaBoardPage';
 import { ScheduleVisitDialog } from '@/components/leads/ScheduleVisitDialog';
 import { ConvertLeadSheet } from '@/components/leads/ConvertLeadSheet';
 import { RecordHistory } from '@/components/common/RecordHistory';
@@ -45,6 +46,28 @@ describe('LeadsPage', () => {
     // An owner picked by a view is neither "mine" nor "all".
     expect(screen.getByRole('radio', { name: 'My leads' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('radio', { name: 'All leads' })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('filters from the panel and shows each applied filter as a removable chip', async () => {
+    const user = userEvent.setup();
+    const calls = mockApi(({ path }) => (path === '/admin/leads' ? page([LEAD]) : undefined));
+    renderWithProviders(<LeadsPage />, { path: '/admin/leads', preloadedState: signedInAs('SALES') });
+    await screen.findByText('Sita Rai');
+
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    const panel = await screen.findByRole('dialog', { name: 'Filters' });
+    await user.click(within(within(panel).getByRole('group', { name: 'Response' })).getByRole('button', { name: 'Deadline passed' }));
+    await user.click(within(within(panel).getByRole('group', { name: 'Priority' })).getByRole('button', { name: 'Urgent' }));
+    await waitFor(() => expect(leadRequests(calls).at(-1).query).toMatchObject({ slaRisk: 'breached', priority: 'URGENT', assignedToId: 'me' }));
+    await user.click(within(panel).getByRole('button', { name: 'Show results' }));
+
+    expect(screen.getByRole('button', { name: 'Filters, 2 applied' })).toBeInTheDocument();
+    const applied = screen.getByRole('list', { name: 'Applied filters' });
+    expect(within(applied).getByText('Deadline passed')).toBeInTheDocument();
+
+    await user.click(within(applied).getByRole('button', { name: 'Remove Response filter' }));
+    await waitFor(() => expect(leadRequests(calls).at(-1).query).not.toHaveProperty('slaRisk'));
+    expect(leadRequests(calls).at(-1).query).toMatchObject({ priority: 'URGENT' });
   });
 
   it('assigns the selected leads in one request', async () => {
@@ -181,6 +204,85 @@ function convertApi(matches) {
 }
 
 const convertBody = (calls) => calls.find((c) => c.method === 'POST' && c.path === '/admin/leads/l1/convert')?.body;
+
+describe('the pipeline board — finding and folding', () => {
+  it('searches every column, and folds won and lost until asked', async () => {
+    const user = userEvent.setup();
+    const calls = mockApi(({ path, query }) => {
+      if (path !== '/admin/leads') return undefined;
+      if (query.status === 'WON') return page([{ ...LEAD, id: 'w1', name: 'Won Customer', status: 'WON' }]);
+      return page(query.status === 'NEW' ? [LEAD] : []);
+    });
+    const { router } = renderWithProviders(<LeadBoardPage />, { path: '/admin/leads/board', preloadedState: signedInAs('SALES') });
+
+    const newColumn = await screen.findByRole('region', { name: 'New' });
+    expect(await within(newColumn).findByRole('link', { name: 'Call Sita Rai' })).toHaveAttribute('href', 'tel:9808338255');
+    // Folded, but loaded — its count shows and it still takes a drop.
+    const won = screen.getByRole('region', { name: 'Won' });
+    expect(within(won).queryByText('Won Customer')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(won).getByLabelText('1 leads')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Show the Won column' }));
+    expect(await within(screen.getByRole('region', { name: 'Won' })).findByText('Won Customer')).toBeInTheDocument();
+    expect(router.state.location.search).toContain('closed=show');
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search the pipeline' }), 'Sita{Enter}');
+    await waitFor(() => expect(leadRequests(calls).filter((c) => c.query.q === 'Sita').map((c) => c.query.status).sort())
+      .toEqual(['CONTACTED', 'INSPECTION_SCHEDULED', 'LOST', 'NEW', 'QUOTED', 'WON']));
+    expect(leadRequests(calls).every((c) => !('closed' in c.query))).toBe(true);
+  });
+});
+
+describe('the SLA board', () => {
+  const breached = { ...LEAD, id: 'b1', name: 'Late Lead', message: 'Roof leaking into the bedroom', assignedToId: null, assignedTo: null, sla: { state: 'breached', dueAt: '2026-09-16T06:00:00.000Z' } };
+  const mine = { ...LEAD, id: 'm1', name: 'My Lead', assignedToId: 'user-test', assignedTo: { id: 'user-test', name: 'Test User' }, sla: { state: 'at_risk', dueAt: '2099-01-01T00:00:00.000Z' } };
+  const board = { breached: [breached], atRisk: [mine], newToday: 3, answeredToday: 4, metToday: 3 };
+
+  it('shows the score, what the customer asked, and lets a salesperson take an unowned lead', async () => {
+    const user = userEvent.setup();
+    const calls = mockApi(({ method, path }) => {
+      if (path === '/admin/leads/sla-board') return json({ data: board });
+      if (method === 'PATCH' && path === '/admin/leads/b1/assign') return json({ data: { ...breached, assignedToId: 'user-test' } });
+      return undefined;
+    });
+    const { store } = renderWithProviders(<SlaBoardPage />, { path: '/admin/sla', preloadedState: signedInAs('SALES') });
+
+    const late = await screen.findByRole('region', { name: 'Deadline passed' });
+    expect(within(late).getByText('Roof leaking into the bedroom')).toBeInTheDocument();
+    expect(within(late).getByRole('link', { name: 'WhatsApp Late Lead' })).toHaveAttribute('href', 'https://wa.me/9779808338255');
+    expect(screen.getByText('3 of 4')).toBeInTheDocument();
+    // Only the unowned lead offers Take it.
+    expect(screen.getAllByRole('button', { name: /Take it/ })).toHaveLength(1);
+
+    await user.click(within(late).getByRole('button', { name: /Take it/ }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ assignedToId: 'user-test' }));
+    await waitFor(() => expect(toastTitles(store)).toContain('Late Lead is yours'));
+  });
+
+  it('narrows to mine or to the unowned', async () => {
+    const user = userEvent.setup();
+    mockApi(({ path }) => (path === '/admin/leads/sla-board' ? json({ data: board }) : undefined));
+    const { router } = renderWithProviders(<SlaBoardPage />, { path: '/admin/sla', preloadedState: signedInAs('SALES') });
+    await screen.findByText('Late Lead');
+
+    await user.click(screen.getByRole('radio', { name: 'Mine' }));
+    expect(screen.queryByText('Late Lead')).not.toBeInTheDocument();
+    expect(screen.getByText('My Lead')).toBeInTheDocument();
+    expect(router.state.location.search).toContain('who=mine');
+
+    await user.click(screen.getByRole('radio', { name: 'Unassigned' }));
+    expect(await screen.findByText('Late Lead')).toBeInTheDocument();
+    expect(screen.queryByText('My Lead')).not.toBeInTheDocument();
+  });
+
+  it('is read-only for dispatch: no Take it, no Log response', async () => {
+    mockApi(({ path }) => (path === '/admin/leads/sla-board' ? json({ data: board }) : undefined));
+    renderWithProviders(<SlaBoardPage />, { path: '/admin/sla', preloadedState: signedInAs('DISPATCHER') });
+    await screen.findByText('Late Lead');
+    expect(screen.queryByRole('button', { name: /Take it/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Log response/ })).not.toBeInTheDocument();
+  });
+});
 
 describe('convert — a matching phone needs a decision', () => {
   it('Book visit waits for "same person" or "different person"; different person asks for a new customer', async () => {

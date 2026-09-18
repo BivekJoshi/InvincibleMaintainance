@@ -15,6 +15,12 @@ export const surveysApi = apiSlice.injectEndpoints({
       transformResponse: (r) => ({ items: r.data, meta: r.meta }),
       providesTags: tagList('Survey'),
     }),
+    /** How many surveys a queue holds — a tab's count. `statuses` is comma separated. */
+    getSurveyStageCount: build.query({
+      query: (statuses) => ({ url: '/admin/surveys', params: { status: statuses, limit: 1 } }),
+      transformResponse: (r) => r.meta?.total ?? 0,
+      providesTags: [{ type: 'Survey', id: 'LIST' }],
+    }),
     getSurvey: build.query({
       query: (id) => `/admin/surveys/${id}`,
       transformResponse: (r) => r.data,
@@ -52,6 +58,7 @@ export const surveysApi = apiSlice.injectEndpoints({
 export const {
   useGetSurveysQuery,
   useGetSurveyQuery,
+  useGetSurveyStageCountQuery,
   useGetSurveyPricingQuery,
   useReviewSurveyMutation,
   useBuildQuotationFromSurveyMutation,

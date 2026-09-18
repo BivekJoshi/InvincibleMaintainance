@@ -143,6 +143,19 @@ export const STOCK_MOVEMENT_LABELS = {
 /** What "Record movement" offers. */
 export const MANUAL_STOCK_MOVEMENTS = ['PURCHASE', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
 export const SURVEY_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'RETURNED', 'QUOTED', 'CANCELLED'];
+/**
+ * The survey list's work queues (`?stage=`), sent to the API as a comma-separated `status`.
+ * `sort` is the queue's own order — what has waited longest comes first where waiting matters.
+ */
+export const SURVEY_STAGE_TABS = [
+  { value: 'to_price', label: 'To price', statuses: ['SUBMITTED', 'IN_REVIEW'], counted: true, sort: 'submittedAt' },
+  { value: 'returned', label: 'Sent back', statuses: ['RETURNED'], counted: true },
+  { value: 'in_field', label: 'In the field', statuses: ['DRAFT'] },
+  { value: 'quoted', label: 'Quoted', statuses: ['QUOTED'] },
+  { value: 'all', label: 'All', statuses: null },
+];
+/** A survey waiting this long to be priced is flagged. */
+export const SURVEY_WAIT_WARN_HOURS = 48;
 export const SURVEY_ITEM_KINDS = ['LABOUR', 'MATERIAL', 'SERVICE', 'OTHER'];
 export const SURVEY_METRICS = [
   'moisture', 'crack_width', 'crack_length', 'area', 'depth', 'slope', 'temperature',
@@ -194,8 +207,8 @@ export const QUOTATION_STATUS_LABELS = {
 export const QUOTATION_STAGE_TABS = [
   { value: 'drafts', label: 'Drafts', statuses: ['DRAFT'] },
   { value: 'approval', label: 'Needs approval', statuses: ['PENDING_APPROVAL'], counted: true, countCapability: 'quotations:approve' },
-  { value: 'ready', label: 'Ready to send', statuses: ['OFFICE_APPROVED'] },
-  { value: 'with_customer', label: 'With customer', statuses: ['SENT'] },
+  { value: 'ready', label: 'Ready to send', statuses: ['OFFICE_APPROVED'], counted: true, countCapability: 'quotations:write' },
+  { value: 'with_customer', label: 'With customer', statuses: ['SENT'], counted: true },
   { value: 'changes_requested', label: 'Customer asked for changes', statuses: ['CHANGES_REQUESTED'], counted: true },
   { value: 'won', label: 'Won', statuses: ['APPROVED', 'CONVERTED'] },
   { value: 'lost', label: 'Declined / Expired', statuses: ['REJECTED', 'EXPIRED'] },

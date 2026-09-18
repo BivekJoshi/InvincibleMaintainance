@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, User, X } from 'lucide-react';
+import { Briefcase, Building2, Plus, User, Wallet, X } from 'lucide-react';
 import { useGetCustomersQuery } from '@/api/customersApi';
 import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
@@ -76,11 +76,31 @@ export default function CustomersPage() {
   const withBalance = can('invoices:read');
 
   const setTag = (tag) => setParams({ ...params, tag, page: 1 });
-  const toolbar = params.tag ? (
-    <Button type="button" variant="secondary" size="sm" onClick={() => setTag(undefined)} aria-label={`Remove the tag filter ${params.tag}`}>
-      Tag: {params.tag} <X />
-    </Button>
-  ) : null;
+  // One-click questions the office asks most: who has work on, and who owes us.
+  const quick = [
+    { key: 'hasOpenJobs', label: 'Open jobs', icon: Briefcase },
+    ...(withBalance ? [{ key: 'owing', label: 'Owes money', icon: Wallet }] : []),
+  ];
+  const toggle = (key) => setParams({ ...params, [key]: params[key] === 'true' ? undefined : 'true', page: 1 });
+  const toolbar = (
+    <>
+      {quick.map(({ key, label, icon: Icon }) => (
+        <Button
+          key={key} type="button" size="sm"
+          variant={params[key] === 'true' ? 'secondary' : 'outline'}
+          aria-pressed={params[key] === 'true'}
+          onClick={() => toggle(key)}
+        >
+          <Icon /> {label}
+        </Button>
+      ))}
+      {params.tag ? (
+        <Button type="button" variant="secondary" size="sm" onClick={() => setTag(undefined)} aria-label={`Remove the tag filter ${params.tag}`}>
+          Tag: {params.tag} <X />
+        </Button>
+      ) : null}
+    </>
+  );
 
   return (
     <PageTransition>

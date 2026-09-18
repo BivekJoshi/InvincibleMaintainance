@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ArrowLeft, ClipboardCheck, Contact, UserRoundSearch } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, Contact, Phone, UserRoundSearch } from 'lucide-react';
 import {
   useGetQuotationQuery, useGetRateCardQuery, useUpdateQuotationMutation,
 } from '@/api/quotationsApi';
@@ -137,6 +137,11 @@ export default function QuotationBuilderPage() {
             <Link to={`/admin/surveys/${q.survey.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
               <ClipboardCheck className="h-3.5 w-3.5" aria-hidden /> Built from {q.survey.number}
             </Link>
+          ) : null}
+          {q.customer?.phone ? (
+            <a href={`tel:${q.customer.phone}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+              <Phone className="h-3.5 w-3.5" aria-hidden /> {q.customer.phone}
+            </a>
           ) : null}
           {q.customer && can('customers:read') ? (
             <Link to={`/admin/customers/${q.customer.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">

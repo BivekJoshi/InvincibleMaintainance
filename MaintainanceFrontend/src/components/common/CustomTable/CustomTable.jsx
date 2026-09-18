@@ -17,6 +17,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { cn } from '@/helpers/utils';
 import { CustomTableCell, cellsOf } from './CustomTableCell';
 import { CustomTableFilters } from './CustomTableFilters';
+import { CustomTableActiveFilters, CustomTableFilterPanel } from './CustomTableFilterPanel';
 import { CustomTableHead } from './CustomTableHead';
 import { CustomTablePagination } from './CustomTablePagination';
 import { CustomTableReorderBody } from './CustomTableReorderBody';
@@ -68,6 +69,8 @@ const LEADING_DISPLAY = ['_expand', '_select', '_number'];
  * - `bulkActions`      → a checkbox column, select-all-on-page and a bar of actions for the
  *                        selection. Selection clears when the page or filters change.
  * - `filters`          → the filter bar (enum, relation, dateRange, boolean, text).
+ *                        `filterLayout="panel"` puts them behind a Filters button, in a side
+ *                        panel of chips, with the applied ones as removable chips below.
  * - `trash`            → a Trash toggle (`?deleted=true`) whose rows offer Restore, and
  *                        Delete forever to anyone with `cms:purge`.
  * - `reorderable`      → a Reorder mode: drag handles plus Move up / Move down. The new
@@ -100,6 +103,7 @@ const LEADING_DISPLAY = ['_expand', '_select', '_number'];
  *   onSelect: (rows: object[], clearSelection: () => void) => void }[]} [props.bulkActions]
  * @param {number[]} [props.pageSizes]
  * @param {object[]} [props.filters] see `CustomTableFilters`
+ * @param {'inline'|'panel'} [props.filterLayout] inline selects (default), or a Filters panel for long lists
  * @param {{ onRestore: (row: object) => void, onPurge?: (row: object) => void, canPurge?: boolean }} [props.trash]
  * @param {boolean} [props.reorderable]
  * @param {string} [props.reorderDisabledReason] when set and the table is not reorderable, a disabled
@@ -135,6 +139,7 @@ export function CustomTable({
   bulkActions,
   pageSizes = PAGE_SIZES,
   filters,
+  filterLayout = 'inline',
   trash,
   reorderable = false,
   reorderDisabledReason,
@@ -450,7 +455,9 @@ export function CustomTable({
           </form>
         ) : <span />}
         <div className="flex flex-wrap items-center gap-2">
-          {filters?.length && !reordering ? <CustomTableFilters filters={filters} params={params} onChange={setParam} /> : null}
+          {filters?.length && !reordering ? (filterLayout === 'panel'
+            ? <CustomTableFilterPanel filters={filters} params={params} onChange={setParam} />
+            : <CustomTableFilters filters={filters} params={params} onChange={setParam} />) : null}
           {toolbar}
           {reorderable && !inTrash ? (
             <Button type="button" variant={reordering ? 'default' : 'outline'} size="sm" onClick={toggleReorder} aria-pressed={reordering}>
@@ -484,6 +491,10 @@ export function CustomTable({
           />
         </div>
       </div>
+
+      {filterLayout === 'panel' && filters?.length && !reordering
+        ? <CustomTableActiveFilters filters={filters} params={params} onChange={setParam} />
+        : null}
 
       {showSelect && selectedRows.length ? (
         <div role="region" aria-label="Actions for selected rows" className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2">

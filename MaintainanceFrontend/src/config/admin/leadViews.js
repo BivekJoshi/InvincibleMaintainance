@@ -36,11 +36,20 @@ export function weekStart(now) {
  * bookmarked and shared; every key a preset may set is cleared by the others.
  */
 export const LEAD_PRESETS = [
-  { key: 'breached', label: 'Breached', params: () => ({ view: 'all', slaRisk: 'breached' }) },
-  { key: 'unassigned', label: 'Unassigned', params: () => ({ view: 'all', assignedToId: 'none' }) },
+  { key: 'breached', label: 'Breached', hint: 'Response deadline passed', params: () => ({ view: 'all', slaRisk: 'breached' }) },
+  { key: 'due-soon', label: 'Due soon', hint: 'Answer before the clock runs out', params: () => ({ view: 'all', slaRisk: 'at_risk' }) },
+  { key: 'unassigned', label: 'Unassigned', hint: 'Nobody owns these yet', params: () => ({ view: 'all', assignedToId: 'none' }) },
+  { key: 'urgent', label: 'Urgent', hint: 'Marked urgent, any status', params: () => ({ view: 'all', priority: 'URGENT' }) },
+  {
+    key: 'new-today',
+    label: 'New today',
+    hint: 'Not yet contacted, received today',
+    params: (now = new Date()) => ({ view: 'all', status: 'NEW', from: ktmDay(now), to: ktmDay(now) }),
+  },
   {
     key: 'bookings-week',
     label: 'Bookings this week',
+    hint: 'Online bookings since Sunday',
     params: (now = new Date()) => ({ view: 'all', source: 'booking', from: weekStart(now), to: ktmDay(now) }),
   },
 ];

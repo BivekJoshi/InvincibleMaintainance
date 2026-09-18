@@ -7,7 +7,7 @@ import { normalizePhone } from '../utils/phone.js';
 import { LEAD_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
 import { BOOKING_SLOTS, CONTACT_ACTIVITY_TYPES } from '../shared/enums.js';
 import { adminLeadPath, webUrl } from '../utils/links.js';
-import { local } from '../utils/dates.js';
+import { local, startOfDay } from '../utils/dates.js';
 import { computeSlaDueAt, decorateSla, slaWhere } from './sla.service.js';
 import { isSlotFull } from './availability.service.js';
 import { notify, notifyRoles } from './notify.service.js';
@@ -562,14 +562,29 @@ export async function deleteLead(id) {
   await prisma.lead.update({ where: { id }, data: { deletedAt: new Date() } });
 }
 
-/** SLA board: what sales needs to look at right now. */
+/**
+ * SLA board: what sales needs to look at right now, plus today's score — how many of the
+ * leads first answered today were answered inside the promise. "Today" is Kathmandu's day,
+ * whatever timezone the server runs in.
+ */
 export async function slaBoard() {
-  const [breached, atRisk, newToday] = await Promise.all([
+  const today = startOfDay();
+  const [breached, atRisk, newToday, answered] = await Promise.all([
     prisma.lead.findMany({ where: { deletedAt: null, ...slaWhere('breached') }, include: LEAD_INCLUDE, orderBy: { slaDueAt: 'asc' }, take: 50 }),
     prisma.lead.findMany({ where: { deletedAt: null, ...slaWhere('at_risk') }, include: LEAD_INCLUDE, orderBy: { slaDueAt: 'asc' }, take: 50 }),
-    prisma.lead.count({ where: { deletedAt: null, createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } }),
+    prisma.lead.count({ where: { deletedAt: null, createdAt: { gte: today } } }),
+    prisma.lead.findMany({
+      where: { deletedAt: null, firstResponseAt: { gte: today }, slaDueAt: { not: null } },
+      select: { firstResponseAt: true, slaDueAt: true },
+    }),
   ]);
-  return { breached: breached.map(decorateSla), atRisk: atRisk.map(decorateSla), newToday };
+  return {
+    breached: breached.map(decorateSla),
+    atRisk: atRisk.map(decorateSla),
+    newToday,
+    answeredToday: answered.length,
+    metToday: answered.filter((l) => l.firstResponseAt <= l.slaDueAt).length,
+  };
 }
 
 export async function exportLeadsCsv(query) {

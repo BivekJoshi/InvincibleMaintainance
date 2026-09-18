@@ -108,3 +108,42 @@ export function waitingFor(quotation, { can, userId }) {
       return null;
   }
 }
+
+/** The states in which the customer can still answer, so the validity date still matters. */
+export const ANSWERABLE = ['OFFICE_APPROVED', 'SENT'];
+
+/** A quotation this close to its validity date is flagged. */
+export const EXPIRY_WARN_DAYS = 3;
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Whether a quotation the customer can still answer is about to run out, or already has
+ * (the nightly expiry task has not caught it yet). Null when there is nothing to say.
+ *
+ * @param {{ status: string, validUntil?: string }} quotation
+ * @param {number} [now]
+ * @returns {{ tone: 'expired'|'soon', label: string }|null}
+ */
+export function validityWarning(quotation, now = Date.now()) {
+  if (!quotation?.validUntil || !ANSWERABLE.includes(quotation.status)) return null;
+  const left = new Date(quotation.validUntil).getTime() - now;
+  if (left < 0) return { tone: 'expired', label: 'Past its validity date' };
+  if (left > EXPIRY_WARN_DAYS * DAY_MS) return null;
+  const days = Math.floor(left / DAY_MS);
+  return { tone: 'soon', label: days === 0 ? 'Expires today' : `Expires in ${days} day${days === 1 ? '' : 's'}` };
+}
+
+/**
+ * "Sent 6 days ago" for a quotation still waiting on the customer — the nudge to follow up.
+ *
+ * @param {{ status: string, sentAt?: string }} quotation
+ * @param {number} [now]
+ * @returns {string|null}
+ */
+export function sentAge(quotation, now = Date.now()) {
+  if (quotation?.status !== 'SENT' || !quotation.sentAt) return null;
+  const days = Math.floor((now - new Date(quotation.sentAt).getTime()) / DAY_MS);
+  if (days <= 0) return 'Sent today';
+  return `Sent ${days} day${days === 1 ? '' : 's'} ago`;
+}

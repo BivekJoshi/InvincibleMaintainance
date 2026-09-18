@@ -52,3 +52,17 @@ describe('presets', () => {
     expect(activePreset({}, now)).toBeNull();
   });
 });
+
+describe('more presets', () => {
+  const now = new Date('2026-09-16T14:15:00Z');
+
+  it('"New today" is uncontacted leads received on Kathmandu’s today', () => {
+    expect(applyPreset({}, preset('new-today'), now)).toMatchObject({ view: 'all', status: 'NEW', from: '2026-09-16', to: '2026-09-16' });
+    expect(activePreset({ view: 'all', status: 'NEW', from: '2026-09-16', to: '2026-09-16' }, now)).toBe('new-today');
+  });
+
+  it('"Due soon" and "Urgent" narrow everyone’s leads', () => {
+    expect(applyPreset({ status: 'NEW' }, preset('due-soon'), now)).toMatchObject({ view: 'all', slaRisk: 'at_risk', status: undefined });
+    expect(applyPreset({}, preset('urgent'), now)).toMatchObject({ view: 'all', priority: 'URGENT' });
+  });
+});

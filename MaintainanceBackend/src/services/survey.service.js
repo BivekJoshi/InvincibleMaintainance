@@ -59,7 +59,7 @@ export async function listSurveys(query = {}) {
   const created = dateRange(query.from, query.to);
   const where = {
     deletedAt: null,
-    ...(query.status ? { status: query.status } : {}),
+    ...(query.status?.length ? { status: { in: [].concat(query.status) } } : {}),
     ...(query.surveyorId ? { surveyorId: query.surveyorId } : {}),
     ...(query.customerId ? { customerId: query.customerId } : {}),
     ...(created ? { createdAt: created } : {}),

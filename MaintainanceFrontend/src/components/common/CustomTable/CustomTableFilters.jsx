@@ -15,7 +15,7 @@ import { cn } from '@/helpers/utils';
 const ALL = '__all';
 
 /** The URL keys a filter writes. A date range writes two. */
-const filterKeys = (filter) => (filter.type === 'dateRange'
+export const filterKeys = (filter) => (filter.type === 'dateRange'
   ? [filter.fromKey ?? 'from', filter.toKey ?? 'to']
   : [filter.key]);
 
@@ -60,7 +60,7 @@ function groupOptions(options) {
  * Free text — an id, an address. Applied on Enter or when the field loses focus, so the
  * list does not reload on every keystroke.
  */
-function TextFilter({ filter, value, onChange }) {
+export function TextFilter({ filter, value, onChange }) {
   const [draft, setDraft] = useState(value ?? '');
   useEffect(() => { setDraft(value ?? ''); }, [value]);
   const apply = () => {
@@ -80,7 +80,7 @@ function TextFilter({ filter, value, onChange }) {
   );
 }
 
-function DateRangeFilter({ filter, params, onChange }) {
+export function DateRangeFilter({ filter, params, onChange }) {
   const [open, setOpen] = useState(false);
   const [fromKey, toKey] = filterKeys(filter);
   const from = params[fromKey];
@@ -118,6 +118,14 @@ function DateRangeFilter({ filter, params, onChange }) {
   );
 }
 
+/** Whether someone applied this filter: it has a value, and not just its `defaultValue`. */
+export const isFilterSet = (filter, params) => filterKeys(filter).some(
+  (k) => params[k] != null && params[k] !== '' && String(params[k]) !== String(filter.defaultValue ?? ''),
+);
+
+/** The patch that clears every filter in the list. */
+export const clearFiltersPatch = (filters) => Object.fromEntries(filters.flatMap(filterKeys).map((k) => [k, undefined]));
+
 /**
  * The declarative filter bar. Each filter reads its value from the list params and
  * writes a patch back, so every filter lives in the URL through `useListParams`.
@@ -138,8 +146,7 @@ function DateRangeFilter({ filter, params, onChange }) {
  * @param {(patch: object) => void} props.onChange
  */
 export function CustomTableFilters({ filters, params, onChange }) {
-  const isSet = (f, k) => params[k] != null && params[k] !== '' && String(params[k]) !== String(f.defaultValue ?? '');
-  const active = filters.some((f) => filterKeys(f).some((k) => isSet(f, k)));
+  const active = filters.some((f) => isFilterSet(f, params));
 
   return (
     <>
@@ -184,7 +191,7 @@ export function CustomTableFilters({ filters, params, onChange }) {
       {active ? (
         <Button
           type="button" variant="ghost" size="sm"
-          onClick={() => onChange(Object.fromEntries(filters.flatMap(filterKeys).map((k) => [k, undefined])))}
+          onClick={() => onChange(clearFiltersPatch(filters))}
         >
           <X aria-hidden /> Clear filters
         </Button>

@@ -129,7 +129,7 @@ Table feature set without MUI. Server-side paging, sorting and search over `?pag
 params in the URL through `hooks/useListParams`; TanStack holds sorting, selection, expansion, and the
 viewer's layout. The folder holds the table and its parts: `CustomTableHead` (sort, column actions menu,
 resize handle), `CustomTableCell` (cell rendering, pinning offsets), `CustomTableViewOptions` (Columns,
-density, full screen, export), `CustomTableFilters`, `CustomTableRowActions`, `CustomTablePagination`,
+density, full screen, export), `CustomTableFilters` (inline) and `CustomTableFilterPanel` (`filterLayout="panel"`: a Filters side panel of chips plus removable applied-filter chips), `CustomTableRowActions`, `CustomTablePagination`,
 `CustomTableReorderBody`, `useCustomTableLayout` (the remembered layout) and `exportCsv`.
 
 A column is `{ key, header, cell?(row), sortable?, className?, label?, hideable?, hidden?, size?, exportValue?(row) }`;
@@ -392,6 +392,8 @@ reads is a trap for an editor.
   returns `[{ key, label, primary?, note?, disabledReason? }]`, and `waitingFor()` is the line under the title.
   Self-approval (`quotation.makerChecker`, sent by the API on the record) disables Approve and says why. The list,
   the builder and their tests all read this, and a unit test holds every action to `QUOTATION_TRANSITIONS`.
+  `validityWarning()` flags a quotation the customer can still answer within `EXPIRY_WARN_DAYS` of its date (or past
+  it), and `sentAge()` is the "Sent 5 days ago" follow-up cue — the list and the builder's notices both show them.
 - **`hooks/useQuotationActions.jsx`** runs one: `const [runAction, actionDialogs] = useQuotationActions()`. Send back
   and pull back ask for a note (`FormDialog`), approve takes an optional remark, sending, revising and converting
   confirm first, and a revision opens its new version. A refusal toasts the API's reason.
@@ -431,6 +433,8 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
 - **`helpers/auditDiff.js`** — `diffEntries(before, after)`: one line per changed field, walking nested objects to
   the field that moved (`translations.name.en`) and arrays of objects by position; an array of plain values, a value
   replaced by an object, or an added object is one line. `DIFF_KIND_STYLES` are the marks.
+- **`helpers/contact.js`** — `whatsappHref(phone)`: a `wa.me/977…` link for a Nepali mobile, null for a landline.
+  Used by the SLA board and the customer page.
 - **`helpers/sms.js`** — `smsSegments(text)`: GSM-7 (160 / 153 a part, extension characters count twice) or Unicode
   (70 / 67, astral characters twice); Devanagari is always Unicode. `nonGsm` says why.
 - **`helpers/recordLinks.js`** — `recordHref(row)`: an audit or message row's page (lead, customer, quotation, survey,

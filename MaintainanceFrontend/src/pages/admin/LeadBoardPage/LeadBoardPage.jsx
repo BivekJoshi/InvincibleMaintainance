@@ -1,21 +1,49 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors,
 } from '@dnd-kit/core';
-import { List } from 'lucide-react';
+import { Eye, EyeOff, List, Search } from 'lucide-react';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { PageTransition } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useListParams } from '@/hooks/useListParams';
 import { useLeadStatusChange } from '@/hooks/useLeadStatusChange';
-import { BOARD_COLUMNS, canDrop, cardsForColumn } from '@/helpers/leadBoard';
+import { BOARD_COLUMNS, FOLDABLE_COLUMNS, canDrop, cardsForColumn } from '@/helpers/leadBoard';
 import { DEFAULT_LEAD_VIEW, LEAD_VIEWS, leadQueryFor } from '@/config/admin/leadViews';
 import { LEAD_STATUS_LABELS } from '@/config/constants';
 import { BoardColumn } from './BoardColumn';
 import { BoardCardFace } from './BoardCard';
+
+/** The board's search box. It applies after a pause in typing, or on Enter, not on every key. */
+function BoardSearch({ value, onChange }) {
+  const [draft, setDraft] = useState(value ?? '');
+  useEffect(() => { setDraft(value ?? ''); }, [value]);
+  useEffect(() => {
+    const next = draft.trim() || undefined;
+    if (next === (value || undefined)) return undefined;
+    const id = setTimeout(() => onChange(next), 400);
+    return () => clearTimeout(id);
+  }, [draft, value, onChange]);
+
+  return (
+    <div className="relative w-full sm:w-72">
+      <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
+      <Input
+        type="search"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onChange(draft.trim() || undefined); } }}
+        placeholder="Search name, phone, address…"
+        aria-label="Search the pipeline"
+        className="h-9 pl-8"
+      />
+    </div>
+  );
+}
 
 /**
  * The pipeline: a column per lead status. Dragging a card asks the API to move the lead
@@ -27,7 +55,7 @@ export default function LeadBoardPage() {
   const canWrite = can('leads:write');
   const [params, setParams] = useListParams({ view: DEFAULT_LEAD_VIEW });
   const query = useMemo(() => {
-    const { page: _p, limit: _l, sort: _s, status: _st, ...rest } = leadQueryFor(params);
+    const { page: _p, limit: _l, sort: _s, status: _st, closed: _c, ...rest } = leadQueryFor(params);
     return rest;
   }, [params]);
   const [changeStatus, statusDialog] = useLeadStatusChange();
@@ -85,6 +113,10 @@ export default function LeadBoardPage() {
   );
 
   const view = params.assignedToId ? '' : params.view ?? DEFAULT_LEAD_VIEW;
+  // Won and Lost fold to a strip unless `?closed=show`, so the working columns get the width.
+  const showClosed = params.closed === 'show';
+  const setShowClosed = (show) => setParams({ ...params, closed: show ? 'show' : undefined });
+  const onSearch = useCallback((q) => setParams({ ...params, q }), [params, setParams]);
 
   return (
     <PageTransition>
@@ -93,14 +125,18 @@ export default function LeadBoardPage() {
         description="Drag a lead to move it along. Only the moves the process allows are open."
         actions={<Button asChild variant="outline" size="sm"><Link to={`/admin/leads?view=${view || 'all'}`}><List /> Table</Link></Button>}
       />
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <ToggleGroup
           type="single" variant="outline" size="sm" value={view} aria-label="Whose leads"
-          onValueChange={(v) => v && setParams({ view: v })}
+          onValueChange={(v) => v && setParams({ view: v, q: params.q, closed: params.closed })}
           className="justify-start"
         >
           {LEAD_VIEWS.map((v) => <ToggleGroupItem key={v.value} value={v.value}>{v.label}</ToggleGroupItem>)}
         </ToggleGroup>
+        <BoardSearch value={params.q} onChange={onSearch} />
+        <Button variant="ghost" size="sm" onClick={() => setShowClosed(!showClosed)} aria-pressed={showClosed}>
+          {showClosed ? <EyeOff /> : <Eye />} {showClosed ? 'Fold won and lost' : 'Show won and lost'}
+        </Button>
       </div>
 
       <DndContext
@@ -126,7 +162,7 @@ export default function LeadBoardPage() {
         }}
       >
         <div className="-mx-4 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6">
-          <div className="flex min-w-max items-start gap-3">
+          <div className="flex min-w-max items-stretch gap-3">
             {BOARD_COLUMNS.map((status) => (
               <BoardColumn
                 key={status}
@@ -138,6 +174,8 @@ export default function LeadBoardPage() {
                 canWrite={canWrite}
                 onMove={move}
                 pending={pending}
+                folded={!showClosed && FOLDABLE_COLUMNS.includes(status)}
+                onUnfold={() => setShowClosed(true)}
               />
             ))}
           </div>

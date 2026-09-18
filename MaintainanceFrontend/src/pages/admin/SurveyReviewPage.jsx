@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ArrowLeft, FileText, Undo2, Eye, Loader2, Lock } from 'lucide-react';
+import { ArrowLeft, FileText, Undo2, Eye, Loader2, Lock, Phone } from 'lucide-react';
 import {
   useGetSurveyQuery,
   useGetSurveyPricingQuery,
@@ -115,6 +115,11 @@ export default function SurveyReviewPage() {
           <StatusBadge status={survey.status} />
           {survey.job ? (
             <span className="font-mono text-xs text-muted-foreground">{survey.job.number}</span>
+          ) : null}
+          {survey.customer?.phone ? (
+            <a href={`tel:${survey.customer.phone}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+              <Phone className="h-3.5 w-3.5" aria-hidden /> Call {survey.customer.name ?? 'the customer'}
+            </a>
           ) : null}
           {survey.surveyor?.user ? (
             <span className="text-xs text-muted-foreground">Surveyed by {survey.surveyor.user.name}</span>

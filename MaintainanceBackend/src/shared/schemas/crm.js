@@ -170,6 +170,10 @@ export const customerListQuery = z.object({
   q: z.string().trim().max(200).optional(),
   type: z.enum(CUSTOMER_TYPES).optional(),
   tag: z.string().trim().max(40).optional(),
+  /** Customers with a job still open. */
+  hasOpenJobs: flag.optional(),
+  /** Customers with an unpaid invoice — honoured only for callers who can read invoices. */
+  owing: flag.optional(),
 });
 
 export const siteParams = z.object({ id, siteId: id });

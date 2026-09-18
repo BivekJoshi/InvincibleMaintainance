@@ -15,8 +15,10 @@ export const COLUMN_LIMIT = 20;
  * One status. Loads its own page of leads (newest first) and reports them up, so the
  * board can show a card in the column it is moving to before the server confirms.
  * `dropState`: 'allowed' | 'refused' | null while a card is being dragged.
+ * `folded` shows a narrow strip — the name and the count — that still accepts a drop;
+ * `onUnfold` opens every folded column.
  */
-export function BoardColumn({ status, query, cards, onLoaded, dropState, canWrite, onMove, pending }) {
+export function BoardColumn({ status, query, cards, onLoaded, dropState, canWrite, onMove, pending, folded, onUnfold }) {
   const reduced = useReducedMotion();
   const { data, isLoading, isError } = useGetLeadsQuery({ ...query, status, limit: COLUMN_LIMIT, sort: '-createdAt' });
   const { setNodeRef, isOver } = useDroppable({ id: status, data: { status }, disabled: dropState === 'refused' });
@@ -26,6 +28,34 @@ export function BoardColumn({ status, query, cards, onLoaded, dropState, canWrit
   const total = data?.meta?.total ?? 0;
   const more = Math.max(0, total - (data?.items?.length ?? 0));
   const href = columnTableHref(query, status);
+
+  if (folded) {
+    return (
+      <section
+        ref={setNodeRef}
+        aria-labelledby={`col-${status}`}
+        className={cn(
+          'flex w-12 shrink-0 flex-col items-center gap-2 self-stretch rounded-xl border bg-muted/30 py-3 transition-colors motion-reduce:transition-none',
+          dropState === 'allowed' && 'w-40 border-dashed border-primary/60',
+          dropState === 'allowed' && isOver && 'bg-primary/10',
+          dropState === 'refused' && 'opacity-50',
+        )}
+        data-drop={dropState ?? undefined}
+      >
+        <span className="rounded-full bg-background px-2 py-0.5 text-xs tabular-nums text-muted-foreground" aria-label={`${total} leads`}>
+          {isLoading ? '…' : total}
+        </span>
+        <button
+          type="button"
+          onClick={onUnfold}
+          className="rounded px-1 py-2 text-sm font-semibold text-muted-foreground [writing-mode:vertical-rl] hover:bg-muted hover:text-foreground"
+          aria-label={`Show the ${LEAD_STATUS_LABELS[status]} column`}
+        >
+          <span id={`col-${status}`}>{LEAD_STATUS_LABELS[status]}</span>
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canDrop, cardsForColumn, needsReason, nextStatuses, responseResult } from '@/helpers/leadBoard';
+import { canDrop, cardsForColumn, leadsInScope, needsReason, nextStatuses, responseResult } from '@/helpers/leadBoard';
 
 describe('board drops', () => {
   it.each([
@@ -56,5 +56,19 @@ describe('column links', () => {
     expect(columnTableHref({}, 'WON')).toBe('/admin/leads?view=all&status=WON');
     expect(columnTableHref({ assignedToId: 'none', source: 'booking', q: '' }, 'LOST'))
       .toBe('/admin/leads?source=booking&view=all&assignedToId=none&status=LOST');
+  });
+});
+
+describe('SLA board scope', () => {
+  const leads = [
+    { id: 'a', assignedToId: 'u1' },
+    { id: 'b', assignedTo: { id: 'u2' } },
+    { id: 'c', assignedToId: null },
+  ];
+  it('keeps everyone, only mine, or only the leads nobody owns', () => {
+    expect(leadsInScope(leads, 'all', 'u1')).toHaveLength(3);
+    expect(leadsInScope(leads, 'mine', 'u1').map((l) => l.id)).toEqual(['a']);
+    expect(leadsInScope(leads, 'mine', 'u2').map((l) => l.id)).toEqual(['b']);
+    expect(leadsInScope(leads, 'unassigned', 'u1').map((l) => l.id)).toEqual(['c']);
   });
 });

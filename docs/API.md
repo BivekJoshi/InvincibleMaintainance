@@ -248,7 +248,9 @@ POST   /admin/leads                 leads:write · manual entry (call, walk-in, 
                                     { name, phone, altPhone?, email?, address?, area?, serviceId?, message?,
                                       source (default call), priority, assignedToId? (default: the caller),
                                       estimatedAmount? (rupees), preferredLocale? (default en) }
-GET    /admin/leads/sla-board       leads:read · at-risk + breached
+GET    /admin/leads/sla-board       leads:read · { breached[], atRisk[], newToday, answeredToday, metToday } —
+                                    the counts use Kathmandu's day; metToday ≤ answeredToday (first contact
+                                    today, inside the deadline)
 GET    /admin/leads/export.csv      leads:read · the list filters (every page, up to 10,000 rows), or
                                     ?ids=a,b,c (≤100) for the rows picked in the table
 POST   /admin/leads/merge           leads:write · { primaryId, duplicateIds }   duplicates move to LOST and are
@@ -313,7 +315,8 @@ POST   /admin/leads/:id/convert     leads:write · { customerId? | createNewCust
 DELETE /admin/leads/:id             soft delete; 404 for an unknown or deleted lead
 
 GET    /admin/customers             customers:read · ?q (name, phone, alt phone, email, PAN)&type=individual|company
-                                     &tag&page&limit&sort. Each row adds sites, siteCount, openJobs, invoiceCount,
+                                     &tag&hasOpenJobs=true&owing=true (owing honoured only with invoices:read)
+                                     &page&limit&sort. Each row adds sites, siteCount, openJobs, invoiceCount,
                                     quotationCount — and balanceDue (paisa, unpaid invoices' total − paid) only
                                     for a caller with invoices:read (ACCOUNTANT, ADMIN)
 POST   /admin/customers             customers:write · { type, name, phone, altPhone?, email?, panVatNo?, notes?,
@@ -459,6 +462,7 @@ survey is `surveys:read`, but seeing any money is `quotations:read` — that is 
 
 ```
 GET    /admin/surveys                ?status&surveyorId&customerId&from&to&q     surveys:read
+                                     status may list several: SUBMITTED,IN_REVIEW (400 on an unknown one)
 GET    /admin/surveys/:id            readings + quantity items + job photos      surveys:read
 GET    /admin/surveys/:id/pricing    priced preview (paisa) + missing[]          quotations:read
 PATCH  /admin/surveys/:id/review     { status: IN_REVIEW|RETURNED, note }        surveys:write
