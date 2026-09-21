@@ -38,3 +38,14 @@ export const decisionLimiter = rateLimit({
 });
 
 export const uploadLimiter = rateLimit({ ...base, windowMs: 60_000, limit: 60 });
+
+/** Anonymous photo uploads from the enquiry forms — far tighter than a signed-in upload. */
+export const publicUploadLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 60_000,
+  limit: 20,
+  handler: (_req, res) =>
+    res.status(429).json({
+      error: { code: 'RATE_LIMITED', message: 'Too many photos uploaded from here. Please wait a while or call us.' },
+    }),
+});

@@ -1,5 +1,6 @@
 import { CalendarCheck, Globe, Mail, MapPin, Phone } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LeadPhotoGallery } from '@/components/leads/LeadPhotoGallery';
 import { LEAD_SOURCE_LABELS, PREFERRED_LOCALE_OPTIONS } from '@/config/constants';
 import { formatDate, formatDateTime, formatNpr, titleCase } from '@/helpers/format';
 import { describeEstimate } from '@/helpers/leadDisplay';
@@ -85,6 +86,13 @@ export function LeadRequestPanel({ lead }) {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Whatever they photographed, across the full width — it is the best look at the site. */}
+      {lead.photos?.length ? (
+        <div className="xl:col-span-2">
+          <LeadPhotoGallery photos={lead.photos} leadName={lead.name} />
+        </div>
+      ) : null}
     </div>
   );
 }

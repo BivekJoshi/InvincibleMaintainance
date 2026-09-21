@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SitePhotoUpload } from '@/components/public/SitePhotoUpload';
 
 /**
  * The public enquiry form. Three spam defences run before the API is touched:
@@ -21,6 +22,8 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
   const locale = useSelector(selectLocale);
   const [done, setDone] = useState(false);
   const [serverError, setServerError] = useState(null);
+  // Photos upload as they are chosen; the enquiry carries only their ids.
+  const [photoIds, setPhotoIds] = useState([]);
   const mountedAt = useRef(Date.now());
   const honeypot = useRef(null);
 
@@ -42,9 +45,11 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
         sourcePage: sourcePage ?? window.location.pathname,
         elapsedMs: Date.now() - mountedAt.current,
         website: honeypot.current?.value ?? '',
+        ...(photoIds.length ? { photoIds } : {}),
         ...(estimate ? { estimatedAmount: estimate.max / 100, estimatePayload: estimate } : {}),
       }).unwrap();
       setDone(true);
+      setPhotoIds([]);
       reset();
     } catch (err) {
       setServerError(err?.data?.error?.message ?? 'We could not send that. Please call us instead.');
@@ -125,6 +130,8 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
         <Label htmlFor="lead-message">Describe the problem</Label>
         <Textarea id="lead-message" rows={3} placeholder="Where is the problem, and when did it start?" {...register('message')} />
       </div>
+
+      <SitePhotoUpload onChange={setPhotoIds} compact={compact} />
 
       <AnimatePresence>
         {serverError ? (

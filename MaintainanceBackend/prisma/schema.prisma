@@ -165,7 +165,8 @@ model Media {
   createdAt  DateTime  @default(now())
   deletedAt  DateTime?
 
-  folder MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folder    MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  leadPhoto LeadPhoto?
 
   @@index([folderId])
   @@index([deletedAt])
@@ -575,6 +576,7 @@ model Lead {
   assignedTo User?          @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   customer   Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   notes      LeadNote[]
+  photos     LeadPhoto[]
   activities LeadActivity[]
   quotations Quotation[]
   jobs       Job[]
@@ -955,6 +957,22 @@ model JobPhoto {
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId, kind])
+}
+
+/// A photo of the site the customer sent with their enquiry. The upload is anonymous, so the
+/// file lands in the "Customer uploads" folder and is only linked here when the lead is created.
+model LeadPhoto {
+  id        String   @id @default(cuid())
+  leadId    String
+  mediaId   String   @unique
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, sortOrder])
 }
 
 model TimeLog {

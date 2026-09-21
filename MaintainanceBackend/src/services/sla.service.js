@@ -51,6 +51,14 @@ export function slaWhere(risk, warnBeforeMinutes = env.business.slaWarnBeforeMin
       status: { notIn: ['WON', 'LOST'] },
     };
   }
+  // Unanswered and still outside the warning window — a fresh enquiry sits here first.
+  if (risk === 'waiting') {
+    return {
+      firstResponseAt: null,
+      slaDueAt: { gt: addMinutes(now, warnBeforeMinutes) },
+      status: { notIn: ['WON', 'LOST'] },
+    };
+  }
   if (risk === 'ok') {
     return { OR: [{ firstResponseAt: { not: null } }, { slaDueAt: { gt: addMinutes(now, warnBeforeMinutes) } }] };
   }

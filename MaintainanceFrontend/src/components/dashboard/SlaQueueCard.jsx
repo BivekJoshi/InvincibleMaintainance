@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { PhoneCall } from 'lucide-react';
 import { ChartCard } from '@/components/charts/ChartCard';
 import { SlaChip } from '@/components/common/SlaChip';
+import { RunwayStrip } from '@/components/leads/ResponseRunway';
 import { PriorityBadge } from '@/components/ui/badge';
 import { LEAD_SOURCE_LABELS } from '@/config/constants';
 import { slaState } from '@/helpers/dashboard';
@@ -18,6 +19,9 @@ export function SlaQueueCard({ queue, className }) {
       linkLabel="Open the SLA board"
       className={className}
     >
+      {items.length ? (
+        <RunwayStrip leads={items.map((l) => ({ ...l, sla: { dueAt: l.slaDueAt } }))} className="mb-2" />
+      ) : null}
       {items.length ? (
         <ul className="-mx-1 divide-y">
           {items.map((l) => (

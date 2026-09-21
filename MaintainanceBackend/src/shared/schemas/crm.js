@@ -33,6 +33,8 @@ export const publicLeadSchema = z.object({
   // Set by the online booking flow; a plain enquiry leaves both empty.
   preferredAt: preferredDate.optional(),
   preferredSlot: z.enum(BOOKING_SLOT_KEYS).optional(),
+  // Photos of the site, uploaded before the lead exists (POST /public/lead-photos).
+  photoIds: z.array(z.string().min(1)).max(5).optional(),
   turnstileToken: z.string().max(4000).optional(),
   // Honeypot — must stay empty. Bots fill every field they find.
   website: z.string().max(0, 'Rejected').optional(),

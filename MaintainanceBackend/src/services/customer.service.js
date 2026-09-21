@@ -2,7 +2,8 @@ import { prisma } from '../lib/prisma.js';
 import { notFound, badRequest, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { normalizePhone } from '../utils/phone.js';
-import { formatNpr } from '../utils/money.js';
+import { formatNpr, sum } from '../utils/money.js';
+import { addDays } from '../utils/dates.js';
 
 const OPEN_JOB = { deletedAt: null, status: { notIn: ['COMPLETED', 'VERIFIED', 'CANCELLED'] } };
 const UNPAID = ['SENT', 'PARTIAL', 'OVERDUE'];
@@ -54,6 +55,30 @@ export async function listCustomers(query, { withBalance = false } = {}) {
     ...(withBalance ? { balanceDue: balances.get(c.id) ?? 0 } : {}),
   }));
   return { items, meta: meta({ page, limit, total }) };
+}
+
+/**
+ * The customer book at a glance, for the list's header: how many, how many companies, who
+ * has work on now, and who joined in the last 30 days. With `withBalance` (the route decides,
+ * as for the list) also how many owe money and how much in total, in paisa.
+ *
+ * @param {{ withBalance?: boolean }} [opts]
+ */
+export async function customerSummary({ withBalance = false } = {}) {
+  const live = { deletedAt: null };
+  const unpaid = { deletedAt: null, status: { in: UNPAID }, customer: live };
+  const [total, companies, withOpenJobs, newLast30Days, owingCount, owed] = await Promise.all([
+    prisma.customer.count({ where: live }),
+    prisma.customer.count({ where: { ...live, type: 'company' } }),
+    prisma.customer.count({ where: { ...live, jobs: { some: OPEN_JOB } } }),
+    prisma.customer.count({ where: { ...live, createdAt: { gte: addDays(new Date(), -30) } } }),
+    withBalance ? prisma.customer.count({ where: { ...live, invoices: { some: { deletedAt: null, status: { in: UNPAID } } } } }) : null,
+    withBalance ? prisma.invoice.aggregate({ where: unpaid, _sum: { total: true, paidAmount: true } }) : null,
+  ]);
+  return {
+    total, companies, withOpenJobs, newLast30Days,
+    ...(withBalance ? { owingCount, owed: sum([owed._sum.total]) - sum([owed._sum.paidAmount]) } : {}),
+  };
 }
 
 export async function getCustomer(id) {

@@ -89,7 +89,7 @@ export function BoardColumn({
       style={toneStyle(status)}
       aria-labelledby={`col-${status}`}
       className={cn(
-        'relative flex min-w-[18rem] flex-1 shrink-0 flex-col bg-[hsl(var(--tone)/0.05)] transition-[opacity,filter,background-color] duration-200 motion-reduce:transition-none',
+        'relative flex min-w-[15rem] flex-1 basis-0 shrink-0 flex-col bg-[hsl(var(--tone)/0.05)] transition-[opacity,filter,background-color] duration-200 motion-reduce:transition-none',
         target && 'bg-[hsl(var(--tone)/0.1)]',
         dropState === 'refused' && 'opacity-40 saturate-50',
       )}

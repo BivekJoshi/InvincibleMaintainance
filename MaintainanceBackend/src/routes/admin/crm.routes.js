@@ -99,6 +99,8 @@ router.get('/customers', readCust, validate({ query: s.customerListQuery }), asy
   const { items, meta } = await customers.listCustomers(req.validatedQuery, { withBalance: can(req.user.role, 'invoices:read') });
   ok(res, items, meta);
 }));
+router.get('/customers/summary', readCust, asyncHandler(async (req, res) =>
+  ok(res, await customers.customerSummary({ withBalance: can(req.user.role, 'invoices:read') }))));
 router.post('/customers', writeCust, validate({ body: s.customerSchema }),
   asyncHandler(async (req, res) => created(res, await customers.createCustomer(req.body))));
 router.get('/customers/:id', readCust, validate({ params: idParam }),

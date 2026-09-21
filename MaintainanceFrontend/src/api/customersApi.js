@@ -25,6 +25,12 @@ export const customersApi = apiSlice.injectEndpoints({
       transformResponse: (r) => ({ items: r.data, meta: r.meta }),
       providesTags: tagList('Customer'),
     }),
+    // The list's header; any customer change can move its counts.
+    getCustomerSummary: build.query({
+      query: () => '/admin/customers/summary',
+      transformResponse: (r) => r.data,
+      providesTags: [{ type: 'Customer', id: 'LIST' }],
+    }),
     getCustomer: build.query({
       query: (id) => `/admin/customers/${id}`,
       transformResponse: (r) => r.data,
@@ -90,7 +96,7 @@ function siteTags(customerId) {
 }
 
 export const {
-  useGetCustomersQuery, useGetCustomerQuery, useCreateCustomerMutation, useUpdateCustomerMutation,
+  useGetCustomersQuery, useGetCustomerSummaryQuery, useGetCustomerQuery, useCreateCustomerMutation, useUpdateCustomerMutation,
   useDeleteCustomerMutation, useGetCustomerSitesQuery, useCreateSiteMutation, useUpdateSiteMutation,
   useDeleteSiteMutation, useGetCustomerTimelineQuery, useGetCustomerStatementQuery, useGetCustomerRecordsQuery,
 } = customersApi;

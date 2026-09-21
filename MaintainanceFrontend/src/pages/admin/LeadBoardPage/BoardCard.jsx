@@ -11,7 +11,7 @@ import { SlaChip } from '@/components/common/SlaChip';
 import { PriorityBadge } from '@/components/ui/badge';
 import { LEAD_STATUS_LABELS } from '@/config/constants';
 import { isGoingCold, leadAgeDays, nextStatuses } from '@/helpers/leadBoard';
-import { initials, relativeTime } from '@/helpers/format';
+import { initials, shortAge } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -48,15 +48,6 @@ export const BoardCardFace = forwardRef(function BoardCardFace({ lead, dragging,
           {menu}
         </div>
       </div>
-      {lead.phone ? (
-        <a
-          href={`tel:${lead.phone}`}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-muted/60 px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground hover:bg-[hsl(var(--tone)/0.12)] hover:text-foreground"
-          aria-label={`Call ${lead.name}`}
-        >
-          <Phone className="h-3 w-3" aria-hidden /> {lead.phone}
-        </a>
-      ) : null}
       {!closed || lead.priority !== 'NORMAL' ? (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 empty:hidden">
           {!closed ? <SlaChip sla={lead.sla} /> : null}
@@ -71,18 +62,31 @@ export const BoardCardFace = forwardRef(function BoardCardFace({ lead, dragging,
           ) : null}
         </div>
       ) : null}
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-dotted border-border pt-2 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1" title={new Date(lead.createdAt).toLocaleString()}>
-          <Clock className="h-3 w-3" aria-hidden /> {relativeTime(lead.createdAt)}
+      <div className="mt-2.5 flex items-center gap-2 border-t border-dotted border-border pt-2 text-xs text-muted-foreground">
+        {lead.phone ? (
+          <a
+            href={`tel:${lead.phone}`}
+            className="-ml-1 inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 tabular-nums hover:bg-[hsl(var(--tone)/0.12)] hover:text-foreground"
+            aria-label={`Call ${lead.name}`}
+          >
+            <Phone className="h-3 w-3" aria-hidden /> {lead.phone}
+          </a>
+        ) : null}
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1" title={new Date(lead.createdAt).toLocaleString()}>
+          <Clock className="h-3 w-3" aria-hidden /> {shortAge(lead.createdAt)}
         </span>
         {lead.assignedTo ? (
-          <Avatar className="h-6 w-6 ring-2 ring-card" title={lead.assignedTo.name}>
+          <Avatar className="h-6 w-6 shrink-0 ring-2 ring-card" title={lead.assignedTo.name}>
             <AvatarFallback className="bg-[hsl(var(--tone)/0.15)] text-[10px] font-semibold text-foreground">
               {initials(lead.assignedTo.name)}
             </AvatarFallback>
             <span className="sr-only">Owner {lead.assignedTo.name}</span>
           </Avatar>
-        ) : <span className="italic">Unassigned</span>}
+        ) : (
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-dashed border-warning/60 text-warning" title="Nobody owns this lead">
+            <span aria-hidden>?</span><span className="sr-only">Unassigned</span>
+          </span>
+        )}
       </div>
     </article>
   );

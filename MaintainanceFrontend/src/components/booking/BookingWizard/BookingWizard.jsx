@@ -58,6 +58,8 @@ export function BookingWizard({ slug }) {
   const [date, setDate] = useState(null);
   const [slot, setSlot] = useState(null);
   const [serverError, setServerError] = useState(null);
+  // Ids of the photos already uploaded from the details step; the enquiry carries them.
+  const [photoIds, setPhotoIds] = useState([]);
   const [done, setDone] = useState(null);
   const topRef = useRef(null);
   // When the wizard opened. The API refuses a submit that arrives faster than a
@@ -124,6 +126,7 @@ export function BookingWizard({ slug }) {
         sourcePage: slug ? `/book/${slug}` : '/book',
         elapsedMs: Date.now() - openedAt.current,
         website: '',
+        ...(photoIds.length ? { photoIds } : {}),
         ...(estimate ? { estimatedAmount: estimate.max / 100, estimatePayload: estimate } : {}),
       }).unwrap();
       setDone({ date, slot, service });
@@ -185,7 +188,7 @@ export function BookingWizard({ slug }) {
             ) : null}
 
             {step === 3 ? (
-              <StepDetails form={form} onSubmit={submit} serverError={serverError} />
+              <StepDetails form={form} onSubmit={submit} serverError={serverError} onPhotos={setPhotoIds} />
             ) : null}
           </motion.div>
         </AnimatePresence>

@@ -2,6 +2,7 @@ import { AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { SitePhotoUpload } from '@/components/public/SitePhotoUpload';
 
 /** One labelled field with its error, so four of them cannot drift apart. */
 function Field({ id, label, error, required, children }) {
@@ -22,7 +23,7 @@ function Field({ id, label, error, required, children }) {
  * buttons that both continue, in two places, is the thing that made people
  * click the wrong one.
  */
-export function StepDetails({ form, onSubmit, serverError }) {
+export function StepDetails({ form, onSubmit, serverError, onPhotos }) {
   const { register, handleSubmit, formState: { errors } } = form;
 
   return (
@@ -63,6 +64,8 @@ export function StepDetails({ form, onSubmit, serverError }) {
       <Field id="book-message" label="Anything we should know?">
         <Textarea id="book-message" rows={3} placeholder="Where is the problem, and when did it start?" {...register('message')} />
       </Field>
+
+      <SitePhotoUpload onChange={onPhotos} />
 
       {serverError ? (
         <p role="alert" className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">

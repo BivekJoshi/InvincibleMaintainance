@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { validate } from '../middleware/validate.js';
-import { decisionLimiter, leadLimiter } from '../middleware/rateLimit.js';
+import { uploadImages } from '../middleware/upload.js';
+import { decisionLimiter, leadLimiter, publicUploadLimiter } from '../middleware/rateLimit.js';
 import { cached } from '../services/cache.service.js';
 import { ok, created } from '../utils/response.js';
 import * as pub from '../services/public.service.js';
 import * as leads from '../services/lead.service.js';
+import { uploadCustomerPhotos, MAX_LEAD_PHOTOS } from '../services/leadPhoto.service.js';
 import * as quotations from '../services/quotation.service.js';
 import * as invoices from '../services/invoice.service.js';
 import * as warranty from '../services/warranty.service.js';
@@ -42,6 +44,12 @@ router.get('/pages/:slug', cached(TTL, 'pages'), validate({ params: slugParam })
 
 // ── conversion
 router.post('/estimate', validate({ body: estimateSchema }), asyncHandler(async (req, res) => ok(res, await estimate(req.body))));
+
+// Photos of the site, sent while the form is still being filled in: they are stored now and
+// linked to the lead when it is submitted, so an upload that is never finished stays orphaned
+// in the "Customer uploads" folder rather than attaching itself to anything.
+router.post('/lead-photos', publicUploadLimiter, uploadImages.array('files', MAX_LEAD_PHOTOS),
+  asyncHandler(async (req, res) => created(res, await uploadCustomerPhotos(req.files, { ip: req.ip }))));
 
 router.post('/leads', leadLimiter, validate({ body: publicLeadSchema }), asyncHandler(async (req, res) => {
   const lead = await leads.createPublicLead(req.body, { ip: req.ip, userAgent: req.headers['user-agent'] });

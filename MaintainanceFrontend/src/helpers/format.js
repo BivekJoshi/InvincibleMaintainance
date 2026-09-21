@@ -135,6 +135,21 @@ export function relativeTime(iso) {
   return '—';
 }
 
+/**
+ * A compact age for tight spaces — "now", "12m", "3h", "9d", "5mo".
+ * @param {string} iso
+ * @param {number} [now]  ms since the epoch
+ */
+export function shortAge(iso, now = Date.now()) {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60000);
+  if (!Number.isFinite(minutes)) return '—';
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+  const days = Math.floor(minutes / 1440);
+  return days < 60 ? `${days}d` : `${Math.floor(days / 30)}mo`;
+}
+
 /** "1h 42m left" / "2h 10m overdue" for the SLA chip. */
 /** A length of time worked: 95 → "1 h 35 min", 0 → "0 min". */
 export function formatMinutes(minutes) {

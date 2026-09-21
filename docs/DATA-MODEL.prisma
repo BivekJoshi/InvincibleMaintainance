@@ -588,6 +588,7 @@ model Lead {
   assignedTo User?          @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   customer   Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   notes      LeadNote[]
+  photos     LeadPhoto[]
   activities LeadActivity[]
   quotations Quotation[]
   jobs       Job[]
@@ -611,6 +612,24 @@ model LeadNote {
 
   @@index([leadId, createdAt])
 }
+
+/// A photo of the site the customer sent with their enquiry. Uploaded before the lead exists
+/// (POST /public/lead-photos), so the file lands in the "Customer uploads" folder and is only
+/// linked here when the lead is submitted.
+model LeadPhoto {
+  id        String   @id @default(cuid())
+  leadId    String
+  mediaId   String   @unique
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, sortOrder])
+}
+
 
 model LeadActivity {
   id        String   @id @default(cuid())

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  ArrowLeft, CalendarCheck, ChevronDown, ClipboardCheck, Contact, FileText, Pencil, Trash2, UserPlus, UserRoundCheck,
+  ArrowLeft, CalendarCheck, ChevronDown, ClipboardCheck, Contact, FileText, MessageCircle, Pencil, Phone, Trash2, UserPlus, UserRoundCheck,
 } from 'lucide-react';
 import { useDeleteLeadMutation, useGetLeadDuplicatesQuery, useGetLeadQuery } from '@/api/leadsApi';
 import { ScheduleVisitDialog } from '@/components/leads/ScheduleVisitDialog';
@@ -14,7 +14,8 @@ import { AssignLeadDialog } from '@/components/leads/AssignLeadDialog';
 import { ActivityComposer } from '@/components/leads/ActivityComposer';
 import { DuplicatesPanel } from '@/components/leads/DuplicatesPanel';
 import { LeadRequestPanel } from '@/components/leads/LeadRequestPanel';
-import { PageHeader } from '@/components/common/PageHeader';
+import { LeadStageTrack } from '@/components/leads/LeadStageTrack';
+import { RecordHeader } from '@/components/common/RecordHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { SlaChip } from '@/components/common/SlaChip';
 import { StateBadge } from '@/components/common/StateBadge';
@@ -33,7 +34,9 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useLeadStatusChange } from '@/hooks/useLeadStatusChange';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { ACTIVITY_LABELS, LEAD_SOURCE_LABELS } from '@/config/constants';
-import { formatDate, formatDateTime, formatNpr, titleCase } from '@/helpers/format';
+import { formatDate, formatDateTime, formatNpr, initials, relativeTime, titleCase } from '@/helpers/format';
+import { toneStyle } from '@/helpers/leadBoard';
+import { whatsappHref } from '@/helpers/contact';
 
 const TABS = ['overview', 'duplicates', 'history'];
 
@@ -99,9 +102,10 @@ function LinkedRecords({ lead, can }) {
         ))}
         {quotations.map((q) => (
           <Link key={q.id} to={`/admin/quotations/${q.id}`} className={`${row} hover:bg-muted`}>
-            <span className="inline-flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" aria-hidden />
-              <span className="font-mono text-xs">{q.number}</span> · {formatNpr(q.total)}
+            <span className="inline-flex min-w-0 flex-wrap items-center gap-x-2">
+              <FileText className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+              <span className="whitespace-nowrap font-mono text-xs">{q.number}</span>
+              <span className="whitespace-nowrap tabular-nums">{formatNpr(q.total)}</span>
             </span>
             <StatusBadge status={q.status} />
           </Link>
@@ -156,14 +160,53 @@ export default function LeadDetailPage() {
   };
 
   const closed = ['WON', 'LOST'].includes(lead.status);
+  const whatsapp = whatsappHref(lead.phone);
 
   return (
     <PageTransition>
-      <PageHeader
+      <RecordHeader
+        avatar={(
+          <span
+            aria-hidden style={toneStyle(lead.status)}
+            className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-[hsl(var(--tone)/0.14)] text-lg font-bold text-[hsl(var(--tone))] ring-1 ring-[hsl(var(--tone)/0.3)]"
+          >
+            <span lang={lead.preferredLocale}>{initials(lead.name)}</span>
+          </span>
+        )}
+        eyebrow={(
+          <>
+            <span>{lead.service?.name ?? 'General enquiry'}</span>
+            <span aria-hidden>·</span>
+            <span>{LEAD_SOURCE_LABELS[lead.source] ?? titleCase(lead.source)}</span>
+          </>
+        )}
         title={lead.name}
-        description={`${lead.service?.name ?? 'General enquiry'} · ${LEAD_SOURCE_LABELS[lead.source] ?? titleCase(lead.source)}`}
-        actions={
-          <div className="flex flex-wrap justify-end gap-2">
+        meta={(
+          <>
+            {lead.phone ? (
+              <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1.5 font-medium tabular-nums hover:text-primary">
+                <Phone className="h-4 w-4 text-muted-foreground" aria-hidden /> {lead.phone}
+              </a>
+            ) : null}
+            {whatsapp ? (
+              <a href={whatsapp} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-success hover:underline">
+                <MessageCircle className="h-4 w-4" aria-hidden /> WhatsApp
+              </a>
+            ) : null}
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <StatusBadge status={lead.status} />
+              <PriorityBadge priority={lead.priority} />
+              {!closed || lead.sla?.state === 'met' ? <SlaChip sla={lead.sla} /> : null}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {lead.assignedTo ? `Owned by ${lead.assignedTo.name}` : 'Unassigned'}
+              {' · '}
+              <span title={formatDateTime(lead.createdAt)}>came in {relativeTime(lead.createdAt)}</span>
+            </span>
+          </>
+        )}
+        actions={(
+          <>
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin/leads')}>
               <ArrowLeft /> Leads
             </Button>
@@ -190,16 +233,11 @@ export default function LeadDetailPage() {
                 <Button variant="ghost" size="icon" onClick={onDelete} aria-label="Delete lead"><Trash2 className="text-destructive" /></Button>
               </>
             ) : null}
-          </div>
-        }
+          </>
+        )}
       >
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <StatusBadge status={lead.status} />
-          <PriorityBadge priority={lead.priority} />
-          {!closed || lead.sla?.state === 'met' ? <SlaChip sla={lead.sla} /> : null}
-          <span className="text-xs text-muted-foreground">{lead.assignedTo ? `Owned by ${lead.assignedTo.name}` : 'Unassigned'}</span>
-        </div>
-      </PageHeader>
+        <LeadStageTrack lead={lead} />
+      </RecordHeader>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4">

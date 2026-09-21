@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { canDrop, cardsForColumn, leadsInScope, needsReason, nextStatuses, responseResult, slaProgress, funnelSummary, leadAgeDays, isGoingCold } from '@/helpers/leadBoard';
+import { runwayLanes, runwayPoint } from '@/helpers/leadBoard';
 
 describe('board drops', () => {
   it.each([
@@ -100,5 +101,40 @@ describe('the pipeline summary', () => {
     expect(isGoingCold(old, now)).toBe(true);
     expect(isGoingCold({ ...old, status: 'WON' }, now)).toBe(false);
     expect(isGoingCold({ ...old, createdAt: '2026-09-15T00:00:00.000Z' }, now)).toBe(false);
+  });
+});
+
+describe('the response runway', () => {
+  const t0 = Date.parse('2026-09-19T06:00:00.000Z');
+  const lead = { createdAt: new Date(t0).toISOString(), sla: { dueAt: new Date(t0 + 120 * 60000).toISOString() } };
+  const at = (minutes) => runwayPoint(lead, t0 + minutes * 60000);
+
+  it('spends the promise on the first 80% of the track, the last 30 minutes as a warning', () => {
+    expect(at(0)).toEqual({ x: 0, zone: 'ok', minutesLeft: 120, pinned: false });
+    expect(at(60).x).toBeCloseTo(0.4);
+    expect(at(89).zone).toBe('ok');
+    expect(at(90).zone).toBe('warn');
+    expect(at(120)).toMatchObject({ x: 0.8, zone: 'warn', minutesLeft: 0 });
+  });
+
+  it('draws the first hour past the deadline, then pins the lead to the end', () => {
+    expect(at(150)).toMatchObject({ zone: 'breach', minutesLeft: -30, pinned: false });
+    expect(at(150).x).toBeCloseTo(0.9);
+    expect(at(600)).toMatchObject({ x: 1, zone: 'breach', minutesLeft: -480, pinned: true });
+  });
+
+  it('has no point without a deadline, and never a negative one for a clock skewed ahead', () => {
+    expect(runwayPoint({ createdAt: lead.createdAt, sla: {} }, t0)).toBeNull();
+    expect(at(-5).x).toBe(0);
+  });
+
+  it('stacks neighbours into lanes and reuses a lane once it is clear', () => {
+    const lanes = runwayLanes([{ id: 'c', x: 0.5 }, { id: 'a', x: 0.1 }, { id: 'b', x: 0.11 }, { id: 'd', x: 0.12 }]);
+    expect(lanes.map((p) => [p.id, p.lane])).toEqual([['a', 0], ['b', 1], ['d', 2], ['c', 0]]);
+  });
+
+  it('shares the lane that frees first once every lane is taken', () => {
+    const lanes = runwayLanes([0.1, 0.101, 0.102].map((x) => ({ x })), 0.035, 2);
+    expect(lanes.map((p) => p.lane)).toEqual([0, 1, 0]);
   });
 });

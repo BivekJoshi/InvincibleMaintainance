@@ -73,6 +73,16 @@ export const publicApi = apiSlice.injectEndpoints({
       query: (body) => ({ url: '/public/estimate', method: 'POST', body }),
       transformResponse: (r) => r.data,
     }),
+    // Photos of the site, sent while the form is still open: the answer's ids go with the
+    // enquiry as `photoIds`. FormData, so no JSON Content-Type is set for this one.
+    uploadLeadPhotos: build.mutation({
+      query: (files) => {
+        const body = new FormData();
+        [...files].forEach((file) => body.append('files', file));
+        return { url: '/public/lead-photos', method: 'POST', body };
+      },
+      transformResponse: (r) => r.data,
+    }),
     submitLead: build.mutation({
       query: (body) => ({ url: '/public/leads', method: 'POST', body }),
       transformResponse: (r) => r.data,
@@ -107,7 +117,7 @@ export const {
   useGetPublicGalleryQuery, useGetPublicFaqsQuery,
   useGetPublicPostsQuery, useGetPublicPostQuery, useGetPublicPageQuery,
   useGetAvailabilityQuery,
-  useEstimateMutation, useSubmitLeadMutation,
+  useEstimateMutation, useSubmitLeadMutation, useUploadLeadPhotosMutation,
   useGetQuotationByTokenQuery, useDecideQuotationMutation,
   useGetInvoiceByTokenQuery,
   useGetWarrantyByTokenQuery, useClaimWarrantyMutation,

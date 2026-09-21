@@ -39,10 +39,10 @@ describe('leads', () => {
     expectStatus(await sales.get('/admin/leads?sort=bogus'), 400);
   });
 
-  it('GET /admin/leads/sla-board separates breached from at-risk', async () => {
+  it('GET /admin/leads/sla-board separates breached, at-risk and waiting', async () => {
     const body = expectStatus(await sales.get('/admin/leads/sla-board'), 200);
     expect(body.data).toMatchObject({
-      breached: expect.any(Array), atRisk: expect.any(Array),
+      breached: expect.any(Array), atRisk: expect.any(Array), waiting: expect.any(Array),
       newToday: expect.any(Number), answeredToday: expect.any(Number), metToday: expect.any(Number),
     });
     expect(body.data.metToday).toBeLessThanOrEqual(body.data.answeredToday);
@@ -268,6 +268,20 @@ describe('customers', () => {
   it('GET /admin/customers with search', async () => {
     const body = expectStatus(await sales.get(`/admin/customers?q=${encodeURIComponent(customer.name)}`), 200);
     expect(body.data.map((c) => c.id)).toContain(customer.id);
+  });
+
+  it('GET /admin/customers/summary counts the book, and shows money only to who may read invoices', async () => {
+    const body = expectStatus(await sales.get('/admin/customers/summary'), 200);
+    expect(body.data).toMatchObject({
+      total: expect.any(Number), companies: expect.any(Number), withOpenJobs: expect.any(Number), newLast30Days: expect.any(Number),
+    });
+    expect(body.data.total).toBeGreaterThanOrEqual(body.data.withOpenJobs);
+    expect(body.data).not.toHaveProperty('owed');
+
+    const accountant = await as('ACCOUNTANT');
+    const money = expectStatus(await accountant.get('/admin/customers/summary'), 200).data;
+    expect(Number.isInteger(money.owed)).toBe(true);
+    expect(money.owingCount).toBeLessThanOrEqual(money.total);
   });
 
   it('GET/PUT /admin/customers/:id', async () => {

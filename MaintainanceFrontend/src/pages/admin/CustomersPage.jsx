@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, Building2, Plus, User, Wallet, X } from 'lucide-react';
-import { useGetCustomersQuery } from '@/api/customersApi';
+import { Plus, X } from 'lucide-react';
+import { useGetCustomerSummaryQuery, useGetCustomersQuery } from '@/api/customersApi';
 import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/common/PageHeader';
 import { CustomTable } from '@/components/common/CustomTable/CustomTable';
+import { CustomerAvatar } from '@/components/customers/CustomerAvatar';
+import { CustomerBook } from '@/components/customers/CustomerBook';
 import { CustomerFormSheet } from '@/components/customers/CustomerFormSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageTransition } from '@/three/motion/motionKit';
 import { CUSTOMER_TYPES, PREFERRED_LOCALE_OPTIONS } from '@/config/constants';
-import { formatNpr, titleCase } from '@/helpers/format';
+import { formatNpr, relativeTime, titleCase } from '@/helpers/format';
 
 const languageOf = (code) => PREFERRED_LOCALE_OPTIONS.find((o) => o.value === code)?.label ?? code;
 
@@ -20,12 +22,15 @@ function columnsFor({ withBalance, onTag }) {
     {
       key: 'name', header: 'Customer', sortable: true,
       cell: (r) => (
-        <div className="flex min-w-0 items-center gap-2">
-          {r.type === 'company'
-            ? <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Company" />
-            : <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Individual" />}
+        <div className="flex min-w-0 items-center gap-3">
+          <CustomerAvatar customer={r} />
           <div className="min-w-0">
             <p className="truncate font-medium">{r.name}</p>
+            {r.sites?.length ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {(r.sites.find((site) => site.isPrimary) ?? r.sites[0]).address}
+              </p>
+            ) : null}
             {r.tags?.length ? (
               <div className="mt-0.5 flex flex-wrap gap-1">
                 {r.tags.map((t) => (
@@ -51,12 +56,20 @@ function columnsFor({ withBalance, onTag }) {
     { key: 'email', header: 'Email', className: 'max-w-[200px] truncate', cell: (r) => r.email ?? <span className="text-muted-foreground">—</span> },
     { key: 'siteCount', header: 'Sites', className: 'text-right tabular-nums', cell: (r) => r.siteCount },
     {
+      key: 'createdAt', header: 'Customer since', sortable: true,
+      cell: (r) => <span className="whitespace-nowrap text-muted-foreground" title={r.createdAt}>{relativeTime(r.createdAt)}</span>,
+    },
+    {
       key: 'openJobs', header: 'Open jobs', className: 'text-right tabular-nums',
-      cell: (r) => (r.openJobs ? <Badge variant="secondary">{r.openJobs}</Badge> : <span className="text-muted-foreground">0</span>),
+      cell: (r) => (r.openJobs
+        ? <Badge className="border-gold/30 bg-gold/15 text-foreground hover:bg-gold/15">{r.openJobs} on</Badge>
+        : <span className="text-muted-foreground">—</span>),
     },
     ...(withBalance ? [{
       key: 'balanceDue', header: 'Balance due', className: 'text-right tabular-nums',
-      cell: (r) => (r.balanceDue ? <span className="font-medium">{formatNpr(r.balanceDue)}</span> : <span className="text-muted-foreground">—</span>),
+      cell: (r) => (r.balanceDue
+        ? <span className="font-semibold text-destructive">{formatNpr(r.balanceDue)}</span>
+        : <span className="text-muted-foreground">—</span>),
     }] : []),
     { key: 'preferredLocale', header: 'Language', cell: (r) => <span lang={r.preferredLocale}>{languageOf(r.preferredLocale)}</span> },
   ];
@@ -70,30 +83,17 @@ const filters = [
 export default function CustomersPage() {
   const [params, setParams] = useListParams({ limit: 20 });
   const { data, isLoading, isFetching, error, refetch } = useGetCustomersQuery(params);
+  const { data: summary } = useGetCustomerSummaryQuery();
   const navigate = useNavigate();
   const { can } = useAuth();
   const [creating, setCreating] = useState(false);
   const withBalance = can('invoices:read');
 
   const setTag = (tag) => setParams({ ...params, tag, page: 1 });
-  // One-click questions the office asks most: who has work on, and who owes us.
-  const quick = [
-    { key: 'hasOpenJobs', label: 'Open jobs', icon: Briefcase },
-    ...(withBalance ? [{ key: 'owing', label: 'Owes money', icon: Wallet }] : []),
-  ];
-  const toggle = (key) => setParams({ ...params, [key]: params[key] === 'true' ? undefined : 'true', page: 1 });
+  // The book's tiles are the one-click questions: companies, who has work on, who owes us.
+  const toggle = (key, value) => setParams({ ...params, [key]: params[key] === value ? undefined : value, page: 1 });
   const toolbar = (
     <>
-      {quick.map(({ key, label, icon: Icon }) => (
-        <Button
-          key={key} type="button" size="sm"
-          variant={params[key] === 'true' ? 'secondary' : 'outline'}
-          aria-pressed={params[key] === 'true'}
-          onClick={() => toggle(key)}
-        >
-          <Icon /> {label}
-        </Button>
-      ))}
       {params.tag ? (
         <Button type="button" variant="secondary" size="sm" onClick={() => setTag(undefined)} aria-label={`Remove the tag filter ${params.tag}`}>
           Tag: {params.tag} <X />
@@ -109,6 +109,7 @@ export default function CustomersPage() {
         description="People and companies, their sites, and everything done for them."
         actions={can('customers:write') ? <Button size="sm" onClick={() => setCreating(true)}><Plus /> New customer</Button> : null}
       />
+      <CustomerBook summary={summary} params={params} onToggle={toggle} withBalance={withBalance} />
       <CustomTable
         storageKey="customers"
         exportable

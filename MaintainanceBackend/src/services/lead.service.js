@@ -9,6 +9,7 @@ import { BOOKING_SLOTS, CONTACT_ACTIVITY_TYPES } from '../shared/enums.js';
 import { adminLeadPath, webUrl } from '../utils/links.js';
 import { local, startOfDay } from '../utils/dates.js';
 import { computeSlaDueAt, decorateSla, slaWhere } from './sla.service.js';
+import { attachLeadPhotos, decorateLeadPhotos } from './leadPhoto.service.js';
 import { isSlotFull } from './availability.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { getSetting } from './settings.service.js';
@@ -112,18 +113,22 @@ export async function createPublicLead(input, { ip, userAgent }) {
       ? await prisma.lead.update({ where: { id: recent.id }, data: booking, include: LEAD_INCLUDE })
       : recent;
 
+    const added = await attachLeadPhotos(recent.id, input.photoIds);
     await prisma.leadActivity.create({
       data: {
         leadId: recent.id,
         type: 'note',
-        summary: booking ? 'Customer booked a visit slot' : 'Customer submitted the form again',
+        summary: [
+          booking ? 'Customer booked a visit slot' : 'Customer submitted the form again',
+          added ? `with ${added} photo${added === 1 ? '' : 's'}` : null,
+        ].filter(Boolean).join(' '),
         meta: { message: input.message ?? null, preferredAt: input.preferredAt ?? null, preferredSlot: input.preferredSlot ?? null },
       },
     });
     return decorateSla(lead);
   }
 
-  const { website, turnstileToken, elapsedMs, estimatedAmount, ...rest } = input;
+  const { website, turnstileToken, elapsedMs, estimatedAmount, photoIds, ...rest } = input;
 
   // A slot with no surveyor left is not a reason to refuse the customer. Take the
   // booking, raise it so someone calls to reschedule, and say so on the timeline.
@@ -145,6 +150,18 @@ export async function createPublicLead(input, { ip, userAgent }) {
     },
     include: LEAD_INCLUDE,
   });
+
+  const attached = await attachLeadPhotos(lead.id, photoIds);
+  if (attached) {
+    await prisma.leadActivity.create({
+      data: {
+        leadId: lead.id,
+        type: 'note',
+        summary: `Customer sent ${attached} photo${attached === 1 ? '' : 's'} of the site`,
+        meta: { photos: attached },
+      },
+    });
+  }
 
   if (oversubscribed) {
     await prisma.leadActivity.create({
@@ -270,6 +287,7 @@ export async function getLead(id) {
       notes: { orderBy: { createdAt: 'desc' }, include: { user: { select: { id: true, name: true } } } },
       activities: { orderBy: { createdAt: 'desc' }, take: 100, include: { user: { select: { id: true, name: true } } } },
       quotations: { select: { id: true, number: true, status: true, total: true, createdAt: true } },
+      photos: { orderBy: { sortOrder: 'asc' }, include: { media: true } },
       jobs: {
         where: { deletedAt: null },
         select: {
@@ -280,7 +298,7 @@ export async function getLead(id) {
     },
   });
   if (!lead) throw notFound('Lead');
-  return decorateSla(lead);
+  return { ...decorateSla(lead), photos: decorateLeadPhotos(lead.photos) };
 }
 
 export async function updateLead(id, data) {
@@ -569,9 +587,10 @@ export async function deleteLead(id) {
  */
 export async function slaBoard() {
   const today = startOfDay();
-  const [breached, atRisk, newToday, answered] = await Promise.all([
+  const [breached, atRisk, waiting, newToday, answered] = await Promise.all([
     prisma.lead.findMany({ where: { deletedAt: null, ...slaWhere('breached') }, include: LEAD_INCLUDE, orderBy: { slaDueAt: 'asc' }, take: 50 }),
     prisma.lead.findMany({ where: { deletedAt: null, ...slaWhere('at_risk') }, include: LEAD_INCLUDE, orderBy: { slaDueAt: 'asc' }, take: 50 }),
+    prisma.lead.findMany({ where: { deletedAt: null, ...slaWhere('waiting') }, include: LEAD_INCLUDE, orderBy: { slaDueAt: 'asc' }, take: 50 }),
     prisma.lead.count({ where: { deletedAt: null, createdAt: { gte: today } } }),
     prisma.lead.findMany({
       where: { deletedAt: null, firstResponseAt: { gte: today }, slaDueAt: { not: null } },
@@ -581,6 +600,7 @@ export async function slaBoard() {
   return {
     breached: breached.map(decorateSla),
     atRisk: atRisk.map(decorateSla),
+    waiting: waiting.map(decorateSla),
     newToday,
     answeredToday: answered.length,
     metToday: answered.filter((l) => l.firstResponseAt <= l.slaDueAt).length,

@@ -146,3 +146,62 @@ export function funnelSummary(totals) {
     shares: Object.fromEntries(LEAD_STATUSES.map((s) => [s, total ? Math.round((count(s) / total) * 100) : 0])),
   };
 }
+
+/** On the response runway the promise takes this share of the track; the rest is the first hour past it. */
+export const RUNWAY_PROMISE_SHARE = 0.8;
+/** How far past the deadline the runway draws before it pins a lead to its end. */
+export const RUNWAY_OVERFLOW_MINUTES = 60;
+/** The last stretch before the deadline — the API's `sla.warnBeforeMinutes` default. */
+export const RUNWAY_WARN_MINUTES = 30;
+
+/**
+ * Where a waiting lead sits on the response runway: `x` 0–1 along the track, its `zone`,
+ * the minutes left (negative once late) and whether it is `pinned` at the far end
+ * because it is later than the track draws.
+ *
+ * @param {{ createdAt: string, sla?: { dueAt?: string } }} lead
+ * @param {number} [now]  ms since the epoch
+ * @returns {{ x: number, zone: 'ok'|'warn'|'breach', minutesLeft: number, pinned: boolean }|null}
+ */
+export function runwayPoint(lead, now = Date.now(), warnMinutes = RUNWAY_WARN_MINUTES) {
+  const start = new Date(lead?.createdAt).getTime();
+  const due = new Date(lead?.sla?.dueAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(due) || due <= start) return null;
+  const windowMinutes = (due - start) / 60000;
+  const elapsed = Math.max(0, (now - start) / 60000);
+  const minutesLeft = Math.round(windowMinutes - elapsed);
+  if (elapsed <= windowMinutes) {
+    return {
+      x: (elapsed / windowMinutes) * RUNWAY_PROMISE_SHARE,
+      zone: windowMinutes - elapsed <= warnMinutes ? 'warn' : 'ok',
+      minutesLeft,
+      pinned: false,
+    };
+  }
+  const late = elapsed - windowMinutes;
+  return {
+    x: RUNWAY_PROMISE_SHARE + Math.min(1, late / RUNWAY_OVERFLOW_MINUTES) * (1 - RUNWAY_PROMISE_SHARE),
+    zone: 'breach',
+    minutesLeft,
+    pinned: late > RUNWAY_OVERFLOW_MINUTES,
+  };
+}
+
+/**
+ * Stacks runway markers so neighbours do not cover each other: each point takes the lowest
+ * lane whose last marker is at least `gap` behind it, and past `maxLanes` shares the lane
+ * that frees up first. Returns the points sorted by `x`, each with its `lane`.
+ *
+ * @template {{ x: number }} P
+ * @param {P[]} points
+ * @returns {(P & { lane: number })[]}
+ */
+export function runwayLanes(points, gap = 0.035, maxLanes = 4) {
+  const ends = [];
+  return [...points].sort((a, b) => a.x - b.x).map((point) => {
+    let lane = ends.findIndex((end) => point.x - end >= gap);
+    if (lane === -1) lane = ends.length < maxLanes ? ends.length : ends.indexOf(Math.min(...ends));
+    ends[lane] = point.x;
+    return { ...point, lane };
+  });
+}

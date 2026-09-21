@@ -56,7 +56,14 @@ POST /public/leads                    honeypot + timing + turnstile + rate limit
                                       which sets source=booking; a closed weekday is rejected
                                       { name, phone, email? (optional; stored trimmed, lower-case),
                                         preferredLocale? en|ne (the site's language — the acknowledgement
-                                        SMS and every later message use it), address?, serviceId?, message?… }
+                                        SMS and every later message use it), address?, serviceId?, message?,
+                                        photoIds? (≤5, from POST /public/lead-photos; ids that are not
+                                        unattached customer uploads are ignored) }
+POST /public/lead-photos              photos of the site, sent while the form is still open. multipart
+                                      `files` (≤5, images only, ≤10 MB each, 20 uploads/hour/IP) ->
+                                      201 [{ id, url, thumb, width, height }]. They live in the
+                                      "Customer uploads" media folder and belong to nothing until a
+                                      lead is submitted with their ids.
 GET  /public/quotations/:token        customer views a quotation — an allowlist, never the row:
                                       { number, version, status, validUntil, subtotal, discount,
                                         vatApplied, vatRate, vatAmount, total, terms, sentAt, decidedAt,
@@ -248,8 +255,9 @@ POST   /admin/leads                 leads:write · manual entry (call, walk-in, 
                                     { name, phone, altPhone?, email?, address?, area?, serviceId?, message?,
                                       source (default call), priority, assignedToId? (default: the caller),
                                       estimatedAmount? (rupees), preferredLocale? (default en) }
-GET    /admin/leads/sla-board       leads:read · { breached[], atRisk[], newToday, answeredToday, metToday } —
-                                    the counts use Kathmandu's day; metToday ≤ answeredToday (first contact
+GET    /admin/leads/sla-board       leads:read · { breached[], atRisk[], waiting[], newToday, answeredToday, metToday } —
+                                    waiting[] is unanswered and still outside the warning window (a fresh
+                                    enquiry lands here); the counts use Kathmandu's day; metToday ≤ answeredToday (first contact
                                     today, inside the deadline)
 GET    /admin/leads/export.csv      leads:read · the list filters (every page, up to 10,000 rows), or
                                     ?ids=a,b,c (≤100) for the rows picked in the table
@@ -263,7 +271,9 @@ POST   /admin/leads/bulk-assign     leads:write · { ids (1–100), assignedToId
 GET    /admin/leads/assignees       leads:read · ?q&limit — active SALES, MANAGER and ADMIN users { id, name, email, role }:
                                     who a lead can be assigned to (/admin/users is ADMIN's)
 GET    /admin/leads/assignees/:id   leads:read · one of them; 404 for anyone else
-GET    /admin/leads/:id
+GET    /admin/leads/:id             leads:read · the lead with notes, activities, quotations, jobs and
+                                    photos[] { id, mediaId, caption, url, thumb, width, height } — what the
+                                    customer sent with the enquiry
 GET    /admin/leads/:id/duplicates  leads:read · other live leads sharing the phone / alt phone, or the email
                                     (any case). Each row adds `matchedOn` (phone | email), `sla` and
                                     `_count { notes, activities, quotations, jobs }` — what a merge would move
@@ -319,6 +329,9 @@ GET    /admin/customers             customers:read · ?q (name, phone, alt phone
                                      &page&limit&sort. Each row adds sites, siteCount, openJobs, invoiceCount,
                                     quotationCount — and balanceDue (paisa, unpaid invoices' total − paid) only
                                     for a caller with invoices:read (ACCOUNTANT, ADMIN)
+GET    /admin/customers/summary     customers:read · { total, companies, withOpenJobs, newLast30Days } and, with
+                                    invoices:read, { owingCount, owed } (paisa, invoiced minus paid on unpaid
+                                    invoices) — the list's header
 POST   /admin/customers             customers:write · { type, name, phone, altPhone?, email?, panVatNo?, notes?,
                                       tags?: string[], preferredLocale? } — a phone another customer has is
                                     allowed (shared phones are real); the screen warns

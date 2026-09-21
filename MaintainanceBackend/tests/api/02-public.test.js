@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
-  anon, as, expectStatus, createCustomer, createCompletedJob, prisma, phone, dayMatching, uid, approveAndSend,
+  anon, as, expectStatus, createCustomer, createCompletedJob, prisma, phone, dayMatching, uid, approveAndSend, pngBuffer,
 } from './helpers.js';
 
 const lead = (extra = {}) => ({
@@ -208,6 +208,51 @@ describe('blog and generic pages', () => {
     expect(res.text).toContain(`<loc>https://example.com/blog/${post.slug}</loc>`);
     expect(res.text).not.toContain(`/blog/${draft.slug}<`);
     expect(res.text).toContain(`<loc>https://example.com/${page.slug}</loc>`);
+  });
+});
+
+describe('POST /public/lead-photos', () => {
+  let sales;
+  beforeAll(async () => { sales = await as('SALES'); });
+
+  const upload = async (name = 'site.png') => anon().post('/public/lead-photos').attach('files', await pngBuffer(), name);
+
+  it('stores a photo for an enquiry that has not been submitted yet', async () => {
+    const body = expectStatus(await upload(), 201);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).toMatchObject({ id: expect.any(String), url: expect.any(String), thumb: expect.any(String) });
+  });
+
+  it('refuses a file that is not an image', async () => {
+    const res = await anon().post('/public/lead-photos').attach('files', Buffer.from('%PDF-1.4 not a photo'), 'quote.pdf');
+    expect(res.status).toBe(400);
+  });
+
+  it('carries the photos onto the lead, and ignores ids that are not customer uploads', async () => {
+    const mine = expectStatus(await upload('leak.png'), 201).data[0];
+    const editor = await as('ADMIN');
+    const someoneElses = await editor.post('/admin/media').attach('files', await pngBuffer('#222222'), 'library.png');
+    const libraryId = expectStatus(someoneElses, 201).data[0].id;
+
+    const created = expectStatus(await anon().post('/public/leads')
+      .send(lead({ message: 'Photos attached', photoIds: [mine.id, libraryId] })), 201);
+
+    const detail = expectStatus(await sales.get(`/admin/leads/${created.data.id}`), 200).data;
+    expect(detail.photos).toHaveLength(1);
+    expect(detail.photos[0]).toMatchObject({ mediaId: mine.id, url: expect.any(String), thumb: expect.any(String) });
+    expect(detail.activities.some((a) => /sent 1 photo/i.test(a.summary))).toBe(true);
+  });
+
+  it('will not let the same photo be claimed by a second lead', async () => {
+    const photo = expectStatus(await upload('once.png'), 201).data[0];
+    const first = expectStatus(await anon().post('/public/leads').send(lead({ photoIds: [photo.id] })), 201);
+    const second = expectStatus(await anon().post('/public/leads').send(lead({ photoIds: [photo.id] })), 201);
+    expect(first.data.id).not.toBe(second.data.id);
+
+    const one = expectStatus(await sales.get(`/admin/leads/${first.data.id}`), 200).data;
+    const two = expectStatus(await sales.get(`/admin/leads/${second.data.id}`), 200).data;
+    expect(one.photos).toHaveLength(1);
+    expect(two.photos).toHaveLength(0);
   });
 });
 

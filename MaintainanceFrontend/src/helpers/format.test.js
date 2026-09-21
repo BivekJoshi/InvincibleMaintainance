@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  formatNprShort, formatRupees, fromKathmanduParts, parseRupees, rupeesInput, rupeesToPaisa, toKathmanduParts,
+  formatNprShort, shortAge, formatRupees, fromKathmanduParts, parseRupees, rupeesInput, rupeesToPaisa, toKathmanduParts,
 } from '@/helpers/format';
 
 describe('money — paisa from the API, rupees in the form', () => {
@@ -89,5 +89,18 @@ describe('formatNprShort — chart axes in K, lakh and crore', () => {
     [345e9, 'Rs 345Cr'],
   ])('%i paisa → %s', (paisa, text) => {
     expect(formatNprShort(paisa)).toBe(text);
+  });
+});
+
+describe('shortAge', () => {
+  const t0 = Date.parse('2026-09-19T06:00:00.000Z');
+  const ago = (minutes) => new Date(t0 - minutes * 60000).toISOString();
+  it('says the age in its largest whole unit', () => {
+    expect(shortAge(ago(0), t0)).toBe('now');
+    expect(shortAge(ago(12), t0)).toBe('12m');
+    expect(shortAge(ago(185), t0)).toBe('3h');
+    expect(shortAge(ago(9 * 1440 + 5), t0)).toBe('9d');
+    expect(shortAge(ago(150 * 1440), t0)).toBe('5mo');
+    expect(shortAge('not a date', t0)).toBe('—');
   });
 });
