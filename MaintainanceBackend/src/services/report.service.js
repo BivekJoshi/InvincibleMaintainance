@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { dateRange } from '../utils/pagination.js';
 import { sum } from '../utils/money.js';
-import { addDays } from '../utils/dates.js';
+import { addDays, kathmanduDayRange } from '../utils/dates.js';
 
 const range = (q) => dateRange(q.from, q.to) ?? { gte: addDays(new Date(), -30) };
 
@@ -26,6 +26,35 @@ export async function leadSourceReport(query = {}) {
   return Object.values(bySource)
     .map((s) => ({ ...s, conversionRate: s.total ? Number(((s.won / s.total) * 100).toFixed(1)) : 0 }))
     .sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Why leads were lost, and where: LOST leads closed in the range (Kathmandu days, on closedAt; all of them
+ * without one) by category × the stage they were lost at × service. Rows are most-lost first.
+ */
+export async function lostReport(query = {}) {
+  const closedAt = kathmanduDayRange(query.from, query.to);
+  const groups = await prisma.lead.groupBy({
+    by: ['lostCategory', 'lostAtStage', 'serviceId'],
+    where: { deletedAt: null, status: 'LOST', ...(closedAt ? { closedAt } : {}) },
+    _count: { _all: true },
+  });
+  const serviceIds = [...new Set(groups.map((g) => g.serviceId).filter(Boolean))];
+  const services = new Map((await prisma.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, name: true } }))
+    .map((sv) => [sv.id, sv.name]));
+  const rows = groups
+    .map((g) => ({
+      category: g.lostCategory, stage: g.lostAtStage, serviceId: g.serviceId,
+      serviceName: g.serviceId ? services.get(g.serviceId) ?? null : null, count: g._count._all,
+    }))
+    .sort((a, b) => b.count - a.count);
+  const byCategory = new Map();
+  for (const r of rows) byCategory.set(r.category, (byCategory.get(r.category) ?? 0) + r.count);
+  return {
+    total: sum(rows.map((r) => r.count)),
+    byCategory: [...byCategory].map(([category, count]) => ({ category, count })).sort((a, b) => b.count - a.count),
+    rows,
+  };
 }
 
 /** The funnel, stage by stage. */

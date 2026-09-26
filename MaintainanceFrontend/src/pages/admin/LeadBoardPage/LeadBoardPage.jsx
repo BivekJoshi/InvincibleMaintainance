@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -12,8 +13,11 @@ import { PageTransition } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useListParams } from '@/hooks/useListParams';
 import { useLeadStatusChange } from '@/hooks/useLeadStatusChange';
+import { useLeadFollowUp } from '@/hooks/useLeadFollowUp';
+import { useLazyGetLeadQuery } from '@/api/leadsApi';
+import { toastError } from '@/redux/slices/uiSlice';
 import {
-  BOARD_COLUMNS, FOLDABLE_COLUMNS, canDrop, cardsForColumn, funnelSummary, isGoingCold, toneStyle,
+  BOARD_COLUMNS, FOLDABLE_COLUMNS, canDrop, cardsForColumn, dropDialogFor, funnelSummary, hasQuotation, isGoingCold, toneStyle,
 } from '@/helpers/leadBoard';
 import { DEFAULT_LEAD_VIEW, LEAD_VIEWS, leadQueryFor } from '@/config/admin/leadViews';
 import { LEAD_STATUS_LABELS } from '@/config/constants';
@@ -51,7 +55,13 @@ function BoardSearch({ value, onChange }) {
 /**
  * The pipeline: a column per lead status. Dragging a card asks the API to move the lead
  * (`PATCH /admin/leads/:id/status`); only the columns the state machine allows accept it,
- * LOST asks why first, and a refused move puts the card back with the reason in a toast.
+ * and a refused move puts the card back with the reason in a toast.
+ *
+ * A move with work behind it opens that work instead (Phase L1, `dropDialogFor`): "Visit booked" opens
+ * the visit booking, "Quoted" without a quotation opens the new-quotation sheet, "Lost" asks why. The
+ * card moves only when the dialog completes — to wherever the server then lists it (a draft quotation
+ * leaves the lead Contacted until it is sent) — and Cancel leaves it where it was. The drop, the
+ * keyboard and the "Move to" menu all run the same `move`.
  */
 export default function LeadBoardPage() {
   const { can } = useAuth();
@@ -62,6 +72,9 @@ export default function LeadBoardPage() {
     return rest;
   }, [params]);
   const [changeStatus, statusDialog] = useLeadStatusChange();
+  const [openFollowUp, followUpDialogs] = useLeadFollowUp();
+  const [fetchLead] = useLazyGetLeadQuery();
+  const dispatch = useDispatch();
 
   const [byColumn, setByColumn] = useState({});
   const [pending, setPending] = useState({});
@@ -94,18 +107,42 @@ export default function LeadBoardPage() {
     return [...seen.values()];
   }, [byColumn, pending]);
 
+  const settle = useCallback((id) => setPending((p) => {
+    if (!(id in p)) return p;
+    const next = { ...p };
+    delete next[id];
+    return next;
+  }), []);
+
   const move = useCallback(async (lead, to) => {
     if (!canDrop(lead.status, to)) return;
-    setPending((p) => ({ ...p, [lead.id]: to }));
-    const moved = await changeStatus(lead, to);
-    if (!moved) {
-      setPending((p) => {
-        const next = { ...p };
-        delete next[lead.id];
-        return next;
-      });
+    let record = lead;
+    let quoted = to === 'QUOTED' ? hasQuotation(lead) : null;
+    if (to === 'QUOTED' && quoted == null) {
+      // A list row does not say whether a quotation exists; the lead's own record does.
+      try {
+        record = await fetchLead(lead.id, true).unwrap();
+        quoted = hasQuotation(record);
+      } catch (err) {
+        dispatch(toastError(`Could not move ${lead.name}`, err?.data?.error?.message ?? 'Please try again.'));
+        return;
+      }
     }
-  }, [changeStatus]);
+
+    const dialog = dropDialogFor(to, quoted);
+    if (dialog === 'visit' || dialog === 'quotation') {
+      // The card stays put while the dialog is open. Done: the columns refetch and it shows where the
+      // server moved it. Cancel: nothing changed.
+      await openFollowUp({ ...lead, ...record }, dialog);
+      return;
+    }
+    if (dialog === 'lost') {
+      if (await changeStatus(lead, to)) setPending((p) => ({ ...p, [lead.id]: to }));
+      return;
+    }
+    setPending((p) => ({ ...p, [lead.id]: to }));
+    if (!(await changeStatus(lead, to))) settle(lead.id);
+  }, [changeStatus, dispatch, fetchLead, openFollowUp, settle]);
 
   // A column is where the pointer is; the keyboard (no pointer) falls back to overlap.
   const collisionDetection = useCallback((args) => {
@@ -130,7 +167,7 @@ export default function LeadBoardPage() {
     <PageTransition>
       <PageHeader
         title="Pipeline"
-        description="Drag a lead to move it along. Only the moves the process allows are open."
+        description="Drag a lead to move it along. Only the moves the process allows are open; booking a visit or starting a quotation opens its dialog."
         actions={<Button asChild variant="outline" size="sm"><Link to={`/admin/leads?view=${view || 'all'}`}><List /> Table</Link></Button>}
       />
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -168,9 +205,12 @@ export default function LeadBoardPage() {
           announcements: {
             onDragStart: ({ active: a }) => `Picked up ${a.data.current?.lead?.name}.`,
             onDragOver: ({ over }) => (over ? `Over ${LEAD_STATUS_LABELS[over.id]}.` : 'Not over a column.'),
-            onDragEnd: ({ active: a, over }) => (over && canDrop(a.data.current?.lead?.status, over.id)
-              ? `Moving ${a.data.current?.lead?.name} to ${LEAD_STATUS_LABELS[over.id]}.`
-              : `${a.data.current?.lead?.name} stays where it was.`),
+            onDragEnd: ({ active: a, over }) => {
+              const lead = a.data.current?.lead;
+              if (!over || !canDrop(lead?.status, over.id)) return `${lead?.name} stays where it was.`;
+              if (over.id === 'INSPECTION_SCHEDULED') return `Book the visit to move ${lead?.name}.`;
+              return `Moving ${lead?.name} to ${LEAD_STATUS_LABELS[over.id]}.`;
+            },
             onDragCancel: ({ active: a }) => `${a.data.current?.lead?.name} stays where it was.`,
           },
         }}
@@ -207,6 +247,7 @@ export default function LeadBoardPage() {
         </DragOverlay>
       </DndContext>
       {statusDialog}
+      {followUpDialogs}
     </PageTransition>
   );
 }

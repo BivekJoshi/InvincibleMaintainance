@@ -21,6 +21,7 @@ import {
   messageTemplateListQuery, messageTemplateSchema,
 } from '../../shared/schemas/ops.js';
 import { auditLogQuery, loginActivityQuery, loginSummaryQuery } from '../../shared/schemas/audit.js';
+import { lostReportQuery } from '../../shared/schemas/crm.js';
 import { historyRoute } from './historyRoute.js';
 
 const router = Router();
@@ -167,6 +168,8 @@ router.post('/message-logs/:id/retry', adminOnly, validate({ params: idParam }),
 // ── operational reports
 router.get('/reports/lead-sources', requires('reports:sales'), asyncHandler(async (req, res) => ok(res, await reports.leadSourceReport(req.query))));
 router.get('/reports/funnel', requires('reports:sales'), asyncHandler(async (req, res) => ok(res, await reports.conversionFunnel(req.query))));
+router.get('/reports/lost', requires('reports:sales'), validate({ query: lostReportQuery }),
+  asyncHandler(async (req, res) => ok(res, await reports.lostReport(req.validatedQuery))));
 router.get('/reports/sla', requires('reports:sales'), asyncHandler(async (req, res) => ok(res, await reports.slaComplianceReport(req.query))));
 router.get('/reports/job-margin', requires('reports:ops'), asyncHandler(async (req, res) => ok(res, await reports.jobMarginReport(req.query))));
 router.get('/reports/technicians', requires('reports:ops'), asyncHandler(async (req, res) => ok(res, await reports.technicianProductivity(req.query))));

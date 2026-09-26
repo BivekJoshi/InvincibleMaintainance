@@ -204,14 +204,14 @@ describe('lead convert — priced by documentTotals, all or nothing', () => {
     });
   });
 
-  it('a NEW lead passes through CONTACTED on its way to QUOTED, one timeline entry per step', async () => {
+  it('a draft quotation makes a NEW lead CONTACTED, not QUOTED — sending it does that (Phase L1)', async () => {
     const lead = await newLead();
     expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createQuotation: true }), 201);
-    expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('QUOTED');
-    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>QUOTED']);
+    expect(await prisma.lead.findUnique({ where: { id: lead.id } })).toMatchObject({ status: 'CONTACTED', nextActionType: 'SEND_QUOTE' });
+    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED']);
   });
 
-  it('an inspection and a quotation together walk the funnel in order and end QUOTED', async () => {
+  it('an inspection and a quotation together walk the funnel in order and wait at the visit', async () => {
     const lead = await newLead();
     expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({
       site: { address: 'Lazimpat, Kathmandu' },
@@ -219,12 +219,13 @@ describe('lead convert — priced by documentTotals, all or nothing', () => {
       createInspectionJob: true,
       surveyorId: await technicianIdFor('SURVEYOR'),
     }), 201);
-    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>INSPECTION_SCHEDULED', 'INSPECTION_SCHEDULED>QUOTED']);
+    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>INSPECTION_SCHEDULED']);
+    expect((await prisma.lead.findUnique({ where: { id: lead.id } })).nextActionType).toBe('VISIT');
   });
 
   it('never moves a lead backwards: a QUOTED lead sent for an inspection stays QUOTED', async () => {
     const lead = await newLead();
-    expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createQuotation: true }), 201);
+    for (const status of ['CONTACTED', 'QUOTED']) expectStatus(await sales.patch(`/admin/leads/${lead.id}/status`).send({ status }), 200);
     const body = expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createInspectionJob: true }), 201).data;
     expect(body.job.type).toBe('INSPECTION');
     expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('QUOTED');
@@ -465,7 +466,7 @@ describe('quotations', () => {
       const lead = expectStatus(await sales.post('/admin/leads').send({ name: 'Approval Lead', phone: phone() }), 201).data;
       for (const status of statuses) {
         expectStatus(await sales.patch(`/admin/leads/${lead.id}/status`).send({
-          status, ...(status === 'LOST' ? { lostReason: 'Went with another company' } : {}),
+          status, ...(status === 'LOST' ? { lostCategory: 'COMPETITOR', lostReason: 'Went with another company' } : {}),
         }), 200);
       }
       return lead;
@@ -478,13 +479,14 @@ describe('quotations', () => {
       return anon().post(`/public/quotations/${publicToken}/decide`).send({ decision: 'approve' });
     };
 
-    it('a NEW lead is WON by way of CONTACTED, with closedAt and a timeline entry per step', async () => {
+    it('a NEW lead is QUOTED when the quotation is sent, then WON — with closedAt and a timeline entry per step', async () => {
       const lead = await leadAt();
       expectStatus(await approveFor(lead.id), 200);
       const after = await prisma.lead.findUnique({ where: { id: lead.id } });
       expect(after.status).toBe('WON');
       expect(after.closedAt).toBeTruthy();
-      expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>WON']);
+      expect(after.nextActionAt).toBeNull();
+      expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>QUOTED', 'QUOTED>WON']);
     });
 
     it('a LOST lead does not fail the customer — it stays LOST and the timeline says the customer accepted', async () => {

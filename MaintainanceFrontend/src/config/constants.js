@@ -75,6 +75,77 @@ export const ACTIVITY_LABELS = {
   status_change: 'Status', assignment: 'Assignment',
 };
 
+/**
+ * What a contact attempt came to (Phase L1). Every outcome ends with a next action or the
+ * lead closed; the API's `lead.service#addActivity` holds the rules, `leadOutcomeIssues` in
+ * `form/schemas/lead.schema.js` mirrors them.
+ */
+export const LEAD_OUTCOMES = [
+  'no_answer', 'wrong_number', 'call_back', 'book_visit', 'quote_without_visit', 'price_shopping', 'not_now', 'not_interested',
+];
+export const LEAD_OUTCOME_LABELS = {
+  no_answer: 'No answer / switched off',
+  wrong_number: 'Wrong number',
+  call_back: 'Call back at…',
+  book_visit: 'Interested — book a visit',
+  quote_without_visit: 'Interested — quote without a visit',
+  price_shopping: 'Price shopping',
+  not_now: 'Not now (revisit later)',
+  not_interested: 'Not interested',
+};
+/** Outcomes where the customer was reached: a NEW lead becomes CONTACTED. */
+export const REACHED_OUTCOMES = ['call_back', 'book_visit', 'quote_without_visit', 'price_shopping', 'not_now', 'not_interested'];
+
+/** What the owner does next, and when (`Lead.nextActionAt`). */
+export const NEXT_ACTION_TYPES = ['CALL', 'BOOK_VISIT', 'VISIT', 'SEND_QUOTE', 'FOLLOW_UP'];
+export const NEXT_ACTION_LABELS = {
+  CALL: 'Call',
+  BOOK_VISIT: 'Book the visit',
+  VISIT: 'Site visit',
+  SEND_QUOTE: 'Send the quotation',
+  FOLLOW_UP: 'Follow up',
+};
+
+/** Why a lead was lost — required with LOST; the free-text reason stays alongside. */
+export const LOST_CATEGORIES = [
+  'PRICE', 'COMPETITOR', 'UNREACHABLE', 'POSTPONED', 'BUDGET', 'OWN_LABOUR', 'OUT_OF_SCOPE', 'OUT_OF_AREA', 'DUPLICATE_SPAM', 'OTHER',
+];
+export const LOST_CATEGORY_LABELS = {
+  PRICE: 'Price too high',
+  COMPETITOR: 'Went with a competitor',
+  UNREACHABLE: 'Could not reach',
+  POSTPONED: 'Postponed indefinitely',
+  BUDGET: 'No budget',
+  OWN_LABOUR: 'Using own mistri / thekedar',
+  OUT_OF_SCOPE: 'Work we don’t do',
+  OUT_OF_AREA: 'Outside our area',
+  DUPLICATE_SPAM: 'Duplicate or spam',
+  OTHER: 'Other',
+};
+
+/** `Lead.qualification` — what sales learns on the first call, before anyone drives out. */
+export const PROPERTY_TYPES = ['house', 'apartment', 'commercial', 'land', 'other'];
+export const PROPERTY_TYPE_LABELS = {
+  house: 'House', apartment: 'Apartment', commercial: 'Commercial', land: 'Land', other: 'Other',
+};
+/** Labels, not amounts: the customer's own words on budget. Never arithmetic. */
+export const BUDGET_BANDS = ['under_25k', '25k_1l', '1l_5l', '5l_25l', 'over_25l'];
+export const BUDGET_BAND_LABELS = {
+  under_25k: 'Under Rs 25,000',
+  '25k_1l': 'Rs 25,000 – 1 lakh',
+  '1l_5l': 'Rs 1 – 5 lakh',
+  '5l_25l': 'Rs 5 – 25 lakh',
+  over_25l: 'Over Rs 25 lakh',
+};
+export const DECISION_MAKERS = ['self', 'family', 'owner_abroad', 'landlord', 'company'];
+export const DECISION_MAKER_LABELS = {
+  self: 'Self',
+  family: 'Family',
+  owner_abroad: 'Owner abroad (decides remotely)',
+  landlord: 'Landlord',
+  company: 'Company',
+};
+
 export const CUSTOMER_TYPES = ['individual', 'company'];
 
 /** The languages a customer is written to. The back office itself stays English (D7). */

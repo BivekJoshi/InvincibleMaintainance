@@ -5,7 +5,7 @@ import { customersWithPhone, siteForConvert } from './customer.service.js';
 import { createJob, announceAssignment } from './job.service.js';
 import { createFromJob } from './survey.service.js';
 import { createQuotation } from './quotation.service.js';
-import { transitionLead } from './lead.service.js';
+import { bookNextAction, transitionLead } from './lead.service.js';
 import { recordEvent } from './audit.service.js';
 
 /** Funnel order. Convert only ever moves a lead forward along it, never back. */
@@ -164,12 +164,20 @@ export async function convertLead(leadId, input, userId) {
       out.survey = survey;
     }
 
-    const stages = ['CONTACTED', ...(out.job ? ['INSPECTION_SCHEDULED'] : []), ...(out.quotation ? ['QUOTED'] : [])];
+    // A draft quotation does not make the lead QUOTED — sending it does (Phase L1).
+    const stages = ['CONTACTED', ...(out.job ? ['INSPECTION_SCHEDULED'] : [])];
     let { status } = lead;
     for (const stage of stages) {
       if (funnelRank(status) < funnelRank(stage)) {
         ({ status } = await transitionLead(tx, leadId, stage, { actorId: userId, note: 'Lead converted' }));
       }
+    }
+
+    // What the owner does next: be at the visit, or get the draft approved and sent.
+    if (out.job) {
+      await bookNextAction(tx, leadId, { at: out.job.scheduledStart ?? new Date(), type: 'VISIT', note: `Site visit ${out.job.number}` });
+    } else if (out.quotation) {
+      await bookNextAction(tx, leadId, { at: new Date(), type: 'SEND_QUOTE', note: `Get ${out.quotation.number} approved and sent` });
     }
 
     await tx.leadActivity.create({

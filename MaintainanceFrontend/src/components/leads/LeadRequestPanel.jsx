@@ -1,7 +1,7 @@
 import { CalendarCheck, Globe, Mail, MapPin, Phone } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LeadPhotoGallery } from '@/components/leads/LeadPhotoGallery';
-import { LEAD_SOURCE_LABELS, PREFERRED_LOCALE_OPTIONS } from '@/config/constants';
+import { LEAD_SOURCE_LABELS, LOST_CATEGORY_LABELS, PREFERRED_LOCALE_OPTIONS } from '@/config/constants';
 import { formatDate, formatDateTime, formatNpr, titleCase } from '@/helpers/format';
 import { describeEstimate } from '@/helpers/leadDisplay';
 
@@ -57,7 +57,11 @@ export function LeadRequestPanel({ lead }) {
             <Fact label="Campaign">{utm}</Fact>
             <Fact label="Received">{formatDateTime(lead.createdAt)}</Fact>
             <Fact label="Owner">{lead.assignedTo?.name ?? 'Unassigned'}</Fact>
-            {lead.status === 'LOST' ? <Fact label="Lost because">{lead.lostReason}</Fact> : null}
+            {lead.status === 'LOST' ? (
+              <Fact label="Lost because">
+                {[LOST_CATEGORY_LABELS[lead.lostCategory], lead.lostReason].filter(Boolean).join(' — ') || null}
+              </Fact>
+            ) : null}
           </dl>
         </CardContent>
       </Card>

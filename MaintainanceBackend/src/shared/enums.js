@@ -23,6 +23,27 @@ export const LOGGABLE_ACTIVITY_TYPES = ['call', 'sms', 'whatsapp', 'email', 'vis
 export const CONTACT_ACTIVITY_TYPES = ['call', 'sms', 'whatsapp', 'email', 'visit'];
 export const CUSTOMER_TYPES = ['individual', 'company'];
 
+/**
+ * What a contact attempt came to (Phase L1). Each one ends with a next action or the lead closed;
+ * `lead.service#addActivity` holds the rules.
+ */
+export const LEAD_OUTCOMES = [
+  'no_answer', 'wrong_number', 'call_back', 'book_visit', 'quote_without_visit', 'price_shopping', 'not_now', 'not_interested',
+];
+/** Outcomes where the customer was reached: a NEW lead becomes CONTACTED. */
+export const REACHED_OUTCOMES = ['call_back', 'book_visit', 'quote_without_visit', 'price_shopping', 'not_now', 'not_interested'];
+/** What the owner does next, and when (`Lead.nextActionAt`). */
+export const NEXT_ACTION_TYPES = ['CALL', 'BOOK_VISIT', 'VISIT', 'SEND_QUOTE', 'FOLLOW_UP'];
+/** Why a lead was lost — required with LOST; the free-text reason stays alongside. Mirrors enum LostCategory. */
+export const LOST_CATEGORIES = [
+  'PRICE', 'COMPETITOR', 'UNREACHABLE', 'POSTPONED', 'BUDGET', 'OWN_LABOUR', 'OUT_OF_SCOPE', 'OUT_OF_AREA', 'DUPLICATE_SPAM', 'OTHER',
+];
+/** `Lead.qualification` — what sales learns on the first call, before anyone drives out. */
+export const PROPERTY_TYPES = ['house', 'apartment', 'commercial', 'land', 'other'];
+/** Labels, not amounts: the customer's own words on budget. */
+export const BUDGET_BANDS = ['under_25k', '25k_1l', '1l_5l', '5l_25l', 'over_25l'];
+export const DECISION_MAKERS = ['self', 'family', 'owner_abroad', 'landlord', 'company'];
+
 export const SURVEY_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'RETURNED', 'QUOTED', 'CANCELLED'];
 export const SURVEY_ITEM_KINDS = ['LABOUR', 'MATERIAL', 'SERVICE', 'OTHER'];
 /** Suggestions for the field app's metric picker — free text, because instruments differ. */

@@ -10,10 +10,11 @@ import { QUOTATION_DECISIONS, QUOTATION_STAGES, ROLES } from '../shared/enums.js
 import { can } from '../shared/permissions.js';
 import { getSetting } from './settings.service.js';
 import { notify, notifyUsers, userIdsWithRoles } from './notify.service.js';
-import { transitionLead } from './lead.service.js';
+import { bookNextAction, transitionLead } from './lead.service.js';
 import { recordEvent } from './audit.service.js';
 import { createJob } from './job.service.js';
-import { adminJobPath, adminQuotationPath, webUrl } from '../utils/links.js';
+import { adminJobPath, adminLeadMarkLostPath, adminQuotationPath, webUrl } from '../utils/links.js';
+import { addDays } from '../utils/dates.js';
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true, preferredLocale: true } },
@@ -81,13 +82,18 @@ const isExpired = (q, now = new Date()) => q.status === 'SENT' && q.validUntil !
  */
 async function markExpired(id) {
   assertTransition(QUOTATION_TRANSITIONS, 'SENT', 'EXPIRED', 'quotation');
-  return prisma.$transaction(async (tx) => {
-    const { count } = await tx.quotation.updateMany({ where: { id, status: 'SENT' }, data: { status: 'EXPIRED' } });
-    if (count) {
+  const count = await prisma.$transaction(async (tx) => {
+    const { count: moved } = await tx.quotation.updateMany({ where: { id, status: 'SENT' }, data: { status: 'EXPIRED' } });
+    if (moved) {
       await recordEvent('quotation.expired', { model: 'Quotation', recordId: id, before: { status: 'SENT' }, after: { status: 'EXPIRED' } }, tx);
     }
-    return count;
+    return moved;
   });
+  if (count) {
+    const q = await prisma.quotation.findUnique({ where: { id }, include: { customer: true, lead: { select: { assignedToId: true } } } });
+    await promptMarkLost(q, `${label(q)} for ${q.customer.name} expired unanswered`);
+  }
+  return count;
 }
 
 /**
@@ -382,8 +388,44 @@ export async function pullBackQuotation(id, { note }) {
 
 // ── to the customer
 
+/**
+ * The customer now has a quotation, so the lead is QUOTED — forward only, through CONTACTED from
+ * NEW, never out of WON or LOST (those get a note) — and its owner follows up in
+ * `pipeline.quoteUnansweredDays`. A draft never moves the lead (Phase L1).
+ */
+async function leadQuoted(tx, q, actorId) {
+  if (!q.leadId) return;
+  const lead = await tx.lead.findFirst({ where: { id: q.leadId, deletedAt: null }, select: { id: true, status: true } });
+  if (!lead) return;
+  const note = `${label(q)} sent`;
+  if (['WON', 'LOST'].includes(lead.status)) {
+    await tx.leadActivity.create({ data: { leadId: lead.id, userId: actorId ?? null, type: 'note', summary: note } });
+    return;
+  }
+  if (lead.status === 'NEW') await transitionLead(tx, lead.id, 'CONTACTED', { actorId, note });
+  await transitionLead(tx, lead.id, 'QUOTED', { actorId, note });
+  const days = Number(await getSetting('pipeline.quoteUnansweredDays', 3));
+  await bookNextAction(tx, lead.id, { at: addDays(new Date(), days), type: 'FOLLOW_UP', note: `Follow up on ${label(q)}` });
+}
+
+/**
+ * After a decline or an expiry: ask the salesperson and the author whether the lead is lost. It is
+ * never marked lost automatically — they may revise, or the customer may still say yes.
+ */
+async function promptMarkLost(q, why) {
+  if (!q.leadId) return;
+  const lead = await prisma.lead.findFirst({ where: { id: q.leadId, deletedAt: null, status: { notIn: ['WON', 'LOST'] } }, select: { id: true } });
+  if (!lead) return;
+  await notifyUsers(salesRecipients(q, false), {
+    type: 'lead_mark_lost',
+    title: `${why} — mark the lead lost?`,
+    body: `Revise ${label(q)}, or record why the lead was lost.`,
+    link: adminLeadMarkLostPath(lead.id),
+  });
+}
+
 /** OFFICE_APPROVED → SENT, with the customer's link by SMS (and email when on file). */
-export async function sendQuotation(id) {
+export async function sendQuotation(id, userId) {
   const q = await findQuotation(id);
   assertMove(q.status, 'SENT');
   if (q.validUntil && q.validUntil < new Date()) {
@@ -394,6 +436,7 @@ export async function sendQuotation(id) {
   await prisma.$transaction(async (tx) => {
     await moveStatus(tx, q, 'SENT', { sentAt: new Date(), publicToken: token });
     await recordEvent('quotation.sent', { model: 'Quotation', recordId: id, before: { status: q.status }, after: { status: 'SENT' } }, tx);
+    await leadQuoted(tx, q, userId);
   });
 
   const vars = {
@@ -753,6 +796,7 @@ export async function declineQuotation(id, answer = {}) {
     link: adminQuotationPath(q.id),
     related: { model: 'Quotation', id: q.id },
   });
+  await promptMarkLost(q, `${q.customer.name} declined ${label(q)}`);
 
   return publicView(await prisma.quotation.findUnique({ where: { id: q.id }, include: PUBLIC_INCLUDE }));
 }

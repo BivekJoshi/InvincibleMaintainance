@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  AlarmClock, Calculator, CalendarCheck, CalendarDays, ChevronRight, Download, Flame, Footprints, Globe, HelpCircle,
-  KanbanSquare, MessageCircle, Phone, Plus, Sparkles, UserPlus, UserX, Users, Wrench,
+  AlarmClock, Calculator, CalendarCheck, CalendarClock, CalendarDays, ChevronRight, CircleDashed, Download, Flame, Footprints,
+  Globe, HelpCircle, KanbanSquare, MessageCircle, Phone, Plus, Sparkles, UserPlus, UserX, Users, Wrench,
 } from 'lucide-react';
 import { useGetLeadsQuery, useLazyExportLeadsCsvQuery } from '@/api/leadsApi';
 import { useListParams } from '@/hooks/useListParams';
@@ -14,6 +14,7 @@ import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { SlaChip } from '@/components/common/SlaChip';
 import { LeadFormSheet } from '@/components/leads/LeadFormSheet';
 import { AssignLeadDialog } from '@/components/leads/AssignLeadDialog';
+import { StageAgeChip } from '@/components/leads/StageAgeChip';
 import { PriorityBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -21,10 +22,11 @@ import { PageTransition } from '@/three/motion/motionKit';
 import { LEAD_SOURCES, LEAD_SOURCE_LABELS, LEAD_STATUSES, LEAD_STATUS_LABELS, PRIORITIES } from '@/config/constants';
 import { ASSIGNEE_RELATION, SERVICE_RELATION } from '@/config/admin/crmForms';
 import {
-  DEFAULT_LEAD_VIEW, LEAD_PRESETS, LEAD_VIEWS, activePreset, applyPreset, leadQueryFor,
+  DEFAULT_LEAD_VIEW, LEAD_PRESETS, LEAD_VIEWS, NEXT_ACTION_FILTERS, activePreset, applyPreset, clearPreset, leadQueryFor,
 } from '@/config/admin/leadViews';
 import { formatDate, formatDateTime, initials, relativeTime, titleCase } from '@/helpers/format';
 import { toneStyle } from '@/helpers/leadBoard';
+import { lateBy, nextActionState } from '@/helpers/leadFollowUp';
 import { cn } from '@/helpers/utils';
 
 /** Where an enquiry came from, as an icon. */
@@ -65,6 +67,34 @@ function Initials({ name, className }) {
   );
 }
 
+/**
+ * What is next on a lead, for the list: the action and when, in Kathmandu words. Overdue is red and
+ * says so; an open lead with nothing next says that too.
+ */
+function NextActionCell({ lead }) {
+  const next = nextActionState(lead);
+  if (!next) return <span className="text-muted-foreground">—</span>;
+  if (next.state === 'none') {
+    return (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-warning-border px-2 py-0.5 text-xs text-warning-foreground">
+        <CircleDashed className="h-3 w-3" aria-hidden /> None set
+      </span>
+    );
+  }
+  const overdue = next.state === 'overdue';
+  return (
+    <span className="inline-flex min-w-0 flex-col whitespace-nowrap text-xs" title={next.note ?? undefined}>
+      <span className={cn('inline-flex items-center gap-1 font-medium', overdue && 'text-destructive')}>
+        {overdue ? <AlarmClock className="h-3.5 w-3.5" aria-hidden /> : <CalendarClock className="h-3.5 w-3.5 text-primary" aria-hidden />}
+        {next.label}
+      </span>
+      <span className={cn(overdue ? 'text-destructive' : next.state === 'today' ? 'text-foreground' : 'text-muted-foreground')}>
+        {overdue ? `Overdue · ${lateBy(next.lateMinutes)} · ` : ''}{next.when}
+      </span>
+    </span>
+  );
+}
+
 const columns = [
   {
     key: 'name', header: 'Customer', sortable: true,
@@ -99,11 +129,21 @@ const columns = [
   {
     key: 'status', header: 'Status', sortable: true,
     cell: (r) => (
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <StagePill status={r.status} />
         <PriorityBadge priority={r.priority} />
+        <StageAgeChip lead={r} />
       </div>
     ),
+  },
+  {
+    // `?sort=nextActionAt` — the soonest (and the most overdue) first.
+    key: 'nextActionAt', header: 'Next action', sortable: true,
+    cell: (r) => <NextActionCell lead={r} />,
+    exportValue: (r) => {
+      const next = nextActionState(r);
+      return next?.at ? `${next.label} · ${formatDateTime(next.at)}` : '';
+    },
   },
   { key: 'sla', header: 'Response', cell: (r) => <SlaChip sla={r.sla} /> },
   {
@@ -169,6 +209,10 @@ const filters = [
       { value: 'ok', label: 'On track', tone: 'success' },
     ],
   },
+  {
+    key: 'nextAction', label: 'Next action', type: 'enum', hint: 'Follow-ups',
+    options: NEXT_ACTION_FILTERS.map((o) => ({ ...o, tone: { overdue: 'danger', due_today: 'warning', none: 'muted' }[o.value] })),
+  },
   { key: 'status', label: 'Status', type: 'enum', options: LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_LABELS[s] })) },
   { key: 'priority', label: 'Priority', type: 'enum', options: PRIORITIES.map((p) => ({ value: p, label: titleCase(p), tone: PRIORITY_TONES[p] })) },
   {
@@ -183,6 +227,9 @@ const filters = [
 
 /** Each quick view's icon, and its colour — a theme variable, lit when the view is on. */
 const PRESET_LOOK = {
+  'due-today': { icon: CalendarClock, tone: '--warning' },
+  overdue: { icon: AlarmClock, tone: '--destructive' },
+  'no-next-action': { icon: CircleDashed, tone: '--muted-foreground' },
   breached: { icon: AlarmClock, tone: '--sla-breach' },
   'due-soon': { icon: AlarmClock, tone: '--sla-warn' },
   unassigned: { icon: UserX, tone: '--primary' },
@@ -230,7 +277,11 @@ function StageRail({ value, onChange }) {
   );
 }
 
-/** Leads, opening on "My leads" (D6), with saved views, bulk assign and export. */
+/**
+ * Leads, opening on "My leads" (D6), with saved views — the follow-up ones first (Due today, Overdue,
+ * No next action → `?nextAction=`) — bulk assign and export. Each row shows its next action and how
+ * long it has sat in its stage.
+ */
 export default function LeadsPage() {
   const [params, setParams] = useListParams({ limit: 20, view: DEFAULT_LEAD_VIEW });
   const query = leadQueryFor(params);
@@ -319,7 +370,7 @@ export default function LeadsPage() {
               <button
                 key={p.key} type="button" title={p.hint} aria-pressed={on}
                 style={{ '--tone': `var(${look.tone ?? '--primary'})` }}
-                onClick={() => setParams(on ? { limit: params.limit, sort: params.sort, view: 'all', page: 1 } : applyPreset(params, p))}
+                onClick={() => setParams(on ? clearPreset(params, p) : applyPreset(params, p))}
                 className={cn(
                   'group inline-flex h-9 shrink-0 items-center gap-2 rounded-full border pl-1.5 pr-3.5 text-xs font-medium transition-all motion-reduce:transition-none',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',

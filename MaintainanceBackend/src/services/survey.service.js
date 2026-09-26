@@ -5,10 +5,10 @@ import { conflict, forbidden, notFound, unprocessable } from '../utils/AppError.
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
 import { lineAmount, toRupees } from '../utils/money.js';
 import { nextNumber } from '../utils/numbering.js';
-import { SURVEY_TRANSITIONS, LEAD_TRANSITIONS, JOB_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
+import { SURVEY_TRANSITIONS, JOB_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
 import * as jobs from './job.service.js';
 import { createQuotation } from './quotation.service.js';
-import { transitionLead } from './lead.service.js';
+import { bookNextAction } from './lead.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { resolveMediaMap } from './media.service.js';
 
@@ -544,11 +544,9 @@ export async function buildQuotationFromSurvey(id, input = {}, userId) {
   }
 
   if (survey.leadId) {
-    const lead = await prisma.lead.findFirst({ where: { id: survey.leadId, deletedAt: null }, select: { status: true } });
-    // Only forward: a lead already WON or LOST keeps its status and just gets the note below.
-    if (lead && canTransition(LEAD_TRANSITIONS, lead.status, 'QUOTED')) {
-      await transitionLead(prisma, survey.leadId, 'QUOTED', { actorId: userId, note: `Quotation ${quotation.number}` });
-    }
+    // A draft is not a quotation the customer has: the lead moves to QUOTED when it is sent (Phase L1).
+    // Until then, sending it is the owner's next action.
+    await bookNextAction(prisma, survey.leadId, { at: new Date(), type: 'SEND_QUOTE', note: `Get ${quotation.number} approved and sent` });
     await prisma.leadActivity.create({
       data: {
         leadId: survey.leadId,

@@ -2,7 +2,7 @@ import {
   Blocks, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
   HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, LogIn,
   MessageSquareQuote, MessageSquareText, Newspaper, Package, Receipt, Ruler, ScrollText, Send, Settings, ShieldCheck,
-  Sparkles, Tag, Tags, Timer, UserCog, Users, Wallet, Wrench,
+  Sparkles, Tag, Tags, Timer, TrendingDown, UserCog, Users, Wallet, Wrench,
 } from 'lucide-react';
 import { can } from '@/helpers/permissions';
 
@@ -59,6 +59,7 @@ export const ADMIN_NAV = [
       { to: '/admin/customers', label: 'Customers', icon: Contact, capability: 'customers:read' },
       { to: '/admin/surveys', label: 'Site surveys', icon: ClipboardCheck, capability: 'surveys:read' },
       { to: '/admin/quotations', label: 'Quotations', icon: FileText, capability: 'quotations:read' },
+      { to: '/admin/reports/lost', label: 'Lost leads', icon: TrendingDown, capability: 'reports:sales' },
     ],
   },
   {

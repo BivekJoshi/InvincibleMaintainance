@@ -8,6 +8,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SlaChip } from '@/components/common/SlaChip';
+import { StageAgeChip } from '@/components/leads/StageAgeChip';
 import { PriorityBadge } from '@/components/ui/badge';
 import { LEAD_STATUS_LABELS } from '@/config/constants';
 import { isGoingCold, leadAgeDays, nextStatuses } from '@/helpers/leadBoard';
@@ -51,6 +52,7 @@ export const BoardCardFace = forwardRef(function BoardCardFace({ lead, dragging,
       {!closed || lead.priority !== 'NORMAL' ? (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 empty:hidden">
           {!closed ? <SlaChip sla={lead.sla} /> : null}
+          <StageAgeChip lead={lead} />
           {lead.priority !== 'NORMAL' ? <PriorityBadge priority={lead.priority} /> : null}
           {cold ? (
             <span

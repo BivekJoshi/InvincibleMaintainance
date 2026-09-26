@@ -1,7 +1,12 @@
 import {
-  CUSTOMER_TYPES, LEAD_SOURCES, LEAD_SOURCE_LABELS, LOGGABLE_ACTIVITY_TYPES, ACTIVITY_LABELS, PREFERRED_LOCALE_OPTIONS,
-  PRIORITIES,
+  BUDGET_BANDS, BUDGET_BAND_LABELS, CONTACT_ACTIVITY_TYPES, CUSTOMER_TYPES, DECISION_MAKERS, DECISION_MAKER_LABELS,
+  LEAD_OUTCOMES, LEAD_OUTCOME_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS, LOGGABLE_ACTIVITY_TYPES, LOST_CATEGORIES,
+  LOST_CATEGORY_LABELS, ACTIVITY_LABELS, NEXT_ACTION_LABELS, NEXT_ACTION_TYPES, PREFERRED_LOCALE_OPTIONS, PRIORITIES,
+  PROPERTY_TYPES, PROPERTY_TYPE_LABELS,
 } from '@/config/constants';
+import {
+  OUTCOME_NEXT_TYPE, OUTCOMES_CLOSING, OUTCOMES_NEEDING_TIME, OUTCOMES_NEXT_OR_CLOSE, WRONG_NUMBER_CHOICES,
+} from '@/form/schemas/lead.schema';
 import { titleCase } from '@/helpers/format';
 
 /**
@@ -78,16 +83,114 @@ export const siteFields = [
   { name: 'isPrimary', type: 'switch', label: 'Primary site', description: 'Visits and quotations use it unless told otherwise.' },
 ];
 
-export const activityFields = [
+/** `{ value, label }` options from an enum and its words. */
+const optionsOf = (values, labels) => values.map((value) => ({ value, label: labels[value] }));
+
+export const NEXT_ACTION_OPTIONS = optionsOf(NEXT_ACTION_TYPES, NEXT_ACTION_LABELS);
+export const LOST_CATEGORY_OPTIONS = optionsOf(LOST_CATEGORIES, LOST_CATEGORY_LABELS);
+
+/**
+ * The next action the API sets for an outcome when none is sent (`pipeline.noAnswerRetryMinutes` is 120 by
+ * default), in words — the composer shows it so "leave it" is an informed choice.
+ */
+export const OUTCOME_DEFAULT_NEXT = {
+  no_answer: 'Call again after the no-answer delay (2 hours by default)',
+  book_visit: 'Book the visit — now',
+  quote_without_visit: 'Send the quotation — now',
+  price_shopping: 'Follow up in 3 days',
+};
+
+/** The three next-action inputs. The type may stay on the one the outcome suggests. */
+const nextActionFields = (outcome) => [
+  { name: 'nextActionAt', type: 'datetime', label: 'When', required: true, span: 'half', defaultTime: '10:00' },
   {
-    name: 'type', type: 'select', label: 'What happened', required: true, span: 'half',
-    options: LOGGABLE_ACTIVITY_TYPES.map((t) => ({ value: t, label: ACTIVITY_LABELS[t] })),
+    name: 'nextActionType', type: 'select', label: 'Next action', span: 'half', options: NEXT_ACTION_OPTIONS,
+    noneLabel: `${NEXT_ACTION_LABELS[OUTCOME_NEXT_TYPE[outcome]]} (suggested)`,
   },
-  { name: 'summary', type: 'textarea', label: 'Summary', required: true, rows: 2, maxLength: 1000, placeholder: 'Called — will send photos tonight' },
+  { name: 'nextActionNote', type: 'text', label: 'Note for next time', maxLength: 300, placeholder: 'Optional — e.g. ask for the owner' },
 ];
 
+/** The lost category and its reason; the reason is required only for "Other". */
+const closeFields = (category) => [
+  { name: 'lostCategory', type: 'select', label: 'Why was it lost?', required: true, span: 'half', options: LOST_CATEGORY_OPTIONS },
+  {
+    name: 'lostReason', type: 'textarea', label: 'In their words', required: category === 'OTHER', rows: 2, maxLength: 500,
+    placeholder: category === 'OTHER' ? 'Say why' : 'Optional',
+  },
+];
+
+/**
+ * The activity composer's fields for what is picked so far — the type, and for a contact the outcome
+ * and whatever that outcome needs: a time (call back, not now), an optional different next action
+ * (the rest), the lost category (not interested), or "next action or close" (wrong number).
+ *
+ * @param {{ type?: string, outcome?: string, overrideNext?: boolean, resolution?: string, lostCategory?: string }} picked
+ * @param {{ open?: boolean }} [lead]  a closed lead (WON / LOST) takes plain entries, no outcome
+ */
+export function activityFieldsFor(picked = {}, { open = true } = {}) {
+  const { type, outcome, overrideNext, resolution, lostCategory } = picked;
+  const contact = CONTACT_ACTIVITY_TYPES.includes(type);
+  const fields = [
+    {
+      name: 'type', type: 'select', label: 'What happened', required: true, span: 'half',
+      options: LOGGABLE_ACTIVITY_TYPES.map((t) => ({ value: t, label: ACTIVITY_LABELS[t] })),
+    },
+  ];
+  if (contact && open) {
+    fields.push({
+      name: 'outcome', type: 'select', label: 'What came of it', span: 'half', noneLabel: 'Just log it',
+      placeholder: 'Pick an outcome', options: optionsOf(LEAD_OUTCOMES, LEAD_OUTCOME_LABELS),
+    });
+  }
+  const chosen = contact && open ? outcome : undefined;
+  if (OUTCOMES_NEEDING_TIME.includes(chosen)) {
+    fields.push(...nextActionFields(chosen));
+  } else if (OUTCOMES_CLOSING.includes(chosen)) {
+    fields.push(...closeFields(lostCategory));
+  } else if (OUTCOMES_NEXT_OR_CLOSE.includes(chosen)) {
+    fields.push({ name: 'resolution', type: 'select', label: 'Then', required: true, options: WRONG_NUMBER_CHOICES });
+    if (resolution === 'next') fields.push(...nextActionFields(chosen));
+    if (resolution === 'close') fields.push(...closeFields(lostCategory));
+  } else if (chosen) {
+    fields.push({
+      name: 'overrideNext', type: 'switch', label: 'Set a different next action',
+      description: `Otherwise: ${OUTCOME_DEFAULT_NEXT[chosen]}.`,
+    });
+    if (overrideNext) fields.push(...nextActionFields(chosen));
+  }
+  fields.push({
+    name: 'summary', type: 'textarea', label: 'Summary', required: !chosen, rows: 2, maxLength: 1000,
+    placeholder: chosen ? `Optional — “${LEAD_OUTCOME_LABELS[chosen]}” if left empty` : 'Called — will send photos tonight',
+  });
+  return fields;
+}
+
+/** The composer's plain form (a note, or a closed lead's entry) — `activityFieldsFor` with nothing picked. */
+export const activityFields = activityFieldsFor({ type: 'note' });
+
 export const lostReasonFields = [
-  { name: 'lostReason', type: 'textarea', label: 'Why was it lost?', required: true, rows: 3, maxLength: 500, placeholder: 'Went with another company' },
+  { name: 'lostCategory', type: 'select', label: 'Why was it lost?', required: true, options: LOST_CATEGORY_OPTIONS },
+  {
+    name: 'lostReason', type: 'textarea', label: 'In their words', rows: 3, maxLength: 500,
+    placeholder: 'Optional — required for “Other”. E.g. went with the contractor next door',
+  },
+];
+
+/** Reschedule / set the next action on the lead page's card. */
+export const nextActionFormFields = [
+  { name: 'at', type: 'datetime', label: 'When', required: true, span: 'half', defaultTime: '10:00' },
+  { name: 'type', type: 'select', label: 'Next action', required: true, span: 'half', options: NEXT_ACTION_OPTIONS },
+  { name: 'note', type: 'text', label: 'Note', maxLength: 300, placeholder: 'Optional — what to say or bring' },
+];
+
+/** `Lead.qualification`. Budget bands are labels, not amounts. */
+export const qualificationFields = [
+  { name: 'propertyType', type: 'select', label: 'Property', span: 'half', noneLabel: 'Not known yet', options: optionsOf(PROPERTY_TYPES, PROPERTY_TYPE_LABELS) },
+  { name: 'decisionMaker', type: 'select', label: 'Who decides', span: 'half', noneLabel: 'Not known yet', options: optionsOf(DECISION_MAKERS, DECISION_MAKER_LABELS) },
+  { name: 'floors', type: 'number', label: 'Floors', span: 'half', min: 0, max: 100, step: 1 },
+  { name: 'buildingAgeYears', type: 'number', label: 'Building age (years)', span: 'half', min: 0, max: 300, step: 1 },
+  { name: 'budgetBand', type: 'select', label: 'Budget', noneLabel: 'Not known yet', options: optionsOf(BUDGET_BANDS, BUDGET_BAND_LABELS) },
+  { name: 'note', type: 'textarea', label: 'Anything else', rows: 2, maxLength: 500, placeholder: 'Access, timing, who to talk to' },
 ];
 
 export const assignFields = [

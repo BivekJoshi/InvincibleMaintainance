@@ -61,6 +61,13 @@ pino-http (genReqId → X-Request-Id, redacted request line)
 - **`services/cache.js`** — Redis get/set with tag-based invalidation; publishing any CMS record
   busts the `public:*` tags it touches.
 - **`services/sla.js`** — schedules warn/breach jobs on lead creation, cancels them on first response.
+- **`services/pipeline.service.js`** (Phase L1) — the clocks after the first response. `leads:followups`
+  (every 15 min) tells an owner when a lead's next action falls due, and from `pipeline.digestHour` sends
+  one digest per salesperson per Kathmandu day (the scheduler runs intervals, not clock times, so "09:00"
+  is the first run after the hour). `pipeline:stale` (hourly) reminds about quiet contacted leads, visits
+  without surveys, unquoted surveys, waiting approvals, and unanswered or expiring quotations — once per
+  day while each holds. Every reminder carries `Notification.dedupeKey` (`<rule>:<record>:<day>:<userId>`,
+  unique; inserted with `skipDuplicates`), so a second run or a second instance sends nothing.
 
 ## State machines
 
@@ -69,6 +76,9 @@ service layer — never by trusting a status string from the client.
 
 ```
 Lead      NEW → CONTACTED → INSPECTION_SCHEDULED → QUOTED → WON | LOST ;  LOST → CONTACTED
+          QUOTED = the customer HAS a quotation: sendQuotation moves the lead (a draft never does).
+          LOST carries lostCategory (required) and lostAtStage; every move restarts stageEnteredAt;
+          WON/LOST clear the next action. A decline or an expiry only asks sales "mark lost?".
 Quotation DRAFT → PENDING_APPROVAL → OFFICE_APPROVED → SENT → APPROVED → CONVERTED
           PENDING_APPROVAL | OFFICE_APPROVED → DRAFT (send back · pull back)
           SENT → CHANGES_REQUESTED | REJECTED | EXPIRED

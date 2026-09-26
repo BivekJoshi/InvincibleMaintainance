@@ -45,6 +45,7 @@ export const ResetPasswordPage = route(() => import('@/pages/public/ResetPasswor
 export const DashboardPage = route(() => import('@/pages/admin/DashboardPage'));
 export const LeadsPage = route(() => import('@/pages/admin/LeadsPage'));
 export const SlaBoardPage = route(() => import('@/pages/admin/SlaBoardPage'));
+export const LostReportPage = route(() => import('@/pages/admin/LostReportPage'));
 export const LeadDetailPage = route(() => import('@/pages/admin/LeadDetailPage'));
 export const LeadBoardPage = route(() => import('@/pages/admin/LeadBoardPage/LeadBoardPage'));
 export const CustomersPage = route(() => import('@/pages/admin/CustomersPage'));
@@ -86,7 +87,7 @@ export const NotFoundPage = route(() => import('@/pages/NotFoundPage'));
 const GROUPS = {
   public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage, BlogPage],
   admin: [
-    LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
+    LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, LostReportPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
     HomeComposerPage, MediaLibraryPage, SettingsPage, UsersPage, AuditLogPage, MessageLogsPage,
     JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
   ],

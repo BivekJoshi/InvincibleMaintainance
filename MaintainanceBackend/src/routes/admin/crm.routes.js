@@ -75,6 +75,9 @@ router.put('/leads/:id', writeLeads, validate({ params: idParam, body: s.leadUpd
 router.patch('/leads/:id/status', writeLeads, validate({ params: idParam, body: s.leadStatusSchema }),
   asyncHandler(async (req, res) => ok(res, await leads.changeStatus(req.params.id, req.body, req.user.id))));
 
+router.patch('/leads/:id/next-action', writeLeads, validate({ params: idParam, body: s.leadNextActionSchema }),
+  asyncHandler(async (req, res) => ok(res, await leads.setNextAction(req.params.id, req.body))));
+
 router.patch('/leads/:id/assign', writeLeads, validate({ params: idParam, body: s.leadAssignSchema }),
   asyncHandler(async (req, res) => ok(res, await leads.assignLead(req.params.id, req.body, req.user.id))));
 
@@ -179,7 +182,7 @@ router.post('/quotations/:id/send-back', approveQ, validate({ params: idParam, b
 router.post('/quotations/:id/pull-back', writeQ, validate({ params: idParam, body: s.quotationReturnSchema }),
   asyncHandler(async (req, res) => ok(res, await quotations.pullBackQuotation(req.params.id, req.body))));
 router.post('/quotations/:id/send', writeQ, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await quotations.sendQuotation(req.params.id))));
+  asyncHandler(async (req, res) => ok(res, await quotations.sendQuotation(req.params.id, req.user.id))));
 router.post('/quotations/:id/revise', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => created(res, await quotations.reviseQuotation(req.params.id, req.user.id))));
 // Scheduling the crew is dispatch's call, so this takes jobs:write rather than

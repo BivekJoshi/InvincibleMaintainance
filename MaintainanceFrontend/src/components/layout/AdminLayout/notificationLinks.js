@@ -7,7 +7,9 @@ const PUBLIC_PREFIXES = ['/quotation/', '/invoice/', '/warranty/'];
  * The API writes links three ways: admin paths without the `/admin` prefix
  * (`/leads/:id`, `/quotations/:id`), full ones (`/admin/surveys/:id`, `/tech/jobs/:id`),
  * and absolute URLs built from the app origin (`https://…/leads/:id`). All of them
- * become one in-app path, so a click never leaves the back office.
+ * become one in-app path, so a click never leaves the back office. A query string is kept:
+ * Phase L1's reminders link to `/admin/leads/:id?markLost=1` (a declined or expired quotation
+ * opens the Mark lost dialog) and `/admin/leads?nextAction=due_today` (the follow-up digest).
  *
  * @param {string|null|undefined} link
  * @returns {string|null} an in-app path, or null when there is nowhere to go

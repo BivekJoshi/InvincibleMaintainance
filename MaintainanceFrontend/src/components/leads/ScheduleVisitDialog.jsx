@@ -16,7 +16,8 @@ const KTM_OFFSET = '+05:45';
 const dayKey = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kathmandu' }).format(d);
 
 /**
- * Turns a lead into a customer and books the free inspection.
+ * Turns a lead into a customer and books the free inspection. The lead page's Convert menu, the
+ * outcome "Interested — book a visit" and a board drop on "Visit booked" all open it.
  *
  * When a customer already has the lead's phone, staff say "same person" or "different
  * person" first (`CustomerMatchChoice`); Book stays disabled until they do.
@@ -64,8 +65,9 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
         `Visit booked — ${result.job?.number}`,
         result.survey ? `${result.survey.number} is ready for the surveyor.` : undefined,
       ));
-      onOpenChange(false);
+      // Done before closed: a caller waiting on the dialog (the board's drop) tells completion from Cancel.
       onScheduled?.(result);
+      onOpenChange(false);
     } catch (err) {
       const message = err?.data?.error?.message ?? 'Could not book the visit';
       // A customer with this phone appeared since the dialog opened: the choice above reloads.

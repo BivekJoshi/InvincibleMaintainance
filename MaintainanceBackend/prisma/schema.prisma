@@ -575,6 +575,21 @@ model Lead {
   firstResponseAt DateTime?
   closedAt        DateTime?
   lostReason      String?
+  /// Required with LOST (Phase L1); lostReason stays as the free-text detail.
+  lostCategory    LostCategory?
+  /// The status the lead was in when it was lost — the lost report's "stage".
+  lostAtStage     LeadStatus?
+  /// What the owner does next, and when. Open leads always carry one; WON/LOST clear it.
+  nextActionAt    DateTime?
+  /// CALL | BOOK_VISIT | VISIT | SEND_QUOTE | FOLLOW_UP (NEXT_ACTION_TYPES)
+  nextActionType  String?
+  nextActionNote  String?
+  /// When the lead entered its current status — "4d in stage", and the stale reminders.
+  stageEnteredAt  DateTime   @default(now())
+  /// Every logged contact attempt, answered or not.
+  contactAttempts Int        @default(0)
+  /// { propertyType, floors, buildingAgeYears, budgetBand, decisionMaker, note } — zod-checked (leadQualification).
+  qualification   Json?
   customerId      String?
   /// en | ne — the language customer SMS and email use (the site's language when they enquired)
   preferredLocale String     @default("en")
@@ -598,6 +613,21 @@ model Lead {
   @@index([phone])
   @@index([slaDueAt, firstResponseAt])
   @@index([assignedToId])
+  @@index([nextActionAt])
+}
+
+/// Why a lead was lost (LOST_CATEGORIES).
+enum LostCategory {
+  PRICE
+  COMPETITOR
+  UNREACHABLE
+  POSTPONED
+  BUDGET
+  OWN_LABOUR
+  OUT_OF_SCOPE
+  OUT_OF_AREA
+  DUPLICATE_SPAM
+  OTHER
 }
 
 model LeadNote {
@@ -619,6 +649,8 @@ model LeadActivity {
   userId    String?
   type      String
   summary   String
+  /// What a contact attempt came to (LEAD_OUTCOMES), when staff chose one.
+  outcome   String?
   meta      Json?
   createdAt DateTime @default(now())
 
@@ -1458,6 +1490,8 @@ model Notification {
   body      String?
   link      String?
   readAt    DateTime?
+  /// A reminder's identity, e.g. `stale:quote_unanswered:<id>:<day>:<userId>` — a second cron run sends nothing.
+  dedupeKey String?   @unique
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

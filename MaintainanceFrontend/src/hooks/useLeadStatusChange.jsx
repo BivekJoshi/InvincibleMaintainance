@@ -8,7 +8,7 @@ import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 
 /**
  * Moves a lead through the state machine — the one way the screens change a status
- * (`PATCH /admin/leads/:id/status`). LOST first asks why.
+ * (`PATCH /admin/leads/:id/status`). LOST first asks why: a category (required) and the words.
  *
  *   const [changeStatus, statusDialog] = useLeadStatusChange();
  *   const moved = await changeStatus(lead, 'CONTACTED');   // true, or false if refused or cancelled
@@ -55,10 +55,10 @@ export function useLeadStatusChange() {
       open={Boolean(asking)}
       onOpenChange={close}
       leadName={asking?.name}
-      onSubmit={async (lostReason) => {
+      onSubmit={async (why) => {
         const lead = asking;
         // A refusal throws: the dialog stays open with the API's message.
-        await setStatus({ id: lead.id, status: 'LOST', lostReason }).unwrap();
+        await setStatus({ id: lead.id, status: 'LOST', ...why }).unwrap();
         dispatch(toastSuccess(`${lead.name} marked as lost`));
         settle.current?.(true);
         settle.current = null;

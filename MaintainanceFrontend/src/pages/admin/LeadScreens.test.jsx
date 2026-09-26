@@ -161,7 +161,7 @@ describe('the pipeline board', () => {
     expect(within(screen.getByRole('region', { name: 'Contacted' })).queryByText('Sita Rai')).not.toBeInTheDocument();
   });
 
-  it('asks why before losing a lead', async () => {
+  it('asks why before losing a lead — a category, then the words', async () => {
     const user = userEvent.setup();
     const calls = mockApi(({ method, path, query }) => {
       if (method === 'PATCH') return json({ data: { ...LEAD, status: 'LOST' } });
@@ -176,10 +176,15 @@ describe('the pipeline board', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Lost' }));
     const dialog = await screen.findByRole('dialog', { name: 'Mark Sita Rai as lost' });
     expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
-    await user.type(within(dialog).getByLabelText(/Why was it lost/), 'Went with another company');
+    // The card waits in its column until the dialog is answered.
+    expect(within(newColumn).getByText('Sita Rai')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('combobox', { name: /Why was it lost/ }));
+    await user.click(await screen.findByRole('option', { name: 'Went with a competitor' }));
+    await user.type(within(dialog).getByLabelText(/In their words/), 'Went with another company');
     await user.click(within(dialog).getByRole('button', { name: 'Mark as lost' }));
     await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')?.body)
-      .toEqual({ status: 'LOST', lostReason: 'Went with another company' }));
+      .toEqual({ status: 'LOST', lostCategory: 'COMPETITOR', lostReason: 'Went with another company' }));
   });
 });
 

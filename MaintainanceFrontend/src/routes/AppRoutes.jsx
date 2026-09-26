@@ -6,7 +6,7 @@ import {
   HomePage, ServicesPage, ServiceDetailPage, PricingPage, ContactPage, BookingPage,
   ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage,
   BlogPage, BlogPostPage, GenericPage, SettingsPage,
-  LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SurveysPage,
+  LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, LostReportPage, CustomersPage, CustomerDetailPage, SurveysPage,
   SurveyReviewPage, QuotationsPage, QuotationBuilderPage, ResourceListPage, ResourceEditPage,
   HomeComposerPage, MediaLibraryPage, ResetPasswordPage,
   JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
@@ -69,6 +69,10 @@ export function AppRoutes() {
               <Route path="/admin/leads/board" element={<LeadBoardPage />} />
               <Route path="/admin/leads/:id" element={<LeadDetailPage />} />
               <Route path="/admin/sla" element={<SlaBoardPage />} />
+            </Route>
+            {/* The sales reports (Phase L1: why leads are lost); Phase I10 folds them into /admin/reports */}
+            <Route element={<RequireAuth capability="reports:sales" />}>
+              <Route path="/admin/reports/lost" element={<LostReportPage />} />
             </Route>
             <Route element={<RequireAuth capability="customers:read" />}>
               <Route path="/admin/customers" element={<CustomersPage />} />

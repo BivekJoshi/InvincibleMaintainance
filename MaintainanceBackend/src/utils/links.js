@@ -19,8 +19,20 @@ export const webUrl = (path) => `${webOrigin()}${path}`;
 /** `/admin/leads/:id` — the lead's page in the back office. */
 export const adminLeadPath = (id) => `/admin/leads/${id}`;
 
+/** The lead's page with the Mark lost dialog open — after a decline or an expiry, a person decides. */
+export const adminLeadMarkLostPath = (id) => `${adminLeadPath(id)}?markLost=1`;
+
+/** `/admin/leads?…` — the leads list with filters in the URL, e.g. `{ nextAction: 'due_today' }`. */
+export const adminLeadsPath = (query = {}) => {
+  const qs = new URLSearchParams(query).toString();
+  return qs ? `/admin/leads?${qs}` : '/admin/leads';
+};
+
 /** `/admin/quotations/:id` — the quotation's page in the back office. */
 export const adminQuotationPath = (id) => `/admin/quotations/${id}`;
+
+/** `/admin/surveys/:id` — the survey's review page in the back office. */
+export const adminSurveyPath = (id) => `/admin/surveys/${id}`;
 
 /** `/admin/jobs/:id` — the job's page in the back office. */
 export const adminJobPath = (id) => `/admin/jobs/${id}`;

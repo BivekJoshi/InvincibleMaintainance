@@ -255,14 +255,22 @@ wherever it is accepted.
 
 ```
 GET    /admin/leads                 leads:read · ?status&priority&source&assignedToId&serviceId&slaRisk
-                                     &requestedVisit=true|false&from&to&q&page&limit&sort
+                                     &requestedVisit=true|false&nextAction=due_today|overdue|none&from&to&q&page&limit&sort
+                                    nextAction: open leads whose next action falls in the Kathmandu day, is
+                                    past due, or is not booked. Rows carry nextActionAt, nextActionType,
+                                    nextActionNote, stageEnteredAt, contactAttempts, lostCategory,
+                                    lostAtStage and qualification (Phase L1).
                                     assignedToId: a user id, `me` (the caller — the "My leads" view) or
                                     `none` (unassigned). requestedVisit: the lead names a visit day
                                     (preferredAt set — online bookings, and bookings folded onto an enquiry)
 POST   /admin/leads                 leads:write · manual entry (call, walk-in, WhatsApp…)
                                     { name, phone, altPhone?, email?, address?, area?, serviceId?, message?,
                                       source (default call), priority, assignedToId? (default: the caller),
-                                      estimatedAmount? (rupees), preferredLocale? (default en) }
+                                      estimatedAmount? (rupees), preferredLocale? (default en),
+                                      qualification? { propertyType (house|apartment|commercial|land|other),
+                                        floors, buildingAgeYears, budgetBand (under_25k|25k_1l|1l_5l|5l_25l|
+                                        over_25l — labels, not money), decisionMaker (self|family|owner_abroad|
+                                        landlord|company), note } | null }
 GET    /admin/leads/sla-board       leads:read · { breached[], atRisk[], waiting[], newToday, answeredToday, metToday } —
                                     waiting[] is unanswered and still outside the warning window (a fresh
                                     enquiry lands here); the counts use Kathmandu's day; metToday ≤ answeredToday (first contact
@@ -290,20 +298,50 @@ GET    /admin/leads/:id/customer-matches  leads:read · live customers with the 
                                        lastVisitAt, primaryAddress, createdAt }]
 GET    /admin/leads/:id/history     leads:history · see "Record history" below
 PUT    /admin/leads/:id             leads:write · partial; leaving preferredLocale out keeps it
-PATCH  /admin/leads/:id/status      validated transition; LOST needs lostReason; writes a status_change
-                                    timeline entry; the status it already has is a no-op
+PATCH  /admin/leads/:id/status      validated transition; LOST needs lostCategory (PRICE|COMPETITOR|UNREACHABLE|
+                                    POSTPONED|BUDGET|OWN_LABOUR|OUT_OF_SCOPE|OUT_OF_AREA|DUPLICATE_SPAM|OTHER —
+                                    400 without; OTHER also needs lostReason, the free-text detail). The server
+                                    records lostAtStage (the status it was lost from); a reopen clears the lost
+                                    details. Every move restarts stageEnteredAt; WON/LOST clear the next action.
+                                    Writes a status_change timeline entry; the status it already has is a no-op
+PATCH  /admin/leads/:id/next-action leads:write · { at: ISO | null, type?, note? (≤300) } — at null clears it;
+                                    a time needs a type (CALL|BOOK_VISIT|VISIT|SEND_QUOTE|FOLLOW_UP) — 400.
+                                    422 LEAD_CLOSED on a WON or LOST lead. -> the lead row
 PATCH  /admin/leads/:id/assign      leads:write · { assignedToId | null, note? } — the assignee must be an
                                     active SALES or ADMIN user (400 otherwise); notified unless unchanged
 POST   /admin/leads/:id/notes
-POST   /admin/leads/:id/activities  leads:write · { type: call|sms|whatsapp|email|visit|note, summary, meta? }
+POST   /admin/leads/:id/activities  leads:write · { type: call|sms|whatsapp|email|visit|note, summary, meta?,
+                                      outcome?, nextAction? { at, type, note? }, close? { lostCategory, lostReason? } }
                                     (status_change and assignment are the system's — 400). Any type but
-                                    note stamps firstResponseAt the first time. Writes lead.activity_logged.
-                                    -> 201 { …activity, user, firstResponse: bool, sla: { state, … } }
+                                    note is a contact attempt: contactAttempts + 1, and firstResponseAt the
+                                    first time. Writes lead.activity_logged (with the outcome).
+                                    outcome (contacts only — 400 on a note) — on an open lead the entry
+                                    must leave a next action or the lead closed:
+                                      outcome              reached  default next action           needs
+                                      no_answer            no       CALL in pipeline.noAnswerRetryMinutes
+                                      wrong_number         no       —                             nextAction or close
+                                      call_back            yes      —                             nextAction
+                                      book_visit           yes      BOOK_VISIT now  → dialog visit
+                                      quote_without_visit  yes      SEND_QUOTE now  → dialog quotation
+                                      price_shopping       yes      FOLLOW_UP in pipeline.priceShoppingFollowUpDays
+                                      not_now              yes      —                             nextAction (revisit)
+                                      not_interested       yes      —                             close
+                                    A reached outcome moves NEW → CONTACTED; `close` moves the lead to LOST
+                                    in the same transaction; a sent nextAction overrides the default; never
+                                    both nextAction and close (400). Missing → 422 NEXT_ACTION_REQUIRED.
+                                    -> 201 { …activity, user, firstResponse: bool, sla: { state, … },
+                                             lead { id, status, nextActionAt, nextActionType, nextActionNote,
+                                                    contactAttempts, stageEnteredAt, lostCategory },
+                                             dialog: 'visit' | 'quotation' | null }
 POST   /admin/leads/:id/convert     leads:write · { customerId? | createNewCustomer?, confirmEmail? (false),
                                       preferredLocale?, site? { label, address, area },
                                       createQuotation, createInspectionJob, scheduledStart, scheduledEnd,
                                       surveyorId }
                                     -> 201 { customer, customerCreated, site, quotation?, job?, survey? }
+                                    The lead steps NEW → CONTACTED, and to INSPECTION_SCHEDULED with a visit.
+                                    A draft quotation does NOT make it QUOTED (sending does — see
+                                    /admin/quotations/:id/send). Next action: VISIT at scheduledStart with a
+                                    visit, else SEND_QUOTE now with a draft.
                                     Which customer — a phone is shared and recycled, so it is never enough:
                                       · a lead already linked keeps its customer (a second convert adds a
                                         visit or a quotation);
@@ -418,7 +456,10 @@ POST   /admin/quotations/:id/pull-back  quotations:write · { note 3–1000 } ·
 POST   /admin/quotations/:id/send       quotations:write · OFFICE_APPROVED → SENT only (a DRAFT or
                                     PENDING_APPROVAL is 422 INVALID_TRANSITION; a validUntil already past
                                     is 422 QUOTATION_EXPIRED). Issues publicToken, SMS + email
-                                    quotation_sent in the customer's language.
+                                    quotation_sent in the customer's language. In the same transaction the
+                                    lead becomes QUOTED (from NEW by way of CONTACTED; a WON or LOST lead
+                                    only gets a note) and its next action is FOLLOW_UP in
+                                    pipeline.quoteUnansweredDays (Phase L1).
 POST   /admin/quotations/:id/revise     quotations:write · from SENT, CHANGES_REQUESTED, REJECTED or EXPIRED
                                     -> 201 a new DRAFT: version+1, parentId, lines and totals copied,
                                     requestedChanges = the parent's change request (when it was
@@ -926,6 +967,10 @@ GET   /admin/dashboard              every role · role-aware widget payload
                                       ADMIN, ACCOUNTANT — revenue (revenueReport, groupBy day, 30 days)
                                     Other roles get { role, cards } only.
 GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
+GET   /admin/reports/lost?from&to                                    reports:sales · LOST leads closed in
+                                    the range (Kathmandu YYYY-MM-DD, on closedAt; bad format 400) →
+                                    { total, byCategory [{ category, count }],
+                                      rows [{ category, stage, serviceId, serviceName, count }] } most first
 GET   /admin/reports/job-margin | /technicians | /warranty-claims   reports:ops
 ```
 
@@ -985,7 +1030,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `lead.assigned` | `PATCH /admin/leads/:id/assign` | assignedToId → assignedToId · note |
 | `lead.merged` | `POST /admin/leads/merge`, on the primary lead | · duplicateIds |
 | `lead.converted` | `POST /admin/leads/:id/convert` | customerId → customerId · quotationId, jobId, surveyId |
-| `lead.activity_logged` | `POST /admin/leads/:id/activities` | firstResponseAt null → the time, when this entry stopped the clock · activityId, type, summary |
+| `lead.activity_logged` | `POST /admin/leads/:id/activities` | firstResponseAt null → the time, when this entry stopped the clock · activityId, type, summary, outcome (when chosen) |
 | `customer.email_confirmed` | convert with `confirmEmail` puts the lead's email on an existing customer (actor = the staff member) | email → email · leadId |
 | `quotation.created` | a quotation is created (admin, convert, survey quote) | → number, status, total, customerId, leadId |
 | `quotation.submitted` | `POST /admin/quotations/:id/submit` | DRAFT → PENDING_APPROVAL, total |

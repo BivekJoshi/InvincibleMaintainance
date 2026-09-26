@@ -1,13 +1,14 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
-import { badRequest, notFound, conflict, unprocessable } from '../utils/AppError.js';
+import { AppError, badRequest, notFound, conflict, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.js';
 import { toPaisa } from '../utils/money.js';
 import { normalizePhone } from '../utils/phone.js';
 import { LEAD_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
-import { BOOKING_SLOTS, CONTACT_ACTIVITY_TYPES } from '../shared/enums.js';
+import { BOOKING_SLOTS, CONTACT_ACTIVITY_TYPES, REACHED_OUTCOMES } from '../shared/enums.js';
 import { adminLeadPath, webUrl } from '../utils/links.js';
-import { local, startOfDay } from '../utils/dates.js';
+import { addDays, addMinutes, endOfDay, local, startOfDay } from '../utils/dates.js';
 import { computeSlaDueAt, decorateSla, slaWhere } from './sla.service.js';
 import { attachLeadPhotos, decorateLeadPhotos } from './leadPhoto.service.js';
 import { isSlotFull } from './availability.service.js';
@@ -249,10 +250,20 @@ export async function createLead(input, actorId) {
  * (unassigned); the route has already turned `me` into the caller's id.
  * The SLA and search fragments both use OR, so they are combined with AND.
  */
+const OPEN = { notIn: ['WON', 'LOST'] };
+
+/** `?nextAction=` — open leads whose next action is due in the Kathmandu day, past due, or not booked. */
+function nextActionWhere(filter, now = new Date()) {
+  if (filter === 'overdue') return { status: OPEN, nextActionAt: { lt: now } };
+  if (filter === 'due_today') return { status: OPEN, nextActionAt: { gte: startOfDay(now), lte: endOfDay(now) } };
+  return { status: OPEN, nextActionAt: null };
+}
+
 function leadWhere(query, q) {
   const created = dateRange(query.from, query.to);
   const and = [];
   if (query.slaRisk) and.push(slaWhere(query.slaRisk));
+  if (query.nextAction) and.push(nextActionWhere(query.nextAction));
   if (q) and.push({ OR: searchOr(q, ['name', 'phone', 'email', 'address', 'message']) });
   return {
     deletedAt: null,
@@ -303,11 +314,12 @@ export async function getLead(id) {
 
 export async function updateLead(id, data) {
   await findLead(id);
-  const { estimatedAmount, ...rest } = data;
+  const { estimatedAmount, qualification, ...rest } = data;
   const lead = await prisma.lead.update({
     where: { id },
     data: {
       ...rest,
+      ...(qualification !== undefined ? { qualification: qualification ?? Prisma.DbNull } : {}),
       ...(data.phone ? { phone: normalizePhone(data.phone) } : {}),
       ...(estimatedAmount !== undefined ? { estimatedAmount: estimatedAmount != null ? toPaisa(estimatedAmount) : null } : {}),
     },
@@ -322,36 +334,129 @@ async function findLead(id, client = prisma) {
   return lead;
 }
 
+const nextActionRequired = (message) => new AppError(422, 'NEXT_ACTION_REQUIRED', message);
+
+/** The next action an outcome books when staff name none; `null` means they must. */
+async function defaultNextAction(outcome, now) {
+  switch (outcome) {
+    case 'no_answer':
+      return { at: addMinutes(now, Number(await getSetting('pipeline.noAnswerRetryMinutes', 120))), type: 'CALL' };
+    case 'book_visit': return { at: now, type: 'BOOK_VISIT' };
+    case 'quote_without_visit': return { at: now, type: 'SEND_QUOTE' };
+    case 'price_shopping':
+      return { at: addDays(now, Number(await getSetting('pipeline.priceShoppingFollowUpDays', 3))), type: 'FOLLOW_UP' };
+    default: return null;
+  }
+}
+
+/** The dialog the client opens after an outcome: the visit booking, or a new quotation. */
+const DIALOG_FOR = { book_visit: 'visit', quote_without_visit: 'quotation' };
+
+const nextActionData = (next) => (next
+  ? { nextActionAt: next.at, nextActionType: next.type, nextActionNote: next.note ?? null }
+  : { nextActionAt: null, nextActionType: null, nextActionNote: null });
+
+/** The lead fields an activity's caller needs to redraw the lead without refetching it. */
+const leadSummary = (l) => ({
+  id: l.id, status: l.status, nextActionAt: l.nextActionAt, nextActionType: l.nextActionType,
+  nextActionNote: l.nextActionNote, contactAttempts: l.contactAttempts, stageEnteredAt: l.stageEnteredAt,
+  lostCategory: l.lostCategory,
+});
+
 /**
- * Logging any outbound contact stamps firstResponseAt — that timestamp, not a
- * status change, is what the SLA report measures.
+ * Logs a timeline entry. Any contact (call, SMS, WhatsApp, email, visit) is an attempt: it adds one
+ * to contactAttempts and stamps firstResponseAt — that timestamp, not a status change, is what the
+ * SLA report measures.
  *
- * Timeline entries are not audited row by row, so each one also writes
- * `lead.activity_logged`: that is how it reaches the lead's History.
+ * With an `outcome`, on an open lead, the entry must leave the lead with a next action or closed:
+ * - a reached outcome (REACHED_OUTCOMES) moves NEW → CONTACTED;
+ * - the next action is the one sent, or the outcome's default (`defaultNextAction`); call_back and
+ *   not_now have none, so the time the customer gave is required;
+ * - `close` loses the lead in the same transaction (not_interested requires it);
+ * - neither → 422 NEXT_ACTION_REQUIRED.
  *
- * @returns the activity, plus `sla` — the lead's response state after it — and
- *          `firstResponse: true` when this entry is the one that stopped the clock
+ * Timeline entries are not audited row by row, so each one also writes `lead.activity_logged`:
+ * that is how it reaches the lead's History.
+ *
+ * @returns the activity, `sla` (the response state after it), `firstResponse: true` when this entry
+ *          stopped the clock, `lead` (its status and next action after it) and `dialog` — `visit` or
+ *          `quotation` when the client should open that next
  */
-export async function addActivity(leadId, { type, summary, meta: metaData }, userId) {
+export async function addActivity(leadId, input, userId) {
+  const { type, summary, meta: metaData, outcome, nextAction, close } = input;
   const lead = await findLead(leadId);
-  const stamps = CONTACT_ACTIVITY_TYPES.includes(type) && !lead.firstResponseAt;
+  const now = new Date();
+  const contact = CONTACT_ACTIVITY_TYPES.includes(type);
+  const stamps = contact && !lead.firstResponseAt;
+  const open = !['WON', 'LOST'].includes(lead.status);
+
+  let next = null;
+  if (outcome && open && !close) {
+    if (outcome === 'not_interested') throw nextActionRequired('Not interested closes the lead — choose why it was lost.');
+    next = nextAction ?? (await defaultNextAction(outcome, now));
+    if (!next) throw nextActionRequired('Book the next action — when to call back or revisit — or close the lead.');
+  }
 
   return prisma.$transaction(async (tx) => {
     const activity = await tx.leadActivity.create({
-      data: { leadId, userId: userId ?? null, type, summary, meta: metaData ?? undefined },
+      data: { leadId, userId: userId ?? null, type, summary, outcome: outcome ?? null, meta: metaData ?? undefined },
       include: { user: { select: { id: true, name: true } } },
     });
-    const after = stamps
-      ? await tx.lead.update({ where: { id: leadId }, data: { firstResponseAt: new Date() } })
-      : lead;
+    await tx.lead.update({
+      where: { id: leadId },
+      data: {
+        ...(contact ? { contactAttempts: { increment: 1 } } : {}),
+        ...(stamps ? { firstResponseAt: now } : {}),
+        ...(next ? nextActionData(next) : {}),
+      },
+    });
+    if (outcome && open && lead.status === 'NEW' && REACHED_OUTCOMES.includes(outcome)) {
+      await transitionLead(tx, leadId, 'CONTACTED', { actorId: userId, note: summary.slice(0, 200) });
+    }
+    if (close && open) {
+      await transitionLead(tx, leadId, 'LOST', {
+        actorId: userId, note: summary.slice(0, 200),
+        data: { lostCategory: close.lostCategory, lostReason: close.lostReason ?? null },
+      });
+    }
     await recordEvent('lead.activity_logged', {
       model: 'Lead',
       recordId: leadId,
-      ...(stamps ? { before: { firstResponseAt: null }, after: { firstResponseAt: after.firstResponseAt } } : {}),
-      meta: { activityId: activity.id, type, summary },
+      ...(stamps ? { before: { firstResponseAt: null }, after: { firstResponseAt: now } } : {}),
+      meta: { activityId: activity.id, type, summary, ...(outcome ? { outcome } : {}) },
     }, tx);
-    return { ...activity, firstResponse: stamps, sla: decorateSla(after).sla };
+    const after = await tx.lead.findUnique({ where: { id: leadId } });
+    return {
+      ...activity,
+      firstResponse: stamps,
+      sla: decorateSla(after).sla,
+      lead: leadSummary(after),
+      dialog: (open && DIALOG_FOR[outcome]) || null,
+    };
   });
+}
+
+/** PATCH /admin/leads/:id/next-action — sets it, or clears it with `at: null`. A closed lead has none. */
+export async function setNextAction(id, { at, type, note }) {
+  const lead = await findLead(id);
+  if (OPEN.notIn.includes(lead.status)) {
+    throw new AppError(422, 'LEAD_CLOSED', `This lead is ${lead.status.toLowerCase()}; it has no next action. Reopen it first.`);
+  }
+  const updated = await prisma.lead.update({
+    where: { id },
+    data: nextActionData(at ? { at, type, note } : null),
+    include: LEAD_INCLUDE,
+  });
+  return decorateSla(updated);
+}
+
+/**
+ * Books a lead's next action from another flow — a visit booked, a quotation drafted or sent —
+ * through the caller's transaction. A closed lead is left alone.
+ */
+export async function bookNextAction(tx, leadId, next) {
+  if (!leadId) return;
+  await tx.lead.updateMany({ where: { id: leadId, deletedAt: null, status: OPEN }, data: nextActionData(next) });
 }
 
 export async function addNote(leadId, note, userId) {
@@ -384,10 +489,20 @@ export async function transitionLead(tx, leadId, to, { actorId, note, data = {} 
   if (lead.status === to) return lead;
   assertTransition(LEAD_TRANSITIONS, lead.status, to, 'lead');
 
+  const closing = ['WON', 'LOST'].includes(to);
   // Guarded on the status just read, so two writers racing cannot both apply a move.
   const { count } = await tx.lead.updateMany({
     where: { id: leadId, status: lead.status },
-    data: { ...data, status: to, closedAt: ['WON', 'LOST'].includes(to) ? new Date() : null },
+    data: {
+      // Only a LOST lead carries lost details; the stage it was lost at is where it stood.
+      ...(to === 'LOST' ? { lostAtStage: lead.status } : { lostCategory: null, lostAtStage: null, lostReason: null }),
+      // A closed lead has nothing next.
+      ...(closing ? nextActionData(null) : {}),
+      ...data,
+      status: to,
+      closedAt: closing ? new Date() : null,
+      stageEnteredAt: new Date(),
+    },
   });
   if (count === 0) throw conflict('This lead changed a moment ago. Reload and try again.');
 
@@ -404,14 +519,14 @@ export async function transitionLead(tx, leadId, to, { actorId, note, data = {} 
   return tx.lead.findUnique({ where: { id: leadId } });
 }
 
-export async function changeStatus(id, { status, lostReason, note }, userId) {
+export async function changeStatus(id, { status, lostCategory, lostReason, note }, userId) {
   const lead = await findLead(id);
 
   await prisma.$transaction((tx) => transitionLead(tx, id, status, {
     actorId: userId,
     note,
     data: {
-      lostReason: status === 'LOST' ? lostReason : null,
+      ...(status === 'LOST' ? { lostCategory, lostReason: lostReason ?? null } : {}),
       firstResponseAt: lead.firstResponseAt ?? (status !== 'NEW' ? new Date() : null),
     },
   }));
@@ -537,7 +652,7 @@ export async function mergeLeads({ primaryId, duplicateIds }, actorId) {
     await tx.job.updateMany({ where: { leadId: { in: ids } }, data: { leadId: primaryId } });
     for (const d of duplicates) {
       await transitionLead(tx, d.id, 'LOST', {
-        actorId, note: `Merged into ${primary.id}`, data: { lostReason: `Merged into ${primary.id}` },
+        actorId, note: `Merged into ${primary.id}`, data: { lostCategory: 'DUPLICATE_SPAM', lostReason: `Merged into ${primary.id}` },
       });
     }
     await tx.lead.updateMany({ where: { id: { in: ids } }, data: { deletedAt: new Date() } });

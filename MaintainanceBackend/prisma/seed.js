@@ -602,6 +602,77 @@ async function main() {
     console.log(`  quotation approval demo: ${DEMO.map((d) => d.status).join(', ')}`);
   }
 
+  // ═══ follow-through demo (Phase L1): a lead in every state the leads list, the board and the
+  //     lost report show — due today, overdue, nothing booked, a quote gone quiet, and losses.
+  //     Guarded on its own marker lead, so it tops up an older database.
+
+  if (!(await prisma.lead.findFirst({ where: { phone: '9841600001' } }))) {
+    const seepage = services['seepage-and-damp-treatment'];
+    const hours = (n) => new Date(Date.now() + n * 3600_000);
+    const base = { source: 'call', assignedToId: users.SALES.id, serviceId: seepage?.id ?? null, slaDueAt: days(-6), firstResponseAt: days(-6) };
+    const FOLLOW = [
+      {
+        name: 'Suman Thapa', phone: '9841600001', area: 'Kirtipur', status: 'CONTACTED', createdAt: days(-2), stageEnteredAt: days(-2),
+        contactAttempts: 2, nextActionAt: hours(3), nextActionType: 'CALL', nextActionNote: 'Asked us to call after 2 pm — decides with his brother',
+        qualification: { propertyType: 'house', floors: 3, buildingAgeYears: 22, budgetBand: '1l_5l', decisionMaker: 'family' },
+        activity: { outcome: 'call_back', summary: 'Interested; call back this afternoon once his brother is home' },
+      },
+      {
+        name: 'Pramila Shakya', phone: '9841600002', area: 'Patan', status: 'CONTACTED', createdAt: days(-6), stageEnteredAt: days(-5),
+        contactAttempts: 1, nextActionAt: days(-2), nextActionType: 'FOLLOW_UP', nextActionNote: 'Comparing three companies on price',
+        qualification: { propertyType: 'apartment', budgetBand: 'under_25k', decisionMaker: 'self' },
+        activity: { outcome: 'price_shopping', summary: 'Getting three quotes; wants a price per sq.ft over the phone' },
+      },
+      {
+        name: 'Deepak Maharjan', phone: '9841600003', area: 'Bhaktapur', status: 'CONTACTED', createdAt: days(-3), stageEnteredAt: days(-3),
+        contactAttempts: 1, activity: { outcome: null, summary: 'Spoke briefly, will think about it' },
+      },
+    ];
+    for (const { activity, ...d } of FOLLOW) {
+      const lead = await prisma.lead.create({ data: { ...base, ...d } });
+      await prisma.leadActivity.create({
+        data: { leadId: lead.id, userId: users.SALES.id, type: 'call', summary: activity.summary, outcome: activity.outcome, createdAt: d.stageEnteredAt },
+      });
+    }
+
+    // Sent five days ago and not answered — the stale sweep reminds its owner.
+    const quiet = await prisma.customer.create({
+      data: {
+        name: 'Rajendra Basnet', phone: '9841600004', preferredLocale: 'en',
+        sites: { create: { label: 'Home', address: 'Tokha, Kathmandu', area: 'Tokha', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    const quietLead = await prisma.lead.create({
+      data: {
+        ...base, name: quiet.name, phone: quiet.phone, area: 'Tokha', status: 'QUOTED', customerId: quiet.id, createdAt: days(-9),
+        stageEnteredAt: days(-5), contactAttempts: 3, nextActionAt: days(-2), nextActionType: 'FOLLOW_UP',
+      },
+    });
+    const totals = documentTotals([{ description: 'Terrace membrane waterproofing', unit: 'sq.ft', qty: 480, rate: toPaisa(275), sortOrder: 0 }], { vatApplied: true, vatRate: 13 });
+    await prisma.quotation.create({
+      data: {
+        number: await prisma.$transaction((tx) => nextNumber(tx, 'QT')), status: 'SENT', customerId: quiet.id, siteId: quiet.sites[0].id,
+        leadId: quietLead.id, validUntil: days(10), subtotal: totals.subtotal, discount: totals.discount, vatApplied: true, vatRate: 13,
+        vatAmount: totals.vatAmount, total: totals.total, createdById: users.SALES.id, submittedAt: days(-6), submittedById: users.SALES.id,
+        approvedById: users.MANAGER.id, approvedAt: days(-6), sentAt: days(-5), publicToken: token(),
+        items: { create: totals.lines },
+      },
+    });
+
+    // Losses at different stages, so the lost report has something to say.
+    const LOST = [
+      { name: 'Kamal Joshi', phone: '9841600005', lostCategory: 'PRICE', lostAtStage: 'QUOTED', lostReason: 'Our quote was 30% over what he expected', closedAt: days(-3) },
+      { name: 'Sarita Poudel', phone: '9841600006', lostCategory: 'COMPETITOR', lostAtStage: 'QUOTED', lostReason: 'Went with the company her neighbour used', closedAt: days(-6) },
+      { name: 'Binod Tamang', phone: '9841600007', lostCategory: 'OWN_LABOUR', lostAtStage: 'CONTACTED', lostReason: 'His own mistri will do the plaster', closedAt: days(-8) },
+      { name: 'Asha Rana', phone: '9841600008', lostCategory: 'OUT_OF_AREA', lostAtStage: 'NEW', lostReason: 'Site is in Pokhara', closedAt: days(-1) },
+    ];
+    for (const d of LOST) {
+      await prisma.lead.create({ data: { ...base, ...d, status: 'LOST', createdAt: days(-12), stageEnteredAt: d.closedAt } });
+    }
+    console.log(`  follow-through demo: ${FOLLOW.length} leads to work, 1 quiet quotation, ${LOST.length} lost leads`);
+  }
+
   console.log('\nSeed complete.');
   console.log('  Admin login:      admin@gharjatan.com.np / Password123');
   console.log('  Manager login:    manager@gharjatan.com.np / Password123');

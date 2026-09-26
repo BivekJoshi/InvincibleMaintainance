@@ -60,7 +60,7 @@ describe('admin nav', () => {
   it('hides Content, Finance and Platform from SALES', () => {
     const nav = navOf('SALES');
     expect(Object.keys(nav)).toEqual(['Overview', 'Sales', 'Operations', 'Aftercare', 'Catalog']);
-    expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations']);
+    expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations', 'Lost leads']);
     // SALES reads jobs, templates and technicians (to pick a surveyor); dispatch and stock are not theirs.
     expect(nav.Operations).toEqual(['Jobs', 'Technicians']);
     expect(nav.Catalog).toEqual(['Rate card', 'Job templates']);

@@ -4,7 +4,8 @@ import {
   preferredLocale, rupees, sortOrder, unit,
 } from './common.js';
 import {
-  BOOKING_SLOT_KEYS, CUSTOMER_TYPES, LEAD_SOURCES, LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, PRIORITIES,
+  BOOKING_SLOT_KEYS, BUDGET_BANDS, CONTACT_ACTIVITY_TYPES, CUSTOMER_TYPES, DECISION_MAKERS, LEAD_OUTCOMES, LEAD_SOURCES,
+  LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, LOST_CATEGORIES, NEXT_ACTION_TYPES, PRIORITIES, PROPERTY_TYPES,
   QUOTATION_DECISIONS, QUOTATION_STAGES, QUOTATION_STATUSES,
 } from '../enums.js';
 
@@ -42,6 +43,19 @@ export const publicLeadSchema = z.object({
   elapsedMs: z.coerce.number().int().min(0).optional(),
 });
 
+/**
+ * What sales learns on the first call (`Lead.qualification`), so nobody drives 12 km for a Rs 5,000 job or
+ * waits on an owner who decides from abroad. Every field is optional; the budget band is a label, not money.
+ */
+export const leadQualification = z.object({
+  propertyType: z.enum(PROPERTY_TYPES).optional(),
+  floors: z.coerce.number().int().min(0).max(60).optional(),
+  buildingAgeYears: z.coerce.number().int().min(0).max(300).optional(),
+  budgetBand: z.enum(BUDGET_BANDS).optional(),
+  decisionMaker: z.enum(DECISION_MAKERS).optional(),
+  note: z.string().trim().max(500).optional(),
+}).strict();
+
 export const adminLeadCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
   phone: nepaliPhone,
@@ -56,18 +70,41 @@ export const adminLeadCreateSchema = z.object({
   assignedToId: z.string().optional().nullable(),
   estimatedAmount: optionalRupees,
   preferredLocale: preferredLocale.default('en'),
+  qualification: leadQualification.nullable().optional(),
 });
 
 // `.partial()` keeps a default, which would reset the language on every edit that leaves it out.
 export const leadUpdateSchema = adminLeadCreateSchema.extend({ preferredLocale: preferredLocale.optional() }).partial();
 
+const lostReason = z.string().trim().max(500).optional();
+const otherNeedsReason = [
+  (v) => v.lostCategory !== 'OTHER' || Boolean(v.lostReason),
+  { message: 'Say why, when the reason is Other', path: ['lostReason'] },
+];
+
+/** LOST says why (a category, required) and may add detail (the free text). */
 export const leadStatusSchema = z.object({
   status: z.enum(LEAD_STATUSES),
-  lostReason: z.string().trim().max(500).optional(),
+  lostCategory: z.enum(LOST_CATEGORIES).optional(),
+  lostReason,
   note: z.string().trim().max(2000).optional(),
-}).refine((v) => v.status !== 'LOST' || Boolean(v.lostReason), {
-  message: 'A reason is required when marking a lead as lost', path: ['lostReason'],
+}).refine((v) => v.status !== 'LOST' || Boolean(v.lostCategory), {
+  message: 'Choose why the lead was lost', path: ['lostCategory'],
+}).refine(...otherNeedsReason);
+
+/** What happens next on a lead, and when. */
+export const nextActionInput = z.object({
+  at: z.coerce.date(),
+  type: z.enum(NEXT_ACTION_TYPES),
+  note: z.string().trim().max(300).optional(),
 });
+
+/** PATCH /admin/leads/:id/next-action — `at: null` clears it; a time needs a type. */
+export const leadNextActionSchema = z.object({
+  at: z.coerce.date().nullable(),
+  type: z.enum(NEXT_ACTION_TYPES).optional(),
+  note: z.string().trim().max(300).optional(),
+}).refine((v) => v.at === null || Boolean(v.type), { message: 'Say what the next action is', path: ['type'] });
 
 export const leadAssignSchema = z.object({
   assignedToId: z.string().nullable(),
@@ -76,11 +113,25 @@ export const leadAssignSchema = z.object({
 
 export const leadNoteSchema = z.object({ note: z.string().trim().min(1).max(4000) });
 
-/** status_change and assignment entries are written by the system, never typed in. */
+/**
+ * status_change and assignment entries are written by the system, never typed in.
+ *
+ * A contact may carry what it came to (`outcome`) — and then it ends with a next action or the lead
+ * closed (`close`), which lead.service#addActivity enforces, with defaults per outcome.
+ */
 export const leadActivitySchema = z.object({
   type: z.enum(LOGGABLE_ACTIVITY_TYPES),
   summary: z.string().trim().min(1).max(1000),
   meta: z.record(z.any()).optional(),
+  outcome: z.enum(LEAD_OUTCOMES).optional(),
+  nextAction: nextActionInput.optional(),
+  close: z.object({ lostCategory: z.enum(LOST_CATEGORIES), lostReason }).refine(...otherNeedsReason).optional(),
+}).refine((v) => !v.outcome || CONTACT_ACTIVITY_TYPES.includes(v.type), {
+  message: 'An outcome belongs to a call, a message or a visit', path: ['outcome'],
+}).refine((v) => !v.close || Boolean(v.outcome), {
+  message: 'Closing a lead from the timeline needs the outcome that closed it', path: ['close'],
+}).refine((v) => !(v.nextAction && v.close), {
+  message: 'Book a next action or close the lead — not both', path: ['close'],
 });
 
 export const leadBulkAssignSchema = z.object({
@@ -139,6 +190,8 @@ export const leadListQuery = z.object({
   slaRisk: z.enum(['at_risk', 'breached', 'ok']).optional(),
   /** Leads that name a visit day (online bookings, and bookings folded onto an enquiry). */
   requestedVisit: flag.optional(),
+  /** Open leads by their next action: due in the Kathmandu day, past due, or none booked. */
+  nextAction: z.enum(['due_today', 'overdue', 'none']).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   /** Export only: the rows picked in the table, comma separated. */
@@ -277,4 +330,10 @@ export const estimateSchema = z.object({
   qty: z.coerce.number().min(0.1).max(1_000_000),
 }).refine((v) => v.serviceId || v.pricingPlanId, {
   message: 'Choose a service or a pricing plan', path: ['serviceId'],
+});
+
+/** GET /admin/reports/lost — Kathmandu calendar days, on the day each lead was closed. */
+export const lostReportQuery = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
 });

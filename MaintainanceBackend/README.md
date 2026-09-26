@@ -48,6 +48,13 @@ OFFICE_APPROVED, SENT and CHANGES_REQUESTED (a Nepali customer's message) — th
 `quotation_changes_received` and `quotation_changes_requested_staff` templates in English and Nepali, and the
 `password_reset` and `account_invite` emails staff accounts receive.
 
+Phase L1 adds leads to work — one due today (with its qualification filled), one overdue, one with
+nothing booked — a quotation sent five days ago and unanswered (the stale sweep reminds its owner), and
+four lost leads across categories and stages for the lost report. The `pipeline.*` settings (SLA group)
+hold the follow-up clocks: the No-answer retry (120 min), price-shopper follow-up (3 days), digest hour
+(09:00 Kathmandu), quiet-lead (3 days), unquoted-survey (48 h), waiting-approval (24 h), unanswered-quote
+(3 days) and expiring-quote (2 days) thresholds.
+
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
 Both links open `<PUBLIC_WEB_ORIGIN>/reset-password`. With no `SMTP_HOST`, the email — link included — is
@@ -117,7 +124,8 @@ src/
   services/            all business logic — controllers never touch Prisma
   routes/              public · auth · tech · admin/{cms,crm,ops,finance,aftercare,platform}
                        admin/historyRoute.js — GET …/:id/history for any model
-  queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders
+  queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders,
+                       lead follow-ups + morning digest, stale-pipeline reminders (Phase L1)
 prisma/                schema.prisma · seed.js · seed-data.js
 tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging,
                        notification links (a source scan: staff links are /admin/…, field links /tech/…),

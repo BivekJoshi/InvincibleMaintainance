@@ -1,5 +1,5 @@
 import { Check, X } from 'lucide-react';
-import { LEAD_STATUS_LABELS } from '@/config/constants';
+import { LEAD_STATUS_LABELS, LOST_CATEGORY_LABELS } from '@/config/constants';
 import { toneStyle } from '@/helpers/leadBoard';
 import { cn } from '@/helpers/utils';
 
@@ -20,7 +20,7 @@ const STAGE_HINTS = {
  * colour, the current one lit, the rest ahead. A lost lead greys the road and says why.
  * Skipping the visit (Contacted → Quoted) leaves that step hollow rather than ticked.
  *
- * @param {{ lead: { status: string, lostReason?: string, jobs?: object[] } }} props
+ * @param {{ lead: { status: string, lostCategory?: string, lostReason?: string, lostAtStage?: string, jobs?: object[] } }} props
  */
 export function LeadStageTrack({ lead }) {
   const lost = lead.status === 'LOST';
@@ -68,7 +68,11 @@ export function LeadStageTrack({ lead }) {
       {lost ? (
         <p className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
           <X className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden />
-          <span><span className="font-semibold">Lost</span>{lead.lostReason ? ` — ${lead.lostReason}` : ' — no reason given'}</span>
+          <span>
+            <span className="font-semibold">Lost{lead.lostCategory ? ` · ${LOST_CATEGORY_LABELS[lead.lostCategory] ?? lead.lostCategory}` : ''}</span>
+            {lead.lostReason ? ` — ${lead.lostReason}` : lead.lostCategory ? '' : ' — no reason given'}
+            {lead.lostAtStage ? <span className="text-muted-foreground"> (at {LEAD_STATUS_LABELS[lead.lostAtStage] ?? lead.lostAtStage})</span> : null}
+          </span>
         </p>
       ) : null}
     </div>
