@@ -90,14 +90,15 @@ export const NEXT_ACTION_OPTIONS = optionsOf(NEXT_ACTION_TYPES, NEXT_ACTION_LABE
 export const LOST_CATEGORY_OPTIONS = optionsOf(LOST_CATEGORIES, LOST_CATEGORY_LABELS);
 
 /**
- * The next action the API sets for an outcome when none is sent (`pipeline.noAnswerRetryMinutes` is 120 by
- * default), in words — the composer shows it so "leave it" is an informed choice.
+ * The next action the API sets for an outcome when none is sent, in words — the composer shows it so
+ * "leave it" is an informed choice. The delays are settings (`pipeline.noAnswerRetryMinutes`,
+ * `pipeline.priceShoppingFollowUpDays`), so the words give their defaults.
  */
 export const OUTCOME_DEFAULT_NEXT = {
   no_answer: 'Call again after the no-answer delay (2 hours by default)',
   book_visit: 'Book the visit — now',
   quote_without_visit: 'Send the quotation — now',
-  price_shopping: 'Follow up in 3 days',
+  price_shopping: 'Follow up in a few days (3 by default)',
 };
 
 /** The three next-action inputs. The type may stay on the one the outcome suggests. */
@@ -187,7 +188,7 @@ export const nextActionFormFields = [
 export const qualificationFields = [
   { name: 'propertyType', type: 'select', label: 'Property', span: 'half', noneLabel: 'Not known yet', options: optionsOf(PROPERTY_TYPES, PROPERTY_TYPE_LABELS) },
   { name: 'decisionMaker', type: 'select', label: 'Who decides', span: 'half', noneLabel: 'Not known yet', options: optionsOf(DECISION_MAKERS, DECISION_MAKER_LABELS) },
-  { name: 'floors', type: 'number', label: 'Floors', span: 'half', min: 0, max: 100, step: 1 },
+  { name: 'floors', type: 'number', label: 'Floors', span: 'half', min: 0, max: 60, step: 1 },
   { name: 'buildingAgeYears', type: 'number', label: 'Building age (years)', span: 'half', min: 0, max: 300, step: 1 },
   { name: 'budgetBand', type: 'select', label: 'Budget', noneLabel: 'Not known yet', options: optionsOf(BUDGET_BANDS, BUDGET_BAND_LABELS) },
   { name: 'note', type: 'textarea', label: 'Anything else', rows: 2, maxLength: 500, placeholder: 'Access, timing, who to talk to' },

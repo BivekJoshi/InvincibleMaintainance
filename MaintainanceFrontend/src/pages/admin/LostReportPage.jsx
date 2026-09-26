@@ -84,7 +84,7 @@ export default function LostReportPage() {
           ) : byCategory.length ? (
             <ul aria-label="Lost leads by category" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {byCategory.map((c) => (
-                <li key={c.category} className="rounded-lg border px-3 py-2">
+                <li key={c.category ?? 'none'} className="rounded-lg border px-3 py-2">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="min-w-0 truncate text-sm font-medium">{categoryLabel(c.category)}</span>
                     <span className="shrink-0 text-sm tabular-nums">

@@ -332,6 +332,26 @@ describe('the lead page', () => {
   });
 });
 
+describe('the lead page — Change status runs the board’s rules', () => {
+  it('Quoted without a quotation opens the new-quotation sheet instead of moving the lead', async () => {
+    const user = userEvent.setup();
+    const calls = mockApi(({ method, path }) => {
+      if (method === 'GET' && path === '/admin/leads/l1') {
+        return json({ data: { ...LEAD, status: 'CONTACTED', activities: [], quotations: [], jobs: [] } });
+      }
+      if (path === '/admin/leads/l1/duplicates') return json({ data: [] });
+      if (path === '/admin/leads/l1/customer-matches') return json({ data: [] });
+      return undefined;
+    });
+    renderWithProviders(<LeadDetailPage />, { path: '/admin/leads/:id', initialPath: '/admin/leads/l1', preloadedState: signedInAs('SALES') });
+
+    await user.click(await screen.findByRole('button', { name: /Change status/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Quoted' }));
+    expect(await screen.findByRole('dialog', { name: 'New quotation' })).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+});
+
 describe('the lost-lead report', () => {
   const REPORT = {
     total: 4,

@@ -27,10 +27,16 @@ describe('the outcome rules (the API’s addActivity, mirrored)', () => {
     ['not_interested', { close: { lostCategory: 'PRICE' } }, true],
     ['not_interested', { close: { lostCategory: 'OTHER' } }, false],
     ['not_interested', { close: { lostCategory: 'OTHER', lostReason: 'Moved abroad' } }, true],
+    // The API refuses a next action and a close together.
+    ['wrong_number', { nextAction: { at: AT, type: 'CALL' }, close: { lostCategory: 'UNREACHABLE' } }, false],
   ])('%s with %o is %s', (outcome, extra, ok) => {
     const body = { type: 'call', summary: 'x', outcome, ...extra };
     expect(leadOutcomeIssues(body).length === 0).toBe(ok);
     expect(leadActivitySchema.safeParse(body).success).toBe(ok);
+  });
+
+  it('a close needs the outcome that closed it', () => {
+    expect(errorsOf(leadActivitySchema, { type: 'call', summary: 'x', close: { lostCategory: 'PRICE' } })).toHaveProperty('close');
   });
 
   it('an outcome needs a contact, never a note', () => {
@@ -105,6 +111,7 @@ describe('the small forms', () => {
       .toMatchObject({ floors: 3, buildingAgeYears: 0, budgetBand: '1l_5l' });
     expect(qualificationSchema.safeParse({ floors: 2.5 }).success).toBe(false);
     expect(qualificationSchema.safeParse({ floors: -1 }).success).toBe(false);
+    expect(qualificationSchema.safeParse({ floors: 61 }).success).toBe(false);
     expect(qualificationSchema.safeParse({ budgetBand: 250000 }).success).toBe(false);
   });
 });

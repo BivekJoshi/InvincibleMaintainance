@@ -817,12 +817,39 @@ invoice and `invoicedAt` in one transaction. A `/tech` field allowlist and a key
   `LABOUR-SKILL`, per hour); none → 422 `LABOUR_RATE_MISSING`. Every invoice is written by one paisa-native
   `insertInvoice`, and the job is claimed (`invoicedAt`, compare-and-swap) in the same transaction.
 
-**L1 · Lead follow-through (≈3 days)** — next action + follow-up date, structured call outcomes that move the stage,
+**L1 · Lead follow-through (≈3 days) · ✅ done 2026-09-26** — next action + follow-up date, structured call outcomes that move the stage,
 qualification card, QUOTED on *send*, board drops that open the booking / quotation dialog, `leads:followups` and
 `pipeline:stale` crons (deduplicated), lost categories + lost report. *Acceptance:* "No answer" on a NEW lead meets
 the SLA and schedules the next call; "Book visit" moves to CONTACTED and opens the dialog; a board drop to QUOTED
 with no quotation opens the sheet and reverts on cancel; a stale quote reminds once across two cron runs; the lost
 report shows categories.
+
+**Deviations (Phase L1, 2026-09-26)**
+- **Outcomes, as built:** no_answer · wrong_number · call_back · book_visit · quote_without_visit · price_shopping ·
+  not_now · not_interested. Defaults: No answer → CALL in `pipeline.noAnswerRetryMinutes` (120); book visit →
+  BOOK_VISIT now (+ `dialog: 'visit'`); quote without visit → SEND_QUOTE now (+ `dialog: 'quotation'`); price
+  shopping → FOLLOW_UP in 3 days. Call back and Not now need the time; Wrong number needs a next action or a close;
+  Not interested needs the close. A plain contact with no outcome still logs (and counts as an attempt).
+- **LOST without a category is 400, not 422** — a zod refine, like the old reason rule; the 422 code is
+  `NEXT_ACTION_REQUIRED` (activities) and `LEAD_CLOSED` (next action on a closed lead). OTHER also needs the reason.
+- **Qualification is one zod-checked `Json`** (`leadQualification`, strict): five optional descriptive answers that
+  nothing filters on, which the business will extend — no enum migrations for a new budget band.
+- **Next actions are booked by the flows too:** convert with a visit → VISIT at the visit time; a draft (convert
+  or survey) → SEND_QUOTE now; send → FOLLOW_UP in `pipeline.quoteUnansweredDays`. New leads get none — the 2-hour
+  SLA already clocks them, and a second "call" reminder would duplicate it.
+- **Reminders are in-app only** (the digest included) and repeat once a Kathmandu day while their condition holds;
+  `Notification.dedupeKey` is `<rule>:<record>:<day>:<userId>`, inserted with `skipDuplicates`. The `pipeline.*`
+  settings sit in the SLA group of the settings screen.
+- **A decline or an expiry** notifies the lead owner and the quotation's author (`lead_mark_lost`, link
+  `/admin/leads/:id?markLost=1`, which opens the dialog); the lead never changes.
+- **Board and status menu:** a drop on Visit booked opens the booking; a drop on Quoted opens the new-quotation
+  sheet only when the lead has no quotation (the board reads the lead to know) — the draft leaves the card where
+  the server puts it (CONTACTED), with a toast that it moves when sent. The lead page's status menu follows the
+  same rules. Follow-up views narrow My leads / All leads rather than switching to All, so the digest link lands on
+  the salesperson's own leads. The lost report opens on the last 90 Kathmandu days.
+- **Migrations:** `lead_follow_up` (fields, enum, backfills of stageEnteredAt, contactAttempts and the lost stage
+  from the timeline; existing losses categorised DUPLICATE_SPAM when merged, else OTHER) and
+  `notification_dedupe_key`.
 
 **L2 · Foundations, rate library & money wall (≈4 days)** — money/quantity functions, construction units, material
 packs, trades, capabilities, settings, recipe editor with live cost-vs-rate and reprice, seeded DoR-style recipes.
@@ -921,8 +948,8 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | F Quotation approval ✅ 2026-09-17 (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
 | G Audit & platform UI ✅ 2026-09-17 | 3 | 28 | Traceability, users, templates |
 | H1 Operations — back office ✅ 2026-09-17 | 4 | 32 | Dispatch and job management |
-| L0 Hotfixes | 1 | 33 | No double billing, no pay visible in the field app |
-| L1 Lead follow-through | 3 | 36 | Every lead has a next action; nothing goes cold unseen |
+| L0 Hotfixes ✅ 2026-09-26 | 1 | 33 | No double billing, no pay visible in the field app |
+| L1 Lead follow-through ✅ 2026-09-26 | 3 | 36 | Every lead has a next action; nothing goes cold unseen |
 | L2 Rate library & money wall | 4 | 40 | Recipe rates; cost only for managers |
 | L3 BOQ builder | 5 | 45 | Excel-grade quotation with take-off and labour days |
 | L4 Terms & customer document | 4 | 49 | Payment schedule, contract type, print, Excel |

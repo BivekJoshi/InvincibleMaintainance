@@ -75,6 +75,11 @@ The CRM files (Phase E):
 - `usersApi.js`, `auditApi.js`, `messagesApi.js` (Phase G, ADMIN) — see "Platform (Phase G)". `previewTemplate` is a
   **query** although it is a POST: it reads, and caching by its arguments is what a live preview wants.
 - `jobsApi.js`, `stockApi.js` (Phase H1) — see "Operations (Phase H1)".
+- Phase L1 added to `leadsApi.js` **`setLeadNextAction`** (`PATCH …/next-action`: `{ at, type, note }`, or `{ at: null }` to
+  clear) and uses the lazy **`useLazyGetLeadQuery`** on the board (a list row does not say whether a quotation exists).
+  `addLeadActivity` now carries the outcome contract: the answer has `lead` (status, next action, attempts after it) and
+  `dialog` (`'visit'` | `'quotation'` | null). **`reportsApi.js`** holds the sales reports — `getLostReport({ from, to })`
+  (tag `{ type: 'Report', id: 'lost' }`, refreshed with the lead list).
 - `dashboardApi.js` also holds **`getBreachedLeadCount`** (the SLA nav badge): the shell loads that file, and a count must
   not pull `leadsApi` into the main bundle.
 
@@ -91,7 +96,7 @@ The CRM files (Phase E):
 | `media/` | The media library screen's own parts: `MediaFolderTree` (folders as an indented tree) and `MediaDetailsSheet` (one file's facts, URL and alt/caption/folder form — a `ResourceForm` sheet) — and `MediaCell`, a list column's thumbnail of one media id (the gallery, features). |
 | `projects/` | `ProjectGalleryTab` — the Gallery tab of a project's edit page (add from the library or upload, drag or Move earlier/later, remove; each change saves at once through the project image endpoints) — and `ProjectName`, a project's title from its id for a list column. |
 | `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
-| `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog`, `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (typed entries; shows the response result), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice), `ConvertResult` (what a convert made, with links), `LeadPhotoGallery` (what the customer photographed, with a lightbox: arrow keys, thumbnails, full size), `ResponseRunway` (the SLA board's hero: every unanswered lead on its two-hour clock; `RunwayStrip` is the one-line version on the dashboard) and `LeadStageTrack` (a lead's road from New to Won on its page). |
+| `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog` (a required lost category, then the words — required only for "Other"), `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (**the outcome composer** — see "Lead follow-through (Phase L1)"), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice; `ConvertLeadSheet purpose="quotation"` is the **new-quotation sheet** — always a draft quotation, no switch; both report completion before they close, so a caller can tell done from Cancel), `ConvertResult` (what a convert made, with links), `LeadPhotoGallery` (what the customer photographed, with a lightbox: arrow keys, thumbnails, full size), `ResponseRunway` (the SLA board's hero: every unanswered lead on its two-hour clock; `RunwayStrip` is the one-line version on the dashboard) `LeadStageTrack` (a lead's road from New to Won on its page; a lost lead shows its category and the stage it was lost at), and Phase L1's `NextActionCard`, `QualificationCard` and `StageAgeChip` (see "Lead follow-through (Phase L1)"). |
 | `customers/` | `CustomerFormSheet` (new customer), `CustomerAvatar` (initials in a steady colour; squared for a company), `CustomerBook` (the list's summary tiles, each a filter) and `MapPinInput` ("use map pin": pasted coordinates fill a site's latitude and longitude — it sits in the site form's `intro`, inside the form). |
 | `jobs/` | Phase H1, shared by the jobs list, the job page and the dispatch board: `JobFormSheet` (new job; the site and quotation follow the customer), `ScheduleJobDialog` (window, who goes, lead, "text the customer" — the board's non-drag path), `AssignJobDialog`, `CompleteJobDialog` (note, signature photo, rating, warranty). |
 | `stock/` | `StockMovementsSheet` — one material's movements, paged (Phase H1). |
@@ -182,6 +187,11 @@ media sheet's preview).
 - `stickyActions` keeps Save in view at the bottom of a long page-mode form.
 - `onValuesChange(values)` is told the typed values on every change — a live preview beside the form (the message
   template editor). Pass a stable function (a state setter).
+- **Fields that follow the values** (the outcome composer shows a time for "Call back at…", a lost category for "Not
+  interested"): compute `fields` from what `onValuesChange` reports, and give `defaultValues` **every** field the form can
+  show, blank. The form resets a clean form when its starting values change, and a starting point that grew with each
+  field shown would wipe the pick that showed it (react-hook-form reports `isDirty` a render late). A value whose field
+  is hidden stays in the form, so build the request from what the pick uses, not from everything (`activityBody`).
 
 One file per field type under `fields/`. Every spec has `name`, `type`, `label`, and optionally
 `description`, `placeholder`, `required`, `disabled`, `span: 'half'`, `defaultValue` — and, in a registry entry,
@@ -506,9 +516,10 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
 
 | Route | Page | Does |
 |---|---|---|
-| `/admin/leads` | `LeadsPage` | CustomTable opening on **My leads** (D6) with a one-click **All leads**; filters status, priority, source, service, owner (with Unassigned), response state, requested visit, date; URL-saved views; New lead sheet; bulk Assign (one `bulk-assign` request) and Export selected; Export (filtered) |
-| `/admin/leads/board` | `LeadBoardPage/` | the pipeline: a column per status (the list endpoint, 20 per column, "+N more" to the table); drag by the handle or use a card's "Move to" menu; only `LEAD_TRANSITIONS` drops are open (others dim), LOST asks why, a refused move goes back with a toast; pointer collision; no layout animation under reduced motion |
-| `/admin/leads/:id` | `LeadDetailPage` | Edit, Change status, Assign, Convert (book the visit / without a visit), Delete; Overview (request, activity composer and timeline, where it got to), Duplicates (merge), History (`leads:history`) |
+| `/admin/leads` | `LeadsPage` | CustomTable opening on **My leads** (D6) with a one-click **All leads**; filters next action, status, priority, source, service, owner (with Unassigned), response state, requested visit, date; URL-saved views (the follow-up ones first: **Due today · Overdue · No next action**); a **Next action** column (sortable, `?sort=nextActionAt`) and an **"Nd in stage"** chip; New lead sheet; bulk Assign (one `bulk-assign` request) and Export selected; Export (filtered) |
+| `/admin/leads/board` | `LeadBoardPage/` | the pipeline: a column per status (the list endpoint, 20 per column, "+N more" to the table); drag by the handle or use a card's "Move to" menu; only `LEAD_TRANSITIONS` drops are open (others dim); a move with work behind it opens that work (**Visit booked** → the visit booking, **Quoted** without a quotation → the new-quotation sheet, **Lost** → why) and the card moves only when it completes; a refused move goes back with a toast; cards show "Nd in stage"; pointer collision; no layout animation under reduced motion |
+| `/admin/leads/:id` | `LeadDetailPage` | Edit, Change status (the board's rules: the visit and quotation dialogs), Assign, Convert (book the visit / without a visit), Delete; the **NextActionCard** above the tabs; Overview (request, the outcome composer and the timeline with each outcome, qualification, where it got to), Duplicates (merge), History (`leads:history`). `?markLost=1` opens Mark lost on load, then leaves the address |
+| `/admin/reports/lost` | `LostReportPage` | `reports:sales` (nav: Sales › Lost leads). Why leads are lost: the count per category, then a CustomTable of category × the stage it was lost at × service with its share; a "Lost between" range in the URL (the last 90 Kathmandu days to start); Export. Phase I10 folds it into `/admin/reports` |
 | `/admin/customers` | `CustomersPage` | CustomTable: sites, open jobs, language, balance due for `invoices:read`; type filter, a tag chip filters by tag; New customer sheet |
 | `/admin/customers/:id` | `CustomerDetailPage/` | Profile form (read-only without `customers:write`), Sites (one primary; "use map pin"), Timeline, the record tabs a role may read (quotations link to their page; the rest say Soon), Statement (`reports:finance`), History (`customers:history`) |
 
@@ -516,6 +527,53 @@ Both converts ask **"same person / different person"** whenever an existing cust
 (`CustomerMatchChoice`); Book / Convert waits for the answer, and the lead's email reaches an existing customer only when
 "Also save … on this customer" is ticked. The public contact form and booking wizard send an optional email and the
 site's language (`uiSlice.locale`) as `preferredLocale`.
+
+### Lead follow-through (Phase L1)
+
+Every open lead has a next action and a clock. The API holds the rules (`lead.service#addActivity`); the screens show
+them and refuse what the API would.
+
+- **`components/leads/NextActionCard`** — at the top of the lead page: what is next, when (Kathmandu words — "Today,
+  14:30", "Tomorrow, 10:00", "Mon 21 Sept, 10:00"), overdue set apart on the destructive surface **and** labelled
+  "Overdue" with how late; "Due today" otherwise; contact attempts and days in stage. **Done** clears it (`at: null`),
+  **Reschedule** is a `FormDialog` (time, type, note); an open lead with nothing next says so and offers "Set next
+  action". Nothing for a won or lost lead.
+- **The outcome composer** (`components/leads/ActivityComposer`) — a `ResourceForm` whose fields follow the pick
+  (`config/admin/crmForms.js#activityFieldsFor`): for a contact on an open lead, **What came of it** (`LEAD_OUTCOMES`), then
+  what that outcome needs — a time for "Call back at…" / "Not now" (the type defaults to the outcome's suggestion,
+  `OUTCOME_NEXT_TYPE`), the lost category (+ words for "Other") for "Not interested", "next action or close" for "Wrong
+  number", and "Set a different next action" for the rest (off: the API's default, in words). The summary may stay empty
+  (the outcome's words are sent). `activityFormSchema` refuses what the API would answer 422 `NEXT_ACTION_REQUIRED`;
+  `activityBody(values)` builds the request. After the save it opens the step the answer's `dialog` names — the visit
+  booking or the new-quotation sheet — and calls `onLogged(activity, followUp)` once that is done or cancelled, so the SLA
+  board's dialog stays up for it. A note, or a won / lost lead, has no outcome.
+- **`hooks/useLeadFollowUp`** — `const [openFollowUp, dialogs] = useLeadFollowUp()`, then `await openFollowUp(lead,
+  'visit' | 'quotation')` → the convert's result, or null on Cancel. The quotation path toasts "Draft QT-… created — The
+  lead moves to Quoted when the quotation is sent" (QUOTED means *sent*; drafting never moves the lead). The composer,
+  the board and the lead page's status menu use it.
+- **Board drops** — `helpers/leadBoard.js#dropDialogFor(to, hasQuotation(lead))`: `visit` for Visit booked, `quotation` for
+  Quoted without a quotation (the board reads the lead's record when the row does not say), `lost` for Lost, null for a
+  plain `PATCH /status`. The drop, the keyboard sensor and the "Move to" menu all run one `move`; the card stays put while a
+  dialog is open and shows wherever the server lists it afterwards.
+- **`components/leads/QualificationCard`** — property, floors, building age, budget band (a label, never money), who
+  decides (including "Owner abroad"): what is known, and "Missing: budget, decision maker…" (`helpers/leadFollowUp.js#
+  qualificationSummary`; land is not asked for floors or age). Edit is a `FormDialog` saving `qualification` through
+  `PUT /admin/leads/:id` (null when emptied).
+- **`components/leads/StageAgeChip`** — "4d in stage" / "In stage today" from `stageEnteredAt` (whole days, rounded down;
+  amber from 3 days), on list rows, board cards and the NextActionCard.
+- **Views** — `config/admin/leadViews.js`: Due today · Overdue · No next action → `?nextAction=due_today|overdue|none`.
+  They are `keepView` presets: they narrow My leads or All leads, whichever is on, rather than switching to All — the
+  morning digest's link (`/admin/leads?nextAction=due_today`) lands on the salesperson's own. `clearPreset` switches one
+  off. The Filters panel has the same **Next action** filter.
+- **Lost** — `LostReasonDialog` asks a category (`LOST_CATEGORIES`, required) beside the words; `useLeadStatusChange`
+  sends `{ status: 'LOST', lostCategory, lostReason? }`. A declined or expired quotation's notification links to
+  `/admin/leads/:id?markLost=1`, which opens it — a person decides; nothing is lost automatically.
+- `helpers/leadFollowUp.js` — `nextActionState` (none · overdue · today · later, "today" by Kathmandu's calendar),
+  `formatWhen`, `lateBy`, `daysInStage`, `stageAgeLabel`, `isClosedLead`, `qualificationSummary`.
+- Tests: `pages/admin/LeadFollowUp.test.jsx` (the card, the composer, the lost dialog, the views, `?markLost=1`, the
+  qualification card, the status menu, the lost report — with Devanagari names and notes), the board's Phase L1 block in
+  `LeadScreens.test.jsx`, `helpers/leadFollowUp.test.js`, `form/schemas/lead.schema.test.js`, and `crmMirror.test.js` for
+  the new lists.
 
 ## The admin shell
 
@@ -569,7 +627,8 @@ The sidebar's brand comes from `useSiteSettings` (the company name in settings).
 the unread count polls every `SHELL_POLL_MS` (the dashboard refreshes on the same beat); the list loads when the panel
 opens; opening an item marks it read and navigates to `notificationHref(link)`; "Mark all as read" clears the badge.
 Since Phase E the API writes every staff link as an `/admin/...` path (`/tech/...` for field staff);
-`notificationHref` still reads the older `/leads/:id` and absolute forms, which remain in the database.
+`notificationHref` still reads the older `/leads/:id` and absolute forms, which remain in the database. A query string is
+kept: Phase L1's reminders open `/admin/leads/:id?markLost=1` and `/admin/leads?nextAction=due_today|overdue`.
 
 ## three/
 
@@ -718,7 +777,9 @@ deliberate copy of one rule; change them together.
 `schemas/fields.js` holds field-level building blocks (`nepaliPhone` — a mobile or a landline with its area code —
 `optionalPhone`, `optionalEmail` — trimmed and lower-cased, as the API stores it — `preferredLocale`, `personName`,
 `rupees`); the `*.schema.js` files compose them. `lead.schema.js` has the public form (with an optional email), the
-staff lead (`adminLeadSchema`), the lost reason, the activity and the convert site; `customer.schema.js` has the
+staff lead (`adminLeadSchema`), the lost reason (category + words), the activity — `leadActivitySchema` (the API body)
+and `activityFormSchema` (the composer's flat values), both checked by `leadOutcomeIssues`, the API's outcome rules —
+`activityBody`, `nextActionSchema`, `qualificationSchema` and the convert site (`lead.schema.test.js`); `customer.schema.js` has the
 customer and site and `parseMapPin`. `contactFields.test.js` covers mobile, landline and invalid numbers on every
 contact form, email normalisation and Devanagari names. These mirror the backend's zod
 schemas — when an API rule changes, change it here in the same commit. `cms.schema.js` mirrors the
@@ -734,8 +795,10 @@ There is no `formKit.js`-style barrel for it: import the schema you need.
 ## config/ vs helpers/
 
 `config/` is data that describes the system: `constants.js` (enums mirroring the
-backend — including `LEAD_TRANSITIONS`, the lead state machine the status menu and the board offer, and the loggable
-activity types; `config/crmMirror.test.js` imports the API's own files and fails when they drift — plus
+backend — including `LEAD_TRANSITIONS`, the lead state machine the status menu and the board offer, the loggable
+activity types, and Phase L1's `LEAD_OUTCOMES` / `REACHED_OUTCOMES`, `NEXT_ACTION_TYPES`, `LOST_CATEGORIES`,
+`PROPERTY_TYPES`, `BUDGET_BANDS` and `DECISION_MAKERS`, each with its `*_LABELS`; `config/crmMirror.test.js` imports the
+API's own files and fails when they drift or a value has no words — plus
 `SHELL_POLL_MS` and status→Tailwind maps), `auditEvents.js` (every `AUDIT_EVENTS` name in words, for History; the same
 test checks the list), `env.js` (the single place `import.meta.env` is read),
 `locale.js` (timezone, currency, the Nepali phone rule), `theme.js` (the colour
@@ -746,8 +809,11 @@ inspection / 2-hour response / 1-month warranty, in one place), `company.js` (th
 settings keys, and what the header shows before `/public/bootstrap` answers). `admin/` is the back
 office's own: `adminNav.js` (the grouped nav, landing, breadcrumbs, `BESPOKE_CONTENT`), `resourceRegistry.js` and
 `resources/` (one entry per CMS resource — see "The resource registry"), `crmForms.js` (the lead, customer, site,
-activity, lost-reason, assign and convert forms as `ResourceForm` fields, and the assignee and service relations),
-`leadViews.js` (My leads / All leads → the API's `assignedToId=me`, and the URL-saved presets: Breached, Unassigned,
+activity, lost-reason, assign and convert forms as `ResourceForm` fields, and the assignee and service relations; since
+Phase L1 `activityFieldsFor(pick)` — the outcome composer's fields for what is picked — `OUTCOME_DEFAULT_NEXT`,
+`nextActionFormFields` and `qualificationFields`),
+`leadViews.js` (My leads / All leads → the API's `assignedToId=me`, and the URL-saved presets: Due today, Overdue, No
+next action (`keepView` — see "Lead follow-through (Phase L1)"), Breached, Unassigned,
 Bookings this week — the Kathmandu week starts on Sunday), `customerTabs.jsx` (the customer page's record tabs: columns,
 links, and which role may see each), `homeSections.js` (what each home
 section shows, where its content is edited, which ones take a `limit`, and `toSectionItems`), and `settingsForm.js`
@@ -762,8 +828,9 @@ section shows, where its content is edited, which ones take a `limit`, and `toSe
 and `linkIssue`, the admin forms' check), `schedule.js` (`offerWindow` — live / scheduled / ended — and
 `publishState` — draft / scheduled / published — worded by Kathmandu calendar day),
 `permissions.js` (`can(role, capability)` — navigation only; the API is the authority; the parity test holds it to
-the API's map), `leadBoard.js` (`nextStatuses`, `canDrop`, `cardsForColumn`, `columnTableHref`, `responseResult` —
-"Responded in 34 min — within the promise"), `history.js` (`describeHistoryEntry`, `diffRows`, `foldHistory`),
+the API's map), `leadBoard.js` (`nextStatuses`, `canDrop`, `dropDialogFor` and `hasQuotation` — which moves open a dialog —
+`cardsForColumn`, `columnTableHref`, `responseResult` — "Responded in 34 min — within the promise"), `leadFollowUp.js`
+(Phase L1: next action state, Kathmandu "when" words, days in stage, qualification summary), `history.js` (`describeHistoryEntry`, `diffRows`, `foldHistory`),
 `customerMatch.js` (convert's customer decision: `initialChoice`, `choiceBody`, `emailDiffers`), `leadDisplay.js`
 (`describeEstimate` — a website estimate as sentences — and `mergePreview`),
 `utils.js` (`cn`), `offlineQueue.js` (IndexedDB queue for the field app), `mediaFolders.js`
@@ -774,8 +841,9 @@ and were removed in C2) — import the module itself.
 
 `hooks/` also holds the admin kit's behaviour: `useJobActions` and `useScheduleCommit` (Phase H1), `useConfirm`, `useUnsavedChangesGuard`,
 `useDebouncedValue`, `useListParams` (whose `defaults` are compared by value), `useLeadStatusChange` (the one way a
-screen moves a lead: `const [changeStatus, dialog] = useLeadStatusChange()`; LOST asks why first; resolves false when
-refused or cancelled, so the board can put a card back), `useNavBadges`, and `useResourceEntry`
+screen moves a lead: `const [changeStatus, dialog] = useLeadStatusChange()`; LOST asks why first — a category and the
+words; resolves false when refused or cancelled, so the board can put a card back), `useLeadFollowUp` (Phase L1: opens the
+visit booking or the new-quotation sheet and resolves with the result, or null on Cancel), `useNavBadges`, and `useResourceEntry`
 (the registry entry behind `/admin/content/:resource` — or a fixed route's `resource` — with the capability check).
 
 `hooks/useSiteSettings.js` sits between the two: it reads the cached bootstrap

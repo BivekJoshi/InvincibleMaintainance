@@ -50,13 +50,14 @@ const OTHER_NEEDS_REASON = 'Say why — “Other” needs a reason';
 
 /**
  * Marking a lead lost: the category is required (the lost report groups by it); the free text is
- * optional except with OTHER. Mirrors the API's `leadStatusSchema` for `status: 'LOST'`.
+ * optional except with OTHER. Mirrors the API's `leadStatusSchema` for `status: 'LOST'` (and its
+ * activity `close`).
  */
 export const lostReasonSchema = z.object({
   lostCategory: z.enum(LOST_CATEGORIES, { errorMap: () => ({ message: 'Pick why the lead was lost' }) }),
   lostReason: blankToUndefined(500),
 }).superRefine((v, ctx) => {
-  if (v.lostCategory === 'OTHER' && (v.lostReason ?? '').length < 3) {
+  if (v.lostCategory === 'OTHER' && !v.lostReason) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['lostReason'], message: OTHER_NEEDS_REASON });
   }
 });
@@ -75,7 +76,7 @@ export const OUTCOMES_NEXT_OR_CLOSE = ['wrong_number'];
  * @returns {{ path: (string|number)[], message: string }[]}
  */
 export function leadOutcomeIssues({ type, outcome, nextAction, close }) {
-  if (!outcome) return [];
+  if (!outcome) return close ? [{ path: ['close'], message: 'Closing a lead from the timeline needs the outcome that closed it' }] : [];
   if (!CONTACT_ACTIVITY_TYPES.includes(type)) {
     return [{ path: ['outcome'], message: 'A note has no outcome — log a call, SMS, WhatsApp, email or visit' }];
   }
@@ -93,9 +94,10 @@ export function leadOutcomeIssues({ type, outcome, nextAction, close }) {
   if (nextAction && !nextAction.at) issues.push({ path: ['nextAction', 'at'], message: 'Say when' });
   if (nextAction?.at && !nextAction.type) issues.push({ path: ['nextAction', 'type'], message: 'Say what to do next' });
   if (close && !close.lostCategory) issues.push({ path: ['close', 'lostCategory'], message: 'Pick why the lead was lost' });
-  if (close?.lostCategory === 'OTHER' && (close.lostReason ?? '').length < 3) {
+  if (close?.lostCategory === 'OTHER' && !close.lostReason) {
     issues.push({ path: ['close', 'lostReason'], message: OTHER_NEEDS_REASON });
   }
+  if (nextAction && close) issues.push({ path: ['close'], message: 'Book a next action or close the lead — not both' });
   return issues;
 }
 
@@ -233,7 +235,7 @@ const optionalCount = (max, message) => z.preprocess(
  */
 export const qualificationSchema = z.object({
   propertyType: z.enum(PROPERTY_TYPES).optional(),
-  floors: optionalCount(100, 'At most 100 floors'),
+  floors: optionalCount(60, 'At most 60 floors'),
   buildingAgeYears: optionalCount(300, 'At most 300 years'),
   budgetBand: z.enum(BUDGET_BANDS).optional(),
   decisionMaker: z.enum(DECISION_MAKERS).optional(),

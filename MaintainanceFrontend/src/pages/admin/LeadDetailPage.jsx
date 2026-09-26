@@ -34,10 +34,11 @@ import { PageTransition, Stagger } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useLeadStatusChange } from '@/hooks/useLeadStatusChange';
+import { useLeadFollowUp } from '@/hooks/useLeadFollowUp';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { ACTIVITY_LABELS, LEAD_OUTCOME_LABELS, LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS } from '@/config/constants';
 import { formatDate, formatDateTime, formatNpr, initials, relativeTime, titleCase } from '@/helpers/format';
-import { canDrop, toneStyle } from '@/helpers/leadBoard';
+import { canDrop, dropDialogFor, hasQuotation, toneStyle } from '@/helpers/leadBoard';
 import { whatsappHref } from '@/helpers/contact';
 
 const TABS = ['overview', 'duplicates', 'history'];
@@ -142,6 +143,7 @@ export default function LeadDetailPage() {
   const { data: duplicates } = useGetLeadDuplicatesQuery(id);
   const [deleteLead] = useDeleteLeadMutation();
   const [changeStatus, statusDialog] = useLeadStatusChange();
+  const [openFollowUp, followUpDialogs] = useLeadFollowUp();
   const [confirm, confirmDialog] = useConfirm();
   const [open, setOpen] = useState(null); // 'edit' | 'assign' | 'visit' | 'convert'
   const [converted, setConverted] = useState(null);
@@ -190,6 +192,17 @@ export default function LeadDetailPage() {
 
   const closed = ['WON', 'LOST'].includes(lead.status);
   const whatsapp = whatsappHref(lead.phone);
+
+  // "Change status" runs the board's rules: Visit booked books the visit, Quoted without a quotation
+  // starts one (the lead moves when it is sent), Lost asks why.
+  const moveTo = (to) => {
+    const dialog = dropDialogFor(to, hasQuotation(lead));
+    if (dialog === 'visit' || dialog === 'quotation') {
+      openFollowUp(lead, dialog).then((result) => { if (result) setConverted(result); });
+    } else {
+      changeStatus(lead, to);
+    }
+  };
 
   return (
     <PageTransition>
@@ -242,7 +255,7 @@ export default function LeadDetailPage() {
             {canWrite ? (
               <>
                 <Button variant="outline" size="sm" onClick={() => setOpen('edit')}><Pencil /> Edit</Button>
-                <LeadStatusMenu lead={lead} onChange={(to) => changeStatus(lead, to)} />
+                <LeadStatusMenu lead={lead} onChange={moveTo} />
                 <Button variant="outline" size="sm" onClick={() => setOpen('assign')}><UserPlus /> Assign</Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -294,7 +307,7 @@ export default function LeadDetailPage() {
                 {canWrite ? (
                   <ActivityComposer
                     lead={lead}
-                    defaultType={lead.firstResponseAt ? 'note' : 'call'}
+                    defaultType={closed ? 'note' : 'call'}
                     onLogged={(_activity, followUp) => { if (followUp) setConverted(followUp); }}
                   />
                 ) : null}
@@ -331,6 +344,7 @@ export default function LeadDetailPage() {
           ) : null}
           <ConvertResult result={converted} onOpenChange={(o) => { if (!o) setConverted(null); }} />
           {statusDialog}
+          {followUpDialogs}
         </>
       ) : null}
       {confirmDialog}

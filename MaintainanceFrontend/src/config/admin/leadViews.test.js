@@ -82,7 +82,7 @@ describe('follow-up presets (Phase L1)', () => {
 
     const all = applyPreset({ view: 'all' }, preset(key), now);
     expect(all.view).toBe('all');
-    expect(leadQueryFor(all)).not.toHaveProperty('assignedToId');
+    expect(leadQueryFor(all).assignedToId).toBeUndefined();
 
     expect(activePreset(mine, now)).toBe(key);
     expect(activePreset(all, now)).toBe(key);
