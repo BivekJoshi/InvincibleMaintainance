@@ -161,6 +161,12 @@ describe('field survey flow', () => {
     expect(expectStatus(res, 201).data.photos[0].kind).toBe('ISSUE');
   });
 
+  it('the office review resolves each site photo to its image (defect #18)', async () => {
+    const body = expectStatus(await (await as('SALES')).get(`/admin/surveys/${surveyId}`), 200).data;
+    const photo = body.job.photos.at(-1);
+    expect(body.media[photo.mediaId]).toMatchObject({ id: photo.mediaId, url: expect.any(String) });
+  });
+
   it('POST /tech/surveys/:id/submit closes the inspection job', async () => {
     const body = expectStatus(await surveyor.post(`/tech/surveys/${surveyId}/submit`).send({
       items: [{ kind: 'OTHER', description: 'Crack stitching', unit: 'rft', qty: 6 }],

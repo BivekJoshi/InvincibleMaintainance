@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  as, expectStatus, createAssignedJob, pngBuffer, prisma, uid, daysFromNow,
+  anon, as, approveAndSend, expectStatus, createAssignedJob, pngBuffer, prisma, technicianIdFor, uid, daysFromNow,
 } from './helpers.js';
 
 let tech;
@@ -127,5 +127,64 @@ describe('POST /tech/sync', () => {
     expectStatus(await tech.post('/tech/sync').send({
       mutations: [{ idempotencyKey: uid('k-'), at: new Date().toISOString(), kind: 'status', payload: {} }],
     }), 400);
+  });
+});
+
+describe('the field app never carries money (D1, defect #17)', () => {
+  /** Any key that names a price, cost, pay or amount — words split on camelCase. */
+  const MONEY_WORDS = new Set(['rate', 'rates', 'amount', 'total', 'subtotal', 'discount', 'margin', 'balance',
+    'cost', 'costs', 'price', 'prices', 'wage', 'wages', 'paid', 'vat', 'estimate']);
+  const ALLOWED = new Set(['priceUnit']); // "sq.ft" — the unit a service is sold in, not a price
+  function moneyKeys(value, path = 'data', found = []) {
+    if (Array.isArray(value)) value.forEach((v, i) => moneyKeys(v, `${path}[${i}]`, found));
+    else if (value && typeof value === 'object') {
+      for (const [k, v] of Object.entries(value)) {
+        const words = k.split(/(?=[A-Z])/).map((w) => w.toLowerCase());
+        // A foreign key (`rateCardItemId`) links to a record; it carries no amount.
+        if (!ALLOWED.has(k) && !k.endsWith('Id') && words.some((w) => MONEY_WORDS.has(w))) found.push(`${path}.${k}`);
+        moneyKeys(v, `${path}.${k}`, found);
+      }
+    }
+    return found;
+  }
+
+  it('no /tech response names a rate, cost, total or pay — on a quoted job with materials and time', async () => {
+    const [sales, dispatcher] = await Promise.all([as('SALES'), as('DISPATCHER')]);
+    const customer = expectStatus(await sales.post('/admin/customers').send({ name: `Money wall ${uid()}`, phone: `98${String(Date.now()).slice(-8)}` }), 201).data;
+    const quote = expectStatus(await sales.post('/admin/quotations').send({
+      customerId: customer.id, items: [{ description: 'Seepage treatment', unit: 'sq.ft', qty: 100, rate: 220 }],
+    }), 201).data;
+    const { publicToken } = await approveAndSend(quote.id);
+    expectStatus(await anon().post(`/public/quotations/${publicToken}/decide`)
+      .set('User-Agent', 'Mozilla/5.0 (Linux; Android 14) Mobile').send({ decision: 'approve' }), 200);
+    const quotedJob = await prisma.job.findFirst({ where: { quotationId: quote.id } });
+    const [me, colleague] = await Promise.all([technicianIdFor('TECHNICIAN'), technicianIdFor('TECHNICIAN2')]);
+    expectStatus(await dispatcher.post(`/admin/jobs/${quotedJob.id}/schedule`).send({
+      scheduledStart: new Date().toISOString(), scheduledEnd: new Date(Date.now() + 4 * 3600e3).toISOString(),
+      technicianIds: [me, colleague], notifyCustomer: false,
+    }), 200);
+    const material = await prisma.material.findFirst({ where: { deletedAt: null, isActive: true } });
+
+    const responses = {
+      status: await tech.patch(`/tech/jobs/${quotedJob.id}/status`).send({ status: 'IN_PROGRESS' }),
+      material: await tech.post(`/tech/jobs/${quotedJob.id}/materials`).send({ materialId: material.id, qty: 1 }),
+      timeStart: await tech.post(`/tech/jobs/${quotedJob.id}/time/start`).send({}),
+      timeStop: await tech.post(`/tech/jobs/${quotedJob.id}/time/stop`).send({}),
+      today: await tech.get('/tech/jobs/today'),
+      list: await tech.get('/tech/jobs'),
+      detail: await tech.get(`/tech/jobs/${quotedJob.id}`),
+      materials: await tech.get('/tech/materials'),
+      rateCard: await tech.get('/tech/rate-card'),
+      surveys: await (await as('SURVEYOR')).get('/tech/surveys'),
+    };
+    const leaks = Object.entries(responses).flatMap(([name, res]) => {
+      expect(res.status, `${name} → ${res.status}`).toBeLessThan(300);
+      return moneyKeys(res.body.data).map((k) => `${name}: ${k.replace(/\[\d+\]/g, '[]')}`);
+    });
+    expect([...new Set(leaks)]).toEqual([]);
+    // Still a working screen: the job, its people and its materials are there, without the money.
+    const job = responses.detail.body.data;
+    expect(job.assignments.map((a) => a.technician.user.name)).toHaveLength(2);
+    expect(job.materials[0]).toMatchObject({ qty: 1, material: { id: material.id } });
   });
 });

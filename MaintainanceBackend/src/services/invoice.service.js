@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
-import { notFound, badRequest, unprocessable } from '../utils/AppError.js';
+import { AppError, notFound, badRequest, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
 import { documentTotals, toPaisa, formatNpr, sum } from '../utils/money.js';
 import { nextNumber } from '../utils/numbering.js';
@@ -19,8 +19,10 @@ const INCLUDE = {
   quotation: { select: { id: true, number: true } },
 };
 
+const currentVatRate = async () => Number(await getSetting('finance.vatRate', env.business.vatRate));
+
 async function buildTotals(items, { discount = 0, vatApplied = true }) {
-  const vatRate = Number(await getSetting('finance.vatRate', env.business.vatRate));
+  const vatRate = await currentVatRate();
   const paisaItems = items.map((i, idx) => ({ ...i, qty: Number(i.qty), rate: toPaisa(i.rate), sortOrder: i.sortOrder ?? idx }));
   const totals = documentTotals(paisaItems, { discount: toPaisa(discount), vatApplied, vatRate });
   return { ...totals, items: totals.lines };
@@ -59,36 +61,89 @@ export async function getInvoice(id) {
   return inv;
 }
 
+/**
+ * Writes an invoice from lines already in paisa, inside the caller's transaction. Every invoice is
+ * created here, so its totals only ever come from `documentTotals`.
+ *
+ * @param {import('@prisma/client').Prisma.TransactionClient} tx
+ * @param {object} header customerId, quotationId, dueDate, note, …
+ * @param {{ description: string, unit?: string, qty: number, rate: number, jobId?: string }[]} items rate in paisa
+ * @param {{ discount?: number, vatApplied?: boolean, vatRate: number }} opts discount in paisa
+ */
+async function insertInvoice(tx, header, items, { discount = 0, vatApplied = true, vatRate }) {
+  const totals = documentTotals(
+    items.map((i, idx) => ({ ...i, qty: Number(i.qty), sortOrder: i.sortOrder ?? idx })),
+    { discount, vatApplied, vatRate },
+  );
+  const number = await nextNumber(tx, 'INV');
+  const invoice = await tx.invoice.create({
+    data: {
+      ...header,
+      number,
+      subtotal: totals.subtotal, discount: totals.discount, vatApplied: totals.vatApplied,
+      vatRate: totals.vatRate, vatAmount: totals.vatAmount, total: totals.total,
+      items: { create: totals.lines },
+    },
+    include: INCLUDE,
+  });
+  await recordEvent('invoice.created', {
+    model: 'Invoice',
+    recordId: invoice.id,
+    after: { number, status: invoice.status, total: invoice.total, customerId: invoice.customerId, quotationId: invoice.quotationId },
+  }, tx);
+  return invoice;
+}
+
+const defaultDueDate = async () => addDays(new Date(), Number(await getSetting('finance.paymentTermDays', 15)));
+
+/** A hand-made invoice; money arrives in rupees. */
 export async function createInvoice(input) {
   const { items, discount = 0, vatApplied = true, ...rest } = input;
-  const totals = await buildTotals(items, { discount, vatApplied });
-  const dueDays = Number(await getSetting('finance.paymentTermDays', 15));
-
-  return prisma.$transaction(async (tx) => {
-    const number = await nextNumber(tx, 'INV');
-    const invoice = await tx.invoice.create({
-      data: {
-        ...rest,
-        number,
-        dueDate: rest.dueDate ?? addDays(new Date(), dueDays),
-        subtotal: totals.subtotal, discount: totals.discount, vatApplied: totals.vatApplied,
-        vatRate: totals.vatRate, vatAmount: totals.vatAmount, total: totals.total,
-        items: { create: totals.items },
-      },
-      include: INCLUDE,
-    });
-    await recordEvent('invoice.created', {
-      model: 'Invoice',
-      recordId: invoice.id,
-      after: { number, status: invoice.status, total: invoice.total, customerId: invoice.customerId, quotationId: invoice.quotationId },
-    }, tx);
-    return invoice;
-  });
+  const [vatRate, dueDate] = await Promise.all([currentVatRate(), rest.dueDate ?? defaultDueDate()]);
+  const paisaItems = items.map((i) => ({ ...i, rate: toPaisa(i.rate) }));
+  return prisma.$transaction((tx) => insertInvoice(tx, { ...rest, dueDate }, paisaItems, {
+    discount: toPaisa(discount), vatApplied, vatRate,
+  }));
 }
 
 /**
- * Builds an invoice from the job's ACTUAL consumption — billable materials and
- * logged labour — rather than the estimate that was quoted.
+ * Logged time as one line at the rate card's labour rate (`finance.labourRateCode`, per hour).
+ * A technician's own hourly rate is what they cost the company, never what the customer pays.
+ */
+async function labourLine(jobId, minutes) {
+  const code = await getSetting('finance.labourRateCode', 'LABOUR-SKILL');
+  const item = await prisma.rateCardItem.findFirst({ where: { code, deletedAt: null } });
+  if (!item || item.unit !== 'hour') {
+    throw new AppError(422, 'LABOUR_RATE_MISSING',
+      `Logged time is billed at the rate-card item "${code}", priced per hour, and there is none. `
+      + 'Add it to the rate card, point finance.labourRateCode at another, or invoice without labour.');
+  }
+  return { jobId, description: item.name, unit: 'hour', qty: Number((minutes / 60).toFixed(2)), rate: item.rate };
+}
+
+/** What an unquoted job consumed: billable materials at the rate they were issued at, and labour. */
+async function actualLines(job, opts) {
+  const items = [];
+  if (opts.includeMaterials !== false) {
+    for (const m of job.materials.filter((x) => x.isBillable)) {
+      items.push({ jobId: job.id, description: `Material: ${m.material.name}`, unit: m.material.unit, qty: m.qty, rate: m.rate });
+    }
+  }
+  if (opts.includeLabour !== false) {
+    const minutes = sum(job.timeLogs.map((t) => t.minutes ?? 0));
+    if (minutes) items.push(await labourLine(job.id, minutes));
+  }
+  // Nothing recorded: one line to price by hand while the invoice is a draft.
+  if (!items.length) items.push({ jobId: job.id, description: job.title, unit: 'lump', qty: 1, rate: 0 });
+  return items;
+}
+
+/**
+ * Invoices a finished job by exactly one rule — never both (defect #16 billed both):
+ * - **From a quotation:** its lines, discount and VAT choice — what the customer accepted. Asking to
+ *   add materials or labour on top is 422 `QUOTED_JOB_BILLS_SCOPE`; extra work is invoiced on its own.
+ * - **Otherwise:** what it consumed (`actualLines`).
+ * `opts.discount` (rupees) and `opts.vatApplied` override the quotation's.
  */
 export async function createFromJob(jobId, opts = {}) {
   const job = await prisma.job.findFirst({
@@ -97,7 +152,7 @@ export async function createFromJob(jobId, opts = {}) {
       customer: true,
       quotation: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
       materials: { include: { material: { select: { name: true, unit: true } } } },
-      timeLogs: { include: { technician: { select: { hourlyRate: true, user: { select: { name: true } } } } } },
+      timeLogs: { select: { minutes: true } },
     },
   });
   if (!job) throw notFound('Job');
@@ -107,50 +162,28 @@ export async function createFromJob(jobId, opts = {}) {
   if (!job.isBillable) throw unprocessable('This job is marked non-billable');
   if (job.invoicedAt) throw unprocessable('This job has already been invoiced');
 
-  const items = [];
-  let sortOrder = 0;
-
-  // Quoted scope forms the base line items; it is what the customer agreed to.
-  if (job.quotation?.items?.length) {
-    for (const qi of job.quotation.items) {
-      items.push({ jobId, description: qi.description, unit: qi.unit, qty: qi.qty, rate: qi.rate / 100, sortOrder: sortOrder++ });
-    }
-  } else {
-    items.push({ jobId, description: job.title, unit: 'lump', qty: 1, rate: 0, sortOrder: sortOrder++ });
+  const quote = job.quotation?.items?.length ? job.quotation : null;
+  if (quote && (opts.includeMaterials || opts.includeLabour)) {
+    throw new AppError(422, 'QUOTED_JOB_BILLS_SCOPE',
+      `Job ${job.number} is billed at quotation ${quote.number}, which is what the customer accepted. `
+      + 'Invoice extra materials or labour separately.');
   }
+  const items = quote
+    ? quote.items.map((qi) => ({ jobId, description: qi.description, unit: qi.unit, qty: qi.qty, rate: qi.rate }))
+    : await actualLines(job, opts);
 
-  if (opts.includeMaterials !== false) {
-    for (const m of job.materials.filter((x) => x.isBillable)) {
-      items.push({
-        jobId, description: `Material: ${m.material.name}`, unit: m.material.unit,
-        qty: m.qty, rate: m.rate / 100, sortOrder: sortOrder++,
-      });
-    }
-  }
-
-  if (opts.includeLabour !== false) {
-    const minutes = sum(job.timeLogs.map((t) => t.minutes ?? 0));
-    const rate = job.timeLogs.find((t) => t.technician.hourlyRate)?.technician.hourlyRate ?? 0;
-    if (minutes && rate) {
-      items.push({
-        jobId, description: 'Labour', unit: 'hour',
-        qty: Number((minutes / 60).toFixed(2)), rate: rate / 100, sortOrder: sortOrder++,
-      });
-    }
-  }
-
-  const invoice = await createInvoice({
-    customerId: job.customerId,
-    quotationId: job.quotationId ?? null,
-    dueDate: opts.dueDate,
-    discount: opts.discount ?? 0,
-    vatApplied: opts.vatApplied ?? true,
-    note: `Invoice for job ${job.number}`,
-    items,
+  const [vatRate, dueDate] = await Promise.all([currentVatRate(), opts.dueDate ?? defaultDueDate()]);
+  const header = { customerId: job.customerId, quotationId: job.quotationId ?? null, dueDate, note: `Invoice for job ${job.number}` };
+  return prisma.$transaction(async (tx) => {
+    // Claimed first, so two accountants pressing at once get one invoice.
+    const { count } = await tx.job.updateMany({ where: { id: jobId, invoicedAt: null }, data: { invoicedAt: new Date() } });
+    if (!count) throw unprocessable('This job has already been invoiced');
+    return insertInvoice(tx, header, items, {
+      discount: opts.discount != null ? toPaisa(opts.discount) : (quote?.discount ?? 0),
+      vatApplied: opts.vatApplied ?? quote?.vatApplied ?? true,
+      vatRate,
+    });
   });
-
-  await prisma.job.update({ where: { id: jobId }, data: { invoicedAt: new Date() } });
-  return invoice;
 }
 
 export async function updateInvoice(id, input) {

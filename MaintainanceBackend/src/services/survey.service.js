@@ -10,6 +10,7 @@ import * as jobs from './job.service.js';
 import { createQuotation } from './quotation.service.js';
 import { transitionLead } from './lead.service.js';
 import { notify, notifyRoles } from './notify.service.js';
+import { resolveMediaMap } from './media.service.js';
 
 /**
  * A site survey is the report a surveyor fills in while standing on the site.
@@ -94,13 +95,18 @@ export async function listSurveys(query = {}) {
   return { items, meta: meta({ page, limit, total }) };
 }
 
+/**
+ * One survey. The office view also carries `media`, the site photos' images by media id — a
+ * photo row holds only the id, and the review page renders the picture (defect #18).
+ */
 export async function getSurvey(id, { field = false } = {}) {
   const survey = await prisma.siteSurvey.findFirst({
     where: { id, deletedAt: null },
     include: field ? FIELD_INCLUDE : INCLUDE,
   });
   if (!survey) throw notFound('Survey');
-  return survey;
+  if (field) return survey;
+  return { ...survey, media: await resolveMediaMap(survey.job?.photos?.map((p) => p.mediaId) ?? []) };
 }
 
 export async function mySurveys(technicianId, { status } = {}) {

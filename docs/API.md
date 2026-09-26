@@ -485,6 +485,7 @@ survey is `surveys:read`, but seeing any money is `quotations:read` — that is 
 GET    /admin/surveys                ?status&surveyorId&customerId&from&to&q     surveys:read
                                      status may list several: SUBMITTED,IN_REVIEW (400 on an unknown one)
 GET    /admin/surveys/:id            readings + quantity items + job photos      surveys:read
+                                     + media { [mediaId]: media } for those photos
 GET    /admin/surveys/:id/pricing    priced preview (paisa) + missing[]          quotations:read
 PATCH  /admin/surveys/:id/review     { status: IN_REVIEW|RETURNED, note }        surveys:write
                                      RETURNED requires a note and SMSes the surveyor
@@ -688,6 +689,11 @@ A movement that leaves a material at or below its reorder level notifies ADMIN a
 `ADMIN` and `DISPATCHER` may also call these; with `?technicianId=` they act on that
 technician's queue, and without one they have an empty queue rather than an error.
 
+**No money leaves this router (D1).** Every `/tech` response drops, at any depth, each key whose camelCase
+words name money — `rate`, `hourlyRate`, `total`, `amount`, `cost`, `price`, `discount`, `vat`, `paid`, `wage`,
+`margin`, `estimate`… (`utils/moneyWall.js`). Links (`…Id`) and `priceUnit` stay. So a job shows its quotation's
+number and status but not its total, a colleague's name but not their pay, a material's quantity but not its rate.
+
 ```
 GET   /tech/jobs/today
 GET   /tech/jobs                    ?from&to
@@ -727,7 +733,18 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
 GET    /admin/invoices/:id/history  invoices:history (ACCOUNTANT, ADMIN) · see "Record history"
 POST   /admin/invoices/:id/send
 POST   /admin/invoices/:id/void     { reason }
-POST   /admin/invoices/from-job/:jobId          once per job — a second is 422
+POST   /admin/invoices/from-job/:jobId          once per job — a second is 422. { dueDate?, discount? (rupees),
+                                                vatApplied?, includeMaterials?, includeLabour? }
+                                                One billing rule, never both:
+                                                · quoted job → its quotation's lines, discount and VAT
+                                                  choice (the invoice total equals the quotation's);
+                                                  includeMaterials / includeLabour → 422
+                                                  QUOTED_JOB_BILLS_SCOPE
+                                                · unquoted job → billable materials at their issued rate
+                                                  + logged time at the rate-card item named by
+                                                  finance.labourRateCode (per hour; default LABOUR-SKILL,
+                                                  missing → 422 LABOUR_RATE_MISSING), never a
+                                                  technician's hourlyRate. Both flags default on.
 POST   /admin/invoices/:id/payments             payments:write · an overpayment is refused;
                                                 status (PARTIAL / PAID) follows the paid total
 POST   /admin/invoices/:id/payments/:paymentId/void   payments:write · { reason } (3–500 chars)

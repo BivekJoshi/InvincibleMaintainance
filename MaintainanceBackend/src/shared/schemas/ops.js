@@ -300,11 +300,15 @@ export const invoiceUpdateSchema = invoiceSchema.partial().extend({
   items: z.array(invoiceItem).min(1).max(200).optional(),
 });
 
+/**
+ * A quoted job bills its quotation: `includeMaterials` / `includeLabour` apply to an unquoted job
+ * (default on) and are refused on a quoted one. `vatApplied` and `discount` default to the quotation's.
+ */
 export const invoiceFromJobSchema = z.object({
   dueDate: z.coerce.date().optional(),
-  includeMaterials: z.coerce.boolean().default(true),
-  includeLabour: z.coerce.boolean().default(true),
-  vatApplied: z.coerce.boolean().default(true),
+  includeMaterials: z.boolean().optional(),
+  includeLabour: z.boolean().optional(),
+  vatApplied: z.boolean().optional(),
   discount: optionalRupees,
 });
 

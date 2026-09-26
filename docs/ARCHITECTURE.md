@@ -156,6 +156,9 @@ links — ip and user agent say who), `system` (tasks, and scripts with no conte
 
 - Argon2id passwords; access tokens in memory only (never `localStorage`); refresh in httpOnly cookie.
 - RBAC enforced server-side on every admin route; UI hiding is cosmetic.
+- **Money wall (D1).** Field staff never see a price, a cost, a total or a colleague's pay: every `/tech` response
+  passes `utils/moneyWall.js#fieldSafe`, which drops money-named keys at any depth, and an API test scans every
+  field response for them. Phase L2 extends the wall to office roles with `costs:read`.
 - Public token links (quotation, warranty) are random 32-byte, single-purpose, expiring, scoped to one record.
 - Uploads validated by magic bytes, not extension; EXIF stripped; private media served via signed URLs.
 - CSP, HSTS, no inline scripts. Turnstile + honeypot + timing + IP rate limit on all public POSTs.

@@ -58,6 +58,8 @@ export const SETTINGS = [
     hint: 'When on, whoever prepared a quotation cannot approve it; another manager or admin must.' },
   { group: 'finance', key: 'quotation.autoApproveBelow', label: 'Approve quotations automatically below (paisa)', type: 'number', value: 0, sortOrder: 7,
     hint: 'In paisa (NPR × 100): 500000 means NPR 5,000. Quotations whose total is below it skip manager approval, revisions included. 0 turns this off.' },
+  { group: 'finance', key: 'finance.labourRateCode', label: 'Rate-card item that bills logged labour', type: 'string', value: 'LABOUR-SKILL', sortOrder: 8,
+    hint: 'A job without a quotation bills its logged time at this rate-card item (priced per hour) — never at a technician\'s own hourly rate, which is a cost.' },
   { group: 'finance', key: 'finance.invoiceTerms', label: 'Default invoice terms', type: 'richtext', sortOrder: 4,
     value: 'Payment is due within 15 days. Please quote the invoice number with your transfer.' },
 

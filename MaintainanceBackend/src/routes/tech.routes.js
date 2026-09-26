@@ -16,11 +16,19 @@ import * as s from '../shared/schemas/ops.js';
 import * as sv from '../shared/schemas/survey.js';
 import { FIELD_ROLES } from '../shared/enums.js';
 import { can } from '../shared/permissions.js';
+import { fieldSafe } from '../utils/moneyWall.js';
 
 const router = Router();
 
 // Every route below is scoped to the caller's own technician profile.
 router.use(authorize(...FIELD_ROLES, 'ADMIN', 'DISPATCHER'));
+
+// The money wall: every field response leaves without a price, cost, total or anyone's pay.
+router.use((_req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (body) => json(body?.data === undefined ? body : { ...body, data: fieldSafe(body.data) });
+  next();
+});
 
 /**
  * Resolves the technician whose queue this request acts on.

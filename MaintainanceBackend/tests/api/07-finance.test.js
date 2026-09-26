@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, expectStatus, createCustomer, createCompletedJob, daysFromNow, prisma,
+  anon, as, approveAndSend, expectStatus, createCustomer, createAssignedJob, createCompletedJob, daysFromNow, prisma, technicianIdFor,
 } from './helpers.js';
 
 let accountant;
@@ -181,6 +181,75 @@ describe('invoices', () => {
     const inv = expectStatus(await accountant.post(`/admin/invoices/from-job/${job.id}`).send({}), 201).data;
     expect(inv.total).toBeGreaterThan(0);
     expect(expectStatus(await accountant.post(`/admin/invoices/from-job/${job.id}`).send({}), 422).error).toBeTruthy();
+  });
+
+  describe('a job is billed by one rule, never two (defect #16)', () => {
+    /** Takes a job IN_PROGRESS → material issued → 90 minutes logged → COMPLETED. */
+    async function finish(job, technicianId) {
+      const dispatcher = await as('DISPATCHER');
+      expectStatus(await dispatcher.patch(`/admin/jobs/${job.id}/status`).send({ status: 'IN_PROGRESS' }), 200);
+      const material = await prisma.material.findFirst({ where: { deletedAt: null, isActive: true } });
+      expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/materials`).send({ materialId: material.id, qty: 2 }), 201);
+      expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/time-logs`).send({
+        technicianId, startedAt: daysFromNow(-1).toISOString(), minutes: 90,
+      }), 201);
+      expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/complete`).send({ note: 'Done in test' }), 200);
+    }
+
+    async function quotedJob() {
+      const sales = await as('SALES');
+      const quote = expectStatus(await sales.post('/admin/quotations').send({
+        customerId: customer.id,
+        discount: 500,
+        items: [
+          { description: 'Terrace membrane waterproofing', unit: 'sq.ft', qty: 420, rate: 275 },
+          { description: 'Epoxy crack injection', unit: 'rft', qty: 18.5, rate: 165 },
+        ],
+      }), 201).data;
+      // The real path: approved, sent, and accepted on the customer's link, which creates the job.
+      const { publicToken } = await approveAndSend(quote.id);
+      expectStatus(await anon().post(`/public/quotations/${publicToken}/decide`)
+        .set('User-Agent', 'Mozilla/5.0 (Linux; Android 14) Mobile').send({ decision: 'approve' }), 200);
+      const job = await prisma.job.findFirst({ where: { quotationId: quote.id } });
+      const technicianId = await technicianIdFor('TECHNICIAN');
+      expectStatus(await (await as('DISPATCHER')).post(`/admin/jobs/${job.id}/assign`).send({ technicianIds: [technicianId] }), 200);
+      await finish(job, technicianId);
+      return { quote: await prisma.quotation.findUnique({ where: { id: quote.id } }), job };
+    }
+
+    it('a quoted job bills exactly the quotation — not its materials and labour on top', async () => {
+      const { quote, job } = await quotedJob();
+      const inv = expectStatus(await accountant.post(`/admin/invoices/from-job/${job.id}`).send({}), 201).data;
+      expect(inv.items.map((i) => i.description)).toEqual(['Terrace membrane waterproofing', 'Epoxy crack injection']);
+      expect(inv.discount).toBe(quote.discount);
+      expect(inv.total).toBe(quote.total);
+    });
+
+    it('asking for actuals on a quoted job is refused, and leaves it billable', async () => {
+      const { job } = await quotedJob();
+      const refused = expectStatus(await accountant.post(`/admin/invoices/from-job/${job.id}`).send({ includeMaterials: true }), 422);
+      expect(refused.error.code).toBe('QUOTED_JOB_BILLS_SCOPE');
+      expect((await prisma.job.findUnique({ where: { id: job.id } })).invoicedAt).toBeNull();
+      expectStatus(await accountant.post(`/admin/invoices/from-job/${job.id}`).send({}), 201);
+    });
+
+    it('an unquoted job bills labour at the rate card, never the technician\'s own hourly rate', async () => {
+      const technicianId = await technicianIdFor('TECHNICIAN');
+      const { hourlyRate } = await prisma.technician.findUnique({ where: { id: technicianId } });
+      const labour = await prisma.rateCardItem.findUnique({ where: { code: 'LABOUR-SKILL' } });
+      // A pay rate that differs from the selling rate, so billing the wrong one shows.
+      await prisma.technician.update({ where: { id: technicianId }, data: { hourlyRate: labour.rate + 12345 } });
+      try {
+        const { job } = await createAssignedJob();
+        await finish(job, technicianId);
+        const inv = expectStatus(await accountant.post(`/admin/invoices/from-job/${job.id}`).send({}), 201).data;
+        const line = inv.items.find((i) => i.unit === 'hour');
+        expect(line).toMatchObject({ description: labour.name, qty: 1.5, rate: labour.rate });
+        expect(inv.items.some((i) => i.description.startsWith('Material:'))).toBe(true);
+      } finally {
+        await prisma.technician.update({ where: { id: technicianId }, data: { hourlyRate } });
+      }
+    });
   });
 
   it('SALES and DISPATCHER cannot see invoices', async () => {

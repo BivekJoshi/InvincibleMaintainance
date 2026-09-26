@@ -97,6 +97,9 @@ Gaps against the intended business process:
 | 13 | Low | *(G 2026-09-17: users, audit log, login activity, message templates and message logs now validate `sort` and their filters. H1 2026-09-17: jobs, technicians, dispatch, stock and movements validate theirs and are paginated; ops sub-resource ids are validated.)* Unvalidated `?sort` and `?status` reach Prisma. Sub-resource `:id` params are unvalidated in crm, ops and finance routes. Several lists are unpaginated. | routes |
 | 14 | Low | `notify()` is awaited inside the request with no retry. Crons have no leader lock, so they are unsafe on more than one instance. | `notify.service.js`, `crons/index.js` |
 | 15 | Low | *(G 2026-09-17: `platform.routes.js` is Prisma-free — users, notifications, message logs. H1 2026-09-17: `ops.routes.js` is Prisma-free — technicians. Tech sync remains for H2.)* Raw Prisma calls in route files (technicians, users, tech sync) break the "routes never touch Prisma" rule. | `ops.routes.js:95-129`, `platform.routes.js:87-137`, `tech.routes.js:214-283` |
+| ✅ 16 · L0 2026-09-26 | **High · money** | *(found 2026-09-26)* Invoicing a quoted job double-bills: `createFromJob` copies every quoted line **and** adds actual billable materials **and** a labour line priced at the technician's internal `hourlyRate` — both on by default. | `invoice.service.js:113-140`, `shared/schemas/ops.js:302` |
+| ✅ 17 · L0 2026-09-26 | **High · money wall** | *(found 2026-09-26)* `/tech/jobs/:id` returns `getJob`, whose include carries the quotation total and every assigned technician's full row, `hourlyRate` included — a technician can read a colleague's pay. | `tech.routes.js:100`, `job.service.js:25-33` |
+| ✅ 18 · L0 2026-09-26 | Medium | *(found 2026-09-26)* The survey review page renders `survey.media`, which `getSurvey` never returns, so site photos show with an empty `src`. | `components/surveys/SurveyFindings.jsx:110` |
 
 ---
 
@@ -112,6 +115,10 @@ Gaps against the intended business process:
 | **D6** | Lead visibility for SALES | All leads are visible, and "My leads" is the default view. *As built (Phase E, 2026-09-16):* the leads table and the pipeline open on My leads (`view=mine` → `GET /admin/leads?assignedToId=me`), one click shows All leads, and no record-level restriction exists. |
 | **D7** | Nepali UI (chrome, not just content) | The field app, the public website + booking, and the customer quotation / invoice / warranty pages. **The admin panel stays English.** Customer SMS and email use the customer's preferred language, captured at booking (Phase E). *As built (Phase E):* `Lead.preferredLocale` / `Customer.preferredLocale` (`en` \| `ne`, default `en`); the contact form and booking wizard send the site's language; convert copies it to a new customer and changes an existing customer's only when staff tick "Write to them in …"; every customer-facing `notify()` passes it, and a missing Nepali template falls back to the English one. Staff messages stay English. |
 | **D8** | Customer accounts | **Never required.** Customers book a consultation, accept quotations and get the work done with contact details only. **After launch** (Phase K) a customer may **sign up with their email**; once verified, they see all earlier history recorded under that email. Phase E starts capturing an optional, normalised email. A matching phone number never attaches an email to someone else's record: staff confirm it, and accounts link by email only, never by phone. *As built (Phase E):* email is stored trimmed and lower-case; when a customer has the lead's phone, convert answers 409 `CUSTOMER_MATCH` unless staff chose `customerId` ("same person") or `createNewCustomer` ("different person"); the lead's email reaches an existing customer only with `confirmEmail` (event `customer.email_confirmed`, actor = the staff member). The only other writer of a customer's email is a staff edit (`PUT /admin/customers/:id`, an audited model change). |
+| **L-D1** *(2026-09-26)* | How is a BOQ line priced? | **Recipe rates.** A rate-library item holds what one unit needs — materials with wastage, labour man-days by trade, equipment/other, overhead %, profit %. Quantity × recipe gives the material take-off and labour days. The recipe is snapshotted onto the quotation line; library changes never move a sent quote. |
+| **L-D2** *(2026-09-26)* | What is the final bill based on? | **Chosen per quotation:** `LUMP_SUM` (quoted ± customer-approved variations) or `ITEM_RATE` (the engineer measures the finished work; bill = measured qty × quoted rate). |
+| **L-D3** *(2026-09-26)* | Advance payment | The quotation carries a **payment schedule** (default from a setting, e.g. 50 · 40 · 10). On Accept the advance invoice is created automatically, and the job **cannot be scheduled until it is paid**; MANAGER / ADMIN may override with a reason (audited). |
+| **L-D4** *(2026-09-26)* | Who sees cost and margin | **MANAGER and ADMIN only** (capability `costs:read`). SALES builds with selling rates; a warning at approval below `quotation.minMarginPct`. D1 stands: the surveyor never sees any rate. |
 
 ---
 
@@ -761,13 +768,115 @@ the low-stock card. Backend:
   endpoint); `casestudy.service` stores `costBandMin/Max` as given although the schema calls them rupees (no screen sends
   them yet).
 
-### Phase I — Finance & aftercare screens### Phase I — Finance & aftercare screens · ~6 days
+### Phase L — Pipeline stages that work like a site team · ~33 days · L0–L8 (planned 2026-09-26)
+
+Prompts `docs/prompts/PHASE-L0…L8-*.md`. Decisions L-D1…L-D4 (§4). The owner asked that every pipeline stage carry
+the tools a salesperson, site engineer, estimator and foreman need, that the quotation be a professional BOQ
+("the best Excel model": materials, labour, everything), and that WON set up execution completely.
+
+**Order (amends §6):** L0 → L1 → L2 → L3 → L4 → **H2** → L5 → **I** → L6 → L7 → L8 → J → K. L5 needs H2's photo
+queue; L6 needs Phase I's screen to record the advance payment.
+
+**Design, one choice each**
+- **Money wall:** one capability `costs:read` (MANAGER; ADMIN via `*`) for cost, margin, recipes, wages and job
+  costing; services strip cost keys for everyone else (`utils/moneyWall.js`), history included. `rates:read`
+  (SALES, MANAGER, ACCOUNTANT) / `rates:write` (MANAGER) — SALES loses rate-card write. `jobs:advance-override`
+  (MANAGER).
+- **Recipes:** `Trade` (day wage) and `RateCardComponent` tables in the library; a versioned `recipe` JSON snapshot
+  on each quotation line, built by the server (the client never sends cost). Library price changes flag items
+  "Out of date"; rates move only through an explicit reprice.
+- **BOQ rows:** one ordered list, `QuotationItem.rowType ITEM | SECTION | NOTE`, with kind, material, measurement
+  rows (JSON `{area, description, nos, l, b, h, deduct}`), wastage, optional, provisional, spec, cost snapshot.
+- **Quantity maths** in a new `utils/quantity.js`; money only in `utils/money.js` (`allocate`, `recipeCost`,
+  `sellRate`, `margin`, `boqTotals`, `paymentSchedule`, `finalBillTotals`, `rs`, `proRata`).
+- **Contract & payment:** `contractType`, `QuotationPaymentStage` (basis points summing to 10000), invoice `kind`
+  ADVANCE | RUNNING | FINAL with `paymentStageId @unique`, DEDUCTION lines for earlier bills.
+- **Variation order = a quotation of kind VARIATION** tied to a job: same builder, approval and customer link.
+- **The job carries the plan:** `JobLine` (quoted / variation / measured qty, progress) and `JobRequirement`
+  (material packs and labour days, no rates); `Service.jobType` replaces the hard-coded REPAIR.
+- **Spreadsheet editing:** one new kit component `components/common/EditableGrid/`, reached only through
+  ResourceForm field types (`lineItems` rebuilt on it; `grid`, `recipe`, `measurements`, `paymentSchedule`).
+
+**L0 · Hotfixes (≈1 day) · ✅ done 2026-09-26** — defects #16, #17, #18. A quoted job bills its quoted scope only (actuals on a
+quoted job → 422 `QUOTED_JOB_BILLS_SCOPE`); an unquoted job bills labour from a rate-card code, never `hourlyRate`;
+invoice and `invoicedAt` in one transaction. A `/tech` field allowlist and a key-scan test. Survey photos returned.
+*Acceptance:* a quoted job with billable materials and time logs invoices at exactly the quotation total; no
+`/tech` response carries a rate, cost, total or hourly rate; survey photos render.
+
+**Deviations (Phase L0, 2026-09-26)**
+- **The field money wall is one filter on the whole `/tech` router, not a per-endpoint allowlist.** Status, material
+  and timer responses also returned the office job (a colleague's `hourlyRate`, the quotation total, material
+  rates), so an allowlist would have had to follow every mutation. `utils/moneyWall.js#fieldSafe` drops money-named
+  keys (camelCase words: rate, total, amount, cost, price, discount, vat, paid, wage, margin, estimate…) at any
+  depth; links (`…Id`) and `priceUnit` stay. A test scans ten field responses on a quoted job with two technicians,
+  a material and a timer; a unit test pins the key rule.
+- **A quoted job's invoice now carries the quotation's discount and VAT choice** (it dropped the discount before),
+  so its total equals the quotation total. `invoiceFromJobSchema`'s flags are plain optional booleans (the old
+  `z.coerce.boolean()` read the string "false" as true).
+- **Unquoted labour** bills at the rate-card item in the new setting `finance.labourRateCode` (seeded
+  `LABOUR-SKILL`, per hour); none → 422 `LABOUR_RATE_MISSING`. Every invoice is written by one paisa-native
+  `insertInvoice`, and the job is claimed (`invoicedAt`, compare-and-swap) in the same transaction.
+
+**L1 · Lead follow-through (≈3 days)** — next action + follow-up date, structured call outcomes that move the stage,
+qualification card, QUOTED on *send*, board drops that open the booking / quotation dialog, `leads:followups` and
+`pipeline:stale` crons (deduplicated), lost categories + lost report. *Acceptance:* "No answer" on a NEW lead meets
+the SLA and schedules the next call; "Book visit" moves to CONTACTED and opens the dialog; a board drop to QUOTED
+with no quotation opens the sheet and reverts on cancel; a stale quote reminds once across two cron runs; the lost
+report shows categories.
+
+**L2 · Foundations, rate library & money wall (≈4 days)** — money/quantity functions, construction units, material
+packs, trades, capabilities, settings, recipe editor with live cost-vs-rate and reprice, seeded DoR-style recipes.
+*Acceptance:* a plaster recipe's derived rate equals a hand calculation to the paisa; raising the cement price
+flags the item without changing its rate; SALES responses contain no cost keys; costing is 403 for SALES.
+
+**L3 · The BOQ builder (≈5 days)** — EditableGrid (keyboard, paste from Excel, rate-library search), sections,
+measurement and recipe drawers, take-off and labour tabs, margin panel, survey → BOQ keeps kind / material /
+wastage / optional, New quotation sheet. *Acceptance:* a 3-section, 40-row BOQ built by keyboard with 15 rows pasted
+from Excel, a library search, a measured line and an optional row; server totals equal the preview to the paisa;
+margin only for MANAGER; take-off and labour match the recipes; a revision copies rows, measurements, snapshots.
+
+**L4 · Terms & the customer document (≈3–4 days)** — contract type, payment schedule, duration, exclusions, terms
+library (`finance.quotationTerms` finally applied), `LOW_MARGIN` approval gate, sectioned public page (en/ne,
+amount in words, decline reasons → LOST), "Opened" tracking, print route, `.xlsx` export (exceljs).
+*Acceptance:* the public page works en/ne at 360 px; print totals equal the page; the .xlsx formulas recompute to
+the same totals; SALES's export has no cost sheet; a low-margin quote needs the acknowledgement.
+
+**L5 · Site-visit kit (≈4 days, after H2)** — visit time window, site contact, confirm/reschedule link and
+day-before reminder; field survey stepper: customer's photos, GPS pin, service inspection templates, measurement
+sheet in feet-inches with deductions, captioned photos; office review shows all of it and carries measurements into
+the BOQ. *Acceptance:* the customer confirms in Nepali and is reminded once; offline at 360 px the surveyor
+completes a damp checklist with a flagged reading and photo, measures two rooms with a door deduction, pins GPS and
+syncs; the quotation arrives with the same sections and quantities; the `/tech` key-scan still passes.
+
+**L6 · Won → hand-off (≈4 days, after I)** — `handoff.service.js` inside the accept transaction: lead WON, job typed
+from the service with planned days, job lines, requirements, ADVANCE invoice; the advance gate
+(`ADVANCE_UNPAID`) with an audited manager override; the job's Plan tab (advance, BOQ, materials vs stock, crew
+plan, readiness). *Acceptance:* accepting a 50/40/10 quote creates the BOQ lines, requirements and one advance
+invoice; stages sum to the quotation total to the paisa; a double tap creates one job and one invoice; scheduling
+is 422 until paid or overridden (audited; dispatcher 403 on override).
+
+**L7 · Execution (≈5 days)** — offline site diary (weather, headcount by trade, progress per BOQ line, materials
+received with challan no., issues and lost hours, photos), BOQ & progress, planned vs issued vs logged, purchase
+list from the shortfall, variation orders. *Acceptance:* three diary days filed offline sync once each; progress and
+planned-vs-actual update; a variation is approved, accepted by the customer and appears in the job BOQ; receiving
+a purchase list raises stock.
+
+**L8 · Close-out & final bill (≈3 days)** — running bills per stage, final measurement (ITEM_RATE), FINAL invoice
+by contract type with every earlier bill deducted, quoted-vs-actual costing, handover with warranty and an AMC offer.
+*Acceptance:* an ITEM_RATE job measured 5 % over quote bills measured × rate + variation − stage bills; a LUMP_SUM
+job bills contract ± variations − stage bills; advance + running + final equal the contract value to the paisa.
+
+**Deferred:** customers ticking optional items on the link; retention; credit notes; stock reservation and
+negative-stock blocking; unit conversion between recipe and purchase units; actual labour per trade; a drawing
+canvas in the field app.
+
+### Phase I — Finance & aftercare screens · ~6 days
 
 - Invoices (from job, send, void, payments), payment search, expenses, and reports (aging, revenue, collections, customer statement).
 - Warranties, the claims decision queue, AMC contracts and visits, renewals due, service reminders.
 - A reports page for the sales and ops reports the API already serves (lead sources, funnel, SLA, job margin, technicians, warranty claims).
 
-**Acceptance:** job → invoice from real materials and labour. A partial payment is recorded and can be voided. Aging is correct and VAT reconciles to the paisa. A warranty claim creates a free job, and an AMC contract schedules its visits.
+**Acceptance:** job → invoice by the job's billing rule — a quoted job bills its quoted scope, an unquoted job its real materials and labour (never both; defect #16, Phase L0). A partial payment is recorded and can be voided. Aging is correct and VAT reconciles to the paisa. A warranty claim creates a free job, and an AMC contract schedules its visits.
 
 ### Phase J — Launch hardening · ~6 days (v1 Phase 10, plus the following)
 
@@ -811,15 +920,25 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | E Leads & CRM ✅ 2026-09-16 | 5 | 20 | Sales works entirely in the UI |
 | F Quotation approval ✅ 2026-09-17 (F1 + F2) | 5 | 25 | The business flow end to end, incl. customer change requests |
 | G Audit & platform UI ✅ 2026-09-17 | 3 | 28 | Traceability, users, templates |
-| H Operations (H1 ✅ 2026-09-17 + H2) | 7 | 35 | Dispatch and job management |
-| I Finance & aftercare | 6 | 41 | Billing and retention |
-| J1 Nepali UI | 2 | 43 | Field app, site, customer pages in Nepali |
-| J2 Reliability & PDFs | 2 | 45 | Queued notifications, cron locks, PDFs |
-| J3 Security & deploy | 2 | **47 ≈ 9.5 weeks** | **Production launch** |
-| K Customer accounts (after launch) | 6 | 53 | Optional email signup showing earlier history |
+| H1 Operations — back office ✅ 2026-09-17 | 4 | 32 | Dispatch and job management |
+| L0 Hotfixes | 1 | 33 | No double billing, no pay visible in the field app |
+| L1 Lead follow-through | 3 | 36 | Every lead has a next action; nothing goes cold unseen |
+| L2 Rate library & money wall | 4 | 40 | Recipe rates; cost only for managers |
+| L3 BOQ builder | 5 | 45 | Excel-grade quotation with take-off and labour days |
+| L4 Terms & customer document | 4 | 49 | Payment schedule, contract type, print, Excel |
+| H2 Operations — field app | 3 | 52 | Photos, materials and job mutations offline |
+| L5 Site-visit kit | 4 | 56 | Confirmed visits, checklists, measurement sheet |
+| I Finance & aftercare | 6 | 62 | Billing and retention |
+| L6 Won → hand-off | 4 | 66 | Job with its BOQ, material list and advance gate |
+| L7 Execution | 5 | 71 | Site diary, planned vs actual, purchases, variations |
+| L8 Close-out & final bill | 3 | 74 | Lump-sum and item-rate final bills |
+| J1 Nepali UI | 2 | 76 | Field app, site, customer pages in Nepali |
+| J2 Reliability & PDFs | 2 | 78 | Queued notifications, cron locks, PDFs |
+| J3 Security & deploy | 2 | **80 ≈ 16 weeks** | **Production launch** |
+| K Customer accounts (after launch) | 6 | 86 | Optional email signup showing earlier history |
 
-**First usable release: A–F (~25 days). Production launch after J3 (~47 days); optional customer accounts (K) follow.** Content, sales and the approval-gated quotation flow are
-all operable from the UI. The phase order stays as listed (decided 2026-09-14).
+**First usable release: A–F (~25 days). Production launch after J3 (~80 days, Phase L included); optional customer accounts (K) follow.** Content, sales and the approval-gated quotation flow are
+all operable from the UI. The phase order is as listed: decided 2026-09-14, with Phase L inserted on 2026-09-26.
 
 ---
 
