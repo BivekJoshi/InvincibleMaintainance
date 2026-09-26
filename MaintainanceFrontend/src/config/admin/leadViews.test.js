@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LEAD_PRESETS, activePreset, applyPreset, leadQueryFor, weekStart } from '@/config/admin/leadViews';
+import { LEAD_PRESETS, activePreset, applyPreset, clearPreset, leadQueryFor, weekStart } from '@/config/admin/leadViews';
 
 const preset = (key) => LEAD_PRESETS.find((p) => p.key === key);
 
@@ -64,5 +64,33 @@ describe('more presets', () => {
   it('"Due soon" and "Urgent" narrow everyone’s leads', () => {
     expect(applyPreset({ status: 'NEW' }, preset('due-soon'), now)).toMatchObject({ view: 'all', slaRisk: 'at_risk', status: undefined });
     expect(applyPreset({}, preset('urgent'), now)).toMatchObject({ view: 'all', priority: 'URGENT' });
+  });
+});
+
+describe('follow-up presets (Phase L1)', () => {
+  const now = new Date('2026-09-16T14:15:00Z');
+
+  it.each([
+    ['due-today', 'due_today'],
+    ['overdue', 'overdue'],
+    ['no-next-action', 'none'],
+  ])('%s asks for nextAction=%s on whichever list is showing', (key, value) => {
+    const mine = applyPreset({ page: 2, status: 'NEW', slaRisk: 'breached' }, preset(key), now);
+    expect(mine).toMatchObject({ nextAction: value, page: 1, status: undefined, slaRisk: undefined });
+    expect(mine.view).toBeUndefined();
+    expect(leadQueryFor(mine)).toMatchObject({ nextAction: value, assignedToId: 'me' });
+
+    const all = applyPreset({ view: 'all' }, preset(key), now);
+    expect(all.view).toBe('all');
+    expect(leadQueryFor(all)).not.toHaveProperty('assignedToId');
+
+    expect(activePreset(mine, now)).toBe(key);
+    expect(activePreset(all, now)).toBe(key);
+  });
+
+  it('other presets clear it, and switching one off keeps the view', () => {
+    expect(applyPreset({ nextAction: 'overdue' }, preset('breached'), now)).toMatchObject({ nextAction: undefined, slaRisk: 'breached' });
+    expect(clearPreset({ view: 'mine', nextAction: 'overdue', limit: 50 }, preset('overdue'))).toEqual({ limit: 50, sort: undefined, view: 'mine', page: 1 });
+    expect(clearPreset({ view: 'all', slaRisk: 'breached' }, preset('breached'))).toMatchObject({ view: 'all' });
   });
 });

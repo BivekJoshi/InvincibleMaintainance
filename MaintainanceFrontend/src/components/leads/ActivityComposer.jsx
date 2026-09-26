@@ -12,6 +12,16 @@ import { useLeadFollowUp } from '@/hooks/useLeadFollowUp';
 import { toastSuccess } from '@/redux/slices/uiSlice';
 import { cn } from '@/helpers/utils';
 
+/**
+ * Every value the composer can hold, blank. The fields come and go with the outcome, so the form
+ * starts with all of them: ResourceForm resets a clean form whenever its starting values change,
+ * and a starting point that grew with each field shown would wipe the outcome just picked.
+ */
+const BLANK = {
+  summary: '', outcome: undefined, overrideNext: false, resolution: undefined,
+  nextActionAt: undefined, nextActionType: undefined, nextActionNote: '', lostCategory: undefined, lostReason: '',
+};
+
 /** The values that decide which fields show; everything else is typed text. */
 const PICKED = ['type', 'outcome', 'overrideNext', 'resolution', 'lostCategory'];
 const pickOf = (values) => Object.fromEntries(PICKED.map((k) => [k, values?.[k] ?? undefined]));
@@ -72,7 +82,7 @@ export function ActivityComposer({ lead, defaultType = 'call', onLogged, guard =
       body.outcome ? `${ACTIVITY_LABELS[body.type]} logged — ${LEAD_OUTCOME_LABELS[body.outcome]}` : `${ACTIVITY_LABELS[body.type]} logged`,
       [responded, moved, after].filter(Boolean).join(' ') || undefined,
     ));
-    form.reset({ type: body.type, summary: '' });
+    form.reset({ ...BLANK, type: body.type });
     setPicked(pickOf({ type: body.type }));
 
     // The next step opens after the form is free again; the caller hears once it is done or cancelled.
@@ -83,7 +93,7 @@ export function ActivityComposer({ lead, defaultType = 'call', onLogged, guard =
     }
   };
 
-  const defaults = useMemo(() => ({ type: defaultType, summary: '' }), [defaultType]);
+  const defaults = useMemo(() => ({ ...BLANK, type: defaultType }), [defaultType]);
 
   return (
     <div className="space-y-3">

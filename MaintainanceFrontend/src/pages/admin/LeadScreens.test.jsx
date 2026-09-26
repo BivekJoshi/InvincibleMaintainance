@@ -188,6 +188,128 @@ describe('the pipeline board', () => {
   });
 });
 
+describe('the pipeline board — moves with work behind them (Phase L1)', () => {
+  const CONTACTED = { ...LEAD, id: 'l3', name: 'Gita Shah', status: 'CONTACTED', stageEnteredAt: '2026-09-10T04:00:00.000Z', customerId: null };
+
+  /** The board with one Contacted lead, whose own record carries `quotations`. */
+  function boardApi(quotations = []) {
+    return mockApi(({ method, path, query }) => {
+      if (path === '/admin/leads') return page(query.status === 'CONTACTED' ? [CONTACTED] : []);
+      if (method === 'GET' && path === '/admin/leads/l3') return json({ data: { ...CONTACTED, quotations, jobs: [] } });
+      if (path === '/admin/leads/l3/customer-matches') return json({ data: [] });
+      if (path === '/public/bootstrap') {
+        return json({ data: { booking: { slots: [{ key: 'morning', label: 'Morning', window: '8:00 – 12:00', startHour: 8 }] } } });
+      }
+      if (path === '/public/availability') return json({ data: { days: [] } });
+      if (path === '/admin/technicians') return json({ data: [] });
+      if (method === 'POST' && path === '/admin/leads/l3/convert') {
+        return json({
+          data: {
+            customer: { id: 'c9', name: 'Gita Shah', phone: '9808338255' }, customerCreated: true, site: null,
+            quotation: { id: 'q1', number: 'QT-2026-0042', total: 1_500_000 },
+          },
+        }, 201);
+      }
+      if (method === 'PATCH') return json({ data: { ...CONTACTED, status: 'QUOTED' } });
+      return undefined;
+    });
+  }
+
+  async function moveGita(user, to) {
+    const contacted = await screen.findByRole('region', { name: 'Contacted' });
+    await within(contacted).findByText('Gita Shah');
+    await user.click(within(contacted).getByRole('button', { name: 'Move Gita Shah' }));
+    await user.click(await screen.findByRole('menuitem', { name: to }));
+    return contacted;
+  }
+
+  it('shows how long each card has sat in its stage', async () => {
+    boardApi();
+    renderWithProviders(<LeadBoardPage />, { path: '/admin/leads/board', preloadedState: signedInAs('SALES') });
+    const contacted = await screen.findByRole('region', { name: 'Contacted' });
+    expect(await within(contacted).findByText(/\d+d in stage/)).toBeInTheDocument();
+  });
+
+  it('a drop on Quoted without a quotation opens the new-quotation sheet, and Cancel puts the card back', async () => {
+    const user = userEvent.setup();
+    const calls = boardApi([]);
+    renderWithProviders(<LeadBoardPage />, { path: '/admin/leads/board', preloadedState: signedInAs('SALES') });
+
+    const contacted = await moveGita(user, 'Quoted');
+    const sheet = await screen.findByRole('dialog', { name: 'New quotation' });
+    expect(calls.some((c) => c.method === 'GET' && c.path === '/admin/leads/l3')).toBe(true);
+    // The card has not moved while the sheet is open.
+    expect(within(contacted).getByText('Gita Shah')).toBeInTheDocument();
+    // (The open sheet hides the board from the accessibility tree, hence `hidden`.)
+    expect(within(screen.getByRole('region', { name: 'Quoted', hidden: true })).queryByText('Gita Shah')).not.toBeInTheDocument();
+
+    await user.click(within(sheet).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New quotation' })).not.toBeInTheDocument());
+    expect(within(contacted).getByText('Gita Shah')).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'PATCH' || c.method === 'POST')).toBe(false);
+  });
+
+  it('completing the sheet drafts the quotation and leaves the lead where the server says', async () => {
+    const user = userEvent.setup();
+    const calls = boardApi([]);
+    const { store } = renderWithProviders(<LeadBoardPage />, { path: '/admin/leads/board', preloadedState: signedInAs('SALES') });
+
+    const contacted = await moveGita(user, 'Quoted');
+    const sheet = await screen.findByRole('dialog', { name: 'New quotation' });
+    expect(within(sheet).queryByRole('switch', { name: /Start a draft quotation/ })).not.toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: 'Create draft quotation' }));
+
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/admin/leads/l3/convert')?.body)
+      .toMatchObject({ createQuotation: true, site: { address: 'Jhamsikhel, Lalitpur' } }));
+    await waitFor(() => expect(store.getState().ui.toasts.at(-1)).toMatchObject({
+      title: 'Draft QT-2026-0042 created', description: 'The lead moves to Quoted when the quotation is sent.',
+    }));
+    // Drafting is not quoting: no status change was asked for, and the card is still Contacted.
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+    expect(within(contacted).getByText('Gita Shah')).toBeInTheDocument();
+  });
+
+  it('with a quotation already there, Quoted is the plain status change', async () => {
+    const user = userEvent.setup();
+    const calls = boardApi([{ id: 'q1', number: 'QT-2026-0042', status: 'SENT', total: 1_500_000 }]);
+    renderWithProviders(<LeadBoardPage />, { path: '/admin/leads/board', preloadedState: signedInAs('SALES') });
+
+    await moveGita(user, 'Quoted');
+    await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')).toMatchObject({
+      path: '/admin/leads/l3/status', body: { status: 'QUOTED' },
+    }));
+    expect(screen.queryByRole('dialog', { name: 'New quotation' })).not.toBeInTheDocument();
+  });
+
+  it('a drop on Visit booked opens the visit booking; Cancel changes nothing', async () => {
+    const user = userEvent.setup();
+    const calls = boardApi();
+    renderWithProviders(<LeadBoardPage />, { path: '/admin/leads/board', preloadedState: signedInAs('SALES') });
+
+    const contacted = await moveGita(user, 'Visit booked');
+    const dialog = await screen.findByRole('dialog', { name: 'Book the site visit' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Book the site visit' })).not.toBeInTheDocument());
+    expect(within(contacted).getByText('Gita Shah')).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'PATCH' || c.method === 'POST')).toBe(false);
+  });
+
+  it('booking the visit from the drop converts with the inspection', async () => {
+    const user = userEvent.setup();
+    const calls = boardApi();
+    renderWithProviders(<LeadBoardPage />, { path: '/admin/leads/board', preloadedState: signedInAs('SALES') });
+
+    await moveGita(user, 'Visit booked');
+    const dialog = await screen.findByRole('dialog', { name: 'Book the site visit' });
+    const book = within(dialog).getByRole('button', { name: 'Book visit' });
+    await waitFor(() => expect(book).toBeEnabled());
+    await user.click(book);
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/admin/leads/l3/convert')?.body)
+      .toMatchObject({ createInspectionJob: true }));
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+});
+
 const HOUSEHOLD = {
   id: 'c1', name: 'Existing Household', phone: '9808338255', email: 'household@example.com', preferredLocale: 'en',
   jobCount: 2, lastVisitAt: '2026-08-01T04:15:00.000Z', primaryAddress: 'Jhamsikhel', type: 'individual',

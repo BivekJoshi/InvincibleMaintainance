@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { canDrop, cardsForColumn, leadsInScope, needsReason, nextStatuses, responseResult, slaProgress, funnelSummary, leadAgeDays, isGoingCold } from '@/helpers/leadBoard';
-import { runwayLanes, runwayPoint } from '@/helpers/leadBoard';
+import { dropDialogFor, hasQuotation, runwayLanes, runwayPoint } from '@/helpers/leadBoard';
 
 describe('board drops', () => {
   it.each([
@@ -136,5 +136,27 @@ describe('the response runway', () => {
   it('shares the lane that frees first once every lane is taken', () => {
     const lanes = runwayLanes([0.1, 0.101, 0.102].map((x) => ({ x })), 0.035, 2);
     expect(lanes.map((p) => p.lane)).toEqual([0, 1, 0]);
+  });
+});
+
+describe('moves with work behind them (Phase L1)', () => {
+  it('knows whether a lead has a quotation, or that the row does not say', () => {
+    expect(hasQuotation({ quotations: [] })).toBe(false);
+    expect(hasQuotation({ quotations: [{ id: 'q1' }] })).toBe(true);
+    expect(hasQuotation({ _count: { quotations: 2 } })).toBe(true);
+    expect(hasQuotation({ quotationCount: 0 })).toBe(false);
+    expect(hasQuotation({ id: 'l1' })).toBeNull();
+  });
+
+  it.each([
+    ['INSPECTION_SCHEDULED', null, 'visit'],
+    ['INSPECTION_SCHEDULED', true, 'visit'],
+    ['QUOTED', false, 'quotation'],
+    ['QUOTED', true, null],
+    ['LOST', null, 'lost'],
+    ['CONTACTED', null, null],
+    ['WON', null, null],
+  ])('a move to %s (quoted: %s) opens %s', (to, quoted, dialog) => {
+    expect(dropDialogFor(to, quoted)).toBe(dialog);
   });
 });

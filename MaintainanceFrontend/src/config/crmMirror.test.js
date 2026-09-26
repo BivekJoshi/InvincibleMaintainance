@@ -6,6 +6,9 @@ import {
   QUOTATION_TRANSITIONS, ROLE_DESCRIPTIONS, ROLES,
   JOB_PHOTO_KINDS, JOB_PHOTO_KIND_LABELS, JOB_STATUSES, JOB_STATUS_LABELS, JOB_TRANSITIONS, JOB_TYPES, JOB_TYPE_LABELS,
   MANUAL_STOCK_MOVEMENTS, PRIORITIES, STOCK_MOVEMENT_LABELS, STOCK_MOVEMENT_TYPES,
+  LEAD_OUTCOMES, LEAD_OUTCOME_LABELS, REACHED_OUTCOMES, NEXT_ACTION_TYPES, NEXT_ACTION_LABELS,
+  LOST_CATEGORIES, LOST_CATEGORY_LABELS, PROPERTY_TYPES, PROPERTY_TYPE_LABELS, BUDGET_BANDS, BUDGET_BAND_LABELS,
+  DECISION_MAKERS, DECISION_MAKER_LABELS,
 } from '@/config/constants';
 import { AUDIT_EVENT_LABELS } from '@/config/auditEvents';
 import { PERMISSIONS } from '@/helpers/permissions';
@@ -60,6 +63,24 @@ describe('the CRM rules mirror the API', () => {
     expect(STOCK_MOVEMENT_TYPES).toEqual(API_ENUMS.STOCK_MOVEMENT_TYPES);
     expect(Object.keys(STOCK_MOVEMENT_LABELS)).toEqual(STOCK_MOVEMENT_TYPES);
     expect(MANUAL_STOCK_MOVEMENTS).toEqual(STOCK_MOVEMENT_TYPES.filter((t) => t !== 'ISSUE_TO_JOB'));
+  });
+
+  it('the follow-up lists are the API’s, and every value has words (Phase L1)', () => {
+    const lists = [
+      [LEAD_OUTCOMES, API_ENUMS.LEAD_OUTCOMES, LEAD_OUTCOME_LABELS],
+      [NEXT_ACTION_TYPES, API_ENUMS.NEXT_ACTION_TYPES, NEXT_ACTION_LABELS],
+      [LOST_CATEGORIES, API_ENUMS.LOST_CATEGORIES, LOST_CATEGORY_LABELS],
+      [PROPERTY_TYPES, API_ENUMS.PROPERTY_TYPES, PROPERTY_TYPE_LABELS],
+      [BUDGET_BANDS, API_ENUMS.BUDGET_BANDS, BUDGET_BAND_LABELS],
+      [DECISION_MAKERS, API_ENUMS.DECISION_MAKERS, DECISION_MAKER_LABELS],
+    ];
+    for (const [mine, theirs, labels] of lists) {
+      expect(mine).toEqual(theirs);
+      expect(Object.keys(labels)).toEqual(mine);
+      expect(Object.values(labels).every((l) => typeof l === 'string' && l.length > 0)).toBe(true);
+    }
+    expect(REACHED_OUTCOMES).toEqual(API_ENUMS.REACHED_OUTCOMES);
+    expect(REACHED_OUTCOMES.every((o) => LEAD_OUTCOMES.includes(o))).toBe(true);
   });
 
   it('roles are the API’s', () => {
