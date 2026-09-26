@@ -4,6 +4,7 @@ import { heroSlides } from './resources/heroSlides';
 import { serviceCategories } from './resources/serviceCategories';
 import { services } from './resources/services';
 import { rateCard } from './resources/rateCard';
+import { trades } from './resources/trades';
 import { projects } from './resources/projects';
 import { offers } from './resources/offers';
 import { pricingPlans } from './resources/pricingPlans';
@@ -22,8 +23,8 @@ import { materialCategories } from './resources/materialCategories';
 import { suppliers } from './resources/suppliers';
 
 /**
- * Every registry resource — the CMS, the rate card and, since Phase H1, the operations lists
- * (technicians, job templates, materials, material categories, suppliers) — the back office manages
+ * Every registry resource — the CMS, the rate library and its trades (Phase L2) and, since Phase H1,
+ * the operations lists (technicians, job templates, materials, material categories, suppliers) — the back office manages
  * through the generic pages
  * (`pages/admin/ResourceListPage`, `ResourceEditPage`). One file per resource under
  * `resources/`; register it here and give it a nav item in `adminNav.js`.
@@ -46,7 +47,8 @@ import { suppliers } from './resources/suppliers';
  * @property {string} [writeCapability] needed to create, edit, reorder, toggle and delete (default `cms:write`)
  * @property {string} [historyCapability] needed for the edit page's History tab (`GET <path>/:id/history`);
  *                                    default `capability` — the API guards a CMS record's trail with `cms:read`
- * @property {object[]} columns       CustomTable columns; the page appends the Active switch
+ * @property {object[]} columns       CustomTable columns; the page appends the Active switch. A column's own
+ *                                    `capability` shows it only to a user holding it (the rate library's Cost)
  * @property {object[]} [filters]     CustomTable filters
  * @property {object[]} fields        ResourceForm fields
  * @property {import('zod').ZodTypeAny | ((ctx: SchemaContext) => import('zod').ZodTypeAny)} schema
@@ -60,6 +62,7 @@ import { suppliers } from './resources/suppliers';
  * @property {{ value: string, label: string, component: import('react').ComponentType<{ record: object, canWrite: boolean }> }[]} [tabs]
  *                                    panels beside the form on an existing record (a project's Gallery)
  * @property {(record: object) => RowAction[]} [rowActions] extra list actions that call a `cmsApi` mutation
+ * @property {BulkAction[]} [bulkActions] extra actions on the selected rows (the rate library's "Update to derived rate")
  * @property {object} [defaultValues] a new record, in API shape
  * @property {boolean} [sortable]     offers Reorder (`PATCH /reorder`); false when the site orders by another column
  * @property {string[]} [translatable] field names with a Nepali tab
@@ -85,6 +88,15 @@ import { suppliers } from './resources/suppliers';
  * @property {string} endpoint       a `cmsApi` mutation, e.g. 'approveTestimonial'
  * @property {object} arg            its argument
  * @property {string} done           the success toast
+ *
+ * @typedef {object} BulkAction
+ * @property {string} label
+ * @property {import('react').ElementType} [icon]
+ * @property {string} [capability]   hidden without it
+ * @property {(rows: object[], helpers: { dispatch: Function, confirm: (options: object) => Promise<boolean> }) =>
+ *   Promise<{ title: string, description?: string, variant?: string } | null>} run
+ *   does the work — it may ask first with `confirm` — and resolves the toast to show, or null when the
+ *   person said no; a rejection is shown as the API's error
  *
  * @typedef {object} ActiveCopy
  * @property {string} column       the switch column's header
@@ -113,7 +125,7 @@ const WEBSITE_COPY = {
 export const RESOURCES = Object.fromEntries(
   [
     serviceCategories, services, heroSlides, projects, offers, pricingPlans, testimonials, faqs, galleryImages,
-    features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard,
+    features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard, trades,
     technicians, jobTemplates, materials, materialCategories, suppliers,
   ].map((entry) => [entry.resource, entry]),
 );

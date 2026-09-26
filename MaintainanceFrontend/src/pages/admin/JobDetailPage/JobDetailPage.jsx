@@ -27,7 +27,8 @@ import { JobEventsTab } from './sections/JobEventsTab';
 /**
  * One job: the actions its state allows, and the tabs — Overview · Checklist · Photos · Materials ·
  * Time · Costing · Events · History. The open tab is in the URL (`?tab=`). Status changes only
- * through the action bar's endpoints, never by editing the record.
+ * through the action bar's endpoints, never by editing the record. Costing is cost and margin, so it
+ * is there only for `costs:read` (the money wall, Phase L2) — the API answers 403 to anyone else.
  */
 export default function JobDetailPage() {
   const { id } = useParams();
@@ -45,7 +46,7 @@ export default function JobDetailPage() {
     { value: 'photos', label: 'Photos' },
     { value: 'materials', label: 'Materials' },
     { value: 'time', label: 'Time' },
-    { value: 'costing', label: 'Costing' },
+    ...(can('costs:read') ? [{ value: 'costing', label: 'Costing' }] : []),
     { value: 'events', label: 'Events' },
     ...(can('jobs:history') ? [{ value: 'history', label: 'History' }] : []),
   ];
@@ -105,7 +106,9 @@ export default function JobDetailPage() {
         <TabsContent value="photos"><JobPhotosTab job={job} canWrite={canWrite} /></TabsContent>
         <TabsContent value="materials"><JobMaterialsTab job={job} canWrite={canWrite} /></TabsContent>
         <TabsContent value="time"><JobTimeTab job={job} canWrite={canWrite} /></TabsContent>
-        <TabsContent value="costing">{tab === 'costing' ? <JobCostingTab job={job} /> : null}</TabsContent>
+        {can('costs:read') ? (
+          <TabsContent value="costing">{tab === 'costing' ? <JobCostingTab job={job} /> : null}</TabsContent>
+        ) : null}
         <TabsContent value="events"><JobEventsTab job={job} /></TabsContent>
         {can('jobs:history') ? (
           <TabsContent value="history">

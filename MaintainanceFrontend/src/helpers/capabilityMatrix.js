@@ -5,7 +5,9 @@ export const CAPABILITY_DOMAINS = {
   dashboard: 'Dashboard',
   leads: 'Leads',
   customers: 'Customers',
-  quotations: 'Quotations and rate card',
+  quotations: 'Quotations',
+  rates: 'Rate library',
+  costs: 'Cost and margin',
   surveys: 'Site surveys',
   services: 'Service catalogue',
   jobs: 'Jobs',
@@ -41,6 +43,17 @@ export const CAPABILITY_ACTIONS = {
 };
 
 /**
+ * A capability whose action word alone would not say enough, described in full (Phase L2's money
+ * wall and the advance override). These replace the action words in the matrix.
+ */
+export const CAPABILITY_DESCRIPTIONS = {
+  'costs:read': 'See cost, margin, recipes’ cost and trade wages',
+  'rates:read': 'Read the rate library',
+  'rates:write': 'Edit the rate library and trades, reprice',
+  'jobs:advance-override': 'Schedule a job before its advance is paid',
+};
+
+/**
  * Capabilities only ADMIN holds (through `*`), so the map never names them — listed so the
  * matrix shows what the wildcard means.
  */
@@ -62,7 +75,7 @@ export function capabilityMatrix(roles) {
     if (!byDomain.has(domain)) byDomain.set(domain, []);
     byDomain.get(domain).push({
       capability,
-      action: CAPABILITY_ACTIONS[action] ?? action,
+      action: CAPABILITY_DESCRIPTIONS[capability] ?? CAPABILITY_ACTIONS[action] ?? action,
       holders: Object.fromEntries(roles.map((role) => [role, can(role, capability)])),
     });
   }

@@ -27,6 +27,11 @@ describe('recordHref', () => {
     expect(recordHref({ model: 'Material', recordId: 'm1' })).toBe('/admin/materials/m1');
   });
 
+  it('links a trade, and a recipe line to its rate (Phase L2)', () => {
+    expect(recordHref({ model: 'Trade', recordId: 'tr1' })).toBe('/admin/trades/tr1');
+    expect(recordHref({ model: 'RateCardComponent', recordId: 'c1', after: { rateCardItemId: 'r9' } })).toBe('/admin/rate-card/r9');
+  });
+
   it('has no link for records without a screen yet', () => {
     expect(recordHref({ model: 'Invoice', recordId: 'i1' })).toBeNull();
     expect(recordHref({ model: 'Lead', recordId: null })).toBeNull();

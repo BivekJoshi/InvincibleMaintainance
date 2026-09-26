@@ -9,9 +9,10 @@ import {
   LEAD_OUTCOMES, LEAD_OUTCOME_LABELS, REACHED_OUTCOMES, NEXT_ACTION_TYPES, NEXT_ACTION_LABELS,
   LOST_CATEGORIES, LOST_CATEGORY_LABELS, PROPERTY_TYPES, PROPERTY_TYPE_LABELS, BUDGET_BANDS, BUDGET_BAND_LABELS,
   DECISION_MAKERS, DECISION_MAKER_LABELS,
+  UNITS, RATE_MODES, RATE_MODE_LABELS, RECIPE_COMPONENT_KINDS, RECIPE_COMPONENT_LABELS,
 } from '@/config/constants';
 import { AUDIT_EVENT_LABELS } from '@/config/auditEvents';
-import { PERMISSIONS } from '@/helpers/permissions';
+import { PERMISSIONS, can } from '@/helpers/permissions';
 // The API's own rules. Outside `src/`, so `@/` cannot reach them.
 import {
   JOB_TRANSITIONS as API_JOB_TRANSITIONS,
@@ -95,5 +96,24 @@ describe('the CRM rules mirror the API', () => {
 
   it('the capability map is the API’s', () => {
     expect(PERMISSIONS).toEqual(API_PERMISSIONS);
+  });
+
+  it('the money wall’s capabilities are held as the API holds them (Phase L2)', () => {
+    const holders = (capability) => Object.keys(API_PERMISSIONS).filter((role) => can(role, capability)).sort();
+    expect(holders('costs:read')).toEqual(['ADMIN', 'MANAGER']);
+    expect(holders('rates:write')).toEqual(['ADMIN', 'MANAGER']);
+    expect(holders('rates:read')).toEqual(['ACCOUNTANT', 'ADMIN', 'MANAGER', 'SALES']);
+    expect(holders('jobs:advance-override')).toEqual(['ADMIN', 'MANAGER']);
+    for (const role of ['SURVEYOR', 'TECHNICIAN']) {
+      expect(['costs:read', 'rates:read', 'rates:write'].some((c) => can(role, c)), role).toBe(false);
+    }
+  });
+
+  it('units, rate modes and recipe kinds are the API’s, and each has words (Phase L2)', () => {
+    expect(UNITS).toEqual(API_ENUMS.UNITS);
+    expect(RATE_MODES).toEqual(API_ENUMS.RATE_MODES);
+    expect(Object.keys(RATE_MODE_LABELS)).toEqual(RATE_MODES);
+    expect(RECIPE_COMPONENT_KINDS).toEqual(API_ENUMS.RECIPE_COMPONENT_KINDS);
+    expect(Object.keys(RECIPE_COMPONENT_LABELS)).toEqual(RECIPE_COMPONENT_KINDS);
   });
 });

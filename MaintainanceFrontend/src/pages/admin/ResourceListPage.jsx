@@ -15,7 +15,7 @@ import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { PageTransition } from '@/three/motion/motionKit';
-import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { pushToast, toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import NotFoundPage from '@/pages/NotFoundPage';
 
 /** The API's message for a failed call, for the toast's second line. */
@@ -25,8 +25,9 @@ const messageOf = (err) => err?.data?.error?.message;
  * `/admin/content/:resource` (or an entry's own `basePath`) — the list screen of every
  * registry entry. The entry supplies columns, filters and copy; this page adds what every
  * CMS list has: the on/off switch, Edit / View on site / Hide / Delete, bulk delete,
- * Reorder, and Trash. An entry may add row actions of its own (`rowActions`), open on a
- * filter (`defaultValue`), and allow Reorder only within one filter (`reorderWithin`).
+ * Reorder, and Trash. An entry may add row actions of its own (`rowActions`) and bulk
+ * actions (`bulkActions`), open on a filter (`defaultValue`), allow Reorder only within one
+ * filter (`reorderWithin`), and show a column only to a capability (`column.capability`).
  *
  * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
  */
@@ -106,6 +107,18 @@ function ResourceList({ entry, canWrite }) {
     }
   };
 
+  /** An entry's bulk action: it may ask first; it resolves its toast, or null when the answer was no. */
+  const runBulkAction = async (action, rows, clearSelection) => {
+    try {
+      const result = await action.run(rows, { dispatch, confirm });
+      if (!result) return;
+      clearSelection?.();
+      dispatch(pushToast({ variant: 'success', ...result }));
+    } catch (err) {
+      dispatch(toastError(`Could not ${action.label.toLowerCase()}`, messageOf(err)));
+    }
+  };
+
   const runAction = async (action) => {
     try {
       await dispatch(cmsApi.endpoints[action.endpoint].initiate(action.arg)).unwrap();
@@ -158,6 +171,14 @@ function ResourceList({ entry, canWrite }) {
     ];
   };
 
+  const allowed = (item) => !item.capability || can(item.capability);
+  const bulkActions = [
+    ...(inTrash ? [] : (entry.bulkActions ?? []).filter(allowed).map((a) => ({
+      label: a.label, icon: a.icon, onSelect: (rows, clearSelection) => runBulkAction(a, rows, clearSelection),
+    }))),
+    ...(canWrite ? [{ label: 'Delete', icon: Trash2, destructive: true, onSelect: onDelete }] : []),
+  ];
+
   return (
     <PageTransition>
       <PageHeader
@@ -177,7 +198,7 @@ function ResourceList({ entry, canWrite }) {
       ) : null}
       <CustomTable
         storageKey={`content:${entry.resource}`}
-        columns={[...entry.columns, activeColumn]}
+        columns={[...entry.columns.filter(allowed), activeColumn]}
         data={data?.items}
         meta={data?.meta}
         isLoading={isLoading}
@@ -193,7 +214,7 @@ function ResourceList({ entry, canWrite }) {
         emptyDescription={entry.emptyDescription}
         filters={entry.filters}
         rowActions={rowActions}
-        bulkActions={canWrite ? [{ label: 'Delete', icon: Trash2, destructive: true, onSelect: onDelete }] : undefined}
+        bulkActions={bulkActions.length ? bulkActions : undefined}
         trash={canWrite ? { onRestore, onPurge } : undefined}
         reorderable={canReorder && reorderScoped}
         reorderDisabledReason={canReorder && !reorderScoped ? entry.reorderHint : undefined}

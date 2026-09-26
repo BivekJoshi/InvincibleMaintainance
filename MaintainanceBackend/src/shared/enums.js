@@ -81,7 +81,15 @@ export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const STOCK_MOVEMENT_TYPES = ['PURCHASE', 'ISSUE_TO_JOB', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
 export const WARRANTY_STATUSES = ['ACTIVE', 'EXPIRED', 'VOID', 'CLAIMED'];
-export const UNITS = ['sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set'];
+/** How a site team measures and buys. Recipe quantities use each material's own unit (no conversion). */
+export const UNITS = [
+  'sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set',
+  'sq.m', 'cu.ft', 'cu.m', 'm', 'rmt', 'box', 'tin', 'trip', 'point',
+];
+/** What a recipe component is (RateCardComponent.kind). */
+export const RECIPE_COMPONENT_KINDS = ['MATERIAL', 'LABOUR', 'EQUIPMENT', 'OTHER'];
+/** DERIVED: the rate comes from the recipe; MANUAL: typed, the recipe (if any) only costs it. */
+export const RATE_MODES = ['MANUAL', 'DERIVED'];
 export const LOCALES = ['en', 'ne'];
 
 /** Home page sections, matching the studied site's anatomy. */
@@ -161,6 +169,8 @@ export const AUDIT_EVENTS = Object.freeze({
   USER_DISABLED: 'user.disabled',
   USER_ROLE_CHANGED: 'user.role_changed',
   MESSAGE_RETRIED: 'message.retried',
+  /** A rate-library item's rate set to its derived rate by a deliberate reprice (Phase L2). */
+  RATE_CARD_REPRICED: 'rate_card.repriced',
 });
 
 /** The sign-in events: what the login activity screen lists. */

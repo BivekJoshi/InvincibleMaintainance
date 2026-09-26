@@ -82,6 +82,12 @@ The CRM files (Phase E):
   (tag `{ type: 'Report', id: 'lost' }`, refreshed with the lead list).
 - `dashboardApi.js` also holds **`getBreachedLeadCount`** (the SLA nav badge): the shell loads that file, and a count must
   not pull `leadsApi` into the main bundle.
+- `rateLibraryApi.js` (Phase L2) — the rate library's two calls beyond the registry's eight: **`deriveRateCost`**
+  (`POST /admin/rate-card/derive`, `costs:read` — a **query** although it is a POST, like `previewTemplate`: the Cost vs rate
+  card asks again as the recipe changes; tag `{ type: 'RateCard', id: 'DERIVE' }`) and **`repriceRateCard({ ids, apply })`**
+  (`apply: false` is a preview and invalidates nothing; `apply: true` invalidates the library, those rates, the builder's
+  `RateCard` list, `Public` and `History`). A write to `materials` or `trades` (a purchase rate, a day wage) refreshes the
+  library's "Out of date" flags and the cost card through `cmsApi`'s `ALSO_READ_AS`.
 
 ## components/
 
@@ -97,6 +103,7 @@ The CRM files (Phase E):
 | `projects/` | `ProjectGalleryTab` — the Gallery tab of a project's edit page (add from the library or upload, drag or Move earlier/later, remove; each change saves at once through the project image endpoints) — and `ProjectName`, a project's title from its id for a list column. |
 | `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
 | `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog` (a required lost category, then the words — required only for "Other"), `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (**the outcome composer** — see "Lead follow-through (Phase L1)"), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice; `ConvertLeadSheet purpose="quotation"` is the **new-quotation sheet** — always a draft quotation, no switch; both report completion before they close, so a caller can tell done from Cancel), `ConvertResult` (what a convert made, with links), `LeadPhotoGallery` (what the customer photographed, with a lightbox: arrow keys, thumbnails, full size), `ResponseRunway` (the SLA board's hero: every unanswered lead on its two-hour clock; `RunwayStrip` is the one-line version on the dashboard) `LeadStageTrack` (a lead's road from New to Won on its page; a lost lead shows its category and the stage it was lost at), and Phase L1's `NextActionCard`, `QualificationCard` and `StageAgeChip` (see "Lead follow-through (Phase L1)"). |
+| `rateLibrary/` | Phase L2's rate library parts: `RateCostCard` (the edit form's live **Cost vs rate** card — a `preview` field behind `costs:read`), `RepricePreview` ("Update to derived rate"'s before/after table, inside the confirmation) and `RateLibraryIntro` (above a saved rate: how its rate is set, and "Out of date" with what its recipe gives today). See "The rate library and the money wall (Phase L2)". |
 | `customers/` | `CustomerFormSheet` (new customer), `CustomerAvatar` (initials in a steady colour; squared for a company), `CustomerBook` (the list's summary tiles, each a filter) and `MapPinInput` ("use map pin": pasted coordinates fill a site's latitude and longitude — it sits in the site form's `intro`, inside the form). |
 | `jobs/` | Phase H1, shared by the jobs list, the job page and the dispatch board: `JobFormSheet` (new job; the site and quotation follow the customer), `ScheduleJobDialog` (window, who goes, lead, "text the customer" — the board's non-drag path), `AssignJobDialog`, `CompleteJobDialog` (note, signature photo, rating, warranty). |
 | `stock/` | `StockMovementsSheet` — one material's movements, paged (Phase H1). |
@@ -196,7 +203,17 @@ media sheet's preview).
 One file per field type under `fields/`. Every spec has `name`, `type`, `label`, and optionally
 `description`, `placeholder`, `required`, `disabled`, `span: 'half'`, `defaultValue` — and, in a registry entry,
 `lockedOnEdit` (editable on a new record, read-only once saved) and `capability` (shown only to a user holding it — a
-technician's labour rate).
+technician's labour rate, the rate library's overhead %). Since Phase L2 a spec may also say:
+
+- **`adapt(values)`** — the spec follows the form's values: it returns overrides (`{ disabled: true, description }`,
+  `{ required: true }`), `{ hidden: true }` to leave the field out, or nothing. The rate library's Rate is read-only
+  "Set from the recipe when you save." while the rate comes from the recipe. A hidden field keeps its value
+  (`FieldRenderer.jsx#AdaptiveFieldCell`, which is the only cell that watches every value).
+- **`nullable: true`** — an emptied value is **sent as null**, which is how the API clears a column (a material's pack size,
+  a rate's overhead % back to the setting). Without it an empty value is left out, and an update keeps the old one.
+
+`number` keeps what was typed, as `money` does: react-hook-form reports a field's starting value while it is `undefined`,
+so a cleared input would otherwise show the saved number again.
 
 | `type` | Value | Extra spec |
 |---|---|---|
@@ -217,6 +234,8 @@ technician's labour rate).
 | `weekdays` | sorted day numbers, 0 = Sunday … 6 = Saturday | — |
 | `checklist` | `string[]` — several values ticked from `options: [{ value, label, description?, disabled? }]`, kept in the options' order; a ticked value no longer listed stays, named by `unknownLabel(value)` (the technicians on a job) | `options`, `emptyText`, `unknownLabel` |
 | `lineItems` | a priced document's lines — description, rate-card item, unit, qty and a rate in **rupees** (the record's paisa are converted in); rows move and are removed, a blank row is dropped, and the amounts are a preview until the server saves | `rateCard` (the rate-card rows), `maxItems` |
+| `recipe` | a rate-library recipe (Phase L2): the API's `components` — Materials (a material picked from `materials.path`, its quantity in the material's own unit, wastage %), Labour (a trade from `trades.path`, man-days) and Equipment & other (what it is, a quantity, a cost per unit in **rupees**). One array kept grouped by section; a blank line is dropped. A line names its material or trade from the record it carries (`RecordCombobox selectedLabel`), so a reader who may not list materials sees names. Cost inputs only for `costCapability`. `helpers/recipe.js` converts both ways | `materials`, `trades` (`{ path, params }`), `costCapability`, `per: { qty, unit }` (the "Quantities below make 10 sq.m" line) |
+| `preview` | **no value** — a panel worked out from the form's values; never loaded or sent (`DISPLAY_TYPES` in `formValues.js`), and the registry test does not look for it in the schema. `component` renders inside the form and reads the values with `useWatch()`. The rate library's Cost vs rate card, behind `capability: 'costs:read'` | `component` |
 | `objectList` | an array of small objects, one row each (move up/down, remove); a completely empty row is dropped on save — give the schema a `z.preprocess` that drops blank rows too, since validation runs first | `itemFields: [{ name, label, type?: 'text' \| 'select', options?, placeholder?, maxLength?, className? }]`, `itemLabel`, `addLabel`, `maxItems` |
 | `group` | collapsible section (e.g. SEO); opens itself on an error inside. `variant: 'card'` is an always-open titled card (the settings page) | `fields`, `defaultOpen`, `variant` |
 
@@ -239,9 +258,11 @@ technician's labour rate).
 - **`common/ConfirmDialog.jsx` + `hooks/useConfirm.jsx`** — `const [confirm, confirmDialog] = useConfirm()`,
   then `await confirm({ title, description, confirmLabel, destructive })` → true / false. The caller renders
   `confirmDialog`; there is deliberately no app-wide provider, so alert-dialog stays out of the marketing bundle.
+  `description` may be a block (the reprice preview's table) — it is then rendered in a `div`, not the description's `p`.
 - **`common/RecordCombobox.jsx`** — picks one record from an admin list endpoint, searching `?q=` on the server.
   The relation filter and the relation field are both this. `api/lookupApi.js` holds its two resource-agnostic
   queries (`searchRecords`, `getRecord`). `fixedOptions` adds choices that are not records (listed first, never looked up).
+  `selectedLabel` names the current value when the caller already has it, so it is not looked up (a recipe line).
 - **`common/FormDialog.jsx`** — a short `<ResourceForm>` in a dialog (a reason, an owner): Cancel and a save close it,
   and it never holds the page's leave-guard. The lost-reason and assign dialogs are this.
 - **`common/RecordHistory.jsx`** — `<RecordHistory endpoint="/admin/leads/:id/history" />`: a record's History tab.
@@ -278,10 +299,11 @@ Every CMS resource the API mounts has a screen. `cms` means `cms:read` to open a
 | Posts | registry `posts` | `/admin/content/posts` · cms | Blog & pages | `/blog`, `/blog/:slug`, the Blog nav item |
 | Post categories | registry `post-categories` | `/admin/content/post-categories` · cms | Blog & pages | `/blog` category filter |
 | Pages | registry `pages` | `/admin/content/pages` · cms | Blog & pages | `/:slug` (e.g. `/about`), CMS button links |
-| Rate card | registry `rate-card`, own `basePath` | `/admin/rate-card` · quotations:read / quotations:write | Sales | quotation lines, survey pricing, `/pricing` rate table |
+| Rate library (the rate card until L2) | registry `rate-card`, own `basePath`; the `recipe` field, a `preview` cost card, `bulkActions` "Update to derived rate", cost columns behind `costs:read` | `/admin/rate-card` · rates:read / rates:write; History rates:read (the API masks cost in it) | Catalog | quotation lines, survey pricing, `/pricing` rate table |
+| Trades & wages | registry `trades`, own `basePath`; the day wage behind `costs:read` | `/admin/trades` · rates:read / rates:write | Catalog | — (a recipe's labour) |
 | Technicians | registry `technicians`, own `basePath`, switch = **availability** (`activeField: 'isAvailable'`) | `/admin/technicians` · technicians:read / technicians:write; the rate field and the History tab need technicians:write | Operations | — |
 | Job templates | registry `job-templates`, own `basePath`; steps as an `objectList` | `/admin/job-templates` · jobs:read / jobs:write | Operations | — (a new job copies the steps) |
-| Materials | registry `materials`, own `basePath` | `/admin/materials` · materials:read / materials:write | Operations | — (stock is the Stock page) |
+| Materials | registry `materials`, own `basePath`; pack size and name (`nullable`) since L2 | `/admin/materials` · materials:read / materials:write (the API also lets `rates:write` list and read them, for the recipe picker) | Operations | — (stock is the Stock page; a recipe's materials) |
 | Material categories, Suppliers | registry `material-categories`, `suppliers`, own `basePath` | `/admin/material-categories`, `/admin/suppliers` · materials | Operations | — |
 | Site settings | **bespoke** `pages/admin/SettingsPage` | `/admin/platform/settings` · settings:read to open; saving is ADMIN's (`settings:write`) | Platform | header, footer, contact, hero badges and counters, booking calendar, SEO defaults |
 
@@ -324,7 +346,7 @@ An entry holds:
 | `model` | the Prisma client model name for `/admin/translations` — `faq`, `processStep` — the name the public site's `withLocale` reads |
 | `label`, `labelPlural`, `description` | copy for titles, buttons, toasts and confirmations |
 | `capability`, `writeCapability` | to see the screens (`cms:read`); to change anything (default `cms:write`) |
-| `columns`, `filters` | CustomTable columns and filters (the On site column is added by the page) |
+| `columns`, `filters` | CustomTable columns and filters (the On site column is added by the page). A column's `capability` shows it only to its holders (the rate library's Cost and Margin, a trade's Day wage — `costs:read`) |
 | `fields`, `schema`, `defaultValues` | ResourceForm fields, the zod schema from `form/schemas/cms.schema.js`, and a new record in API shape. `schema` may be a function of `{ pageSlugs }` when a rule needs the live site — a CMS link may point at a live page (`linkIssue`). Read it through `schemaOf(entry, ctx)`; the edit page passes the pages from `useSiteSettings` |
 | `sortable` | offers Reorder. `false` when the site orders by another column (process steps order by `stepNo`) |
 | `translatable` | field names edited on the Nepali tab (text fields only) |
@@ -339,9 +361,10 @@ An entry holds:
 | `tabs` | `[{ value, label, component }]` — panels beside the form on an existing record, rendered with `{ record, canWrite }` (a project's Gallery). Disabled on a new record |
 | `historyCapability` | who sees the edit page's **History** tab (default `capability`; the rate card's is `quotations:history`). Every saved record gets the tab — `RecordHistory` on `<path>/:id/history`, which the API's CRUD factory mounts. `historyCapabilityOf(entry)` answers |
 | `activeField` | the boolean the list's switch and Hide/Show act on (default `isActive`) — the API's `toggle` flips the same column. Technicians use `isAvailable` with their own `activeCopy`. `activeFieldOf(entry)` answers |
+| `bulkActions` | extra actions on the selected rows: `[{ label, icon?, capability?, run(rows, { dispatch, confirm }) }]`. `run` may ask first and resolves the toast (`{ title, description?, variant? }`), or null when the answer was no; a rejection toasts the API's message. Not offered in Trash. The rate library's "Update to derived rate" is one |
 | `rowActions(row)` | extra list actions: `[{ label, icon?, capability?, endpoint, arg, done }]` — `endpoint` is a `cmsApi` mutation (`approveTestimonial`), dispatched with `arg`; `done` is the success toast. Hidden without `capability`. The registry test checks each endpoint exists |
 
-A role with `capability` but not `writeCapability` (ACCOUNTANT on the rate card) sees the list with disabled
+A role with `capability` but not `writeCapability` (SALES and ACCOUNTANT on the rate library) sees the list with disabled
 switches and no New, and the edit page read-only (`ResourceForm readOnly`); `…/new` sends it back to the list.
 
 Icons are picked, not typed: `resources/iconOptions.jsx` offers exactly `DataIcon`'s `ICON_NAMES`, each drawn.
@@ -380,11 +403,12 @@ Icons are picked, not typed: `resources/iconOptions.jsx` offers exactly `DataIco
    every translatable field is a text field, the nav item and the entry agree on the capability, a filter's
    `defaultValue` is one of its options, `reorderWithin` names a filter, and every `rowActions` endpoint is a `cmsApi`
    mutation. The test reads the resources the API mounts through `mountResource` in `cms.routes.js` and
-   `ops.routes.js` (Phase H1; the mounter is `routes/admin/mountResource.js`). A resource
-   mounted by hand (the rate card, in `crm.routes.js`) is listed in the test's
-   `HAND_MOUNTED` and must mount all eight endpoints.
+   `ops.routes.js` (Phase H1; the mounter is `routes/admin/mountResource.js`) and `crm.routes.js` (Phase L2: the rate
+   library and trades). Nothing is mounted by hand any more. Every field and column `capability` must be a real one, a
+   `preview` field has a `component` and is not in the schema, and every `bulkActions` entry has a `run`.
 6. When another screen reads the same data through its own endpoint, add its tag to `ALSO_READ_AS` in
-   `api/cmsApi.js` (the rate card also invalidates the quotation builder's `RateCard` list).
+   `api/cmsApi.js` (the rate card also invalidates the quotation builder's `RateCard` list; materials and trades refresh
+   the rate library's out-of-date flags).
 
 Check before step 2 how the **public site** reads the model: its order column (`sortable`), where a record shows
 (`publicHref`), and whether the public query overlays translations (`withLocale`) — a Nepali tab the site never
@@ -466,7 +490,7 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
 | Route | Page | Does |
 |---|---|---|
 | `/admin/jobs` | `JobsPage` | CustomTable: number and title, customer (tap to call, area), status in the office's words (`JOB_STATUS_LABELS`) and priority, when, technicians. Filters status, type, priority, technician, customer, "Nobody on it", invoiced, scheduled dates; URL presets from `config/admin/jobViews.js` — Today, Unassigned, On hold, Completed not verified, Not invoiced; New job (`JobFormSheet`); a row's Schedule… / Assign… / Verify… |
-| `/admin/jobs/:id` | `JobDetailPage/` | the action bar and eight tabs (`?tab=`): **Overview** (customer and site with tap-to-call and Maps, where it came from — lead, quotation, survey, rework, case study — when and who, the work, Edit details), **Checklist** (tick, skip, add, edit, remove), **Photos** (grouped by kind; add from the library or upload under a chosen kind), **Materials** (issue from stock with quantity, billed rate and billable; reverse), **Time** (logs; the office adds time for a technician on the job; delete), **Costing** (`GET …/costing`: labour, materials at cost, expenses, total, invoiced, margin, and the lines each total is the sum of), **Events** (JobStatusEvent, with a Maps link where the field app sent a location), **History** (`jobs:history`) |
+| `/admin/jobs/:id` | `JobDetailPage/` | the action bar and eight tabs (`?tab=`): **Overview** (customer and site with tap-to-call and Maps, where it came from — lead, quotation, survey, rework, case study — when and who, the work, Edit details), **Checklist** (tick, skip, add, edit, remove), **Photos** (grouped by kind; add from the library or upload under a chosen kind), **Materials** (issue from stock with quantity, billed rate and billable; reverse), **Time** (logs; the office adds time for a technician on the job; delete), **Costing** (`GET …/costing`: labour, materials at cost, expenses, total, invoiced, margin, and the lines each total is the sum of — **only for `costs:read`** since Phase L2: the tab is not there for anyone else, and `?tab=costing` falls back to Overview), **Events** (JobStatusEvent, with a Maps link where the field app sent a location), **History** (`jobs:history`) |
 | `/admin/dispatch` | `DispatchBoardPage/` | technicians × the day's hours (08–18) or × seven days; date, Day/Week, who, skill and area in the URL; the unassigned queue (`/dispatch/unassigned`, paged, searchable) and "Assigned, no time yet" beside it |
 | `/admin/stock` | `StockPage` | balances from movements, Low — reorder, value at cost; "Low stock only" filter and the header's low count; a row opens its movements (`StockMovementsSheet`, also `?open=<id>` — the low-stock notification's link); **Record movement** (purchase, return, adjustment with a sign, wastage) |
 | `/admin/technicians`, `/admin/job-templates`, `/admin/materials`, `/admin/material-categories`, `/admin/suppliers` | registry entries | see "Which screen is which" |
@@ -574,6 +598,53 @@ them and refuse what the API would.
   qualification card, the status menu, the lost report — with Devanagari names and notes), the board's Phase L1 block in
   `LeadScreens.test.jsx`, `helpers/leadFollowUp.test.js`, `form/schemas/lead.schema.test.js`, and `crmMirror.test.js` for
   the new lists.
+
+## The rate library and the money wall (Phase L2)
+
+The rate card became the **rate library**: a selling rate per unit of work, and the **recipe** behind it (L-D1) — what
+`recipeQty` units need in materials (with wastage), labour man-days by trade, equipment and other costs — plus overhead %,
+profit % and a round-up. It is still one registry entry (`config/admin/resources/rateCard.jsx`, `/admin/rate-card`,
+nav **Catalog › Rate library**) rendered by `ResourceListPage` / `ResourceEditPage`; **Trades & wages**
+(`resources/trades.jsx`, `/admin/trades`) sits beside it. Both read with `rates:read` (SALES, MANAGER, ACCOUNTANT) and
+write with `rates:write` (MANAGER); SALES no longer writes rates, because a recipe carries cost.
+
+- **Rate set by** — *Typed by hand* (`MANUAL`: the rate is typed; a recipe, if any, only costs it for the margin) or
+  *Worked out from the recipe* (`DERIVED`: the server sets the rate from the recipe on save; the Rate field is read-only,
+  via `adapt`). The recipe is the `recipe` field; overhead %, profit % and "Round up to" are `nullable` (blank = the
+  setting) and `capability: 'costs:read'`.
+- **Out of date** — a new purchase rate or day wage never moves a rate. The row's `outOfDate` / `derivedRate` (a selling
+  rate, so every reader sees it) show as the **Price check** column ("Out of date — Recipe gives Rs. …") and, on the
+  record, as `RateLibraryIntro`. A rate changes only by a save or by the bulk action **Update to derived rate**
+  (`rates:write`): `POST /reprice { ids, apply: false }` → the before/after in a confirmation (`RepricePreview`) →
+  `{ ids: <exactly those shown>, apply: true }`.
+- **Cost vs rate** — the edit form's `preview` field (`components/rateLibrary/RateCostCard`), shown with `costs:read`:
+  once every recipe line is complete it sends the recipe as typed (`helpers/recipe.js#deriveRequest`, debounced) to
+  `POST /admin/rate-card/derive` and shows the server's material, labour, equipment, other, overhead and unit cost, the
+  derived rate, and the margin at the rate now (and at the derived rate). A line with no price yet is named, and there is
+  no derived rate until every line is priced.
+- **Columns** — Code, Work, Rate, Set by, Price check; **Cost** and **Margin %** only with `costs:read` (column `capability`).
+
+**The money wall on the client.** The API is the wall: it strips cost keys (`cost`, `unitCost`, `lineCost`,
+`costBreakdown`, `margin`, `overheadPct`, `profitPct`, `purchaseRate`, `dayWage`, …) for anyone without `costs:read`,
+masks them in History, and answers 403 to job costing and the job-margin report. The client follows two rules:
+
+1. **Never compute cost or margin.** A recipe is priced by the server (`/derive`, and the rows it lists), and `/derive`
+   also answers the margin at the form's rate and at the derived rate — for exactly the recipe on screen.
+2. **Show cost only behind `costs:read`** — a column's or field's `capability`, the recipe field's `costCapability`, the
+   job page's Costing tab. A screen never relies on a key simply being absent.
+
+Parts: `helpers/recipe.js` (API components ⇄ form rows, `recipeBody`, `deriveRequest`), `api/rateLibraryApi.js`,
+`form/schemas/rateCard.schema.js` (`rateCardItemSchema` — a typed rate needs its rate, a derived one its recipe —
+`recipeComponentSchema`, `tradeSchema`), `config/constants.js` (`UNITS` with the metric and pack units, `RATE_MODES`,
+`RECIPE_COMPONENT_KINDS`, each with labels), and `helpers/capabilityMatrix.js#CAPABILITY_DESCRIPTIONS` (the Roles &
+permissions matrix words `costs:read`, `rates:read`, `rates:write` and `jobs:advance-override` in full). Materials gained
+**pack size** and **pack** (`bag = 50 kg`), shown on the list and beside a recipe's material.
+
+Tests: `pages/admin/RateLibraryScreens.test.jsx` (the list per role, the out-of-date badge, the bulk reprice — preview,
+confirm, apply, decline, nothing to do — the form for MANAGER and for SALES, a recipe created end to end in rupees, the
+rules, trades' wage, materials' pack), `helpers/recipe.test.js`, the L2 block in `ResourceForm.test.jsx` (`adapt`,
+`nullable`, `preview`), the Costing tab per role in `OperationsScreens.test.jsx`, and `crmMirror.test.js` (units, rate
+modes, recipe kinds, the permission map and who holds each new capability).
 
 ## The admin shell
 
@@ -784,8 +855,8 @@ customer and site and `parseMapPin`. `contactFields.test.js` covers mobile, land
 contact form, email normalisation and Devanagari names. These mirror the backend's zod
 schemas — when an API rule changes, change it here in the same commit. `cms.schema.js` mirrors the
 whole of the API's `shared/schemas/cms.js`, one schema per CMS resource, for the registry entries, plus
-`mediaUpdateSchema` and `mediaFolderSchema`; `rateCard.schema.js` mirrors `rateCardItemSchema` from the API's
-`shared/schemas/crm.js`. `cms.schema.test.js` runs the API's own service cases
+`mediaUpdateSchema` and `mediaFolderSchema`; `rateCard.schema.js` mirrors `rateCardItemSchema`, `recipeComponent` and
+`tradeSchema` from the API's `shared/schemas/crm.js` (Phase L2). `cms.schema.test.js` runs the API's own service cases
 (`MaintainanceBackend/tests/fixtures/serviceSchemaCases.js`) against the mirror, and checks `UNITS` against the
 API's `shared/enums.js` — the one test import that is a relative path, because the fixture is outside `src/`.
 There is no `formKit.js`-style barrel for it: import the schema you need.
@@ -819,7 +890,7 @@ links, and which role may see each), `homeSections.js` (what each home
 section shows, where its content is edited, which ones take a `limit`, and `toSectionItems`), and `settingsForm.js`
 (the settings screen as data — see "Which screen is which").
 
-`helpers/` is behaviour with no state (Phase H1 added `jobActions.js` and `dispatchBoard.js` — see "Operations
+`helpers/` is behaviour with no state (Phase L2 added `recipe.js` — see "The rate library and the money wall"; Phase H1 added `jobActions.js` and `dispatchBoard.js` — see "Operations
 (Phase H1)" — and `formatMinutes` in `format.js`; Phase G added `auditDiff.js`, `sms.js`, `recordLinks.js` and
 `capabilityMatrix.js` — see "Platform (Phase G)"): `format.js` (money — `rupeesToPaisa`, `parseRupees`,
 `formatRupees` — dates, Kathmandu time and `toKathmanduParts` / `fromKathmanduParts` for inputs),
@@ -883,3 +954,6 @@ every new form.
    repeats the folder name rather than hiding behind `index`, so an editor tab and a
    stack trace both name the thing you are looking at. Import the file, not the
    folder: `@/redux/store`, never `@/redux`.
+8. **Cost is the server's.** The client never works out a cost; it shows one only behind `costs:read` (a field's,
+   column's or tab's capability), even though the API already strips it for everyone else. See "The rate library and the
+   money wall (Phase L2)".

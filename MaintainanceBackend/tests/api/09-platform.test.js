@@ -235,9 +235,14 @@ describe('operational reports', () => {
     'GET %s as SALES', async (path) => { expectStatus(await (await as('SALES')).get(path), 200); },
   );
 
-  it.each(['/admin/reports/job-margin', '/admin/reports/technicians', '/admin/reports/warranty-claims'])(
+  it.each(['/admin/reports/technicians', '/admin/reports/warranty-claims'])(
     'GET %s as DISPATCHER', async (path) => { expectStatus(await (await as('DISPATCHER')).get(path), 200); },
   );
+
+  it('the job-margin report shows cost: costs:read (a manager), not reports:ops (Phase L2)', async () => {
+    expectStatus(await (await as('DISPATCHER')).get('/admin/reports/job-margin'), 403);
+    expectStatus(await (await as('MANAGER')).get('/admin/reports/job-margin'), 200);
+  });
 
   it('SALES cannot read ops reports', async () => {
     expectStatus(await (await as('SALES')).get('/admin/reports/job-margin'), 403);

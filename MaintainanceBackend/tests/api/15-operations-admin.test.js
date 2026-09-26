@@ -334,7 +334,8 @@ describe('job costing', () => {
       technicianId: tech, startedAt: new Date().toISOString(), minutes: 50,
     }), 201);
 
-    const c = expectStatus(await dispatcher.get(`/admin/jobs/${job.id}/costing`), 200).data;
+    // Costing is costs:read since Phase L2 — a manager's view, not the dispatcher's.
+    const c = expectStatus(await (await as('MANAGER')).get(`/admin/jobs/${job.id}/costing`), 200).data;
     // 12.345 rupees is stored as 1235 paisa (toPaisa rounds): 22 × 1235 = 27170, 1.5 × 1235 = 1852.5 → 1853.
     expect(c.breakdown.materials.map((m) => m.cost)).toEqual([27170, 1853]);
     expect(c.cost.materials).toBe(27170 + 1853);

@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { dateRange } from '../utils/pagination.js';
-import { sum } from '../utils/money.js';
+import { lineAmount, sum } from '../utils/money.js';
 import { addDays, kathmanduDayRange } from '../utils/dates.js';
 
 const range = (q) => dateRange(q.from, q.to) ?? { gte: addDays(new Date(), -30) };
@@ -215,8 +215,8 @@ export async function jobMarginReport(query = {}) {
   });
 
   const rows = jobs.map((j) => {
-    const materialCost = sum(j.materials.map((m) => Math.round(m.qty * (m.material.purchaseRate || m.rate))));
-    const labourCost = sum(j.timeLogs.map((t) => Math.round(((t.minutes ?? 0) / 60) * (t.technician.hourlyRate ?? 0))));
+    const materialCost = sum(j.materials.map((m) => lineAmount(m.qty, m.material.purchaseRate || m.rate)));
+    const labourCost = sum(j.timeLogs.map((t) => lineAmount((t.minutes ?? 0) / 60, t.technician.hourlyRate ?? 0)));
     const expenseCost = sum(j.expenses.map((e) => e.amount));
     const invoiced = sum(j.invoiceItems.map((i) => i.amount));
     const cost = materialCost + labourCost + expenseCost;

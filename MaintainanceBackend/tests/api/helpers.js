@@ -173,6 +173,23 @@ export async function approveAndSend(id, { requestId } = {}) {
   return prisma.quotation.findUnique({ where: { id } });
 }
 
+/**
+ * Every key path under `value` whose key `isKey` accepts, e.g. `data[].assignments[].technician.hourlyRate`
+ * (array indexes collapsed, so a leak repeated on every row is listed once) — for the money-wall scans.
+ * @param {unknown} value
+ * @param {(key: string) => boolean} isKey
+ */
+export function findKeys(value, isKey, path = 'data', found = new Set()) {
+  if (Array.isArray(value)) value.forEach((v) => findKeys(v, isKey, `${path}[]`, found));
+  else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      if (isKey(k)) found.add(`${path}.${k}`);
+      findKeys(v, isKey, `${path}.${k}`, found);
+    }
+  }
+  return [...found];
+}
+
 export async function uploadImage(api, color) {
   const res = await api.post('/admin/media').attach('files', await pngBuffer(color), 'test.png');
   return expectStatus(res, 201).data[0];

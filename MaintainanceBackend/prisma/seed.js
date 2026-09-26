@@ -257,6 +257,45 @@ async function main() {
   }
   console.log(`  materials: ${D.MATERIALS.length} with opening stock`);
 
+  // ── Phase L2: pack sizes on an older database, trades, and demo recipes (only on items with none)
+  for (const m of D.MATERIALS.filter((x) => x.packSize)) {
+    await prisma.material.updateMany({ where: { code: m.code, packSize: null }, data: { packSize: m.packSize, packLabel: m.packLabel } });
+  }
+  const trades = {};
+  for (const t of D.TRADES) {
+    trades[t.code] = await prisma.trade.upsert({
+      where: { code: t.code }, create: { ...t, dayWage: toPaisa(t.dayWage) }, update: {},
+    });
+  }
+  let recipes = 0;
+  for (const [code, recipe] of Object.entries(D.RECIPES)) {
+    const item = await prisma.rateCardItem.findUnique({ where: { code }, include: { _count: { select: { components: true } } } });
+    if (!item || item._count.components) continue;
+    await prisma.rateCardItem.update({
+      where: { code },
+      data: {
+        rateMode: recipe.rateMode,
+        recipeQty: recipe.recipeQty,
+        components: {
+          create: recipe.components.map(([kind, ref, qty, wastagePct = 0, cost], sortOrder) => {
+            const material = kind === 'MATERIAL' ? materials[ref] : null;
+            const trade = kind === 'LABOUR' ? trades[ref] : null;
+            return {
+              kind, qty, wastagePct, sortOrder,
+              materialId: material?.id ?? null,
+              tradeId: trade?.id ?? null,
+              description: material || trade ? null : ref,
+              unit: material?.unit ?? (trade ? 'day' : 'lump'),
+              cost: cost != null ? toPaisa(cost) : null,
+            };
+          }),
+        },
+      },
+    });
+    recipes += 1;
+  }
+  console.log(`  trades: ${D.TRADES.length} · recipes: ${recipes} new`);
+
   // ── job templates
   for (const t of D.JOB_TEMPLATES) {
     const { service, ...rest } = t;

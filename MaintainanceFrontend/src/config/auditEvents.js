@@ -63,6 +63,8 @@ export const AUDIT_EVENT_LABELS = {
   'quotation.pulled_back': 'Quotation pulled back',
   'quotation.customer_changes_requested': 'Customer asked for changes',
   'quotation.superseded': 'Quotation superseded',
+
+  'rate_card.repriced': 'Rate library repriced',
 };
 
 /** Plain words for a model row's table, for rows that are not a named event. */
@@ -85,6 +87,8 @@ export const AUDIT_MODEL_LABELS = {
   ProjectImage: 'gallery picture',
   Translation: 'Nepali copy',
   RateCardItem: 'rate',
+  RateCardComponent: 'recipe line',
+  Trade: 'trade',
   User: 'user',
   Setting: 'setting',
   MessageTemplate: 'message template',
@@ -96,6 +100,7 @@ export const AUDIT_EVENT_GROUPS = [
   { prefix: 'customer', label: 'Customers' },
   { prefix: 'quotation', label: 'Quotations' },
   { prefix: 'survey', label: 'Site surveys' },
+  { prefix: 'rate_card', label: 'Rate library' },
   { prefix: 'job', label: 'Jobs' },
   { prefix: 'invoice', label: 'Invoices' },
   { prefix: 'payment', label: 'Payments' },

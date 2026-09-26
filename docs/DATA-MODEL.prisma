@@ -743,6 +743,20 @@ model CustomerSite {
   @@index([customerId])
 }
 
+/// DERIVED: the rate comes from the recipe; MANUAL: typed, and a recipe (if any) only costs it.
+enum RateMode {
+  MANUAL
+  DERIVED
+}
+
+enum RecipeComponentKind {
+  MATERIAL
+  LABOUR
+  EQUIPMENT
+  OTHER
+}
+
+/// The rate library (Phase L2): a selling rate per unit, and the recipe behind it (L-D1).
 model RateCardItem {
   id          String    @id @default(cuid())
   code        String    @unique
@@ -750,15 +764,69 @@ model RateCardItem {
   description String?
   category    String?
   unit        String
+  /// The selling rate (paisa). DERIVED items change it only through a reprice.
   rate        Int
+  rateMode    RateMode  @default(MANUAL)
+  /// The recipe is written for this many units of work — DoR norms are "per 10 sq.m".
+  recipeQty   Float     @default(1)
+  /// null = the setting (quotation.defaultOverheadPct / defaultProfitPct / sellRateRoundTo).
+  overheadPct Float?
+  profitPct   Float?
+  /// Paisa; the derived rate is rounded UP to a multiple of it.
+  roundTo     Int?
+  /// The unit cost (paisa) when the rate was last set — margins show today's cost next to it.
+  unitCost    Int?
   isActive    Boolean   @default(true)
   sortOrder   Int       @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
+  components     RateCardComponent[]
   quotationItems QuotationItem[]
   surveyItems    SurveyItem[]
+
+  @@index([isActive, sortOrder])
+}
+
+/// One line of a recipe: a material (in its own unit), a trade's man-days, or equipment / other cost.
+model RateCardComponent {
+  id             String              @id @default(cuid())
+  rateCardItemId String
+  kind           RecipeComponentKind
+  materialId     String?
+  tradeId        String?
+  description    String?
+  unit           String
+  qty            Float
+  wastagePct     Float               @default(0)
+  /// Paisa per unit — EQUIPMENT and OTHER only; a material's is its purchaseRate, labour's the day wage.
+  cost           Int?
+  sortOrder      Int                 @default(0)
+
+  rateCardItem RateCardItem @relation(fields: [rateCardItemId], references: [id], onDelete: Cascade)
+  material     Material?    @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  trade        Trade?       @relation(fields: [tradeId], references: [id], onDelete: Restrict)
+
+  @@index([rateCardItemId, sortOrder])
+  @@index([materialId])
+  @@index([tradeId])
+}
+
+/// A trade and what a day of it costs (Phase L2) — mason, helper, painter… Wages are cost: costs:read only.
+model Trade {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  name      String
+  /// Paisa per man-day.
+  dayWage   Int       @default(0)
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  components RateCardComponent[]
 
   @@index([isActive, sortOrder])
 }
@@ -1207,6 +1275,10 @@ model Material {
   unit         String
   purchaseRate Int       @default(0)
   sellRate     Int       @default(0)
+  /// How it is bought: 50 (kg) a bag, 1 when the unit already is the pack. The take-off rounds up to packs.
+  packSize     Float?
+  /// "bag", "20 L tin", "box of 8"
+  packLabel    String?
   reorderLevel Float     @default(0)
   isActive     Boolean   @default(true)
   sortOrder    Int       @default(0)
@@ -1219,6 +1291,7 @@ model Material {
   movements    StockMovement[]
   jobMaterials JobMaterial[]
   surveyItems  SurveyItem[]
+  recipeLines  RateCardComponent[]
 
   @@index([isActive, sortOrder])
 }

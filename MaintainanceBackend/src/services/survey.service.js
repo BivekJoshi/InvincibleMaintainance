@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 import { conflict, forbidden, notFound, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
 import { lineAmount, toRupees } from '../utils/money.js';
+import { effectiveQty } from '../utils/quantity.js';
 import { nextNumber } from '../utils/numbering.js';
 import { SURVEY_TRANSITIONS, JOB_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
 import * as jobs from './job.service.js';
@@ -360,9 +361,6 @@ export async function reviewSurvey(id, { status, note }, userId) {
   return updated;
 }
 
-/** Rounds an effective quantity to 3dp. Quantity rounding happens once, here. */
-const effectiveQty = (qty, wastagePct) =>
-  Math.round(Number(qty || 0) * (1 + Number(wastagePct || 0) / 100) * 1000) / 1000;
 
 /**
  * Prices a survey's quantities against today's catalogue. Read-only: nothing is

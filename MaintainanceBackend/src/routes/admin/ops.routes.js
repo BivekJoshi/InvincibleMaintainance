@@ -44,7 +44,8 @@ router.post('/jobs/:id/publish-case-study', requires('cms:write'),
   validate({ params: idParam, body: caseStudySchema }),
   asyncHandler(async (req, res) => created(res, await publishJobAsCaseStudy(req.params.id, req.body, req.user.id))));
 
-router.get('/jobs/:id/costing', readJobs, validate({ params: idParam }),
+// What a job cost and its margin: costs:read only (L-D4) — MANAGER and ADMIN.
+router.get('/jobs/:id/costing', requires('costs:read'), validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await jobs.jobCosting(req.params.id))));
 
 router.put('/jobs/:id', writeJobs, validate({ params: idParam, body: s.jobUpdateSchema }),
@@ -118,7 +119,11 @@ mountResource(router, 'job-templates', jobs.jobTemplates, s.jobTemplateSchema, {
 // ── materials & stock
 mountResource(router, 'suppliers', materials.suppliers, s.supplierSchema, { capability: 'materials' });
 mountResource(router, 'material-categories', materials.materialCategories, s.materialCategorySchema, { capability: 'materials' });
-mountResource(router, 'materials', materials.materials, s.materialSchema, { capability: 'materials' });
+// rates:write reads the catalogue too: a manager writing a recipe picks its materials (Phase L2). The
+// material trail stays materials:read — what a reader of the list sees is not its history.
+mountResource(router, 'materials', materials.materials, s.materialSchema, {
+  capability: 'materials', readAlso: ['rates:write'], historyCapability: 'materials:read',
+});
 
 const readMat = requires('materials:read');
 const writeMat = requires('materials:write');

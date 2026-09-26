@@ -1,5 +1,5 @@
 import {
-  Blocks, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
+  Blocks, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, Hammer, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
   HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, LogIn,
   MessageSquareQuote, MessageSquareText, Newspaper, Package, Receipt, Ruler, ScrollText, Send, Settings, ShieldCheck,
   Sparkles, Tag, Tags, Timer, TrendingDown, UserCog, Users, Wallet, Wrench,
@@ -35,7 +35,7 @@ import { can } from '@/helpers/permissions';
  */
 export const NAV_TABS = [
   { key: 'home', label: 'Home', icon: Home, hint: 'Daily work: sales, jobs, finance' },
-  { key: 'helpers', label: 'Helpers', icon: LifeBuoy, hint: 'Rate card, templates, materials, page blocks' },
+  { key: 'helpers', label: 'Helpers', icon: LifeBuoy, hint: 'Rate library, templates, materials, page blocks' },
   { key: 'others', label: 'Others', icon: Globe, hint: 'Website content and blog' },
   { key: 'settings', label: 'Settings', icon: Settings, hint: 'Users, roles, audit and settings' },
 ];
@@ -96,7 +96,8 @@ export const ADMIN_NAV = [
     label: 'Catalog',
     tab: 'helpers',
     items: [
-      { to: '/admin/rate-card', label: 'Rate card', icon: Ruler, capability: 'quotations:read', editLabel: 'Edit' },
+      { to: '/admin/rate-card', label: 'Rate library', icon: Ruler, capability: 'rates:read', editLabel: 'Edit' },
+      { to: '/admin/trades', label: 'Trades & wages', icon: Hammer, capability: 'rates:read', editLabel: 'Edit' },
       { to: '/admin/job-templates', label: 'Job templates', icon: ClipboardList, capability: 'jobs:read', editLabel: 'Edit' },
       { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', editLabel: 'Edit' },
       { to: '/admin/material-categories', label: 'Material categories', icon: FolderTree, capability: 'materials:read', editLabel: 'Edit' },

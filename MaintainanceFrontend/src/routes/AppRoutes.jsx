@@ -85,10 +85,14 @@ export function AppRoutes() {
             <Route element={<RequireAuth capability="quotations:read" />}>
               <Route path="/admin/quotations" element={<QuotationsPage />} />
               <Route path="/admin/quotations/:id" element={<QuotationBuilderPage />} />
-              {/* The rate card is a registry entry with its own address (see its entry's basePath) */}
-              <Route path="/admin/rate-card" element={<ResourceListPage resource="rate-card" />} />
-              <Route path="/admin/rate-card/new" element={<ResourceEditPage resource="rate-card" />} />
-              <Route path="/admin/rate-card/:id" element={<ResourceEditPage resource="rate-card" />} />
+            </Route>
+            {/* The rate library and its trades (Phase L2): registry entries with their own addresses (their basePath) */}
+            <Route element={<RequireAuth capability="rates:read" />}>
+              {['rate-card', 'trades'].map((resource) => [
+                <Route key={resource} path={`/admin/${resource}`} element={<ResourceListPage resource={resource} />} />,
+                <Route key={`${resource}-new`} path={`/admin/${resource}/new`} element={<ResourceEditPage resource={resource} />} />,
+                <Route key={`${resource}-id`} path={`/admin/${resource}/:id`} element={<ResourceEditPage resource={resource} />} />,
+              ])}
             </Route>
             {/* Operations (Phase H1). The registry entries have their own addresses (their basePath). */}
             <Route element={<RequireAuth capability="jobs:read" />}>

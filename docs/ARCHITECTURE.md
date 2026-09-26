@@ -168,7 +168,16 @@ links — ip and user agent say who), `system` (tasks, and scripts with no conte
 - RBAC enforced server-side on every admin route; UI hiding is cosmetic.
 - **Money wall (D1).** Field staff never see a price, a cost, a total or a colleague's pay: every `/tech` response
   passes `utils/moneyWall.js#fieldSafe`, which drops money-named keys at any depth, and an API test scans every
-  field response for them. Phase L2 extends the wall to office roles with `costs:read`.
+  field response for them.
+- **Cost wall (L-D4, Phase L2).** Office staff see selling rates; what work *costs* and its margin — recipe
+  cost, purchase rates and wages in the rate library, job costing, the job-margin report — is `costs:read`
+  (MANAGER, ADMIN). Services pass their results through `moneyWall.js#stripCosts(obj, { role })`, driven by
+  one exported `COST_KEYS` list, and the record history of cost-bearing models (rate library, trades) is
+  masked the same way. The client never sends a cost: the server prices recipes from the library.
+- **Rate library (L-D1).** A rate is a recipe at a moment's prices: `money.js#recipeCost` → `sellRate`
+  (rounded up). Price changes flag items `outOfDate`; rates move only through a reprice (preview → apply,
+  `rate_card.repriced`). Quantities (measurements, wastage, packs, take-offs) live in `utils/quantity.js`,
+  money in `utils/money.js`, and neither rounds the other's numbers.
 - Public token links (quotation, warranty) are random 32-byte, single-purpose, expiring, scoped to one record.
 - Uploads validated by magic bytes, not extension; EXIF stripped; private media served via signed URLs.
 - CSP, HSTS, no inline scripts. Turnstile + honeypot + timing + IP rate limit on all public POSTs.

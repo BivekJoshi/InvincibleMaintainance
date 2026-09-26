@@ -95,3 +95,26 @@ describe('role capabilities', () => {
     expect(Object.keys(PERMISSIONS).sort()).toEqual([...ROLES].sort());
   });
 });
+
+describe('the money wall capabilities (Phase L2, L-D4)', () => {
+  const holders = (cap) => Object.keys(PERMISSIONS).filter((role) => can(role, cap)).sort();
+
+  it('cost and margin: MANAGER and ADMIN only — never ACCOUNTANT, SALES or the field', () => {
+    expect(holders('costs:read')).toEqual(['ADMIN', 'MANAGER']);
+  });
+
+  it('the rate library: SALES, MANAGER and ACCOUNTANT read it; only MANAGER (and ADMIN) write it', () => {
+    expect(holders('rates:read')).toEqual(['ACCOUNTANT', 'ADMIN', 'MANAGER', 'SALES']);
+    expect(holders('rates:write')).toEqual(['ADMIN', 'MANAGER']);
+  });
+
+  it('the advance override is a manager\'s', () => {
+    expect(holders('jobs:advance-override')).toEqual(['ADMIN', 'MANAGER']);
+  });
+
+  it('the field roles hold none of them (D1)', () => {
+    for (const role of ['TECHNICIAN', 'SURVEYOR']) {
+      for (const cap of ['costs:read', 'rates:read', 'rates:write', 'jobs:advance-override']) expect(can(role, cap), `${role} ${cap}`).toBe(false);
+    }
+  });
+});

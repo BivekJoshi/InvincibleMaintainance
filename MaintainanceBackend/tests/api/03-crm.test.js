@@ -314,6 +314,13 @@ describe('customers', () => {
 
 describe('rate card', () => {
   let itemId;
+  // Since Phase L2 the rate library is written by rates:write (MANAGER, ADMIN); SALES reads it.
+  let manager;
+  beforeAll(async () => { manager = await as('MANAGER'); });
+
+  it('SALES reads the library but cannot write it', async () => {
+    expectStatus(await sales.post('/admin/rate-card').send({ code: `NOPE-${Date.now()}`, name: 'Sales cannot', unit: 'nos', rate: 1 }), 403);
+  });
 
   it('GET /admin/rate-card', async () => {
     expect(expectStatus(await sales.get('/admin/rate-card'), 200).data.length).toBeGreaterThan(0);
@@ -321,47 +328,47 @@ describe('rate card', () => {
 
   it('POST/PUT/DELETE /admin/rate-card', async () => {
     const code = uid('RC-').toUpperCase();
-    itemId = expectStatus(await sales.post('/admin/rate-card').send({ code, name: 'Test rate', unit: 'sq.ft', rate: 99.5 }), 201).data.id;
+    itemId = expectStatus(await manager.post('/admin/rate-card').send({ code, name: 'Test rate', unit: 'sq.ft', rate: 99.5 }), 201).data.id;
     expect((await prisma.rateCardItem.findUnique({ where: { id: itemId } })).rate).toBe(9950);
-    expectStatus(await sales.put(`/admin/rate-card/${itemId}`).send({ rate: 105 }), 200);
-    expectStatus(await sales.delete(`/admin/rate-card/${itemId}`), 204);
+    expectStatus(await manager.put(`/admin/rate-card/${itemId}`).send({ rate: 105 }), 200);
+    expectStatus(await manager.delete(`/admin/rate-card/${itemId}`), 204);
   });
 
   it('offers the resource surface the back office screens use: get, toggle, reorder, restore', async () => {
     const code = uid('rc-');
-    const item = expectStatus(await sales.post('/admin/rate-card').send({ code, name: 'Surface rate', unit: 'rft', rate: 40 }), 201).data;
+    const item = expectStatus(await manager.post('/admin/rate-card').send({ code, name: 'Surface rate', unit: 'rft', rate: 40 }), 201).data;
     expect(item.code).toBe(code.toUpperCase());
     expect(expectStatus(await sales.get(`/admin/rate-card/${item.id}`), 200).data.rate).toBe(4000);
-    expect(expectStatus(await sales.patch(`/admin/rate-card/${item.id}/toggle`), 200).data.isActive).toBe(false);
-    expectStatus(await sales.patch('/admin/rate-card/reorder').send({ items: [{ id: item.id, sortOrder: 42 }] }), 204);
+    expect(expectStatus(await manager.patch(`/admin/rate-card/${item.id}/toggle`), 200).data.isActive).toBe(false);
+    expectStatus(await manager.patch('/admin/rate-card/reorder').send({ items: [{ id: item.id, sortOrder: 42 }] }), 204);
     expect((await prisma.rateCardItem.findUnique({ where: { id: item.id } })).sortOrder).toBe(42);
 
-    expectStatus(await sales.delete(`/admin/rate-card/${item.id}`), 204);
+    expectStatus(await manager.delete(`/admin/rate-card/${item.id}`), 204);
     expectStatus(await sales.get(`/admin/rate-card/${item.id}`), 404);
     const trash = expectStatus(await sales.get('/admin/rate-card?deleted=true&limit=100'), 200).data;
     expect(trash.map((r) => r.id)).toContain(item.id);
-    expectStatus(await sales.patch(`/admin/rate-card/${item.id}/restore`), 200);
+    expectStatus(await manager.patch(`/admin/rate-card/${item.id}/restore`), 200);
     expectStatus(await sales.get(`/admin/rate-card/${item.id}`), 200);
 
     // Deleting for good is cms:purge, which SALES does not hold.
-    expectStatus(await sales.delete(`/admin/rate-card/${item.id}?hard=true`), 403);
+    expectStatus(await manager.delete(`/admin/rate-card/${item.id}?hard=true`), 403);
     expectStatus(await (await as('ADMIN')).delete(`/admin/rate-card/${item.id}?hard=true`), 204);
     expect(await prisma.rateCardItem.findUnique({ where: { id: item.id } })).toBeNull();
   });
 
   it('a lower-case code is the same code as its upper-case twin', async () => {
     const code = uid('RC-').toUpperCase();
-    expectStatus(await sales.post('/admin/rate-card').send({ code, name: 'Twin', unit: 'nos', rate: 1 }), 201);
-    expect((await sales.post('/admin/rate-card').send({ code: code.toLowerCase(), name: 'Twin', unit: 'nos', rate: 1 })).status).toBe(409);
+    expectStatus(await manager.post('/admin/rate-card').send({ code, name: 'Twin', unit: 'nos', rate: 1 }), 201);
+    expect((await manager.post('/admin/rate-card').send({ code: code.toLowerCase(), name: 'Twin', unit: 'nos', rate: 1 })).status).toBe(409);
   });
 
   it('a rate change reaches the public pricing page', async () => {
     const code = uid('RC-').toUpperCase();
-    const item = expectStatus(await sales.post('/admin/rate-card').send({ code, name: 'Pricing page rate', unit: 'sq.ft', rate: 10 }), 201).data;
-    expectStatus(await sales.put(`/admin/rate-card/${item.id}`).send({ rate: 12.5 }), 200);
+    const item = expectStatus(await manager.post('/admin/rate-card').send({ code, name: 'Pricing page rate', unit: 'sq.ft', rate: 10 }), 201).data;
+    expectStatus(await manager.put(`/admin/rate-card/${item.id}`).send({ rate: 12.5 }), 200);
     const row = expectStatus(await anon().get('/public/pricing'), 200).data.rateCard.find((r) => r.id === item.id);
     expect(row.rate).toBe(1250);
-    expectStatus(await sales.delete(`/admin/rate-card/${item.id}`), 204);
+    expectStatus(await manager.delete(`/admin/rate-card/${item.id}`), 204);
   });
 
   it('ACCOUNTANT can read quotations but not write the rate card', async () => {

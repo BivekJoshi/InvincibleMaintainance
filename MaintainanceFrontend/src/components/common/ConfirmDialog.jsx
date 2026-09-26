@@ -13,7 +13,8 @@ import { cn } from '@/helpers/utils';
  * @param {object} props
  * @param {boolean} props.open
  * @param {string} [props.title]
- * @param {import('react').ReactNode} [props.description]
+ * @param {import('react').ReactNode} [props.description] words, or a block (a table of what will change —
+ *   the rate library's reprice preview), which is rendered in a `div` rather than the description's `p`
  * @param {string} [props.confirmLabel]
  * @param {string} [props.cancelLabel]
  * @param {boolean} [props.destructive] red confirm button, for deletes and purges
@@ -35,7 +36,11 @@ export function ConfirmDialog({
       <AlertDialogContent {...(description ? {} : { 'aria-describedby': undefined })}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          {description ? <AlertDialogDescription>{description}</AlertDialogDescription> : null}
+          {description == null || description === '' ? null : typeof description === 'string' ? (
+            <AlertDialogDescription>{description}</AlertDialogDescription>
+          ) : (
+            <AlertDialogDescription asChild><div>{description}</div></AlertDialogDescription>
+          )}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel}>{cancelLabel}</AlertDialogCancel>

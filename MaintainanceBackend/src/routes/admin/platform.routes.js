@@ -171,7 +171,8 @@ router.get('/reports/funnel', requires('reports:sales'), asyncHandler(async (req
 router.get('/reports/lost', requires('reports:sales'), validate({ query: lostReportQuery }),
   asyncHandler(async (req, res) => ok(res, await reports.lostReport(req.validatedQuery))));
 router.get('/reports/sla', requires('reports:sales'), asyncHandler(async (req, res) => ok(res, await reports.slaComplianceReport(req.query))));
-router.get('/reports/job-margin', requires('reports:ops'), asyncHandler(async (req, res) => ok(res, await reports.jobMarginReport(req.query))));
+// Cost and margin per job: costs:read (L-D4), not reports:ops.
+router.get('/reports/job-margin', requires('costs:read'), asyncHandler(async (req, res) => ok(res, await reports.jobMarginReport(req.query))));
 router.get('/reports/technicians', requires('reports:ops'), asyncHandler(async (req, res) => ok(res, await reports.technicianProductivity(req.query))));
 router.get('/reports/warranty-claims', requires('reports:ops'), asyncHandler(async (req, res) => ok(res, await reports.warrantyClaimReport(req.query))));
 

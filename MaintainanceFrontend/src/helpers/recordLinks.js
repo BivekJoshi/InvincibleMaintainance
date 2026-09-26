@@ -32,6 +32,7 @@ const PARENTS = {
   JobPhoto: ['jobId', 'Job'],
   JobMaterial: ['jobId', 'Job'],
   TimeLog: ['jobId', 'Job'],
+  RateCardComponent: ['rateCardItemId', 'RateCardItem'],
 };
 
 /** `faq` → the registry screen; the Prisma client name is what Translation rows carry. */

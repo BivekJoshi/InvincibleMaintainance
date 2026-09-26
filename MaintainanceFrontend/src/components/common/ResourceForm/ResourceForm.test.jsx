@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Link } from 'react-router-dom';
+import { useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
 import { applyServerErrors } from '@/components/common/ResourceForm/serverErrors';
@@ -254,5 +255,55 @@ describe('ResourceForm field types added in D2', () => {
     expect(screen.getByText('Write the text')).toBeInTheDocument();
     expect(screen.getByLabelText('Text 1')).toHaveAttribute('aria-invalid', 'true');
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe('ResourceForm options added in L2', () => {
+  // A field's spec may follow the values (`adapt`), clear a column (`nullable`), or be a panel with no value (`preview`).
+  const schema = z.object({
+    mode: z.enum(['TYPED', 'WORKED_OUT']),
+    rate: z.coerce.number().min(0).optional(),
+    packSize: z.coerce.number().positive().nullable().optional(),
+    packLabel: z.string().max(20).nullable().optional(),
+  });
+  function Echo({ id }) {
+    const [mode, rate] = useWatch({ name: ['mode', 'rate'] });
+    return <p id={`${id}-title`}>Preview: {mode} at {rate ?? '—'}</p>;
+  }
+  const fields = [
+    { name: 'mode', type: 'select', label: 'Mode', options: [{ value: 'TYPED', label: 'Typed' }, { value: 'WORKED_OUT', label: 'Worked out' }] },
+    {
+      name: 'rate', type: 'money', label: 'Rate',
+      adapt: (v) => (v.mode === 'WORKED_OUT' ? { disabled: true, description: 'Worked out on save.' } : { required: true }),
+    },
+    { name: 'packSize', type: 'number', label: 'Pack size', nullable: true, adapt: (v) => (v.mode === 'WORKED_OUT' ? { hidden: true } : null) },
+    { name: 'packLabel', type: 'text', label: 'Pack', nullable: true },
+    { name: 'preview', type: 'preview', label: 'Preview', component: Echo },
+  ];
+
+  it('follows the values, sends null for a cleared nullable field, and never sends a preview', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm schema={schema} fields={fields} defaultValues={{ mode: 'TYPED', rate: 38000, packSize: 50, packLabel: 'bag' }} onSubmit={onSubmit} />,
+    );
+    expect(screen.getByText('Preview: TYPED at 380')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Rate/)).toBeEnabled();
+
+    await user.clear(screen.getByLabelText('Pack size'));
+    await user.clear(screen.getByLabelText('Pack'));
+    expect(screen.getByLabelText('Pack size')).toHaveValue(null);
+
+    await user.click(screen.getByRole('combobox', { name: 'Mode' }));
+    await user.click(await screen.findByRole('option', { name: 'Worked out' }));
+    expect(screen.getByLabelText(/Rate/)).toBeDisabled();
+    expect(screen.getByText('Worked out on save.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Pack size')).not.toBeInTheDocument();
+    expect(screen.getByText('Preview: WORKED_OUT at 380')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // A hidden field keeps its value — here the cleared pack size, sent as null.
+    expect(onSubmit.mock.calls[0][0]).toEqual({ mode: 'WORKED_OUT', rate: 380, packSize: null, packLabel: null });
   });
 });

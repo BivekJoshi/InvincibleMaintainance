@@ -35,9 +35,19 @@ describe('admin nav', () => {
     expect(contentHomeFor('EDITOR')).toBe('/admin/content/home');
   });
 
-  it('shows ACCOUNTANT the rate card, read-only by capability', () => {
-    expect(navOf('ACCOUNTANT').Catalog).toContain('Rate card');
+  it('shows ACCOUNTANT the rate library and trades, read-only by capability', () => {
+    expect(navOf('ACCOUNTANT').Catalog).toEqual(['Rate library', 'Trades & wages', 'Job templates']);
     expect(navOf('ACCOUNTANT').Content).toBeUndefined();
+  });
+
+  it('shows the rate library to whoever prices work, never to the field (Phase L2)', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SALES', 'ACCOUNTANT']) {
+      expect(navOf(role).Catalog, role).toEqual(expect.arrayContaining(['Rate library', 'Trades & wages']));
+    }
+    for (const role of ['DISPATCHER', 'EDITOR', 'SURVEYOR', 'TECHNICIAN']) {
+      expect(navOf(role).Catalog ?? [], role).not.toContain('Rate library');
+    }
+    expect(breadcrumbsFor('/admin/trades/cl1')).toEqual([{ label: 'Catalog' }, { label: 'Trades & wages', to: '/admin/trades' }, { label: 'Edit' }]);
   });
 
   it('shows the admin platform screens to ADMIN alone', () => {
@@ -63,7 +73,7 @@ describe('admin nav', () => {
     expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations', 'Lost leads']);
     // SALES reads jobs, templates and technicians (to pick a surveyor); dispatch and stock are not theirs.
     expect(nav.Operations).toEqual(['Jobs', 'Technicians']);
-    expect(nav.Catalog).toEqual(['Rate card', 'Job templates']);
+    expect(nav.Catalog).toEqual(['Rate library', 'Trades & wages', 'Job templates']);
     expect(landingPathFor('SALES')).toBe('/admin');
     expect(contentHomeFor('SALES')).toBe('/admin');
   });
@@ -98,7 +108,7 @@ describe('admin nav', () => {
     expect(breadcrumbsFor('/admin/content/faqs/cl123/').at(-1)).toEqual({ label: 'Edit' });
     expect(breadcrumbsFor('/admin/content/nope')).toEqual([{ label: 'Content' }]);
     expect(breadcrumbsFor('/admin/content/media')).toEqual([{ label: 'Content' }, { label: 'Media library', to: '/admin/content/media' }]);
-    expect(breadcrumbsFor('/admin/rate-card/cl123')).toEqual([{ label: 'Catalog' }, { label: 'Rate card', to: '/admin/rate-card' }, { label: 'Edit' }]);
+    expect(breadcrumbsFor('/admin/rate-card/cl123')).toEqual([{ label: 'Catalog' }, { label: 'Rate library', to: '/admin/rate-card' }, { label: 'Edit' }]);
     expect(breadcrumbsFor('/admin/content/services/new')).toEqual([
       { label: 'Content' }, { label: 'Services', to: '/admin/content/services' }, { label: 'New' },
     ]);

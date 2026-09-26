@@ -118,7 +118,7 @@ Gaps against the intended business process:
 | **L-D1** *(2026-09-26)* | How is a BOQ line priced? | **Recipe rates.** A rate-library item holds what one unit needs — materials with wastage, labour man-days by trade, equipment/other, overhead %, profit %. Quantity × recipe gives the material take-off and labour days. The recipe is snapshotted onto the quotation line; library changes never move a sent quote. |
 | **L-D2** *(2026-09-26)* | What is the final bill based on? | **Chosen per quotation:** `LUMP_SUM` (quoted ± customer-approved variations) or `ITEM_RATE` (the engineer measures the finished work; bill = measured qty × quoted rate). |
 | **L-D3** *(2026-09-26)* | Advance payment | The quotation carries a **payment schedule** (default from a setting, e.g. 50 · 40 · 10). On Accept the advance invoice is created automatically, and the job **cannot be scheduled until it is paid**; MANAGER / ADMIN may override with a reason (audited). |
-| **L-D4** *(2026-09-26)* | Who sees cost and margin | **MANAGER and ADMIN only** (capability `costs:read`). SALES builds with selling rates; a warning at approval below `quotation.minMarginPct`. D1 stands: the surveyor never sees any rate. |
+| **L-D4** *(2026-09-26)* | Who sees cost and margin | **MANAGER and ADMIN only** (capability `costs:read`). SALES builds with selling rates; a warning at approval below `quotation.minMarginPct`. D1 stands: the surveyor never sees any rate. *Confirmed 2026-09-26:* ACCOUNTANT does **not** get `costs:read`; the job Costing tab **and** the job-margin report move behind `costs:read`. |
 
 ---
 
@@ -851,10 +851,40 @@ report shows categories.
   from the timeline; existing losses categorised DUPLICATE_SPAM when merged, else OTHER) and
   `notification_dedupe_key`.
 
-**L2 · Foundations, rate library & money wall (≈4 days)** — money/quantity functions, construction units, material
+**L2 · Foundations, rate library & money wall (≈4 days) · ✅ done 2026-09-27** — money/quantity functions, construction units, material
 packs, trades, capabilities, settings, recipe editor with live cost-vs-rate and reprice, seeded DoR-style recipes.
 *Acceptance:* a plaster recipe's derived rate equals a hand calculation to the paisa; raising the cement price
 flags the item without changing its rate; SALES responses contain no cost keys; costing is 403 for SALES.
+
+**Deviations (Phase L2, 2026-09-27)**
+- **A payment schedule splits the VAT by the same basis points as the amount** (`allocate` twice), rather than the last
+  stage absorbing the VAT remainder: that could make the last stage's VAT negative on a small total. The stages still
+  add up to the quotation total to the paisa (property test, 1,000 cases).
+- **Recipe pricing** multiplies before it divides (`qty × price × (100 + wastage%) / 100`), so a norm like 5.5 × 105%
+  never drifts in floating point; a component with no price (a material without a purchase rate, a trade without a
+  wage) makes the recipe `complete: false` — never priced at zero — and a DERIVED save 422 `RECIPE_INCOMPLETE`.
+- **"Out of date" is computed on read** (today's derived rate vs the stored rate), not stored. `unitCost` is kept as
+  the cost when the rate was last set.
+- **A save re-derives only when something really changed** — the recipe (compared line by line), its pricing, or a
+  MANUAL rate. The edit form sends everything on every save; comparing is what keeps a rename from repricing.
+- **`/derive` also returns the margins** (at the form's rate and at the derived rate), so the client subtracts no money.
+- **Cost keys** (`moneyWall.js#COST_KEYS`): cost, unitCost, lineCost, costAmount, costTotal, costBreakdown,
+  costComplete, margin, marginPct, overheadPct, profitPct, purchaseRate, dayWage. `roundTo` is not cost and stays
+  visible. The field wall also learned "overhead" and "profit" (a unit test holds every cost key to it). Recipe
+  equipment/other components carry their price as `cost`, so the key rule covers them.
+- **History masking** applies to the cost-bearing models (RateCardItem, Trade) only — a material's purchase rate stays
+  in the materials trail its dispatcher keeps. Rate-card history is `rates:read` (ACCOUNTANT now reads it, masked).
+- **Materials are readable with `rates:write`** too (list and get), so a manager can pick recipe materials; the
+  materials history stays `materials:read`.
+- **The seed keeps every seeded rate:** plaster, floor tiling and damp treatment get MANUAL recipes (they cost the
+  items, for the margin); interior painting is DERIVED and left at its old rate, so one item shows "Out of date". Trade
+  wages are illustrative. Two new materials (vitrified tile, tile adhesive) and pack sizes; the seed tops up older
+  databases. The API tests build their own materials and trades, so the arithmetic never depends on the seed.
+- **The e2e dispatcher test searches the material picker** — the shared test database accumulates each run's
+  materials, and the wanted one was no longer on the first page.
+- **Kit additions (frontend):** field types `recipe` and `preview`, field options `adapt(values)` and `nullable`,
+  column-level `capability`, entry-level `bulkActions`, `RecordCombobox selectedLabel`; a NumberField fix (clearing a
+  field no longer shows the saved value). The rate library and "Trades & wages" sit in the Catalog group.
 
 **L3 · The BOQ builder (≈5 days)** — EditableGrid (keyboard, paste from Excel, rate-library search), sections,
 measurement and recipe drawers, take-off and labour tabs, margin panel, survey → BOQ keeps kind / material /
@@ -950,7 +980,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | H1 Operations — back office ✅ 2026-09-17 | 4 | 32 | Dispatch and job management |
 | L0 Hotfixes ✅ 2026-09-26 | 1 | 33 | No double billing, no pay visible in the field app |
 | L1 Lead follow-through ✅ 2026-09-26 | 3 | 36 | Every lead has a next action; nothing goes cold unseen |
-| L2 Rate library & money wall | 4 | 40 | Recipe rates; cost only for managers |
+| L2 Rate library & money wall ✅ 2026-09-27 | 4 | 40 | Recipe rates; cost only for managers |
 | L3 BOQ builder | 5 | 45 | Excel-grade quotation with take-off and labour days |
 | L4 Terms & customer document | 4 | 49 | Payment schedule, contract type, print, Excel |
 | H2 Operations — field app | 3 | 52 | Photos, materials and job mutations offline |

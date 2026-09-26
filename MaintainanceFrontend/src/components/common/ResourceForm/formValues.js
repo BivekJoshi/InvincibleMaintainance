@@ -1,4 +1,8 @@
 import { paisaToRupees } from '@/helpers/format';
+import { recipeBody, toRecipeRows } from '@/helpers/recipe';
+
+/** Field types that show something and hold no value of their own (the rate library's cost card). */
+export const DISPLAY_TYPES = new Set(['preview']);
 
 /** Every field spec with `group` wrappers flattened away. */
 export function flattenFields(fields = []) {
@@ -16,7 +20,7 @@ function emptyValue(type) {
     case 'text': case 'textarea': case 'prose': case 'markdown': case 'slug': return '';
     case 'switch': return false;
     case 'relation': return null;
-    case 'stringList': case 'mediaList': case 'weekdays': case 'objectList': case 'lineItems': case 'checklist': return [];
+    case 'stringList': case 'mediaList': case 'weekdays': case 'objectList': case 'lineItems': case 'checklist': case 'recipe': return [];
     case 'keyValue': return {};
     default: return undefined;
   }
@@ -49,9 +53,11 @@ export function toFormValues(fields, record) {
     if (value === null && !names.has(key)) delete out[key];
   }
   for (const f of flattenFields(fields)) {
+    if (DISPLAY_TYPES.has(f.type)) continue;
     let value = record?.[f.name];
     if (f.type === 'money' && value != null) value = paisaToRupees(value);
     if (f.type === 'lineItems' && Array.isArray(value)) value = value.map(toLineValues);
+    if (f.type === 'recipe' && Array.isArray(value)) value = toRecipeRows(value);
     if (value == null) value = f.defaultValue ?? emptyValue(f.type);
     out[f.name] = value;
   }
@@ -60,7 +66,8 @@ export function toFormValues(fields, record) {
 
 /**
  * The form's validated values → a request body. Money stays in rupees (the API
- * converts); blank list items are dropped; an empty optional value is omitted.
+ * converts); blank list items are dropped; an empty optional value is omitted — or sent
+ * as null when its spec says `nullable: true`, which is how a column is cleared.
  *
  * @param {object[]} fields
  * @param {object} values
@@ -68,8 +75,13 @@ export function toFormValues(fields, record) {
 export function toRequestValues(fields, values) {
   const out = { ...values };
   for (const f of flattenFields(fields)) {
+    if (DISPLAY_TYPES.has(f.type)) continue;
     const value = out[f.name];
-    if (f.type === 'stringList') {
+    if (f.nullable && (value == null || value === '' || Number.isNaN(value))) {
+      out[f.name] = null;
+    } else if (f.type === 'recipe') {
+      out[f.name] = recipeBody(value);
+    } else if (f.type === 'stringList') {
       out[f.name] = (Array.isArray(value) ? value : []).map((s) => String(s).trim()).filter(Boolean);
     } else if (f.type === 'objectList') {
       // A row left completely empty is not an item.

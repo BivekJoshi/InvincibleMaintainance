@@ -396,18 +396,55 @@ DELETE /admin/customers/:id/sites/:siteId     soft; 400 while jobs use the site
                                     Exactly one primary site: the first site is primary whatever was sent; a site
                                     marked primary takes the flag from the others; unmarking the primary is 422
                                     (mark another instead); deleting the primary passes it to the oldest site left
-/admin/rate-card                    GET (?q searches code, name, category; ?deleted=true is Trash), GET /:id,
-                                    POST, PUT /:id (partial), PATCH /:id/toggle, PATCH /reorder { items },
-                                    PATCH /:id/restore, DELETE /:id (soft) — read: quotations:read,
-                                    write: quotations:write. The same eight endpoints as a CMS resource,
-                                    plus GET /:id/history (quotations:history — not ACCOUNTANT).
-                                    DELETE ?hard=true needs cms:purge (ADMIN); quotation and survey lines
-                                    that used the item keep their copy and lose the link.
-                                    Body { code, name, description?, category?, unit, rate (rupees), sortOrder?,
-                                    isActive? }. `code` is letters, digits, - and _, stored upper-case and
-                                    unique: `wp-1` after `WP-1` is 409 (a soft-deleted item still holds its code).
+/admin/rate-card                    THE RATE LIBRARY (Phase L2, L-D1) — mounted by mountResource: GET (?q
+                                    searches code, name, category; ?deleted=true is Trash), GET /:id, POST,
+                                    PUT /:id (partial), PATCH /:id/toggle, PATCH /reorder { items },
+                                    PATCH /:id/restore, DELETE /:id (soft), GET /:id/history.
+                                    read: rates:read (SALES, MANAGER, ACCOUNTANT) · write: rates:write
+                                    (MANAGER) · DELETE ?hard=true needs cms:purge (ADMIN); quotation and survey
+                                    lines that used the item keep their copy and lose the link.
+                                    Body { code, name, description?, category?, unit, rateMode (MANUAL|DERIVED,
+                                      default MANUAL), rate (rupees — required when MANUAL, derived when
+                                      DERIVED), recipeQty (default 1: the recipe is per N units, DoR norms are
+                                      per 10 or 100), overheadPct?, profitPct?, roundTo? (rupees) — null = the
+                                      quotation.defaultOverheadPct / defaultProfitPct / sellRateRoundTo settings —,
+                                      components?: [{ kind MATERIAL|LABOUR|EQUIPMENT|OTHER, materialId (MATERIAL),
+                                        tradeId (LABOUR), description + cost (rupees, EQUIPMENT/OTHER), qty (> 0:
+                                        the material's own unit; man-days), wastagePct? }] (≤ 40, replaced whole),
+                                      sortOrder?, isActive? }. DERIVED without components 400; an unknown material
+                                    or trade 422 UNKNOWN_MATERIAL / UNKNOWN_TRADE; DERIVED with a line whose price
+                                    is unknown (no purchase rate / wage) 422 RECIPE_INCOMPLETE. `code` is letters,
+                                    digits, - and _, stored upper-case and unique (409).
+                                    A save sets `rate` (DERIVED: derived) and `unitCost` only when the recipe,
+                                    its pricing (mode, recipeQty, overhead, profit, roundTo) or a MANUAL rate
+                                    actually differs from what is stored — the edit form sends everything on
+                                    every save, so a rename (or a resend of the same recipe) never moves a
+                                    rate; a DERIVED item ignores a sent `rate`.
+                                    Rows add components[] (with material { id, code, name, unit, packSize,
+                                    packLabel } / trade { id, code, name }, unit filled by the server),
+                                    derivedRate (paisa — today's derived sell rate; null without a complete
+                                    recipe) and outOfDate (DERIVED and derivedRate ≠ rate: a purchase rate or
+                                    wage moved since). costs:read only (stripped for everyone else, history
+                                    included): overheadPct, profitPct, unitCost, costBreakdown { material,
+                                    labour, equipment, other, direct, overhead, unitCost, complete } (paisa per
+                                    unit, today's prices), margin { amount, pct } | null, components[].cost,
+                                    .lineCost, material.purchaseRate, trade.dayWage.
                                     Feeds quotation lines, survey pricing and the rate table on GET
                                     /public/pricing (active items). The estimator does not read it.
+POST /admin/rate-card/derive        costs:read · { recipeQty, overheadPct?, profitPct?, roundTo?, rate? (rupees — the
+                                    form's), components (≥1) } -> { costBreakdown, derivedRate, margin (at `rate`;
+                                    null without it or a complete recipe), derivedMargin, lines [{ index,
+                                    lineCost }] } — the editor's live cost card; nothing is saved, and the client
+                                    computes no money
+POST /admin/rate-card/reprice       rates:write · { ids? (≤500), apply } — the DERIVED items (all, or ids) whose
+                                    derived rate today ≠ their rate -> { items [{ id, code, name, rate,
+                                    derivedRate, delta }], applied }. apply false previews and writes nothing;
+                                    apply true sets each rate and unitCost and records rate_card.repriced
+                                    (before/after rate) per item, in one transaction. A price change reaches a
+                                    rate only this way.
+/admin/trades                       rates:read / rates:write · the registry surface (mountResource) · { code
+                                    (upper-case, unique), name, dayWage (rupees in, paisa out), sortOrder,
+                                    isActive } · dayWage only for costs:read
 GET    /admin/quotations            quotations:read · ?stage&status&customerId&leadId&from&to&q&page&limit&sort
                                     stage: drafts (DRAFT) · approval (PENDING_APPROVAL) · ready
                                     (OFFICE_APPROVED) · with_customer (SENT) · changes_requested
@@ -485,7 +522,7 @@ GET /admin/customers/:id/history    customers:history
 GET /admin/quotations/:id/history   quotations:history
 GET /admin/jobs/:id/history         jobs:history
 GET /admin/invoices/:id/history     invoices:history
-GET /admin/rate-card/:id/history    quotations:history
+GET /admin/rate-card/:id/history    rates:read — cost keys masked without costs:read (so is /admin/trades/:id/history)
 GET /admin/<cms resource>/:id/history   cms:read — every resource the CRUD factory mounts
 GET /admin/materials|material-categories|suppliers/:id/history   materials:read
 GET /admin/job-templates/:id/history    jobs:read
@@ -581,7 +618,8 @@ POST   /admin/jobs/:id/complete     { note, signatureMediaId, customerRating, cu
                                     checklist must be done (422 with the open items in details)
                                     -> creates Warranty, enables invoicing
 POST   /admin/jobs/:id/verify       COMPLETED -> VERIFIED
-GET    /admin/jobs/:id/costing      labour + materials + expenses vs invoiced (all paisa):
+GET    /admin/jobs/:id/costing      costs:read (MANAGER, ADMIN — Phase L2; 403 for SALES, DISPATCHER, ACCOUNTANT)
+                                    labour + materials + expenses vs invoiced (all paisa):
                                     { cost: { materials, labour, expenses, total }, labourMinutes,
                                       billable: { materials, invoiced }, margin, marginPct,
                                       breakdown: { materials[] { name, code, unit, qty, rate, amount (billed),
@@ -701,7 +739,10 @@ four; the history needs the resource's read capability. `?hard=true` still needs
 /admin/job-templates                { name, serviceId?, description?, tasks: [{ title, description? }] (1–100),
                                       isActive } · ?serviceId · rows carry service { id, name } · no manual order
 /admin/materials                    { code, name, unit, categoryId?, supplierId?, purchaseRate, sellRate (rupees
-                                      in, paisa out), reorderLevel, sortOrder, isActive } · ?categoryId&supplierId
+                                      in, paisa out), packSize? (> 0 — 50 kg a bag, 1 when the unit is the pack),
+                                      packLabel? ("20 L tin"), reorderLevel, sortOrder, isActive }
+                                    · ?categoryId&supplierId · list and get also for rates:write (a manager picks
+                                    recipe materials); the history stays materials:read
 /admin/material-categories          { name, sortOrder, isActive }
 /admin/suppliers                    { name, phone?, email?, address?, notes?, isActive } · no manual order
 
@@ -971,7 +1012,8 @@ GET   /admin/reports/lost?from&to                                    reports:sal
                                     the range (Kathmandu YYYY-MM-DD, on closedAt; bad format 400) →
                                     { total, byCategory [{ category, count }],
                                       rows [{ category, stage, serviceId, serviceName, count }] } most first
-GET   /admin/reports/job-margin | /technicians | /warranty-claims   reports:ops
+GET   /admin/reports/technicians | /warranty-claims                 reports:ops
+GET   /admin/reports/job-margin                                      costs:read (Phase L2) — cost and margin
 ```
 
 ## Me — shortcuts and notes

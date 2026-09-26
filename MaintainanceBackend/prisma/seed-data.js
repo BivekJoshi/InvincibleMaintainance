@@ -71,6 +71,26 @@ export const SETTINGS = [
     hint: 'In paisa (NPR × 100): 500000 means NPR 5,000. Quotations whose total is below it skip manager approval, revisions included. 0 turns this off.' },
   { group: 'finance', key: 'finance.labourRateCode', label: 'Rate-card item that bills logged labour', type: 'string', value: 'LABOUR-SKILL', sortOrder: 8,
     hint: 'A job without a quotation bills its logged time at this rate-card item (priced per hour) — never at a technician\'s own hourly rate, which is a cost.' },
+  { group: 'finance', key: 'quotation.minMarginPct', label: 'Warn approvers below this margin (%)', type: 'number', value: 15, sortOrder: 9,
+    hint: 'Margin on the selling price. Approving a quotation below it (or with a cost unknown) asks for a confirmation (Phase L4).' },
+  { group: 'finance', key: 'quotation.defaultOverheadPct', label: 'Default overhead on a recipe (%)', type: 'number', value: 10, sortOrder: 10,
+    hint: 'Office, transport and supervision, added to a recipe\'s direct cost when the item names none.' },
+  { group: 'finance', key: 'quotation.defaultProfitPct', label: 'Default profit on a recipe (%)', type: 'number', value: 10, sortOrder: 11,
+    hint: 'Added on top of cost + overhead to give a derived selling rate, when the item names none.' },
+  { group: 'finance', key: 'quotation.sellRateRoundTo', label: 'Round derived rates up to (paisa)', type: 'number', value: 100, sortOrder: 12,
+    hint: 'In paisa: 100 rounds a derived rate UP to the next rupee, 500 to the next Rs 5. Rounding up never eats margin.' },
+  { group: 'finance', key: 'quotation.defaultContractType', label: 'Default contract type', type: 'string', value: 'LUMP_SUM', sortOrder: 13,
+    hint: 'LUMP_SUM (the quoted price, plus approved variations) or ITEM_RATE (measured work × the quoted rates). Chosen per quotation from Phase L4.' },
+  { group: 'finance', key: 'quotation.defaultPaymentSchedule', label: 'Default payment schedule', type: 'json', sortOrder: 14,
+    value: [
+      { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT' },
+      { label: 'Running bill', basisPoints: 4000, trigger: 'MILESTONE' },
+      { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+    ],
+    hint: 'Stages in basis points (5000 = 50%), summing to 10000. The ON_ACCEPT stage is the advance invoiced when a customer accepts (Phase L6).' },
+  { group: 'finance', key: 'job.advanceGate', label: 'Hold scheduling until the advance is paid', type: 'boolean', value: true, sortOrder: 15,
+    hint: 'A job from an accepted quotation cannot be scheduled before its advance invoice is paid; a manager may override with a reason (Phase L6).' },
+  { group: 'finance', key: 'finance.advanceDueDays', label: 'Advance invoices are due in (days)', type: 'number', value: 7, sortOrder: 16 },
   { group: 'finance', key: 'finance.invoiceTerms', label: 'Default invoice terms', type: 'richtext', sortOrder: 4,
     value: 'Payment is due within 15 days. Please quote the invoice number with your transfer.' },
 
@@ -293,17 +313,58 @@ export const RATE_CARD = [
 ];
 
 export const MATERIALS = [
-  { code: 'CEM-OPC', name: 'OPC Cement 50kg', category: 'Cement & Aggregate', unit: 'bag', purchaseRate: 890, sellRate: 980, reorderLevel: 20, opening: 120 },
+  { code: 'CEM-OPC', name: 'OPC Cement 50kg', category: 'Cement & Aggregate', unit: 'bag', purchaseRate: 890, sellRate: 980, reorderLevel: 20, opening: 120, packSize: 1, packLabel: '50 kg bag' },
   { code: 'SAND-RIV', name: 'River sand', category: 'Cement & Aggregate', unit: 'kg', purchaseRate: 3, sellRate: 4, reorderLevel: 500, opening: 4000 },
-  { code: 'WP-ACRYL', name: 'Acrylic waterproof coating', category: 'Waterproofing', unit: 'litre', purchaseRate: 620, sellRate: 780, reorderLevel: 15, opening: 60 },
-  { code: 'WP-CRYST', name: 'Crystalline damp-proof compound', category: 'Waterproofing', unit: 'kg', purchaseRate: 450, sellRate: 590, reorderLevel: 20, opening: 80 },
-  { code: 'EPOXY-INJ', name: 'Epoxy injection resin', category: 'Repair Chemicals', unit: 'litre', purchaseRate: 1850, sellRate: 2400, reorderLevel: 5, opening: 18 },
-  { code: 'PAINT-EMUL', name: 'Interior emulsion paint', category: 'Paint', unit: 'litre', purchaseRate: 480, sellRate: 620, reorderLevel: 25, opening: 90 },
-  { code: 'PUTTY-WALL', name: 'Wall putty', category: 'Paint', unit: 'kg', purchaseRate: 42, sellRate: 58, reorderLevel: 100, opening: 350 },
+  { code: 'WP-ACRYL', name: 'Acrylic waterproof coating', category: 'Waterproofing', unit: 'litre', purchaseRate: 620, sellRate: 780, reorderLevel: 15, opening: 60, packSize: 20, packLabel: '20 L drum' },
+  { code: 'WP-CRYST', name: 'Crystalline damp-proof compound', category: 'Waterproofing', unit: 'kg', purchaseRate: 450, sellRate: 590, reorderLevel: 20, opening: 80, packSize: 25, packLabel: '25 kg bag' },
+  { code: 'EPOXY-INJ', name: 'Epoxy injection resin', category: 'Repair Chemicals', unit: 'litre', purchaseRate: 1850, sellRate: 2400, reorderLevel: 5, opening: 18, packSize: 5, packLabel: '5 L can' },
+  { code: 'PAINT-EMUL', name: 'Interior emulsion paint', category: 'Paint', unit: 'litre', purchaseRate: 480, sellRate: 620, reorderLevel: 25, opening: 90, packSize: 20, packLabel: '20 L tin' },
+  { code: 'PUTTY-WALL', name: 'Wall putty', category: 'Paint', unit: 'kg', purchaseRate: 42, sellRate: 58, reorderLevel: 100, opening: 350, packSize: 40, packLabel: '40 kg bag' },
+  { code: 'TILE-VIT', name: 'Vitrified floor tile 2×2 ft', category: 'Tiles', unit: 'sq.ft', purchaseRate: 95, sellRate: 125, reorderLevel: 100, opening: 480, packSize: 16, packLabel: 'box of 4 (16 sq.ft)' },
+  { code: 'TILE-ADH', name: 'Tile adhesive', category: 'Tiles', unit: 'kg', purchaseRate: 38, sellRate: 52, reorderLevel: 100, opening: 400, packSize: 20, packLabel: '20 kg bag' },
   { code: 'CPVC-20', name: 'CPVC pipe 20mm', category: 'Plumbing', unit: 'rft', purchaseRate: 78, sellRate: 105, reorderLevel: 100, opening: 400 },
   { code: 'WIRE-2.5', name: 'Copper wire 2.5 sq.mm', category: 'Electrical', unit: 'rft', purchaseRate: 32, sellRate: 45, reorderLevel: 200, opening: 900 },
   { code: 'PLY-MARINE', name: 'Marine plywood 19mm', category: 'Carpentry', unit: 'sq.ft', purchaseRate: 165, sellRate: 220, reorderLevel: 50, opening: 200 },
 ];
+
+/**
+ * Trades and day wages (Phase L2) — ILLUSTRATIVE Kathmandu-valley figures for the demo, in rupees per
+ * man-day, not researched market rates: set your own on the Trades & wages screen. Wages are cost —
+ * only costs:read (MANAGER, ADMIN) sees them.
+ */
+export const TRADES = [
+  { code: 'MASON', name: 'Mason (dakarmi)', dayWage: 1500, sortOrder: 0 },
+  { code: 'HELPER', name: 'Helper (jyami)', dayWage: 1000, sortOrder: 1 },
+  { code: 'PAINTER', name: 'Painter', dayWage: 1400, sortOrder: 2 },
+  { code: 'TILE-FITTER', name: 'Tile fitter', dayWage: 1600, sortOrder: 3 },
+  { code: 'WP-APPLICATOR', name: 'Waterproofing applicator', dayWage: 1500, sortOrder: 4 },
+];
+
+/**
+ * Demo recipes (Phase L2, L-D1), each for 100 sq.ft of work, quantities in each material's own unit (no
+ * unit conversion yet). DoR-style norms simplified for the demo — review them before quoting real work.
+ * Three stay MANUAL (their seeded rate is kept; the recipe costs them for the margin); PAINT-INT is
+ * DERIVED and left at its old rate, so the library shows an "Out of date" item to reprice.
+ * Component: [kind, material or trade code | description, qty, wastage %, cost (Rs, equipment/other)]
+ */
+export const RECIPES = {
+  'PLASTER-INT': { rateMode: 'MANUAL', recipeQty: 100, components: [
+    ['MATERIAL', 'CEM-OPC', 0.9, 2], ['MATERIAL', 'SAND-RIV', 175, 5],
+    ['LABOUR', 'MASON', 1.2], ['LABOUR', 'HELPER', 1.2], ['OTHER', 'Scaffolding and curing water', 1, 0, 150],
+  ] },
+  'PAINT-INT': { rateMode: 'DERIVED', recipeQty: 100, components: [
+    ['MATERIAL', 'PAINT-EMUL', 2, 5], ['LABOUR', 'PAINTER', 0.6], ['LABOUR', 'HELPER', 0.3],
+    ['OTHER', 'Masking tape, sandpaper, rollers', 1, 0, 60],
+  ] },
+  'TILE-FLOOR': { rateMode: 'MANUAL', recipeQty: 100, components: [
+    ['MATERIAL', 'TILE-VIT', 100, 8], ['MATERIAL', 'TILE-ADH', 42, 5],
+    ['LABOUR', 'TILE-FITTER', 1], ['LABOUR', 'HELPER', 1], ['EQUIPMENT', 'Tile cutter hire', 1, 0, 150],
+  ] },
+  'SEEP-CHEM': { rateMode: 'MANUAL', recipeQty: 100, components: [
+    ['MATERIAL', 'WP-CRYST', 12, 10], ['LABOUR', 'WP-APPLICATOR', 0.8], ['LABOUR', 'HELPER', 0.8],
+    ['EQUIPMENT', 'Chipping hammer and mixer hire', 1, 0, 200],
+  ] },
+};
 
 export const TESTIMONIALS = [
   { quote: 'Our bedroom wall was damp for three monsoons and two painters could not fix it. Ghar Jatan found the leak was coming from the neighbour\'s terrace outlet, not our wall at all. Fixed in two days and it stayed dry all season.', author: 'Sunita Shrestha', location: 'Jhamsikhel, Lalitpur', rating: 5, locale: 'en', sortOrder: 0 },

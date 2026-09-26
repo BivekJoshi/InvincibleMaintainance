@@ -46,7 +46,9 @@ const LEAVE = {
  *
  * Field types: text, textarea, prose (alias markdown), number, money, switch,
  * select/enum, relation, date, datetime, slug, stringList, keyValue, media,
- * mediaList, weekdays, objectList, lineItems, checklist, and `group` for sections. See `FieldRenderer.jsx`.
+ * mediaList, weekdays, objectList, lineItems, checklist, recipe (a rate-library recipe),
+ * preview (a panel with no value), and `group` for sections. See `FieldRenderer.jsx`. A spec's
+ * `adapt(values)` makes it follow the values; `nullable: true` sends an emptied value as null.
  *
  * @param {object} props
  * @param {import('zod').ZodTypeAny} props.schema          validates the form values (money in rupees)

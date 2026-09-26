@@ -6,7 +6,8 @@ import { E2E } from './support/e2eEnv.js';
  * Phase H1's manual walk-through, as the dispatcher: the job an accepted quotation made is
  * scheduled on Hari's slot tomorrow by dragging, then moved with the Schedule dialog; a second job
  * dropped on the same slot is warned about and not saved; 22 kg of material is issued (stock falls by 22), time is
- * recorded, costing shows labour + materials to the paisa, completion is blocked while the
+ * recorded, costing shows labour + materials to the paisa (to a manager — the dispatcher has no
+ * Costing tab since Phase L2's money wall), completion is blocked while the
  * checklist is open, the job is completed and verified, and an admin publishes the case study.
  *
  * Set-up that is not under test (the quotation loop — Phase F's own spec) runs over the API.
@@ -132,6 +133,9 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await page.getByRole('button', { name: /Issue from stock/ }).click();
     const dialog = page.getByRole('dialog', { name: `Issue material to ${job.number}` });
     await dialog.getByRole('combobox', { name: /Material/ }).click();
+    // Search, as a person would: the test database keeps every run's materials, so the one wanted is
+    // not always on the first page of the picker.
+    await page.keyboard.type('WP-CRYST');
     await page.getByRole('option', { name: /WP-CRYST/ }).click();
     await dialog.getByLabel(/Quantity/).fill('22');
     await dialog.getByRole('button', { name: 'Issue' }).click();
@@ -148,17 +152,24 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await expect(page.getByText('Total recorded: 1 h 30 min')).toBeVisible();
   });
 
-  await test.step('costing shows labour and materials, reconciled to the paisa', async () => {
-    const costing = await dispatcher.get(`/admin/jobs/${job.id}/costing`);
+  await test.step('costing shows labour and materials, reconciled to the paisa — to a manager only (Phase L2)', async () => {
+    // The money wall: job costing is costs:read. The dispatcher has no Costing tab and the API refuses them.
+    await expect(page.getByRole('tab', { name: 'Costing' })).toHaveCount(0);
+    await expect(dispatcher.get(`/admin/jobs/${job.id}/costing`)).rejects.toThrow(/→ 403/);
+    const costing = await manager.get(`/admin/jobs/${job.id}/costing`);
     expect(costing.cost.materials).toBe(costing.breakdown.materials.reduce((s, m) => s + m.cost, 0));
     expect(costing.cost.labour).toBe(costing.breakdown.labour.reduce((s, l) => s + l.cost, 0));
     expect(costing.cost.total).toBe(costing.cost.materials + costing.cost.labour + costing.cost.expenses);
     expect(costing.cost.materials).toBe(22 * material.purchaseRate);
-    await page.getByRole('tab', { name: 'Costing' }).click();
+    const managerCtx = await browser.newContext();
+    const managerPage = await managerCtx.newPage();
+    await signIn(managerPage, 'MANAGER');
+    await managerPage.goto(`/admin/jobs/${job.id}?tab=costing`);
     const rupees = (paisa) => `Rs. ${(paisa / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-    await expect(page.getByText(rupees(costing.cost.total)).first()).toBeVisible();
-    await expect(page.getByText(rupees(costing.cost.materials)).first()).toBeVisible();
-    await expect(page.getByText('1 h 30 min').first()).toBeVisible();
+    await expect(managerPage.getByText(rupees(costing.cost.total)).first()).toBeVisible();
+    await expect(managerPage.getByText(rupees(costing.cost.materials)).first()).toBeVisible();
+    await expect(managerPage.getByText('1 h 30 min').first()).toBeVisible();
+    await managerCtx.close();
   });
 
   await test.step('completion waits for the checklist, then complete and verify', async () => {

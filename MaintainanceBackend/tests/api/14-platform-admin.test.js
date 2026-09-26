@@ -99,10 +99,11 @@ describe('generic record history', () => {
     expectStatus(await sales.get(`/admin/invoices/${invoice.id}/history`), 403);
   });
 
-  it('the rate card: quotations:history, not the accountant who only reads rates', async () => {
+  it('the rate card: rates:read (Phase L2) — the trail is read with its costs masked; the field reads none', async () => {
     const item = await prisma.rateCardItem.findFirst({ where: { deletedAt: null } });
     expectStatus(await sales.get(`/admin/rate-card/${item.id}/history`), 200);
-    expectStatus(await accountant.get(`/admin/rate-card/${item.id}/history`), 403);
+    expectStatus(await accountant.get(`/admin/rate-card/${item.id}/history`), 200);
+    expectStatus(await dispatcher.get(`/admin/rate-card/${item.id}/history`), 403);
   });
 });
 

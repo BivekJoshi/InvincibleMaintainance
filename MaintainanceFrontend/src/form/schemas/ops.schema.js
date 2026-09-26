@@ -49,6 +49,9 @@ export const materialSchema = z.object({
   unit: z.enum(UNITS),
   purchaseRate: rupees.max(1_000_000_000).default(0),
   sellRate: rupees.max(1_000_000_000).default(0),
+  /** How it is bought: 50 (kg) a bag, or 1 when the unit already is the pack (Phase L2). Blank clears it. */
+  packSize: z.coerce.number().positive('More than 0').max(100_000).nullable().optional(),
+  packLabel: z.string().trim().max(20).nullable().optional(),
   reorderLevel: z.coerce.number().min(0).max(1_000_000).default(0),
   sortOrder,
   isActive,

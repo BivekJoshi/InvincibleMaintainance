@@ -19,8 +19,8 @@ DECISIONS — DECIDED 2026-09-26, build exactly this
   trade wages and the job Costing tab. `rates:read` goes to SALES, MANAGER and ACCOUNTANT; `rates:write` to
   MANAGER. SALES loses write access to the rate card, because a recipe carries cost. `jobs:advance-override`
   goes to MANAGER (enforced from L6). SURVEYOR and TECHNICIAN get none of these.
-- Job costing is readable today by any `jobs:read` role. It moves behind `costs:read`. If accountants need
-  line costs, one line in permissions.js gives ACCOUNTANT costs:read; ask me.
+- Job costing is readable today by any `jobs:read` role. It moves behind `costs:read`. DECIDED 2026-09-26:
+  ACCOUNTANT does not get costs:read, and GET /admin/reports/job-margin moves behind costs:read too.
 - Library price changes never move a public price silently. They mark items "Out of date", and a rate
   changes only through a deliberate reprice: preview, then apply.
 

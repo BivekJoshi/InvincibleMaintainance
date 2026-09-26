@@ -6,7 +6,7 @@ import { getResourceEntry, screenPathOf } from '@/config/admin/resourceRegistry'
  * The registry entry behind a generic resource screen, and whether this user may see it.
  *
  * Most entries live at `/admin/content/:resource`, where the resource comes from the URL. An
- * entry with its own `basePath` (the rate card, under Sales) is mounted on a fixed route that
+ * entry with its own `basePath` (the rate library, in the Catalog) is mounted on a fixed route that
  * passes `resource` in, and is unknown at `/admin/content/:resource` — one screen, one address.
  *
  * The route is already guarded by a capability; the entry's own is checked here, because the

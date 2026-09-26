@@ -20,10 +20,14 @@ const base = (resource) => `/admin/${resource}`;
 /**
  * Other screens that read a resource through their own endpoint: the quotation builder reads the
  * rate card, the stock page the materials, the board and the job pickers the technicians and templates.
+ * A material's purchase rate and a trade's wage price the rate library's recipes, so a write to either
+ * refreshes the library (its "Out of date" flags) and the editor's cost card (Phase L2).
  */
+const RECIPE_PRICES = [{ type: 'Cms', id: 'rate-card' }, { type: 'RateCard', id: 'DERIVE' }];
 const ALSO_READ_AS = {
   'rate-card': [{ type: 'RateCard', id: 'LIST' }],
-  materials: ['Stock'],
+  materials: ['Stock', ...RECIPE_PRICES],
+  trades: RECIPE_PRICES,
   'material-categories': ['Stock'],
   technicians: ['Dispatch', { type: 'Technician', id: 'LIST' }],
 };

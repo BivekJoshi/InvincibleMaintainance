@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 import { AppError, notFound, badRequest, forbidden, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
-import { sum } from '../utils/money.js';
+import { lineAmount, margin, sum } from '../utils/money.js';
 import { addDays, dayjs, kathmanduDayRange, local, startOfDay, endOfDay } from '../utils/dates.js';
 import { JOB_TRANSITIONS, QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
@@ -569,11 +569,12 @@ export async function jobCosting(id) {
   if (!job) throw notFound('Job');
 
   // Each line's cost is rounded once and the total is their sum, so the breakdown adds up to the paisa.
-  const lineCost = (m) => Math.round(m.qty * (m.material.purchaseRate || m.rate));
+  const lineCost = (m) => lineAmount(m.qty, m.material.purchaseRate || m.rate);
+  const timeCost = (t) => lineAmount((t.minutes ?? 0) / 60, t.technician.hourlyRate ?? 0);
   const materialCost = sum(job.materials.map(lineCost));
-  const materialBilled = sum(job.materials.filter((m) => m.isBillable).map((m) => Math.round(m.qty * m.rate)));
+  const materialBilled = sum(job.materials.filter((m) => m.isBillable).map((m) => lineAmount(m.qty, m.rate)));
   const labourMinutes = sum(job.timeLogs.map((t) => t.minutes ?? 0));
-  const labourCost = sum(job.timeLogs.map((t) => Math.round(((t.minutes ?? 0) / 60) * (t.technician.hourlyRate ?? 0))));
+  const labourCost = sum(job.timeLogs.map(timeCost));
   const expenseCost = sum(job.expenses.map((e) => e.amount));
   const invoiced = sum(job.invoiceItems.map((i) => i.amount));
   const totalCost = materialCost + labourCost + expenseCost;
@@ -585,15 +586,15 @@ export async function jobCosting(id) {
     labourMinutes,
     billable: { materials: materialBilled, invoiced },
     margin: invoiced - totalCost,
-    marginPct: invoiced ? Number((((invoiced - totalCost) / invoiced) * 100).toFixed(2)) : null,
+    marginPct: margin(invoiced, totalCost).pct,
     breakdown: {
       materials: job.materials.map((m) => ({
         name: m.material.name, code: m.material.code, unit: m.material.unit,
-        qty: m.qty, rate: m.rate, amount: Math.round(m.qty * m.rate), cost: lineCost(m), isBillable: m.isBillable,
+        qty: m.qty, rate: m.rate, amount: lineAmount(m.qty, m.rate), cost: lineCost(m), isBillable: m.isBillable,
       })),
       labour: job.timeLogs.map((t) => ({
         technician: t.technician.user.name, startedAt: t.startedAt, minutes: t.minutes ?? 0,
-        cost: Math.round(((t.minutes ?? 0) / 60) * (t.technician.hourlyRate ?? 0)),
+        cost: timeCost(t),
       })),
       expenses: job.expenses.map((e) => ({ category: e.category, amount: e.amount, vendor: e.vendor })),
       invoices: [...new Map(job.invoiceItems.map((i) => [i.invoice.id, i.invoice])).values()],

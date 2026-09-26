@@ -6,7 +6,7 @@ import {
 import {
   BOOKING_SLOT_KEYS, BUDGET_BANDS, CONTACT_ACTIVITY_TYPES, CUSTOMER_TYPES, DECISION_MAKERS, LEAD_OUTCOMES, LEAD_SOURCES,
   LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, LOST_CATEGORIES, NEXT_ACTION_TYPES, PRIORITIES, PROPERTY_TYPES,
-  QUOTATION_DECISIONS, QUOTATION_STAGES, QUOTATION_STATUSES,
+  QUOTATION_DECISIONS, QUOTATION_STAGES, QUOTATION_STATUSES, RATE_MODES, RECIPE_COMPONENT_KINDS,
 } from '../enums.js';
 
 /** A booking may be made for today or up to 90 days out — never for the past. */
@@ -247,15 +247,82 @@ export const customerSiteUpdateSchema = customerSiteSchema.extend({ isPrimary: z
 
 export { historyQuery } from './common.js';
 
-export const rateCardItemSchema = z.object({
-  // Stored upper-case, so `seep-chem` and `SEEP-CHEM` are one code (the column is unique).
-  code: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9_-]+$/, 'Use letters, numbers, dash or underscore')
-    .transform((v) => v.toUpperCase()),
+// Stored upper-case, so `seep-chem` and `SEEP-CHEM` are one code (the column is unique).
+const upperCode = z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9_-]+$/, 'Use letters, numbers, dash or underscore')
+  .transform((v) => v.toUpperCase());
+
+/**
+ * One line of a recipe (L-D1). A material is measured in its own unit and a trade in man-days; equipment
+ * and other costs carry their own cost per unit (rupees in, paisa stored). The server fills the unit.
+ */
+export const recipeComponent = z.object({
+  kind: z.enum(RECIPE_COMPONENT_KINDS),
+  materialId: z.string().min(1).nullable().optional(),
+  tradeId: z.string().min(1).nullable().optional(),
+  description: z.string().trim().max(200).nullable().optional(),
+  qty: z.coerce.number().positive().max(1_000_000),
+  wastagePct: z.coerce.number().min(0).max(100).optional(),
+  cost: rupees.nullable().optional(),
+}).superRefine((c, ctx) => {
+  const need = (path, message) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (c.kind === 'MATERIAL' && !c.materialId) need('materialId', 'Choose the material');
+  if (c.kind === 'LABOUR' && !c.tradeId) need('tradeId', 'Choose the trade');
+  if (['EQUIPMENT', 'OTHER'].includes(c.kind)) {
+    if (!c.description) need('description', 'Say what it is');
+    if (c.cost == null) need('cost', 'What does one unit cost?');
+  }
+});
+
+/** No defaults here: an update that leaves a field out keeps it (the create applies MANUAL and 1). */
+const rateCardFields = z.object({
+  code: upperCode,
   name: z.string().trim().min(2).max(200),
   description: optionalText,
   category: z.string().trim().max(80).optional(),
   unit,
-  rate: rupees,
+  /** Rupees. Required when MANUAL; a DERIVED item's rate comes from its recipe. */
+  rate: rupees.optional(),
+  rateMode: z.enum(RATE_MODES).optional(),
+  /** The recipe is written for this many units of work — DoR norms are "per 10 sq.m". */
+  recipeQty: z.coerce.number().positive().max(100_000).optional(),
+  /** null = the settings default. */
+  overheadPct: z.coerce.number().min(0).max(200).nullable().optional(),
+  profitPct: z.coerce.number().min(0).max(500).nullable().optional(),
+  /** Rupees; the derived rate rounds UP to a multiple of it. null = the setting. */
+  roundTo: rupees.nullable().optional(),
+  components: z.array(recipeComponent).max(40).optional(),
+  sortOrder,
+  isActive,
+});
+
+/** POST /admin/rate-card. A DERIVED item needs its recipe; a MANUAL one its rate. */
+export const rateCardItemSchema = rateCardFields
+  .refine((v) => v.rateMode === 'DERIVED' || v.rate != null, { message: 'Enter the rate', path: ['rate'] })
+  .refine((v) => v.rateMode !== 'DERIVED' || (v.components?.length ?? 0) > 0, {
+    message: 'A derived rate needs its recipe', path: ['components'],
+  });
+
+/** PUT /admin/rate-card/:id — partial; the service checks the merged item. */
+export const rateCardItemUpdateSchema = rateCardFields.partial();
+
+/**
+ * POST /admin/rate-card/derive — a recipe's cost and derived rate, computed by the server, nothing saved.
+ * `rate` (rupees, optional) is the rate on the form, so the margin at it comes from the server too.
+ */
+export const rateCardDeriveSchema = rateCardFields.pick({ recipeQty: true, overheadPct: true, profitPct: true, roundTo: true, rate: true })
+  .extend({ components: z.array(recipeComponent).min(1).max(40) });
+
+/** POST /admin/rate-card/reprice — `apply: false` previews and writes nothing. */
+export const rateCardRepriceSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500).optional(),
+  apply: z.boolean(),
+});
+
+/** A trade and its day wage (rupees in, paisa stored) — /admin/trades. */
+export const tradeSchema = z.object({
+  code: upperCode,
+  name: z.string().trim().min(2).max(120),
+  dayWage: rupees.default(0),
   sortOrder,
   isActive,
 });

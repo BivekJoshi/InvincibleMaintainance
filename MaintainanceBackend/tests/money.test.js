@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { toPaisa, toRupees, lineAmount, documentTotals, formatNpr, sum } from '../src/utils/money.js';
+import {
+  toPaisa, toRupees, lineAmount, documentTotals, formatNpr, sum,
+  allocate, recipeCost, sellRate, margin, boqTotals, paymentSchedule, finalBillTotals, rs, proRata,
+} from '../src/utils/money.js';
 
 describe('money — integer paisa arithmetic', () => {
   it('converts rupees to paisa without float drift', () => {
@@ -53,5 +56,119 @@ describe('money — integer paisa arithmetic', () => {
     const items = Array.from({ length: 37 }, (_, i) => ({ qty: 1 + i / 3, rate: toPaisa(99.99) }));
     const t = documentTotals(items, { vatApplied: false });
     expect(sum(t.lines.map((l) => l.amount))).toBe(t.subtotal);
+  });
+});
+
+/** A tiny deterministic PRNG, so the property tests are the same on every run. */
+function seeded(seed) {
+  let x = seed >>> 0;
+  return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 2 ** 32; };
+}
+
+describe('money — Phase L2 building blocks', () => {
+  it('allocate splits by largest remainder, always summing to the total', () => {
+    expect(allocate(100, [1, 1, 1])).toEqual([34, 33, 33]);
+    expect(allocate(1000, [5000, 4000, 1000])).toEqual([500, 400, 100]);
+    expect(allocate(7, [1, 1])).toEqual([4, 3]); // a tie goes to the earlier part
+    expect(allocate(0, [3, 7])).toEqual([0, 0]);
+    expect(() => allocate(10, [0, 0])).toThrow();
+    const rnd = seeded(42);
+    for (let i = 0; i < 500; i += 1) {
+      const total = Math.floor(rnd() * 10_000_000);
+      const weights = Array.from({ length: 1 + Math.floor(rnd() * 6) }, () => 1 + Math.floor(rnd() * 9000));
+      const parts = allocate(total, weights);
+      expect(sum(parts)).toBe(total);
+      expect(parts.every(Number.isInteger)).toBe(true);
+    }
+  });
+
+  it('recipeCost prices a batch, per unit, and its buckets add up (the plaster hand calculation)', () => {
+    // Internal plaster 12 mm, 1:4, per 100 sq.ft (recipeQty 100):
+    //   cement 0.9 bag  +2% wastage × Rs 850   = 0.9 × 85000 × 102/100 = 78030.00
+    //   sand   5.5 cu.ft +5% × Rs 95            = 5.5 × 9500 × 105/100  = 54862.5 → 54863
+    //   mason  1.2 day × Rs 1,500 = 180000 · helper 1.2 day × Rs 1,000 = 120000
+    //   other  scaffolding & water 1 × Rs 150  = 15000
+    // per sq.ft: material 132893/100 = 1328.93 → 1329 · labour 3000 · other 150 → direct 4479
+    // overhead 10% = 447.9 → 448 → unit cost 4927 paisa (Rs 49.27)
+    const cost = recipeCost([
+      { kind: 'MATERIAL', qty: 0.9, wastagePct: 2, price: 85000 },
+      { kind: 'MATERIAL', qty: 5.5, wastagePct: 5, price: 9500 },
+      { kind: 'LABOUR', qty: 1.2, price: 150000 },
+      { kind: 'LABOUR', qty: 1.2, price: 100000 },
+      { kind: 'OTHER', qty: 1, price: 15000 },
+    ], { recipeQty: 100, overheadPct: 10 });
+    expect(cost).toMatchObject({ material: 1329, labour: 3000, equipment: 0, other: 150, direct: 4479, overhead: 448, unitCost: 4927, complete: true });
+    expect(cost.lines.map((l) => l.lineCost)).toEqual([78030, 54863, 180000, 120000, 15000]);
+    expect(cost.material + cost.labour + cost.equipment + cost.other).toBe(cost.direct);
+  });
+
+  it('recipeCost says when a price is unknown instead of pricing it at zero', () => {
+    const cost = recipeCost([{ kind: 'MATERIAL', qty: 1, price: null }, { kind: 'LABOUR', qty: 1, price: 100000 }], { recipeQty: 1 });
+    expect(cost.complete).toBe(false);
+    expect(cost.labour).toBe(100000);
+    expect(recipeCost([], {}).complete).toBe(false);
+  });
+
+  it('sellRate adds profit, rounds UP to the step, and never eats margin', () => {
+    // 4927 × 115% = 5666.05 → 5666 → up to the next Rs 1 → 5700 (Rs 57.00)
+    expect(sellRate(4927, { profitPct: 15, roundTo: 100 })).toBe(5700);
+    expect(sellRate(4927, { profitPct: 15, roundTo: 0 })).toBe(5666);
+    expect(sellRate(5600, { profitPct: 0, roundTo: 100 })).toBe(5600);
+    expect(sellRate(null, { profitPct: 15 })).toBeNull();
+  });
+
+  it('margin is on the selling price, and unknown without a cost', () => {
+    expect(margin(5700, 4927)).toEqual({ amount: 773, pct: 13.56 });
+    expect(margin(5700, null)).toBeNull();
+    expect(margin(0, 100)).toEqual({ amount: -100, pct: null });
+  });
+
+  it('boqTotals leaves sections, notes and optional rows out of the money, and subtotals each section', () => {
+    const rows = [
+      { rowType: 'SECTION', title: 'A. Waterproofing' },
+      { rowType: 'ITEM', qty: 100, rate: 27500 },
+      { rowType: 'NOTE', title: 'Surface to be dry' },
+      { rowType: 'ITEM', qty: 2, rate: 5000, isOptional: true },
+      { rowType: 'SECTION', title: 'B. Finishing' },
+      { rowType: 'ITEM', qty: 10.5, rate: 4500 },
+    ];
+    const t = boqTotals(rows, { discount: 0, vatApplied: true, vatRate: 13 });
+    expect(t.subtotal).toBe(2750000 + 47250);
+    expect(t.sections.map((x) => x.subtotal)).toEqual([2750000, 47250]);
+    expect(t.optionalTotal).toBe(10000);
+    expect(t.rowAmounts).toEqual([null, 2750000, null, 10000, null, 47250]);
+    expect(t.total).toBe(documentTotals([{ qty: 100, rate: 27500 }, { qty: 10.5, rate: 4500 }], { vatRate: 13 }).total);
+  });
+
+  it('rs rounds half away from zero; proRata scales a whole', () => {
+    expect(rs(2.5)).toBe(3);
+    expect(rs(-2.5)).toBe(-3);
+    expect(rs(-2.4)).toBe(-2);
+    expect(proRata(10000, 1, 3)).toBe(3333);
+    expect(proRata(10000, 0, 0)).toBe(0);
+  });
+
+  it('property: a payment schedule sums to the quotation total, and advance + running + final equal the contract', () => {
+    const rnd = seeded(2026);
+    for (let i = 0; i < 1000; i += 1) {
+      const lines = Array.from({ length: 1 + Math.floor(rnd() * 8) }, () => ({
+        qty: Math.round(rnd() * 50000) / 100, rate: Math.floor(rnd() * 500000),
+      }));
+      const opts = { discount: Math.floor(rnd() * 100000), vatApplied: rnd() > 0.2, vatRate: 13 };
+      const contract = documentTotals(lines, opts);
+      const cuts = [1 + Math.floor(rnd() * 8000)];
+      cuts.push(1 + Math.floor(rnd() * (9999 - cuts[0])));
+      const stages = [{ basisPoints: cuts[0] }, { basisPoints: cuts[1] }, { basisPoints: 10000 - cuts[0] - cuts[1] }];
+      const schedule = paymentSchedule(contract, stages);
+      expect(sum(schedule.map((st) => st.total))).toBe(contract.total);
+      expect(sum(schedule.map((st) => st.taxable))).toBe(contract.subtotal - contract.discount);
+      expect(sum(schedule.map((st) => st.vat))).toBe(contract.vatAmount);
+      expect(schedule.every((st) => st.vat >= 0 && st.taxable >= 0)).toBe(true);
+
+      // The first two stages were billed; the final bill is the contract less them.
+      const final = finalBillTotals(lines, schedule.slice(0, 2), opts);
+      expect(final.due.total + schedule[0].total + schedule[1].total).toBe(contract.total);
+      expect(final.due.vat + schedule[0].vat + schedule[1].vat).toBe(contract.vatAmount);
+    }
   });
 });

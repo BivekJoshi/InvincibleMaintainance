@@ -55,6 +55,15 @@ hold the follow-up clocks: the No-answer retry (120 min), price-shopper follow-u
 (09:00 Kathmandu), quiet-lead (3 days), unquoted-survey (48 h), waiting-approval (24 h), unanswered-quote
 (3 days) and expiring-quote (2 days) thresholds.
 
+Phase L2 adds the rate library's demo: five trades with **illustrative** day wages (set your own under
+Trades & wages), pack sizes on the materials plus a floor tile and a tile adhesive, and recipes per 100
+sq.ft on internal plaster, floor tiling and chemical damp treatment (MANUAL — their rates stay, the recipe
+costs them for the margin) and on interior painting (DERIVED and left at its old rate, so the library shows
+one item "Out of date" to reprice). The quotation costing settings (minimum margin 15 %, overhead 10 %,
+profit 10 %, derived rates rounded up to Rs 1, contract type, the 50/40/10 payment schedule, the advance
+gate and its 7-day due date) sit in the finance group. Recipe norms are simplified for the demo — review
+them before quoting real work.
+
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
 Both links open `<PUBLIC_WEB_ORIGIN>/reset-password`. With no `SMTP_HOST`, the email — link included — is

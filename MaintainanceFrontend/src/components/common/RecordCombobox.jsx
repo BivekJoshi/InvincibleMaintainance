@@ -26,6 +26,8 @@ import { cn } from '@/helpers/utils';
  * @param {boolean} [props.clearable]
  * @param {{ value: string, label: string }[]} [props.fixedOptions] choices that are not records
  *   (`none` → "Unassigned"), listed first and never looked up
+ * @param {string} [props.selectedLabel] the selected record's label when the caller already has it (a
+ *   recipe line carries its material), so it is not looked up — a reader may not be allowed to
  */
 export function RecordCombobox({
   path,
@@ -41,6 +43,7 @@ export function RecordCombobox({
   disabled,
   className,
   fixedOptions = [],
+  selectedLabel,
   ...aria
 }) {
   const [open, setOpen] = useState(false);
@@ -57,7 +60,7 @@ export function RecordCombobox({
   const fromResults = value && !fixed ? results.find((row) => row[valueKey] === value) : undefined;
   const { data: fetched, isFetching: resolving } = useGetRecordQuery(
     { path, id: value },
-    { skip: !value || Boolean(fixed) || Boolean(fromResults) },
+    { skip: !value || Boolean(fixed) || Boolean(fromResults) || Boolean(selectedLabel) },
   );
   const current = fromResults ?? fetched;
   const needle = debouncedQ.trim().toLowerCase();
@@ -77,7 +80,7 @@ export function RecordCombobox({
             {...aria}
           >
             <span className={cn('truncate', !value && 'text-muted-foreground')}>
-              {value ? (fixed?.label ?? (labelOf(current) || (resolving ? 'Loading…' : value))) : placeholder}
+              {value ? (fixed?.label ?? (labelOf(current) || selectedLabel || (resolving ? 'Loading…' : value))) : placeholder}
             </span>
             <ChevronsUpDown className="opacity-50" aria-hidden />
           </Button>

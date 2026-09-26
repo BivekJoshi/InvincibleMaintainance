@@ -240,6 +240,9 @@ export const materialSchema = z.object({
   unit,
   purchaseRate: rupees.default(0),
   sellRate: rupees.default(0),
+  /** How it is bought: 50 (kg) a bag; 1 when the unit already is the pack. The take-off rounds up to packs. */
+  packSize: z.coerce.number().positive().max(100_000).nullable().optional(),
+  packLabel: z.string().trim().max(20).nullable().optional(),
   reorderLevel: z.coerce.number().min(0).max(1_000_000).default(0),
   sortOrder,
   isActive,

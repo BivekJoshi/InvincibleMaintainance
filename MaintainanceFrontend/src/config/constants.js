@@ -15,8 +15,8 @@ export const OFFICE_ROLES = ['ADMIN', 'EDITOR', 'SALES', 'MANAGER', 'DISPATCHER'
 export const ROLE_DESCRIPTIONS = {
   ADMIN: 'Everything, including users, settings and the audit log',
   EDITOR: 'The website: pages, services, projects, blog and media',
-  SALES: 'Leads, customers and quotations (prepares and submits them)',
-  MANAGER: 'Everything sales does, plus approving quotations',
+  SALES: 'Leads, customers and quotations (prepares and submits them at selling rates)',
+  MANAGER: 'Everything sales does, plus approving quotations, the rate library, cost and margin',
   DISPATCHER: 'Jobs, technicians, dispatch and materials',
   TECHNICIAN: 'The field app: the jobs assigned to them',
   ACCOUNTANT: 'Invoices, payments, expenses and finance reports',
@@ -287,7 +287,19 @@ export const QUOTATION_STAGE_TABS = [
 ];
 export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 'VOID'];
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
-export const UNITS = ['sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set'];
+/** How a site team measures and buys (Phase L2 added the metric and pack units). Recipe quantities use each material's own unit. */
+export const UNITS = [
+  'sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set',
+  'sq.m', 'cu.ft', 'cu.m', 'm', 'rmt', 'box', 'tin', 'trip', 'point',
+];
+/** What a rate-library recipe line is (RateCardComponent.kind). */
+export const RECIPE_COMPONENT_KINDS = ['MATERIAL', 'LABOUR', 'EQUIPMENT', 'OTHER'];
+export const RECIPE_COMPONENT_LABELS = {
+  MATERIAL: 'Material', LABOUR: 'Labour', EQUIPMENT: 'Equipment', OTHER: 'Other',
+};
+/** MANUAL: the rate is typed (a recipe, if any, only costs it). DERIVED: the recipe sets the rate. */
+export const RATE_MODES = ['MANUAL', 'DERIVED'];
+export const RATE_MODE_LABELS = { MANUAL: 'Manual', DERIVED: 'Recipe' };
 export const LOCALES = [
   { code: 'en', label: 'English' },
   { code: 'ne', label: 'नेपाली' },

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, approveAndSend, expectStatus, createAssignedJob, pngBuffer, prisma, technicianIdFor, uid, daysFromNow,
+  anon, as, approveAndSend, expectStatus, createAssignedJob, findKeys, pngBuffer, prisma, technicianIdFor, uid, daysFromNow,
 } from './helpers.js';
 
 let tech;
@@ -131,22 +131,17 @@ describe('POST /tech/sync', () => {
 });
 
 describe('the field app never carries money (D1, defect #17)', () => {
-  /** Any key that names a price, cost, pay or amount — words split on camelCase. */
+  /**
+   * Any key that names a price, cost, pay or amount — words split on camelCase. Its own list, not the
+   * server's `isMoneyKey`, so the test checks the wall rather than repeating it.
+   */
   const MONEY_WORDS = new Set(['rate', 'rates', 'amount', 'total', 'subtotal', 'discount', 'margin', 'balance',
-    'cost', 'costs', 'price', 'prices', 'wage', 'wages', 'paid', 'vat', 'estimate']);
+    'cost', 'costs', 'price', 'prices', 'wage', 'wages', 'paid', 'vat', 'estimate', 'overhead', 'profit']);
   const ALLOWED = new Set(['priceUnit']); // "sq.ft" — the unit a service is sold in, not a price
-  function moneyKeys(value, path = 'data', found = []) {
-    if (Array.isArray(value)) value.forEach((v, i) => moneyKeys(v, `${path}[${i}]`, found));
-    else if (value && typeof value === 'object') {
-      for (const [k, v] of Object.entries(value)) {
-        const words = k.split(/(?=[A-Z])/).map((w) => w.toLowerCase());
-        // A foreign key (`rateCardItemId`) links to a record; it carries no amount.
-        if (!ALLOWED.has(k) && !k.endsWith('Id') && words.some((w) => MONEY_WORDS.has(w))) found.push(`${path}.${k}`);
-        moneyKeys(v, `${path}.${k}`, found);
-      }
-    }
-    return found;
-  }
+  // A foreign key (`rateCardItemId`) links to a record; it carries no amount.
+  const moneyNamed = (k) => !ALLOWED.has(k) && !k.endsWith('Id')
+    && k.split(/(?=[A-Z])/).some((w) => MONEY_WORDS.has(w.toLowerCase()));
+  const moneyKeys = (value) => findKeys(value, moneyNamed);
 
   it('no /tech response names a rate, cost, total or pay — on a quoted job with materials and time', async () => {
     const [sales, dispatcher] = await Promise.all([as('SALES'), as('DISPATCHER')]);
