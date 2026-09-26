@@ -1,5 +1,8 @@
 export const ROLES = ['ADMIN', 'EDITOR', 'SALES', 'MANAGER', 'DISPATCHER', 'TECHNICIAN', 'ACCOUNTANT', 'SURVEYOR'];
 
+/** The kinds of app that sign in. Each has its own session lifetimes (`env.sessions`). */
+export const SESSION_CLIENTS = ['WEB', 'DESKTOP'];
+
 /** Roles that work off a Technician profile and use the /tech app. */
 export const FIELD_ROLES = ['TECHNICIAN', 'SURVEYOR'];
 

@@ -189,7 +189,8 @@ Lists take `?page&limit&sort&q` plus per-resource filters. Full surface in `../d
 
 - Argon2id passwords; 5 failed attempts locks the account for 15 minutes.
 - Access token 15m in the `Authorization` header; refresh token in an httpOnly cookie,
-  rotated on every use and revoked on password change.
+  rotated on every use and revoked on password change. A session lapses after its client's idle
+  limit or its absolute limit from sign-in (`WEB_SESSION_*`, `DESKTOP_SESSION_*` in `.env`).
 - RBAC enforced server-side on every route. `shared/permissions.js` is shared with the SPA,
   but the API is the authority.
 - Login and password-reset responses are uniform, so neither endpoint enumerates accounts.

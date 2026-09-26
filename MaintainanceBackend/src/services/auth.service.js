@@ -21,18 +21,39 @@ function signAccessToken(user) {
   return jwt.sign({ sub: user.id, role: user.role }, env.jwtSecret, { expiresIn: env.accessTokenTtl });
 }
 
-async function issueRefreshToken(userId, { ip, userAgent }) {
+/**
+ * When a refresh token lapses under the client's current lifetimes: `idleDays` after it was
+ * issued or `maxDays` after sign-in, whichever comes first. Refreshing keeps an active session
+ * going, but never past its cap.
+ *
+ * @param {{ client: string, signedInAt: Date, issuedAt: Date }} token
+ */
+function lapsesAt({ client, signedInAt, issuedAt }) {
+  const { idleDays, maxDays } = env.sessions[client];
+  return new Date(Math.min(addDays(issuedAt, idleDays), addDays(signedInAt, maxDays)));
+}
+
+/**
+ * Issues a session's next refresh token.
+ *
+ * @param {{ userId: string, client: string, signedInAt?: Date, ip?: string, userAgent?: string }} session
+ * @returns {Promise<{ refreshToken: string, refreshTokenExpiresAt: Date }>}
+ */
+async function issueRefreshToken({ userId, client, signedInAt = new Date(), ip, userAgent }) {
+  const expiresAt = lapsesAt({ client, signedInAt, issuedAt: new Date() });
   const raw = crypto.randomBytes(48).toString('base64url');
   await prisma.refreshToken.create({
     data: {
       userId,
       tokenHash: hashToken(raw),
-      expiresAt: addDays(new Date(), env.refreshTokenTtlDays),
+      client,
+      signedInAt,
+      expiresAt,
       ip: ip ?? null,
       userAgent: userAgent?.slice(0, 400) ?? null,
     },
   });
-  return raw;
+  return { refreshToken: raw, refreshTokenExpiresAt: expiresAt };
 }
 
 const publicUser = (u) => ({
@@ -40,7 +61,7 @@ const publicUser = (u) => ({
   avatarId: u.avatarId, lastLoginAt: u.lastLoginAt,
 });
 
-export async function login({ email, password, ip, userAgent }) {
+export async function login({ email, password, client = 'WEB', ip, userAgent }) {
   const user = await prisma.user.findFirst({ where: { email: email.toLowerCase(), deletedAt: null } });
   // Uniform failure message so the endpoint cannot enumerate accounts.
   const reject = () => { throw unauthorized('Email or password is incorrect'); };
@@ -81,31 +102,38 @@ export async function login({ email, password, ip, userAgent }) {
       where: { id: user.id },
       data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
-    await recordEvent('auth.login', { model: 'User', recordId: user.id, actorId: user.id }, tx);
+    await recordEvent('auth.login', { model: 'User', recordId: user.id, actorId: user.id, meta: { client } }, tx);
   });
 
   return {
     user: publicUser(user),
     accessToken: signAccessToken(user),
-    refreshToken: await issueRefreshToken(user.id, { ip, userAgent }),
+    ...(await issueRefreshToken({ userId: user.id, client, ip, userAgent })),
   };
 }
 
-/** Rotates the refresh token: the presented one is revoked and a new one issued. */
+/**
+ * Rotates the refresh token: the presented one is revoked and the session's next one issued,
+ * keeping its client and sign-in time. A session past its idle or absolute limit is refused —
+ * the limits as they are now, so shortening them in .env also ends sessions issued before.
+ */
 export async function refresh({ token, ip, userAgent }) {
   if (!token) throw unauthorized('No refresh token supplied');
   const row = await prisma.refreshToken.findUnique({
     where: { tokenHash: hashToken(token) },
     include: { user: true },
   });
-  if (!row || row.revokedAt || row.expiresAt < new Date()) throw unauthorized('Session expired. Please sign in again.');
+  const now = new Date();
+  const lapsed = !row || row.revokedAt || row.expiresAt < now
+    || lapsesAt({ client: row.client, signedInAt: row.signedInAt, issuedAt: row.createdAt }) < now;
+  if (lapsed) throw unauthorized('Session expired. Please sign in again.');
   if (!row.user.isActive || row.user.deletedAt) throw forbidden('This account is disabled');
 
   await prisma.refreshToken.update({ where: { id: row.id }, data: { revokedAt: new Date() } });
   return {
     user: publicUser(row.user),
     accessToken: signAccessToken(row.user),
-    refreshToken: await issueRefreshToken(row.userId, { ip, userAgent }),
+    ...(await issueRefreshToken({ userId: row.userId, client: row.client, signedInAt: row.signedInAt, ip, userAgent })),
   };
 }
 

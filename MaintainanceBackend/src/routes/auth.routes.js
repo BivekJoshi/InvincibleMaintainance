@@ -13,34 +13,35 @@ import {
 const router = Router();
 const COOKIE = 'refresh_token';
 
-const cookieOptions = () => ({
+/** The cookie lapses with its session (idle or absolute limit, whichever is sooner). Without `expires`, for clearing it. */
+const cookieOptions = (expires) => ({
   httpOnly: true,
   sameSite: 'lax',
   secure: env.cookieSecure,
   domain: env.cookieDomain,
   path: '/api/v1/auth',
-  maxAge: env.refreshTokenTtlDays * 86400 * 1000,
+  ...(expires ? { expires } : {}),
 });
 
 router.post('/login', authLimiter, validate({ body: loginSchema }), asyncHandler(async (req, res) => {
-  const { user, accessToken, refreshToken } = await auth.login({
+  const { user, accessToken, refreshToken, refreshTokenExpiresAt } = await auth.login({
     ...req.body, ip: req.ip, userAgent: req.headers['user-agent'],
   });
-  res.cookie(COOKIE, refreshToken, cookieOptions());
+  res.cookie(COOKIE, refreshToken, cookieOptions(refreshTokenExpiresAt));
   ok(res, { user, accessToken });
 }));
 
 router.post('/refresh', asyncHandler(async (req, res) => {
-  const { user, accessToken, refreshToken } = await auth.refresh({
+  const { user, accessToken, refreshToken, refreshTokenExpiresAt } = await auth.refresh({
     token: req.cookies?.[COOKIE], ip: req.ip, userAgent: req.headers['user-agent'],
   });
-  res.cookie(COOKIE, refreshToken, cookieOptions());
+  res.cookie(COOKIE, refreshToken, cookieOptions(refreshTokenExpiresAt));
   ok(res, { user, accessToken });
 }));
 
 router.post('/logout', asyncHandler(async (req, res) => {
   await auth.logout(req.cookies?.[COOKIE]);
-  res.clearCookie(COOKIE, { ...cookieOptions(), maxAge: undefined });
+  res.clearCookie(COOKIE, cookieOptions());
   ok(res, { message: 'Signed out' });
 }));
 
@@ -57,7 +58,7 @@ router.post('/reset-password', authLimiter, validate({ body: resetPasswordSchema
 
 router.post('/change-password', authenticate, validate({ body: changePasswordSchema }), asyncHandler(async (req, res) => {
   await auth.changePassword(req.user.id, req.body);
-  res.clearCookie(COOKIE, { ...cookieOptions(), maxAge: undefined });
+  res.clearCookie(COOKIE, cookieOptions());
   ok(res, { message: 'Password changed. Please sign in again.' });
 }));
 

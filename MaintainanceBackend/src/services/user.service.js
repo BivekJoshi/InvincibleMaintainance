@@ -182,12 +182,15 @@ export async function unlockUser(id) {
   return toUser(user);
 }
 
-/** The account's live sessions (refresh tokens), newest first — where and when, never the token. */
+/**
+ * The account's live sessions, newest first — where and when, never the token. `signedInAt` is the
+ * sign-in; `createdAt` the latest refresh (last active).
+ */
 export async function listSessions(id) {
   await findUser(id, { id: true });
   return prisma.refreshToken.findMany({
     where: { userId: id, revokedAt: null, expiresAt: { gt: new Date() } },
-    select: { id: true, createdAt: true, expiresAt: true, ip: true, userAgent: true },
+    select: { id: true, client: true, signedInAt: true, createdAt: true, expiresAt: true, ip: true, userAgent: true },
     orderBy: { createdAt: 'desc' },
   });
 }

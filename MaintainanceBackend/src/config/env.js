@@ -28,7 +28,15 @@ export const env = {
   jwtSecret: req('JWT_SECRET'),
   refreshSecret: req('REFRESH_SECRET'),
   accessTokenTtl: process.env.ACCESS_TOKEN_TTL ?? '15m',
-  refreshTokenTtlDays: num('REFRESH_TOKEN_TTL_DAYS', 30),
+  /**
+   * Refresh-token lifetimes by client, in days (fractions allowed: 0.5 = 12 hours). A session
+   * ends after `idleDays` without a refresh, and `maxDays` after sign-in however active it is.
+   * Keyed by the `SessionClient` enum.
+   */
+  sessions: {
+    WEB: { idleDays: num('WEB_SESSION_IDLE_DAYS', 7), maxDays: num('WEB_SESSION_MAX_DAYS', 30) },
+    DESKTOP: { idleDays: num('DESKTOP_SESSION_IDLE_DAYS', 30), maxDays: num('DESKTOP_SESSION_MAX_DAYS', 90) },
+  },
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   cookieSecure: bool('COOKIE_SECURE', false),
 
@@ -90,6 +98,14 @@ if (required.length) {
     `\n[config] Missing required environment variables: ${required.join(', ')}\n` +
       `Copy .env.example to .env and fill them in.\n`,
   );
+  process.exit(1);
+}
+
+const badLifetimes = Object.entries(env.sessions)
+  .filter(([, l]) => !(l.idleDays > 0 && l.maxDays > 0 && l.idleDays <= l.maxDays))
+  .map(([client]) => `${client}_SESSION_IDLE_DAYS / ${client}_SESSION_MAX_DAYS`);
+if (badLifetimes.length) {
+  console.error(`[config] Session lifetimes must be positive numbers with IDLE <= MAX: ${badLifetimes.join(', ')}`);
   process.exit(1);
 }
 

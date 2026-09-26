@@ -132,8 +132,10 @@ while that slug is in `bootstrap.nav.pages` (otherwise it goes to `/book`).
 ## Auth
 
 ```
-POST /auth/login            -> { user, accessToken } + httpOnly refresh cookie
-POST /auth/refresh          rotates the cookie; the previous one stops working
+POST /auth/login            { email, password, client? } -> { user, accessToken } + httpOnly refresh cookie.
+                            client = WEB (default) | DESKTOP picks the session's lifetimes.
+POST /auth/refresh          rotates the cookie; the previous one stops working. 401 once the session
+                            has lapsed (see below)
 POST /auth/logout           revokes the refresh token
 POST /auth/forgot-password  same answer for known and unknown emails; emails a 1-hour link to
                             <web origin>/reset-password?token=…
@@ -142,6 +144,12 @@ POST /auth/reset-password   { token, password } — the forgot-password link, an
 POST /auth/change-password  revokes every existing session
 GET  /auth/me
 ```
+
+**Session lifetimes.** The access token lasts `ACCESS_TOKEN_TTL` (15m) for every client. A session — the
+refresh cookie — lapses after `<CLIENT>_SESSION_IDLE_DAYS` without a refresh, and `<CLIENT>_SESSION_MAX_DAYS`
+after sign-in however active (defaults: WEB 7 / 30, DESKTOP 30 / 90). Each refresh keeps the session's client and
+sign-in time, and the cookie's `Expires` matches the row. Refresh checks the limits as they are now, so shortening
+them ends older sessions at their next refresh.
 
 Five failed logins lock an account for 15 minutes; a disabled account is refused at login and
 on its next authenticated request.
@@ -783,7 +791,8 @@ POST   /admin/users/:id/send-password-reset
                                     disabled account.
 POST   /admin/users/:id/unlock      clears failedLogins and lockedUntil -> the user row
 GET    /admin/users/:id/sessions    live refresh tokens, newest first:
-                                    [{ id, createdAt, expiresAt, ip, userAgent }] — never the token
+                                    [{ id, client, signedInAt, createdAt, expiresAt, ip, userAgent }] — never the
+                                    token. signedInAt = the sign-in; createdAt = the latest refresh
 DELETE /admin/users/:id/sessions    revokes them all -> { revoked: n }. No session can be refreshed; an access
                                     token already issued lives out its 15 minutes (disable the account to
                                     stop it at once).
@@ -988,7 +997,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `survey.submitted` | the surveyor submits (model `SiteSurvey`) | DRAFT/RETURNED → SUBMITTED · jobId, lines |
 | `survey.returned` | `PATCH /admin/surveys/:id/review` with RETURNED | status → RETURNED · note |
 | `survey.quoted` | `POST /admin/surveys/:id/quotation` | status → QUOTED · quotationId, quotationNumber |
-| `auth.login` | a successful sign-in (actor = the user) | |
+| `auth.login` | a successful sign-in (actor = the user) | · client |
 | `auth.login_failed` | a wrong password, a locked or disabled account, or an unknown email (`public`; recordId null, `meta.email` for the last) | · reason, attempt |
 | `auth.locked` | the fifth consecutive failure locks the account | → lockedUntil · attempts |
 | `auth.logout` | `POST /auth/logout` with a live refresh cookie (actor = the user) | |

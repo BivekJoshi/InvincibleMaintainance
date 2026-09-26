@@ -10,9 +10,11 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { formatDateTime } from '@/helpers/format';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 
+const CLIENT_LABELS = { WEB: 'Web browser', DESKTOP: 'Desktop app' };
+
 /**
- * Where someone is signed in (one row per session: when it started, the address and the
- * browser) and "Sign out everywhere". A session ended here cannot be renewed; a screen already
+ * Where someone is signed in (one row per session: the app, when it started and was last used,
+ * when it lapses, the address and the browser) and "Sign out everywhere". A session ended here cannot be renewed; a screen already
  * open keeps working for at most 15 minutes unless the account is switched off.
  *
  * @param {{ user: object|null, onOpenChange: (open: boolean) => void }} props
@@ -49,9 +51,11 @@ export function SessionsDialog({ user, onOpenChange }) {
       <ul className="divide-y rounded-lg border" aria-label="Sessions">
         {sessions.map((s) => (
           <li key={s.id} className="space-y-0.5 px-3 py-2 text-sm">
-            <p className="font-medium">Signed in {formatDateTime(s.createdAt)}</p>
+            <p className="font-medium">
+              {CLIENT_LABELS[s.client] ?? CLIENT_LABELS.WEB} · signed in {formatDateTime(s.signedInAt ?? s.createdAt)}
+            </p>
             <p className="text-xs text-muted-foreground">
-              {s.ip ?? 'Unknown address'} · expires {formatDateTime(s.expiresAt)}
+              {s.ip ?? 'Unknown address'} · last active {formatDateTime(s.createdAt)} · expires {formatDateTime(s.expiresAt)}
             </p>
             {s.userAgent ? <p className="break-all text-xs text-muted-foreground">{s.userAgent}</p> : null}
           </li>

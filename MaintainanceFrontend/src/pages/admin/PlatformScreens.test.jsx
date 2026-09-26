@@ -149,7 +149,10 @@ describe('UsersPage', () => {
     const user = userEvent.setup();
     const calls = usersApi(({ method, path }) => {
       if (method === 'GET' && path === '/admin/users/u2/sessions') {
-        return json({ data: [{ id: 's1', createdAt: '2026-09-17T02:00:00.000Z', expiresAt: '2026-10-17T02:00:00.000Z', ip: '10.1.1.1', userAgent: 'Firefox' }] });
+        return json({ data: [{
+          id: 's1', client: 'DESKTOP', signedInAt: '2026-09-10T02:00:00.000Z', createdAt: '2026-09-17T02:00:00.000Z',
+          expiresAt: '2026-10-17T02:00:00.000Z', ip: '10.1.1.1', userAgent: 'Firefox',
+        }] });
       }
       if (method === 'DELETE' && path === '/admin/users/u2/sessions') return json({ data: { revoked: 1 } });
       return undefined;
@@ -159,6 +162,7 @@ describe('UsersPage', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Sessions' }));
     const dialog = await screen.findByRole('dialog', { name: 'Sita Sales’s sessions' });
     expect(await within(dialog).findByText(/10\.1\.1\.1/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Desktop app · signed in/)).toBeInTheDocument();
     expect(within(dialog).getByText('Firefox')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Sign out everywhere' }));
     const confirmBox = await screen.findByRole('alertdialog', { name: 'Sign Sita Sales out everywhere?' });

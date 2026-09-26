@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import {
-  anon, as, withToken, getApp, expectStatus, tokenFor, USERS, PASSWORD, uid,
+  anon, as, withToken, getApp, expectStatus, tokenFor, prisma, USERS, PASSWORD, uid,
 } from './helpers.js';
+import { env } from '../../src/config/env.js';
+import { hashToken } from '../../src/utils/tokens.js';
 
 const refreshCookie = (res) =>
   (res.headers['set-cookie'] ?? []).find((c) => c.startsWith('refresh_token='))?.split(';')[0];
@@ -131,6 +133,74 @@ describe('refresh tokens', () => {
   it('POST /auth/logout revokes the refresh token', async () => {
     expectStatus(await anon().post('/auth/logout').set('Cookie', cookie), 200);
     expectStatus(await anon().post('/auth/refresh').set('Cookie', cookie), 401);
+  });
+});
+
+describe('session lifetimes', () => {
+  const DAY = 86400000;
+  const cookieExpiry = (res) => {
+    const cookie = (res.headers['set-cookie'] ?? []).find((c) => c.startsWith('refresh_token='));
+    return new Date(/Expires=([^;]+)/i.exec(cookie)[1]);
+  };
+  /** Cookie expiry is second-precision, so "about" is within a minute. */
+  const expectAbout = (date, fromNowMs) => expect(Math.abs(date.getTime() - (Date.now() + fromNowMs))).toBeLessThan(60000);
+  const sessionOf = (cookie) => prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(cookie.split('=')[1]) } });
+
+  async function signIn(client) {
+    const res = await anon().post('/auth/login').send({ email: USERS.EDITOR, password: PASSWORD, ...(client ? { client } : {}) });
+    expectStatus(res, 200);
+    return { res, cookie: refreshCookie(res) };
+  }
+
+  it('a sign-in with no client is a WEB session, good for the web idle limit', async () => {
+    const { res, cookie } = await signIn();
+    expect((await sessionOf(cookie)).client).toBe('WEB');
+    expectAbout(cookieExpiry(res), env.sessions.WEB.idleDays * DAY);
+  });
+
+  it('a DESKTOP sign-in gets the desktop lifetimes and keeps them across refreshes', async () => {
+    const { res, cookie } = await signIn('DESKTOP');
+    expectAbout(cookieExpiry(res), env.sessions.DESKTOP.idleDays * DAY);
+    const refreshed = await anon().post('/auth/refresh').set('Cookie', cookie);
+    expectStatus(refreshed, 200);
+    expect((await sessionOf(refreshCookie(refreshed))).client).toBe('DESKTOP');
+    expectAbout(cookieExpiry(refreshed), env.sessions.DESKTOP.idleDays * DAY);
+  });
+
+  it('refreshing keeps the sign-in time and never runs past the absolute limit', async () => {
+    const { cookie } = await signIn();
+    const signedInAt = new Date(Date.now() - (env.sessions.WEB.maxDays - 1) * DAY);
+    await prisma.refreshToken.update({ where: { tokenHash: hashToken(cookie.split('=')[1]) }, data: { signedInAt } });
+
+    const refreshed = await anon().post('/auth/refresh').set('Cookie', cookie);
+    expectStatus(refreshed, 200);
+    expect((await sessionOf(refreshCookie(refreshed))).signedInAt).toEqual(signedInAt);
+    // One day of the cap is left, which is sooner than the idle limit.
+    expectAbout(cookieExpiry(refreshed), DAY);
+  });
+
+  it('refuses a session past its absolute limit', async () => {
+    const { cookie } = await signIn();
+    await prisma.refreshToken.update({
+      where: { tokenHash: hashToken(cookie.split('=')[1]) },
+      data: { signedInAt: new Date(Date.now() - (env.sessions.WEB.maxDays + 1) * DAY) },
+    });
+    expectStatus(await anon().post('/auth/refresh').set('Cookie', cookie), 401);
+  });
+
+  it('refuses a session idle past today\'s limit, even if it was issued under a longer one', async () => {
+    const { cookie } = await signIn();
+    const idleSince = new Date(Date.now() - (env.sessions.WEB.idleDays + 1) * DAY);
+    await prisma.refreshToken.update({
+      where: { tokenHash: hashToken(cookie.split('=')[1]) },
+      data: { signedInAt: idleSince, createdAt: idleSince },
+    });
+    expectStatus(await anon().post('/auth/refresh').set('Cookie', cookie), 401);
+  });
+
+  it('rejects an unknown client', async () => {
+    const body = expectStatus(await anon().post('/auth/login').send({ email: USERS.EDITOR, password: PASSWORD, client: 'TOASTER' }), 400);
+    expect(body.error.details.map((d) => d.path)).toContain('client');
   });
 });
 

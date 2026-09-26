@@ -208,8 +208,10 @@ describe('users', () => {
 
     const sessions = expectStatus(await admin.get(`/admin/users/${user.id}/sessions`), 200).data;
     expect(sessions).toHaveLength(2);
-    expect(Object.keys(sessions[0]).sort()).toEqual(['createdAt', 'expiresAt', 'id', 'ip', 'userAgent']);
-    expect(sessions[0]).toMatchObject({ id: expect.any(String), createdAt: expect.any(String), ip: expect.any(String) });
+    expect(Object.keys(sessions[0]).sort()).toEqual(['client', 'createdAt', 'expiresAt', 'id', 'ip', 'signedInAt', 'userAgent']);
+    expect(sessions[0]).toMatchObject({
+      id: expect.any(String), client: 'WEB', signedInAt: expect.any(String), createdAt: expect.any(String), ip: expect.any(String),
+    });
 
     const requestId = rid();
     const revoked = expectStatus(await admin.delete(`/admin/users/${user.id}/sessions`).set('X-Request-Id', requestId), 200);

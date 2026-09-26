@@ -64,15 +64,27 @@ model User {
   @@index([deletedAt])
 }
 
+/// The kind of app a session belongs to. It picks the session's lifetimes (`<CLIENT>_SESSION_*` in .env).
+enum SessionClient {
+  WEB
+  DESKTOP
+}
+
+/// One live row per session: every refresh revokes the row and issues the next one.
 model RefreshToken {
-  id        String    @id @default(cuid())
-  userId    String
-  tokenHash String    @unique
-  expiresAt DateTime
-  revokedAt DateTime?
-  ip        String?
-  userAgent String?
-  createdAt DateTime  @default(now())
+  id         String        @id @default(cuid())
+  userId     String
+  tokenHash  String        @unique
+  client     SessionClient @default(WEB)
+  /// When the person signed in; carried over on every refresh, so the absolute limit counts from here.
+  signedInAt DateTime      @default(now())
+  /// The earlier of the idle limit (from this row's issue) and the absolute limit (from signedInAt).
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  ip         String?
+  userAgent  String?
+  /// When this row was issued: the sign-in, or the latest refresh — i.e. last active.
+  createdAt  DateTime      @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

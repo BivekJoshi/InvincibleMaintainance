@@ -1,10 +1,12 @@
 import { apiSlice } from '@/api/apiSlice';
 import { setCredentials, loggedOut } from '@/redux/slices/authSlice';
+import { SESSION_CLIENT } from '@/config/env';
 
 export const authApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({
     login: build.mutation({
-      query: (body) => ({ url: '/auth/login', method: 'POST', body }),
+      // `client` picks how long the session lasts on the API (web browser vs desktop app).
+      query: (body) => ({ url: '/auth/login', method: 'POST', body: { ...body, client: SESSION_CLIENT } }),
       transformResponse: (r) => r.data,
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         const { data } = await queryFulfilled;

@@ -161,7 +161,9 @@ links — ip and user agent say who), `system` (tasks, and scripts with no conte
 - CSP, HSTS, no inline scripts. Turnstile + honeypot + timing + IP rate limit on all public POSTs.
 - PII exports (`leads.csv`) are recorded as `export.csv` audit events with the actor and the filters used.
 - No access token, refresh cookie or password reaches a log line; see *Redaction* above.
-- **Sessions.** Each sign-in is one refresh token row (hashed, with ip and user agent), rotated on every refresh.
+- **Sessions.** Each sign-in is one refresh token row (hashed, with client, ip and user agent), rotated on every
+  refresh. A session has an idle limit and an absolute limit per client (`WEB`, `DESKTOP`; see *Session
+  lifetimes* in API.md), so an active session is renewed but never outlives its cap from sign-in.
   Ending sessions revokes the rows: an admin's "revoke all" (`DELETE /admin/users/:id/sessions`, event
   `auth.sessions_revoked`), a password change or reset, and disabling or deleting an account. A revoked session
   cannot be refreshed. An access token already issued stays valid for its 15 minutes — except that

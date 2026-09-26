@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { email, listQuery, optionalPhone } from './common.js';
-import { ROLES } from '../enums.js';
+import { ROLES, SESSION_CLIENTS } from '../enums.js';
 
 const password = z
   .string()
@@ -11,6 +11,8 @@ const password = z
 export const loginSchema = z.object({
   email,
   password: z.string().min(1, 'Password is required'),
+  /** Which app is signing in; it sets how long the session lasts. */
+  client: z.enum(SESSION_CLIENTS).default('WEB'),
 });
 
 export const forgotPasswordSchema = z.object({ email });
