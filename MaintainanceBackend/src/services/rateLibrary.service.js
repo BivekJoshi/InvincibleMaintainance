@@ -328,3 +328,10 @@ export const trades = {
   remove: (id, opts) => tradeCrud.remove(id, opts),
   reorder: (items) => tradeCrud.reorder(items),
 };
+
+/** The field app's reference list (GET /tech/rate-card): what a surveyor can name — never a rate (D1). */
+export const fieldRateCard = () => prisma.rateCardItem.findMany({
+  where: { isActive: true, deletedAt: null },
+  select: { id: true, code: true, name: true, unit: true, category: true },
+  orderBy: { name: 'asc' },
+});

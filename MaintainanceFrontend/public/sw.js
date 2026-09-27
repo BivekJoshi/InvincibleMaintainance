@@ -4,7 +4,7 @@
  * Deliberately narrow: it keeps the shell openable with no signal, and never
  * caches an API response. A cached job sheet or survey would be worse than an
  * honest error — the surveyor would act on stale scope. Pending work lives in
- * IndexedDB (src/lib/offlineQueue.js), not here.
+ * IndexedDB (src/helpers/offlineQueue.js and src/helpers/uploadQueue.js), not here.
  */
 const CACHE = 'gharjatan-shell-v1';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest'];

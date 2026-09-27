@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-27 (Phase L4). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-27 (Phase H2). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -35,6 +35,7 @@ Updated 2026-09-27 (Phase L4). **Current build order: [`docs/ADMIN-PLAN.md`](doc
 | **v2 · L2 Rate library & money wall** | **Recipe rates (L-D1):** a rate-library item holds what one unit of work needs — materials with wastage, labour man-days by trade, equipment and other costs, overhead and profit — and a DERIVED rate is priced from it by the server (`recipeCost` → `sellRate`, rounded up). A price or wage change never moves a rate: the item shows **Out of date** until a manager reprices it (preview → apply, `rate_card.repriced`). **Trades & wages**, pack sizes on materials, construction units (sq.m, cu.ft, cu.m, rmt, box, tin, trip…). **The cost wall (L-D4):** `costs:read` (MANAGER, ADMIN) alone sees cost, margin, recipe cost, purchase rates in the library and wages — stripped by the server everywhere else, history included; job costing and the job-margin report moved behind it; SALES reads the library but no longer writes it. `money.js` gains `allocate`, `recipeCost`, `sellRate`, `margin`, `boqTotals`, `paymentSchedule`, `finalBillTotals`; new `utils/quantity.js`. Screens: the Rate library (recipe field, live cost-vs-rate card, Out-of-date badge, bulk "Update to derived rate"), Trades & wages, the roles matrix. | ✅ 2026-09-27 |
 | **v2 · L3 The BOQ builder** | **The quotation is a bill of quantities:** ordered ITEM / SECTION / NOTE rows numbered A, A.1…, section subtotals, measurement sheets (nos × L × B × H with deductions, feet-inches input), wastage, optional rows shown but never totalled, provisional rows and specs. A row priced from the rate library **freezes its recipe and cost** (L-D1) — a library change reaches a draft only through Reprice (preview → apply). **EditableGrid** (keyboard-first: arrows, Enter, Tab, type-to-overwrite, Ctrl+Enter / Ctrl+Shift+Enter / Ctrl+D / Alt+↑↓ / `/` library search; paste from Excel with Indian digit grouping), reached only through ResourceForm field types. Builder tabs **BOQ · Take-off** (buying units, packs, stock, shortfall) **· Labour** (days per trade, crew calculator) **· Payment & terms · Customer view · History**, a live server preview with "%" and "target total" discount helpers, and a **margin rail for managers only** (the cost wall now covers quotations). **New quotation** sheet: blank · from survey · copy. Surveys carry kind, material, wastage, optional lines and notes into sectioned BOQs; the customer page shows sections, notes and optional rows. | ✅ 2026-09-27 |
 | **v2 · L4 Terms & the customer document** | **The contract around the BOQ:** lump sum or item rate (with the sentence the customer reads), a **payment schedule** (50·40·10 by default; stages must total 100 %, one advance at most; the server's amounts sum to the total exactly), duration, exclusions, and a **terms library** (English + Nepali, one default, the manager's). **The margin gate:** approving below `quotation.minMarginPct` (15 %) — or with any cost unknown — needs an explicit acknowledgement, recorded on the event; auto-approval never fires on a low margin; managers see a Margin column. **The customer's document:** letterhead, AD + BS dates, numbered sections with subtotals (or a section summary), notes, specs, optional rows, a measurements annex, the total in words (lakh/crore, en/ne), the schedule, the terms — on the link page (360 px, en/ne), a print route, and an **Excel workbook** whose formulas recalculate to the same totals (Cost sheet for managers only). Decline reasons feed the lost categories; "Opened N×" and WhatsApp/Viber share in the send panel. | ✅ 2026-09-27 |
+| **v2 · H2 Field app** | **A job finished on a phone, partly offline:** camera photos by kind (compressed to 1600 px, queued, retried, shown "Waiting to upload"), materials used from a searchable sheet (no rates), a finger signature and the completion — blocked while checklist items are open —, and job status, checklist, timers, materials and completion through an IndexedDB queue that replays in the order the technician acted, with the pending count and "Sync now" in the header. Survey photos use the same queue; a history of past jobs by Kathmandu day. API: offline timers keep the tapped time, a second completion is refused, malformed mutations are terminal (`INVALID_MUTATION`), field photos carry their images, and `tech.routes.js` moved its sync into `techSync.service.js` — **no route file calls Prisma** (#15). Verified: API 719, unit 224, web 769, e2e 4/4 including the new field flow at 360 px. | ✅ 2026-09-27 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, the whole lead pipeline (list, board, detail, convert) and customers with their sites, the
@@ -120,13 +121,12 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A, B, C (C1 + C2), D (D1 + D2), E, F (F1 + F2), G, H1, **L0–L4** are done — the business flow runs end to end
+Phases A–H (C1 + C2, D1 + D2, F1 + F2, H1 + H2), G and **L0–L4** are done — the business flow runs end to end
 from the UI, an ADMIN can trace any record, a dispatcher runs the day from the board, and every open lead carries a next
 action, every rate can be built from a recipe, and a quotation is a bill of quantities the customer reads as a proper
-document. Phase L (2026-09-26) was inserted after H1; with L0–L4 done, the order returns to **Phase H2 — the field
-app's gaps** (`docs/prompts/PHASE-H2-field-app.md`: photo upload, material logging, job mutations on the offline queue,
-job history, and the last raw Prisma calls, #15), then L5 (the site-visit kit, which needs H2's photo queue), then I
-(finance screens), then L6–L8.
+document, and a technician can finish a job on a phone, partly offline. Next is **Phase L5 — the site-visit kit**
+(`docs/prompts/PHASE-L5-site-visit-kit.md`: visit confirmation and reminder, the surveyor's checklist, measurement sheet,
+photos and GPS pin, all carried into the BOQ), then I (finance screens), then L6–L8.
 
 Left from H1 for later phases: the costing tab shows labour cost to every role that reads jobs (SALES, ACCOUNTANT), from
 which a rate can be worked out; a checklist cannot be reordered (no endpoint); `casestudy.service` stores

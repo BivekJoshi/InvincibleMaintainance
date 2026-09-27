@@ -1,30 +1,30 @@
 import { useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { ClipboardList, ClipboardCheck, LogOut, CloudOff, RefreshCw } from 'lucide-react';
+import { ClipboardList, ClipboardCheck, History, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useIdlePreload } from '@/hooks/useIdlePreload';
 import { PageOutlet } from '@/routes/PageOutlet';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
+import { useFieldCopy } from '@/hooks/useFieldCopy';
 import { useLogoutMutation } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
+import { SyncBanner, SyncButton } from '@/components/tech/FieldSyncStatus';
 import { cn } from '@/helpers/utils';
 
 const TABS = [
-  { to: '/tech', label: 'Today', icon: ClipboardList, end: true },
-  { to: '/tech/surveys', label: 'Surveys', icon: ClipboardCheck, roles: ['SURVEYOR', 'ADMIN', 'DISPATCHER'] },
+  { to: '/tech', key: 'today', icon: ClipboardList, end: true },
+  { to: '/tech/history', key: 'history', icon: History },
+  { to: '/tech/surveys', key: 'surveys', icon: ClipboardCheck, roles: ['SURVEYOR', 'ADMIN', 'DISPATCHER'] },
 ];
-
-const ROLE_LABELS = {
-  TECHNICIAN: 'Technician',
-  SURVEYOR: 'Site surveyor',
-  ADMIN: 'Admin',
-  DISPATCHER: 'Dispatcher',
-};
 
 /**
  * Mobile-first shell for field staff. Big tap targets, bottom navigation, and
  * nothing that needs a desktop. Safe-area padding keeps the bar clear of the
  * iOS home indicator.
+ *
+ * It also runs the sync engine (`useOfflineQueue`), once for the whole field app: the header says what
+ * is still on the phone and sends it on "Sync now"; the strip under it says when there is no signal and
+ * what the office refused.
  */
 export function TechLayout() {
   useIdlePreload('tech');
@@ -40,41 +40,31 @@ export function TechLayout() {
   }, []);
 
   const { user, role } = useAuth();
+  const copy = useFieldCopy();
   const tabs = TABS.filter((t) => !t.roles || t.roles.includes(role));
-  const { count, online, syncing, drain } = useOfflineQueue();
+  const sync = useOfflineQueue();
   const [logout] = useLogoutMutation();
   const navigate = useNavigate();
 
   return (
     <div className="flex min-h-dvh flex-col bg-muted/20">
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background px-4">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{user?.name}</p>
-          <p className="text-[11px] text-muted-foreground">{ROLE_LABELS[role] ?? 'Field'}</p>
+      <header className="sticky top-0 z-30 border-b bg-background">
+        <div className="flex h-14 items-center gap-2 px-4">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{user?.name}</p>
+            <p className="text-[11px] text-muted-foreground">{copy.roles[role] ?? copy.roles.other}</p>
+          </div>
+          <SyncButton sync={sync} copy={copy} />
+          <Button
+            variant="ghost" size="icon" className="h-11 w-11 shrink-0"
+            onClick={async () => { await logout().unwrap().catch(() => {}); navigate('/login', { replace: true }); }}
+            aria-label={copy.signOut}
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
         </div>
-        <Button
-          variant="ghost" size="icon"
-          onClick={async () => { await logout().unwrap().catch(() => {}); navigate('/login', { replace: true }); }}
-          aria-label="Sign out"
-        >
-          <LogOut className="h-4 w-4" />
-        </Button>
+        <SyncBanner sync={sync} copy={copy} />
       </header>
-
-      {/* A surveyor has to know their work is still on the phone. */}
-      {!online || count > 0 ? (
-        <button
-          type="button"
-          onClick={drain}
-          disabled={!online || syncing}
-          className="flex w-full items-center justify-center gap-2 surface-warning px-4 py-2 text-xs font-medium"
-        >
-          {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <CloudOff className="h-3.5 w-3.5" aria-hidden />}
-          {!online
-            ? `No signal${count ? ` · ${count} change${count === 1 ? '' : 's'} saved here` : ''}`
-            : `${count} change${count === 1 ? '' : 's'} waiting to send · tap to retry`}
-        </button>
-      ) : null}
 
       <main className="flex-1 p-4 pb-24"><PageOutlet /></main>
 
@@ -88,12 +78,12 @@ export function TechLayout() {
             to={tab.to}
             end={tab.end}
             className={({ isActive }) => cn(
-              'flex flex-1 flex-col items-center gap-1 py-3 text-[11px] font-medium transition-colors',
+              'flex min-h-14 flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors',
               isActive ? 'text-primary' : 'text-muted-foreground',
             )}
           >
             <tab.icon className="h-5 w-5" aria-hidden />
-            {tab.label}
+            {copy.tabs[tab.key]}
           </NavLink>
         ))}
       </nav>

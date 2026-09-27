@@ -96,7 +96,7 @@ Gaps against the intended business process:
 | ✅ 12 · A 2026-09-14 | Low | `npm run lint` fails: eslint 9 with no `eslint.config.js` in the frontend. | `MaintainanceFrontend/` |
 | 13 | Low | *(G 2026-09-17: users, audit log, login activity, message templates and message logs now validate `sort` and their filters. H1 2026-09-17: jobs, technicians, dispatch, stock and movements validate theirs and are paginated; ops sub-resource ids are validated.)* Unvalidated `?sort` and `?status` reach Prisma. Sub-resource `:id` params are unvalidated in crm, ops and finance routes. Several lists are unpaginated. | routes |
 | 14 | Low | `notify()` is awaited inside the request with no retry. Crons have no leader lock, so they are unsafe on more than one instance. | `notify.service.js`, `crons/index.js` |
-| 15 | Low | *(G 2026-09-17: `platform.routes.js` is Prisma-free — users, notifications, message logs. H1 2026-09-17: `ops.routes.js` is Prisma-free — technicians. Tech sync remains for H2.)* Raw Prisma calls in route files (technicians, users, tech sync) break the "routes never touch Prisma" rule. | `ops.routes.js:95-129`, `platform.routes.js:87-137`, `tech.routes.js:214-283` |
+| ✅ 15 · H2 2026-09-27 | Low | *(H2 2026-09-27: `tech.routes.js` is Prisma-free — the sync is `techSync.service.js`, the field reference lists and the technician lookup are services; no route file calls Prisma.) (G 2026-09-17: `platform.routes.js` is Prisma-free — users, notifications, message logs. H1 2026-09-17: `ops.routes.js` is Prisma-free — technicians. Tech sync remains for H2.)* Raw Prisma calls in route files (technicians, users, tech sync) break the "routes never touch Prisma" rule. | `ops.routes.js:95-129`, `platform.routes.js:87-137`, `tech.routes.js:214-283` |
 | ✅ 16 · L0 2026-09-26 | **High · money** | *(found 2026-09-26)* Invoicing a quoted job double-bills: `createFromJob` copies every quoted line **and** adds actual billable materials **and** a labour line priced at the technician's internal `hourlyRate` — both on by default. | `invoice.service.js:113-140`, `shared/schemas/ops.js:302` |
 | ✅ 17 · L0 2026-09-26 | **High · money wall** | *(found 2026-09-26)* `/tech/jobs/:id` returns `getJob`, whose include carries the quotation total and every assigned technician's full row, `hourlyRate` included — a technician can read a colleague's pay. | `tech.routes.js:100`, `job.service.js:25-33` |
 | ✅ 18 · L0 2026-09-26 | Medium | *(found 2026-09-26)* The survey review page renders `survey.media`, which `getSurvey` never returns, so site photos show with an empty `src`. | `components/surveys/SurveyFindings.jsx:110` |
@@ -713,7 +713,7 @@ closed neither outright.
   accounts, not sorted by failure count; the manual walk-through was scripted with Playwright against the `_test`
   database rather than clicked by hand (below, in STATUS).
 
-### Phase H — Operations screens · ~7 days · H1 ✅ done 2026-09-17 · H2 to do
+### Phase H — Operations screens · ~7 days · H1 ✅ done 2026-09-17 · H2 ✅ done 2026-09-27
 
 - **Jobs:**
   - list with filters
@@ -767,6 +767,33 @@ the low-stock card. Backend:
   every `jobs:read` role (SALES, ACCOUNTANT) — a rate can be worked out from it; a checklist cannot be reordered (no API
   endpoint); `casestudy.service` stores `costBandMin/Max` as given although the schema calls them rupees (no screen sends
   them yet).
+
+**H2 — the field app (✅ 2026-09-27, after L0–L4).** A technician finishes a whole job on a phone, partly offline:
+camera photos (compressed, queued, retried), materials used (a searchable sheet, no rates), a finger signature and the
+completion (blocked while checklist items are open), status / checklist / timers / materials / completion through the
+offline queue with a pending count and "Sync now" in the header, and a history of past jobs by Kathmandu day. Survey
+photos use the same upload queue. The field words are in an en/ne copy object for J1. Closes #15.
+
+**Deviations (Phase H2, 2026-09-27)**
+- **Everything goes through the queue, even online** (flushed at once), so offline and online behave the same; the
+  screen shows a change from the queue, not a patched cache. The upload queue sits beside the mutation queue in
+  IndexedDB; a signature carries its completion, which is queued only once the signature has its media id.
+- **API gaps found by the field work, fixed:** `/tech/sync` stamped timers at the sync time, so offline minutes were
+  wrong — `time_start` / `time_stop` now keep the tapped `at` (never in the future); a second completion re-ran
+  completion (the state machine lets X → X through) — now 422 `INVALID_TRANSITION`; a schema failure inside sync was
+  `SYNC_FAILED` (retried) — now `INVALID_MUTATION` (terminal); `/tech/jobs?from&to` read the server's days — now
+  Kathmandu days, like `/admin/jobs`; job and survey photos came without images — `GET /tech/jobs/:id` and
+  `/tech/surveys/:id` now carry a `media` map (the survey its photos too), so every thumbnail shows, not only the
+  ones this phone took.
+- **#15:** the sync is `services/techSync.service.js` (its schema `techSyncSchema` in `schemas/ops.js`); the field
+  reference lists and the technician lookup are services. No route file calls Prisma; CLAUDE.md says so.
+- **The service worker is unchanged** (it caches the shell and static files, never `/api/`); job payloads live in RTK
+  Query's cache for the session. ARCHITECTURE.md "Offline strategy" now says what is built, not what was planned.
+- **`TechLayout` is lazy-loaded**, keeping the sync engine and the field copy out of the marketing bundle.
+- **The operations e2e** now schedules on the first day with no closed job on Hari's lane — the shared test database
+  keeps earlier runs' VERIFIED jobs, which cannot be moved.
+- **Follow-ups:** scope the offline queue per signed-in user (it belongs to the device today); the survey form's own
+  fields are still English only (J1).
 
 ### Phase L — Pipeline stages that work like a site team · ~33 days · L0–L8 (planned 2026-09-26)
 
@@ -1041,7 +1068,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | L2 Rate library & money wall ✅ 2026-09-27 | 4 | 40 | Recipe rates; cost only for managers |
 | L3 BOQ builder ✅ 2026-09-27 | 5 | 45 | Excel-grade quotation with take-off and labour days |
 | L4 Terms & customer document ✅ 2026-09-27 | 4 | 49 | Payment schedule, contract type, print, Excel |
-| H2 Operations — field app | 3 | 52 | Photos, materials and job mutations offline |
+| H2 Operations — field app ✅ 2026-09-27 | 3 | 52 | Photos, materials and job mutations offline |
 | L5 Site-visit kit | 4 | 56 | Confirmed visits, checklists, measurement sheet |
 | I Finance & aftercare | 6 | 62 | Billing and retention |
 | L6 Won → hand-off | 4 | 66 | Job with its BOQ, material list and advance gate |

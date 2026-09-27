@@ -53,10 +53,8 @@ split by route group: `(site)` public, `(admin)` staff, `(tech)` technician PWA.
 - Layering: `routes/ → services/ → prisma`. The thin inline `asyncHandler` in a route file **is**
   the controller (decision D5, 2026-09-14): it takes the validated request, calls a service and
   shapes the response. Route files never call Prisma directly; business logic stays in services.
-  Raw Prisma calls still in some routers move into services when each router is next touched.
-  *Progress (Phase H1, 2026-09-17):* prisma-free — `platform`, `cms`, `crm`, `ops` (technicians moved to
-  `services/technician.service.js`), `finance`, `aftercare`, `surveys`, `auth`, `public`. Still calling
-  Prisma — `tech.routes.js` (sync), for Phase H2. A record's history route is `routes/admin/historyRoute.js`;
+  *Done (Phase H2, 2026-09-27):* no route file calls Prisma — the last one, `tech.routes.js`, moved its offline
+  sync into `services/techSync.service.js`. A record's history route is `routes/admin/historyRoute.js`;
   every registry resource (content, materials, job templates, technicians) is mounted by
   `routes/admin/mountResource.js`.
 - Every route: `validate(schema)` → `authenticate` → `authorize(...roles)` → controller.

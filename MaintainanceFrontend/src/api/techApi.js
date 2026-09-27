@@ -44,6 +44,16 @@ export const techApi = apiSlice.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/tech/jobs/${id}/time/stop`, method: 'POST', body }),
       invalidatesTags: (r, e, { id }) => [{ type: 'Job', id }],
     }),
+    /**
+     * Job photos — multipart `files` + `kind` (BEFORE | DURING | AFTER | ISSUE | SIGNATURE) + optional `caption`,
+     * answered with `{ photos, media }`. `body` is the FormData; the field app sends it from its upload queue
+     * (`hooks/useOfflineQueue.js`), never straight from a screen.
+     */
+    uploadMyJobPhotos: build.mutation({
+      query: ({ id, body }) => ({ url: `/tech/jobs/${id}/photos`, method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (r, e, { id }) => [{ type: 'Job', id }],
+    }),
     completeMyJob: build.mutation({
       query: ({ id, ...body }) => ({ url: `/tech/jobs/${id}/complete`, method: 'POST', body }),
       transformResponse: (r) => r.data,
@@ -88,10 +98,12 @@ export const techApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: ['RateCard'],
     }),
+    /** Reference data: code, name, unit — never a rate. Kept all shift, so the materials sheet works with no signal. */
     getTechMaterials: build.query({
       query: () => '/tech/materials',
       transformResponse: (r) => r.data,
       providesTags: ['Material'],
+      keepUnusedDataFor: 12 * 60 * 60,
     }),
     /** Replays the offline queue. Idempotency keys make a repeat send harmless. */
     syncOffline: build.mutation({
@@ -113,5 +125,6 @@ export const {
   useSaveSurveyDraftMutation,
   useSubmitSurveyMutation,
   useUploadSurveyPhotosMutation,
+  useUploadMyJobPhotosMutation,
   useGetTechRateCardQuery,
 } = techApi;

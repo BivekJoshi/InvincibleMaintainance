@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, lazy } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { RequireAuth } from './RequireAuth';
 import { RouteFallback } from './PageOutlet';
@@ -11,13 +11,18 @@ import {
   HomeComposerPage, MediaLibraryPage, ResetPasswordPage,
   JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
   UsersPage, RolesPage, AuditLogPage, LoginActivityPage, MessageLogsPage, MessageTemplatesPage, MessageTemplateEditPage,
-  TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, NotFoundPage,
+  TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, TechHistoryPage, NotFoundPage,
 } from './routeModules';
 import { AdminHome, ContentHome } from './AdminLanding';
 import { SiteLayout } from '@/components/layout/SiteLayout';
 import { AdminLayout } from '@/components/layout/AdminLayout/AdminLayout';
-import { TechLayout } from '@/components/layout/TechLayout';
 import { FIELD_ROLES, OFFICE_ROLES } from '@/config/constants';
+
+/**
+ * The field app's shell is loaded with its pages, not with the site: it carries the sync engine, both
+ * queues, the field API and its en/ne copy (Phase H2), none of which a visitor to the marketing site needs.
+ */
+const TechLayout = lazy(() => import('@/components/layout/TechLayout').then((m) => ({ default: m.TechLayout })));
 
 /**
  * The route table only. Two things it deliberately does not do:
@@ -157,6 +162,8 @@ export function AppRoutes() {
           <Route element={<TechLayout />}>
             <Route path="/tech" element={<TechTodayPage />} />
             <Route path="/tech/jobs/:id" element={<TechJobPage />} />
+            <Route path="/tech/history" element={<TechHistoryPage />} />
+            <Route path="/tech/history/:id" element={<TechJobPage readOnly />} />
             <Route path="/tech/surveys" element={<SurveyListPage />} />
             <Route path="/tech/surveys/:id" element={<SurveyFormPage />} />
           </Route>

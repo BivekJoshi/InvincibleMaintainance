@@ -221,3 +221,16 @@ export async function linkableUser(id) {
 }
 
 const labelUser = (u) => ({ ...u, label: `${u.name} · ${u.role.charAt(0)}${u.role.slice(1).toLowerCase()}` });
+
+/**
+ * The technician a /tech request acts as (Phase H2: moved out of the route). A field user is always
+ * themselves; an ADMIN or DISPATCHER may view a technician's queue with `technicianId` (the dispatch board's
+ * "view as"), and without one has no profile — an empty queue, not an error. An unknown id is 404.
+ */
+export async function technicianForViewer(userId, technicianId) {
+  const technician = technicianId
+    ? await prisma.technician.findFirst({ where: { id: technicianId, deletedAt: null } })
+    : await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
+  if (technicianId && !technician) throw notFound('Technician');
+  return technician;
+}

@@ -21,8 +21,10 @@ import { CardSkeleton } from '@/components/ui/skeleton';
 import { PageTransition } from '@/three/motion/motionKit';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { SURVEY_ITEM_KINDS, SURVEY_METRICS, PRIORITIES, UNITS } from '@/config/constants';
-import { enqueue } from '@/helpers/offlineQueue';
 import { titleCase } from '@/helpers/format';
+import { useFieldQueue } from '@/hooks/useOfflineQueue';
+import { useFieldCopy } from '@/hooks/useFieldCopy';
+import { PhotoCapture } from '@/components/tech/PhotoCapture';
 
 const EDITABLE = ['DRAFT', 'RETURNED'];
 const blankReading = () => ({ label: '', metric: 'moisture', value: '', unit: '', textValue: '' });
@@ -45,6 +47,8 @@ export default function SurveyFormPage() {
   const { data: materials } = useGetTechMaterialsQuery();
   const [saveDraft, { isLoading: saving }] = useSaveSurveyDraftMutation();
   const [submit, { isLoading: submitting }] = useSubmitSurveyMutation();
+  const { queueMutation } = useFieldQueue();
+  const copy = useFieldCopy();
 
   const [form, setForm] = useState(null);
 
@@ -122,7 +126,7 @@ export default function SurveyFormPage() {
       dispatch(toastSuccess('Saved'));
     } catch (err) {
       if (isOffline(err)) {
-        await enqueue({ kind: 'survey_draft', surveyId: id, payload: body });
+        await queueMutation({ kind: 'survey_draft', surveyId: id, payload: body });
         dispatch(toastSuccess('Saved on this phone', 'It will reach the office when you have signal.'));
         return;
       }
@@ -139,8 +143,8 @@ export default function SurveyFormPage() {
     } catch (err) {
       if (isOffline(err)) {
         // Draft first, then submit — /tech/sync replays them in this order.
-        await enqueue({ kind: 'survey_draft', surveyId: id, payload: body });
-        await enqueue({ kind: 'survey_submit', surveyId: id, payload: { note: 'Submitted offline' } });
+        await queueMutation({ kind: 'survey_draft', surveyId: id, payload: body });
+        await queueMutation({ kind: 'survey_submit', surveyId: id, payload: { note: 'Submitted offline' } });
         dispatch(toastSuccess('Queued on this phone', 'It will be submitted as soon as you have signal.'));
         navigate('/tech/surveys');
         return;
@@ -358,6 +362,19 @@ export default function SurveyFormPage() {
             <Button variant="outline" size="sm" onClick={() => addRow('items', blankItem)} disabled={!editable}>
               <Plus className="h-4 w-4" /> Add line
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Phase H2: survey evidence, through the same upload queue as job photos (the API files it as ISSUE). */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{copy.photos.title}</CardTitle>
+            <p className="text-xs text-muted-foreground">{copy.photos.surveyHint}</p>
+          </CardHeader>
+          <CardContent>
+            <PhotoCapture
+              target="survey" targetId={id} photos={survey.job?.photos} media={survey.media} readOnly={!editable} copy={copy}
+            />
           </CardContent>
         </Card>
       </div>

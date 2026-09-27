@@ -1,114 +1,164 @@
+import { clearStore, newKey, nextStamp, readAll, readOne, remove, write } from '@/helpers/fieldDb';
+
 /**
- * A durable queue of field mutations, so a survey filled in with no signal is not
- * lost. This is Kathmandu — connectivity drops inside the buildings we survey.
+ * The field app's mutation queue — every job change a technician makes (status, a checklist tick, a
+ * material, the timer, completion) and a surveyor's offline saves, replayed through `POST /tech/sync`.
+ * This is Kathmandu: connectivity drops inside the buildings we work in.
  *
- * Entries are replayed through POST /tech/sync, which de-dupes on idempotencyKey,
- * so a queue flushed twice is harmless. Storage is IndexedDB rather than
- * localStorage because a survey with photos and forty lines outgrows 5MB.
+ * **Everything goes through the queue, online or not** (Phase H2): a tap enqueues, and the sync engine
+ * (`hooks/useOfflineQueue.js`) flushes at once when there is signal. Offline and online therefore behave
+ * the same, and the screen shows the queued change straight away (`helpers/fieldJob.js#applyPending`).
+ *
+ * Rules:
+ * - **Order** — entries replay in the order they were made: `at` and `seq` come from `fieldDb#nextStamp`,
+ *   strictly increasing, and the server applies a batch sorted by `at`.
+ * - **Dedupe** — an entry is stored under its `idempotencyKey`; enqueueing a key already waiting is a
+ *   no-op, and the server answers a key it has applied before with `duplicate`.
+ * - **Terminal refusals are dropped, not retried** — `failed` with a code in `TERMINAL_CODES`
+ *   (`INVALID_TRANSITION` on a replay, a job no longer yours…) leaves the queue and is reported so the
+ *   screen can say so. Any other `failed` is retried, at most `MAX_ATTEMPTS` times.
+ * - **No answer is not a failure** — a network error keeps the whole queue for the next try.
  */
 
-const DB_NAME = 'gharjatan-field';
+export const MUTATION_KINDS = [
+  'status', 'task', 'material', 'time_start', 'time_stop', 'complete', 'survey_draft', 'survey_submit',
+];
+
+/** A `failed` result with one of these codes will fail the same way every time. */
+export const TERMINAL_CODES = new Set([
+  'INVALID_TRANSITION', 'UNPROCESSABLE', 'NOT_FOUND', 'FORBIDDEN', 'BAD_REQUEST', 'CONFLICT', 'VALIDATION_ERROR',
+]);
+
+/** After this many refusals that were not terminal, an entry is dropped and reported anyway. */
+export const MAX_ATTEMPTS = 5;
+
+/** The most `/tech/sync` accepts in one request. */
+export const BATCH_SIZE = 200;
+
 const STORE = 'mutations';
-const VERSION = 1;
-
-let dbPromise = null;
-
-function openDb() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      reject(new Error('IndexedDB unavailable'));
-      return;
-    }
-    const request = indexedDB.open(DB_NAME, VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'idempotencyKey' });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-  return dbPromise;
-}
-
-async function tx(mode, fn) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE, mode);
-    const store = transaction.objectStore(STORE);
-    const result = fn(store);
-    transaction.oncomplete = () => resolve(result?.result ?? result);
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-/** crypto.randomUUID is unavailable on http:// origins in some browsers. */
-const newKey = () =>
-  (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
 
 /**
- * @param {{ kind: string, surveyId?: string, jobId?: string, taskId?: string, payload?: object }} mutation
- * @returns {Promise<string>} the idempotency key it was stored under
+ * What a failed request means for a queued entry:
+ * - `offline` — no answer (no signal, a timeout), or an answer that says "try later" (401 while the
+ *   session renews, 408, 429). Keep it; do not count it.
+ * - `server` — the server broke (5xx). Keep it, and count an attempt.
+ * - `refused` — the server answered 4xx: sending it again will not help. Drop it and say so.
+ *
+ * @param {{ status?: number|string, originalStatus?: number }} error RTK Query's error shape
+ * @returns {'offline'|'server'|'refused'}
+ */
+export function failureKind(error) {
+  const status = typeof error?.status === 'number' ? error.status : error?.originalStatus;
+  if (typeof status !== 'number') return 'offline';
+  if (status === 401 || status === 408 || status === 429) return 'offline';
+  if (status >= 500) return 'server';
+  return 'refused';
+}
+
+/** The API's code and words for a failed request, for the note the screen shows. */
+export const errorCode = (error) => error?.data?.error?.code ?? (typeof error?.status === 'number' ? `HTTP_${error.status}` : 'NETWORK');
+export const errorMessage = (error) => error?.data?.error?.message ?? error?.error ?? error?.message ?? null;
+
+/**
+ * Adds a change to the queue.
+ *
+ * @param {{ kind: string, jobId?: string, surveyId?: string, taskId?: string, payload?: object,
+ *           meta?: object, idempotencyKey?: string }} mutation
+ *   `meta` is for the screen (a material's name and unit) and never leaves the phone.
+ * @returns {Promise<string>} the idempotency key it is stored under
  */
 export async function enqueue(mutation) {
-  const entry = {
-    idempotencyKey: newKey(),
-    at: new Date().toISOString(),
-    payload: {},
-    ...mutation,
+  const key = mutation.idempotencyKey ?? newKey();
+  if (await readOne(STORE, key)) return key;
+  const { seq, at } = await nextStamp();
+  await write(STORE, { payload: {}, ...mutation, idempotencyKey: key, seq, at, attempts: 0 });
+  return key;
+}
+
+/** Everything waiting, oldest first. */
+export const pending = () => readAll(STORE);
+
+export const drop = (keys) => remove(STORE, keys);
+
+export const clear = () => clearStore(STORE);
+
+/** The entry as `/tech/sync` takes it — the queue's own bookkeeping (`seq`, `meta`, `attempts`) stays here. */
+export function toWire(entry) {
+  const { idempotencyKey, at, kind, jobId, surveyId, taskId, payload } = entry;
+  return {
+    idempotencyKey, at, kind, payload: payload ?? {},
+    ...(jobId ? { jobId } : {}),
+    ...(surveyId ? { surveyId } : {}),
+    ...(taskId ? { taskId } : {}),
   };
-  await tx('readwrite', (store) => store.put(entry));
-  return entry.idempotencyKey;
-}
-
-export async function pending() {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const request = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
-    request.onsuccess = () => resolve(
-      // Replay in the order the surveyor made them.
-      request.result.sort((a, b) => new Date(a.at) - new Date(b.at)),
-    );
-    request.onerror = () => reject(request.error);
-  });
-}
-
-export async function drop(keys) {
-  if (!keys.length) return;
-  await tx('readwrite', (store) => keys.forEach((k) => store.delete(k)));
-}
-
-export async function clear() {
-  await tx('readwrite', (store) => store.clear());
 }
 
 /**
- * Flushes the queue through /tech/sync.
+ * Sorts a batch by what the server answered for each entry. Pure.
  *
- * A mutation is dropped when the server applied it, when it says duplicate, and
- * when it fails with a terminal code — a survey the office already took over
- * would otherwise be retried forever. Anything else stays queued.
- *
- * @param {(mutations: object[]) => Promise<{ results: Array<{idempotencyKey: string, status: string, code?: string}> }>} send
- *        Receives the mutation ARRAY — the transport wraps it as { mutations }.
+ * @param {object[]} batch the entries sent
+ * @param {{ results?: Array<{ idempotencyKey: string, status: string, code?: string, error?: string }> }} answer
+ * @returns {{ done: object[], refused: Array<{ entry: object, code: string, message: string|null }>, retry: object[] }}
+ *   `done` — applied, or applied before (`duplicate`); `refused` — to drop and report; `retry` — to keep,
+ *   `attempts` already counted
  */
-const TERMINAL = new Set(['INVALID_TRANSITION', 'UNPROCESSABLE', 'NOT_FOUND', 'FORBIDDEN', 'BAD_REQUEST']);
+export function settle(batch, answer) {
+  const byKey = new Map((answer?.results ?? []).map((r) => [r.idempotencyKey, r]));
+  const done = [];
+  const refused = [];
+  const retry = [];
+  for (const entry of batch) {
+    const result = byKey.get(entry.idempotencyKey);
+    if (!result) {
+      retry.push(entry); // not answered — keep it as it is
+    } else if (result.status === 'applied' || result.status === 'duplicate') {
+      done.push(entry);
+    } else if (TERMINAL_CODES.has(result.code)) {
+      refused.push({ entry, code: result.code, message: result.error ?? null });
+    } else {
+      const attempts = (entry.attempts ?? 0) + 1;
+      if (attempts >= MAX_ATTEMPTS) refused.push({ entry, code: result.code ?? 'SYNC_FAILED', message: result.error ?? null });
+      else retry.push({ ...entry, attempts, lastError: result.error ?? null });
+    }
+  }
+  return { done, refused, retry };
+}
 
+/**
+ * Sends the oldest `BATCH_SIZE` entries through `send` and settles the queue by the answer.
+ *
+ * @param {(mutations: object[]) => Promise<{ results: object[] }>} send receives the mutation ARRAY
+ *   (wire shape) — the transport wraps it as `{ mutations }`
+ * @returns {Promise<{ sent: number, applied: object[], refused: object[], remaining: number }>}
+ * @throws the transport's error when there was no answer (`failureKind(err) !== 'refused'`) — the
+ *   queue is untouched, apart from a 5xx counting an attempt
+ */
 export async function flush(send) {
   const queue = await pending();
-  if (!queue.length) return { applied: 0, dropped: 0, remaining: 0 };
+  if (!queue.length) return { sent: 0, applied: [], refused: [], remaining: 0 };
+  const batch = queue.slice(0, BATCH_SIZE);
 
-  const result = await send(queue.slice(0, 200));
-  const settled = (result?.results ?? []).filter(
-    (r) => r.status === 'applied' || r.status === 'duplicate' || TERMINAL.has(r.code),
-  );
-  await drop(settled.map((r) => r.idempotencyKey));
+  let answer;
+  try {
+    answer = await send(batch.map(toWire));
+  } catch (error) {
+    const kind = failureKind(error);
+    if (kind === 'offline') throw error;
+    // The whole batch was refused (4xx) or broke the server (5xx). One bad entry fails them all, so none
+    // is dropped at once — each counts an attempt, and a batch that can never be accepted stops holding
+    // the queue after MAX_ATTEMPTS.
+    const why = [errorCode(error), errorMessage(error)].filter(Boolean).join(': ');
+    const results = batch.map((e) => ({ idempotencyKey: e.idempotencyKey, status: 'failed', code: 'BATCH_REFUSED', error: why }));
+    const { refused, retry } = settle(batch, { results });
+    await drop(refused.map((r) => r.entry.idempotencyKey));
+    for (const entry of retry) await write(STORE, entry);
+    if (kind === 'server') throw error;
+    return { sent: batch.length, applied: [], refused, remaining: (await pending()).length };
+  }
 
-  return {
-    applied: (result?.results ?? []).filter((r) => r.status === 'applied').length,
-    dropped: settled.length,
-    remaining: (await pending()).length,
-  };
+  const { done, refused, retry } = settle(batch, answer);
+  await drop([...done, ...refused.map((r) => r.entry)].map((e) => e.idempotencyKey));
+  for (const entry of retry) if (entry.attempts) await write(STORE, entry);
+
+  return { sent: batch.length, applied: done, refused, remaining: (await pending()).length };
 }

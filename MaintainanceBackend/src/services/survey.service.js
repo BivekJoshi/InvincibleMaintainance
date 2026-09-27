@@ -49,7 +49,13 @@ const INCLUDE = {
 
 /** The surveyor's own view: the same survey with every price-bearing relation dropped. */
 const FIELD_INCLUDE = {
-  job: { select: { id: true, number: true, type: true, status: true, title: true, scheduledStart: true } },
+  job: {
+    select: {
+      id: true, number: true, type: true, status: true, title: true, scheduledStart: true,
+      // The surveyor sees the evidence they sent (Phase H2) — pictures, never a price.
+      photos: { select: { id: true, mediaId: true, kind: true, caption: true } },
+    },
+  },
   customer: { select: { id: true, name: true, phone: true } },
   site: { select: { id: true, label: true, address: true, area: true, lat: true, lng: true } },
   service: { select: { id: true, name: true, priceUnit: true } },
@@ -98,8 +104,8 @@ export async function listSurveys(query = {}) {
 }
 
 /**
- * One survey. The office view also carries `media`, the site photos' images by media id — a
- * photo row holds only the id, and the review page renders the picture (defect #18).
+ * One survey, with `media` — the site photos' images by media id: a photo row holds only the id, and
+ * both the office's review page (defect #18) and the surveyor's phone (Phase H2) show the picture.
  */
 export async function getSurvey(id, { field = false } = {}) {
   const survey = await prisma.siteSurvey.findFirst({
@@ -107,7 +113,6 @@ export async function getSurvey(id, { field = false } = {}) {
     include: field ? FIELD_INCLUDE : INCLUDE,
   });
   if (!survey) throw notFound('Survey');
-  if (field) return survey;
   return { ...survey, media: await resolveMediaMap(survey.job?.photos?.map((p) => p.mediaId) ?? []) };
 }
 

@@ -4,7 +4,7 @@ import { E2E } from './support/e2eEnv.js';
 
 /**
  * Phase H1's manual walk-through, as the dispatcher: the job an accepted quotation made is
- * scheduled on Hari's slot tomorrow by dragging, then moved with the Schedule dialog; a second job
+ * scheduled on Hari's 10:00 slot of a coming day by dragging, then moved with the Schedule dialog; a second job
  * dropped on the same slot is warned about and not saved; 22 kg of material is issued (stock falls by 22), time is
  * recorded, costing shows labour + materials to the paisa (to a manager — the dispatcher has no
  * Costing tab since Phase L2's money wall), completion is blocked while the
@@ -20,7 +20,21 @@ const phone = `98${String(Date.now()).slice(-8)}`;
 /** Kathmandu's calendar day `n` days from now. */
 const ktmDay = (n) => new Date(Date.now() + n * 86_400_000 + 345 * 60_000).toISOString().slice(0, 10);
 const at = (day, hhmm) => new Date(`${day}T${hhmm}:00+05:45`).toISOString();
-const tomorrow = ktmDay(1);
+
+/**
+ * The first day from tomorrow on whose lane holds nothing an earlier run closed. A COMPLETED or VERIFIED job
+ * cannot be moved away, every run leaves one on its day, and a lane stacked with them pushes the drop onto the
+ * next technician's lane — so a run on a day that already had several would fail through no fault of the board.
+ */
+async function freeDay(dispatcher, technicianId) {
+  for (let n = 1; n <= 90; n += 1) {
+    const day = ktmDay(n);
+    const board = await dispatcher.get(`/admin/dispatch/board?date=${day}`);
+    const lane = board.lanes.find((l) => l.technician.id === technicianId);
+    if (!lane.jobs.some((j) => ['COMPLETED', 'VERIFIED'].includes(j.status))) return day;
+  }
+  throw new Error('No day in the next 90 without closed jobs on the lane — reset the e2e database (npm run test:api:prepare)');
+}
 
 /**
  * Drags with real pointer moves — dnd-kit starts a drag only after the pointer has moved. The
@@ -66,8 +80,9 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
 
   const technicians = (await dispatcher.list('/admin/technicians?q=hari&limit=10')).data;
   const hari = technicians.find((t) => t.user.email === 'hari@gharjatan.com.np');
-  // Hari's tomorrow must be free at 10:00 for this run: move away anything a previous run left there.
-  const board = await dispatcher.get(`/admin/dispatch/board?date=${tomorrow}`);
+  // Hari's day must be free at 10:00 for this run: move away anything a previous run left there.
+  const boardDay = await freeDay(dispatcher, hari.id);
+  const board = await dispatcher.get(`/admin/dispatch/board?date=${boardDay}`);
   for (const old of board.lanes.find((l) => l.technician.id === hari.id).jobs) {
     await dispatcher.patch(`/admin/jobs/${old.id}/status`, { status: 'CANCELLED', note: 'Cleared by the e2e run' }).catch(() => {});
   }
@@ -81,8 +96,8 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
 
   const hariCell = (hhmm) => page.getByRole('gridcell', { name: new RegExp(`^${hari.user.name}, .*, ${hhmm}$`) });
 
-  await test.step('drag the accepted job onto Hari at 10:00 tomorrow', async () => {
-    await page.goto(`/admin/dispatch?date=${tomorrow}`);
+  await test.step('drag the accepted job onto Hari at 10:00 on the day', async () => {
+    await page.goto(`/admin/dispatch?date=${boardDay}`);
     await page.getByRole('textbox', { name: 'Search unassigned jobs' }).fill(job.number);
     const handle = page.getByRole('button', { name: `Drag ${job.number}` });
     await expect(handle).toBeVisible();
@@ -93,7 +108,7 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await expect(hariCell('10:00')).toContainText(job.number);
     const moved = await dispatcher.get(`/admin/jobs/${job.id}`);
     expect(moved.status).toBe('ASSIGNED');
-    expect(moved.scheduledStart).toBe(at(tomorrow, '10:00'));
+    expect(moved.scheduledStart).toBe(at(boardDay, '10:00'));
     expect(moved.assignments.map((a) => a.technicianId)).toEqual([hari.id]);
     // The customer was told in Nepali.
     const logs = (await admin.list(`/admin/message-logs?relatedId=${job.id}&templateKey=job_scheduled`)).data;
@@ -112,8 +127,8 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await expect(dialog).toBeHidden();
     await expect(hariCell('11:00')).toContainText(job.number);
     const moved = await dispatcher.get(`/admin/jobs/${job.id}`);
-    expect(moved.scheduledStart).toBe(at(tomorrow, '11:00'));
-    expect(moved.scheduledEnd).toBe(at(tomorrow, '13:00'));
+    expect(moved.scheduledStart).toBe(at(boardDay, '11:00'));
+    expect(moved.scheduledEnd).toBe(at(boardDay, '13:00'));
   });
 
   await test.step('a double booking is warned about and not saved', async () => {

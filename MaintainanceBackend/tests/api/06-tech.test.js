@@ -183,3 +183,75 @@ describe('the field app never carries money (D1, defect #17)', () => {
     expect(job.materials[0]).toMatchObject({ qty: 1, material: { id: material.id } });
   });
 });
+
+describe('the field app, as H2 uses it', () => {
+  const HOUR = 3_600_000;
+  const key = () => uid('k-sync-');
+
+  it('an offline timer keeps the times the technician tapped, not the time it synced', async () => {
+    const { job } = await createAssignedJob();
+    const started = new Date(Date.now() - 3 * HOUR);
+    const stopped = new Date(Date.now() - 2 * HOUR);
+    const body = expectStatus(await tech.post('/tech/sync').send({
+      mutations: [
+        { idempotencyKey: key(), at: started.toISOString(), kind: 'time_start', jobId: job.id, payload: {} },
+        { idempotencyKey: key(), at: stopped.toISOString(), kind: 'time_stop', jobId: job.id, payload: {} },
+      ],
+    }), 200).data;
+    expect(body.applied).toBe(2);
+    const log = await prisma.timeLog.findFirst({ where: { jobId: job.id } });
+    expect(log.startedAt).toEqual(started);
+    expect(log.endedAt).toEqual(stopped);
+    expect(log.minutes).toBe(60);
+  });
+
+  it('a time from the future is taken as now', async () => {
+    const { job } = await createAssignedJob();
+    const body = expectStatus(await tech.post('/tech/sync').send({
+      mutations: [{ idempotencyKey: key(), at: new Date(Date.now() + 5 * HOUR).toISOString(), kind: 'time_start', jobId: job.id, payload: {} }],
+    }), 200).data;
+    expect(body.applied).toBe(1);
+    const log = await prisma.timeLog.findFirst({ where: { jobId: job.id } });
+    expect(log.startedAt.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('a job is completed once: a second completion is refused, not re-run', async () => {
+    const { job } = await createAssignedJob();
+    expectStatus(await tech.patch(`/tech/jobs/${job.id}/status`).send({ status: 'IN_PROGRESS' }), 200);
+    expectStatus(await tech.post(`/tech/jobs/${job.id}/complete`).send({ note: 'Done' }), 200);
+    expect(expectStatus(await tech.post(`/tech/jobs/${job.id}/complete`).send({ note: 'Again' }), 422).error.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('a malformed mutation is reported as such — terminal, not worth retrying', async () => {
+    const { job } = await createAssignedJob();
+    const body = expectStatus(await tech.post('/tech/sync').send({
+      mutations: [{ idempotencyKey: key(), at: new Date().toISOString(), kind: 'status', jobId: job.id, payload: { status: 'FLYING' } }],
+    }), 200).data;
+    expect(body.results[0]).toMatchObject({ status: 'failed', code: 'INVALID_MUTATION' });
+  });
+
+  it('history reads Kathmandu days, like the office lists', async () => {
+    // 02:00 in Kathmandu on a day is 20:15 UTC the day before.
+    const day = new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10);
+    const scheduledStart = new Date(`${day}T02:00:00+05:45`).toISOString();
+    const { job } = await createAssignedJob({ scheduledStart });
+    const ids = expectStatus(await tech.get(`/tech/jobs?from=${day}&to=${day}`), 200).data.map((j) => j.id);
+    expect(ids).toContain(job.id);
+  });
+
+  it('a job\'s and a survey\'s photos come with their images, so the phone can show them', async () => {
+    const { job } = await createAssignedJob();
+    const up = expectStatus(await tech.post(`/tech/jobs/${job.id}/photos`).field('kind', 'BEFORE').attach('files', await pngBuffer(), 'before.png'), 201).data;
+    const got = expectStatus(await tech.get(`/tech/jobs/${job.id}`), 200).data;
+    const photo = got.photos.find((p) => p.mediaId === up.media[0].id);
+    expect(got.media[photo.mediaId]).toMatchObject({ id: photo.mediaId, url: expect.any(String) });
+
+    const surveyor = await as('SURVEYOR');
+    const { job: visit } = await createAssignedJob({ assignee: 'SURVEYOR', type: 'INSPECTION' });
+    const survey = expectStatus(await surveyor.post(`/tech/jobs/${visit.id}/survey`).send({}), 201).data;
+    expectStatus(await surveyor.post(`/tech/surveys/${survey.id}/photos`).attach('files', await pngBuffer(), 'crack.png'), 201);
+    const read = expectStatus(await surveyor.get(`/tech/surveys/${survey.id}`), 200).data;
+    expect(read.job.photos).toHaveLength(1);
+    expect(read.media[read.job.photos[0].mediaId].url).toEqual(expect.any(String));
+  });
+});

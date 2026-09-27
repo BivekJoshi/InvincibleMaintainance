@@ -156,10 +156,29 @@ links — ip and user agent say who), `system` (tasks, and scripts with no conte
 
 ## Offline strategy (technician PWA)
 
-- Service worker caches the app shell and today's job payloads.
-- Mutations are appended to an IndexedDB queue with a client-generated `idempotencyKey`.
-- `POST /tech/sync` replays them; the server dedupes on the key, so a double-send is harmless.
-- Photos upload separately, append-only, so they never conflict.
+As built in Phase H2 (2026-09-27):
+- **The service worker** (`public/sw.js`, production only) caches the app shell (`/`, `index.html`, the
+  manifest) and same-origin static files cache-first as they are fetched (`/uploads` included); it never
+  caches `/api/`, and a navigation falls back to the cached `index.html`. Job payloads are NOT cached by the
+  worker: the screens work offline within a running session from RTK Query's cache (the materials list is kept
+  12 hours). The access token lives in memory, so a reload without signal signs the technician out; the queue
+  survives in IndexedDB and syncs after the next sign-in.
+- **The mutation queue** (`helpers/offlineQueue.js` on IndexedDB, `hooks/useOfflineQueue.js` the engine): job
+  status, checklist ticks, timer start/stop, materials and completion go through it even online (flushed at
+  once), with a client `idempotencyKey`, strictly in the order the technician acted (same-millisecond taps and a
+  clock set back included). The screen shows each change at once from the queue. `POST /tech/sync` replays it;
+  the server applies each key once and keeps the tapped time for timers. A terminal refusal
+  (`INVALID_TRANSITION`, `INVALID_MUTATION`) is dropped with a visible note; network errors keep everything;
+  other failures retry up to 5 times.
+- **The upload queue** (`helpers/uploadQueue.js`): every picture is compressed (`helpers/compressImage.js`,
+  longest edge ≤ 1600 px, JPEG 0.8, never upscaled) and queued, shown as "Waiting to upload", and sent in order
+  when there is signal. Photos are append-only, so they never conflict.
+- **Signature → completion:** the signature waits in the upload queue carrying the completion; the `complete`
+  mutation is queued only once the upload has its media id, under a fixed key, so it replays after every tick
+  made before it and happens once (the API also refuses a second completion).
+- One sync at a time: mutations, then photos, then mutations again. The header shows Offline / Syncing / the
+  pending count with "Sync now". The queue belongs to the device, not the user — a follow-up is to scope it per
+  signed-in user.
 - Conflicts on scalar fields resolve last-write-wins, with every attempt recorded in `JobStatusEvent`.
 
 ## Security

@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { AppError, notFound, badRequest, forbidden, unprocessable } from '../utils/AppError.js';
-import { parseListQuery, meta, searchOr, dateRange } from '../utils/pagination.js';
+import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
 import { lineAmount, margin, sum } from '../utils/money.js';
 import { addDays, dayjs, kathmanduDayRange, local, startOfDay, endOfDay } from '../utils/dates.js';
@@ -14,6 +14,7 @@ import { issueToJob } from './material.service.js';
 import { recordEvent } from './audit.service.js';
 import { webUrl } from '../utils/links.js';
 import { makeCrud } from './crud.service.js';
+import { resolveMediaMap } from './media.service.js';
 
 /** Job templates: a named checklist, optionally for one service. A registry resource. */
 export const jobTemplates = makeCrud({
@@ -62,6 +63,12 @@ export async function listJobs(query) {
     prisma.job.count({ where }),
   ]);
   return { items, meta: meta({ page, limit, total }) };
+}
+
+/** The field app's job (GET /tech/jobs/:id): the job, and its photos' images by media id (Phase H2). */
+export async function getFieldJob(id) {
+  const job = await getJob(id);
+  return { ...job, media: await resolveMediaMap(job.photos.map((p) => p.mediaId)) };
 }
 
 export async function getJob(id) {
@@ -290,6 +297,11 @@ export async function completeJob(id, input, userId) {
     include: { customer: true, tasks: true, quotation: { select: { id: true } }, warranty: true },
   });
   if (!job) throw notFound('Job');
+  // The state machine lets X → X through as a no-op; completing twice would re-run completion (a second
+  // warranty, a second sign-off). An offline queue that replays its `complete` must hear "already done".
+  if (['COMPLETED', 'VERIFIED'].includes(job.status)) {
+    throw new AppError(422, 'INVALID_TRANSITION', 'This job is already completed.');
+  }
   assertTransition(JOB_TRANSITIONS, job.status, 'COMPLETED', 'job');
 
   const pending = job.tasks.filter((t) => !t.isDone && !t.isSkipped);
@@ -501,16 +513,27 @@ export async function removeMaterial(jobId, jobMaterialId, userId) {
 
 // ── time logs
 
-export async function startTimer(jobId, technicianId, note) {
+/**
+ * When a field action happened: the time the phone recorded it (an offline queue replays later — Phase H2),
+ * never in the future; now when there is none.
+ */
+const tappedAt = (at) => {
+  const now = new Date();
+  return at && new Date(at) < now ? new Date(at) : now;
+};
+
+/** @param {Date|string} [at]  when the technician tapped Start — the offline queue's time */
+export async function startTimer(jobId, technicianId, note, at) {
   const running = await prisma.timeLog.findFirst({ where: { jobId, technicianId, endedAt: null } });
   if (running) throw badRequest('A timer is already running for you on this job');
-  return prisma.timeLog.create({ data: { jobId, technicianId, startedAt: new Date(), note: note ?? null } });
+  return prisma.timeLog.create({ data: { jobId, technicianId, startedAt: tappedAt(at), note: note ?? null } });
 }
 
-export async function stopTimer(jobId, technicianId, note) {
+/** @param {Date|string} [at]  when the technician tapped Stop — never before the timer started */
+export async function stopTimer(jobId, technicianId, note, at) {
   const running = await prisma.timeLog.findFirst({ where: { jobId, technicianId, endedAt: null }, orderBy: { startedAt: 'desc' } });
   if (!running) throw badRequest('No timer is running for you on this job');
-  const endedAt = new Date();
+  const endedAt = new Date(Math.max(tappedAt(at).getTime(), new Date(running.startedAt).getTime()));
   return prisma.timeLog.update({
     where: { id: running.id },
     data: {
@@ -880,8 +903,9 @@ export async function assertAssigned(jobId, technicianId) {
   return assignment;
 }
 
+/** A technician's jobs; `from` / `to` are Kathmandu calendar days, as on the office's lists (Phase H2). */
 export async function myJobs(technicianId, { from, to, status }) {
-  const range = dateRange(from, to);
+  const range = kathmanduDayRange(from, to);
   return prisma.job.findMany({
     where: {
       deletedAt: null,

@@ -879,18 +879,19 @@ number and status but not its total, a colleague's name but not their pay, a mat
 
 ```
 GET   /tech/jobs/today
-GET   /tech/jobs                    ?from&to
-GET   /tech/jobs/:id
+GET   /tech/jobs                    ?from&to&status — from/to are Kathmandu days (YYYY-MM-DD), as on /admin/jobs
+GET   /tech/jobs/:id                the job + media { [mediaId]: media } — its photos' images (Phase H2)
 PATCH /tech/jobs/:id/status         EN_ROUTE | IN_PROGRESS | ON_HOLD | COMPLETED
 PATCH /tech/jobs/:id/tasks/:taskId
 POST  /tech/jobs/:id/photos         multipart `files` + `kind`
 POST  /tech/jobs/:id/materials
 POST  /tech/jobs/:id/time/start  |  /time/stop
-POST  /tech/jobs/:id/complete       { note, signatureMediaId, customerRating? }
+POST  /tech/jobs/:id/complete       { note, signatureMediaId, customerRating? } · a COMPLETED or VERIFIED job
+                                    is 422 INVALID_TRANSITION ("already completed") — never re-run
 POST  /tech/sync                    offline mutation queue replay (idempotency keys)
 
 GET   /tech/surveys                 ?status              own surveys
-GET   /tech/surveys/:id
+GET   /tech/surveys/:id             + job.photos [{ id, mediaId, kind, caption }] and media { [mediaId]: media }
 POST  /tech/jobs/:id/survey         create-or-return for this INSPECTION job (201, then 200)
 PUT   /tech/surveys/:id             save draft — fields + readings + items, FULL REPLACE
 POST  /tech/surveys/:id/submit      DRAFT|RETURNED -> SUBMITTED, closes the inspection job
@@ -901,6 +902,13 @@ GET   /tech/rate-card               offline reference — id, code, name, unit. 
 
 `/tech` responses never carry money. `PUT /tech/surveys/:id` accepts quantities only; a
 payload carrying `rate` or `amount` is rejected (400), not silently ignored.
+
+`sync` (Phase H2, now `services/techSync.service.js`): mutations apply in the order the phone recorded them
+(`at`), each idempotency key at most once (`duplicate` on a resend). `time_start` / `time_stop` keep the time
+the technician tapped — `at`, or now when `at` is in the future — so an offline timer's minutes are the work's,
+not the sync's. A payload that fails its schema answers `failed` with code `INVALID_MUTATION` (terminal: it
+will fail every time); a state-machine refusal is `INVALID_TRANSITION` (terminal); anything else keeps its code
+or `SYNC_FAILED`.
 
 `sync` gains the mutation kinds `survey_draft` and `survey_submit`, which address a
 `surveyId` instead of a `jobId`. A replayed `survey_submit` on a survey that is still

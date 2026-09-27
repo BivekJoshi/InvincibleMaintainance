@@ -450,3 +450,30 @@ export const messageLogQuery = listQuery.pick({ page: true, limit: true, q: true
   relatedModel: z.string().trim().max(60).optional(),
   relatedId: z.string().trim().max(64).optional(),
 });
+
+// ── the field app's offline queue (Phase H2: moved here from the route)
+
+const SURVEY_KINDS = ['survey_draft', 'survey_submit'];
+
+/**
+ * POST /tech/sync — the offline queue: 1–200 mutations, each with an idempotency key and the time it was made.
+ * A survey mutation addresses a surveyId; every other kind a jobId.
+ */
+export const techSyncSchema = z.object({
+  mutations: z.array(z.object({
+    idempotencyKey: z.string().min(8).max(80),
+    at: z.coerce.date(),
+    kind: z.enum(['status', 'task', 'material', 'time_start', 'time_stop', 'complete', ...SURVEY_KINDS]),
+    jobId: z.string().min(1).optional(),
+    surveyId: z.string().min(1).optional(),
+    taskId: z.string().optional(),
+    payload: z.record(z.any()).default({}),
+  }).refine(
+    // jobId went optional so survey mutations could address a surveyId instead.
+    // Without this, a malformed job mutation would sail through validation and
+    // fail somewhere in the service layer with a far less useful message.
+    (m) => (SURVEY_KINDS.includes(m.kind) ? Boolean(m.surveyId) : Boolean(m.jobId)),
+    { message: 'A survey mutation needs a surveyId; every other kind needs a jobId' },
+  )).min(1).max(200),
+});
+
