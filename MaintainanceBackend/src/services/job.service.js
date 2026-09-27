@@ -192,7 +192,7 @@ export async function createJobFromQuotation(quotationId, input, userId) {
   });
   if (!quotation) throw notFound('Quotation');
   const { title, ...rest } = input;
-  const what = quotation.lead?.service?.name ?? quotation.items[0]?.description ?? 'Work';
+  const what = quotation.lead?.service?.name ?? quotation.items.find((i) => i.rowType === 'ITEM')?.description ?? 'Work';
   return createJob({
     ...rest,
     customerId: quotation.customerId,

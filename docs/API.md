@@ -69,8 +69,9 @@ GET  /public/quotations/:token        customer views a quotation — an allowlis
                                         vatApplied, vatRate, vatAmount, total, terms, sentAt, decidedAt,
                                         decisionNote (their own answer), requestedChanges (the change
                                         request this version answers), createdAt, customer { name },
-                                        site { label, address } | null, items[] { id, description, unit,
-                                        qty, rate, amount, sortOrder },
+                                        site { label, address } | null, items[] { id, rowType, number,
+                                        description, spec, unit, qty, rate, amount, isOptional,
+                                        isProvisional, sortOrder } (never a cost, recipe or measurement),
                                         replaced: { token } of the newest version when it is SENT, else null,
                                         actions: ['approve','request_changes','reject'] while SENT, else [] }
                                       A SENT quotation past validUntil is moved to EXPIRED on open.
@@ -466,9 +467,61 @@ GET    /admin/quotations/:id/history  quotations:history (SALES, MANAGER, ADMIN)
                                     shape as the lead and customer history (no ip, no user agent)
 POST   /admin/quotations            quotations:write · creates a DRAFT. Without `validUntil` it is valid to
                                     the end of the Kathmandu day `quotation.validDays` (default 15) away, so a
-                                    quotation built from a survey or a convert can be submitted as it is
+                                    quotation built from a survey or a convert can be submitted as it is.
+                                    { customerId, siteId?, leadId?, validUntil?, discount? (rupees),
+                                      vatApplied (default true), terms?, internalNote?, items (0–500 BOQ rows —
+                                      a DRAFT may start blank) }
 PUT    /admin/quotations/:id        quotations:write · DRAFT only. Any other status is 422 UNPROCESSABLE
-                                    ("…cannot be edited. …") and nothing changes
+                                    ("…cannot be edited. …") and nothing changes. items replace the rows (a
+                                    row sent with its id keeps its frozen recipe and cost); a discount or VAT
+                                    change without items re-totals the stored rows.
+
+A quotation is a BILL OF QUANTITIES (Phase L3): one ordered list of rows, as an estimator's sheet reads.
+  Request row (rupees): { id? (a stored row's), rowType ITEM|SECTION|NOTE (default ITEM), description
+    (1–500; a SECTION's title, a NOTE's text), spec? (≤2000), kind? LABOUR|MATERIAL|SERVICE|OTHER,
+    rateCardItemId?, materialId?, unit?, qty? | measurements? [{ area, description, nos, l, b, h, deduct }]
+    (≤200; they give the quantity: Σ ± nos×L×B×H over the dimensions present), wastagePct? (0–100),
+    rate? (rupees, required on ITEM), isOptional?, isProvisional? } — array order is row order.
+  An ITEM needs a rate and a qty or measurements (400); its quantity (net, then + wastage) must come out
+  > 0 — 422 NEGATIVE_LINE (negative lines are variations', Phase L7). Cost sent by the client (unitCost,
+  costAmount, recipe) is DROPPED by the schema, never trusted: a row priced from the rate library freezes
+  the item's recipe, with every line's price, and its unit cost when first saved (L-D1); a MATERIAL row
+  freezes the material's purchase rate; anything else has an unknown cost (null, never zero).
+  Response rows: { id, rowType, number ('A', 'A.1', '1' before any section, null for a NOTE — computed),
+    description, spec, kind, rateCardItemId, materialId, unit, measurements, netQty, wastagePct, qty (billed),
+    rate, amount (0 for SECTION/NOTE; an optional row keeps its amount, never totalled), isOptional,
+    isProvisional, sortOrder, recipe { v: 1, rateCardItemId, code, name, recipeQty, complete, takenAt,
+    components [{ kind, materialId, tradeId, description, unit, qty, wastagePct, cost© }], overheadPct©,
+    profitPct©, unitCost© } | null, unitCost©, costAmount© } and quotation.boq = { sections [{ index,
+    number, title, subtotal }], optionalTotal, cost© { costTotal, costComplete, margin { amount, pct } | null
+    — on the taxable amount, null unless every totalled row's cost is known } }.
+  © = costs:read only (MANAGER, ADMIN): every /admin/quotations* and /admin/leads* response passes the cost
+  wall (middleware/costWall.js), and the quotation history is masked the same way.
+POST   /admin/quotations/preview    quotations:write · { quotationId?, items, discount? (rupees) | discountPct?
+                                    (0–100) | targetTotal? (rupees, VAT included), vatApplied } — the builder's
+                                    live figures through the same code as a save, nothing written ->
+                                    { items [{ index, rowType, number, netQty, qty, amount, recipe, unitCost©,
+                                    costAmount© }], totals { subtotal, discount, vatApplied, vatRate, vatAmount,
+                                    total, optionalTotal, sections }, cost© }. With discountPct or targetTotal
+                                    the server works out totals.discount (a target VAT rounding cannot reach
+                                    exactly lands on the nearest total below it). quotationId keeps that
+                                    draft's frozen recipes for rows sent with ids.
+GET    /admin/quotations/:id/takeoff  quotations:read · what the totalled rows need, from each frozen recipe ×
+                                    its quantity plus the MATERIAL rows -> { materials [{ materialId, code,
+                                    name, unit, qty, packSize, packLabel, packs (rounded up), onHand, shortfall,
+                                    costAmount© }], labour [{ tradeId, code, name, days, costAmount© }], other
+                                    [{ description, unit, qty, costAmount© }], rowsWithoutRecipe [{ id, number,
+                                    description }] } — optional rows excluded
+POST   /admin/quotations/:id/reprice  quotations:write · { apply } — DRAFT only (else 422
+                                    QUOTATION_NOT_DRAFT): library rows re-priced from the rate library as it
+                                    is now (rate, recipe, cost) -> { rows [{ id, number, description, rate,
+                                    newRate, unitCost©, newUnitCost© }], applied, quotation? }. apply false
+                                    previews and writes nothing
+POST   /admin/quotations/:id/copy   quotations:write · { customerId?, siteId?, leadId? } -> 201 a new DRAFT (its
+                                    own number, version 1) with the same rows — recipes and costs as frozen —,
+                                    terms, discount and VAT choice; the source is untouched
+Submitting (below) needs at least one ITEM row that is not optional — 422 QUOTATION_INCOMPLETE. A revision
+copies rows, measurements and frozen recipes as they are.
 DELETE /admin/quotations/:id        quotations:write · soft delete; CONVERTED is 400
 
 Internal approval — no quotation is sent until it is approved (see ARCHITECTURE.md "State machines").
@@ -567,8 +620,14 @@ GET    /admin/surveys/:id            readings + quantity items + job photos     
 GET    /admin/surveys/:id/pricing    priced preview (paisa) + missing[]          quotations:read
 PATCH  /admin/surveys/:id/review     { status: IN_REVIEW|RETURNED, note }        surveys:write
                                      RETURNED requires a note and SMSes the surveyor
-POST   /admin/surveys/:id/quotation  { items?, discount?, vatApplied?, validUntil?, terms? }
+POST   /admin/surveys/:id/quotation  { items? (BOQ rows, as above), discount?, vatApplied?, validUntil?, terms? }
                                      -> 201 { survey, quotation }  rates in RUPEES   quotations:write
+                                     Without items the server prices the survey's lines: each carries its
+                                     kind, material, raw quantity + wastage %, optional flag (an optional line
+                                     is an optional row — no longer dropped) and note (as the spec); an
+                                     unpriceable line stays out. Rows without a SECTION are grouped by
+                                     rate-card / material category (the survey's service names the rest).
+                                     `includeOptional` is accepted and ignored.
 DELETE /admin/surveys/:id            soft delete, DRAFT only                     surveys:write
 ```
 

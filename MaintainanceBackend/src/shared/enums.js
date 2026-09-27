@@ -88,6 +88,8 @@ export const UNITS = [
 ];
 /** What a recipe component is (RateCardComponent.kind). */
 export const RECIPE_COMPONENT_KINDS = ['MATERIAL', 'LABOUR', 'EQUIPMENT', 'OTHER'];
+/** A quotation's BOQ rows (Phase L3): a priced ITEM, a SECTION heading, or a NOTE. */
+export const QUOTATION_ROW_TYPES = ['ITEM', 'SECTION', 'NOTE'];
 /** DERIVED: the rate comes from the recipe; MANUAL: typed, the recipe (if any) only costs it. */
 export const RATE_MODES = ['MANUAL', 'DERIVED'];
 export const LOCALES = ['en', 'ne'];

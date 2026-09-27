@@ -92,7 +92,8 @@ describe('review and quotation input', () => {
       discount: 500,
     });
     expect(r.success).toBe(true);
-    expect(r.data.items[0].rate).toBe(220);
-    expect(r.data.includeOptional).toBe(false);
+    expect(r.data.items[0]).toMatchObject({ rate: 220, rowType: 'ITEM' });
+    // Optional survey lines always become optional BOQ rows now (Phase L3); the flag is only accepted.
+    expect(r.data.includeOptional).toBeUndefined();
   });
 });

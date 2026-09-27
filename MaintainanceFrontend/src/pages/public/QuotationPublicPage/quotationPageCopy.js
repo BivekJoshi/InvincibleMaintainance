@@ -1,24 +1,13 @@
+import { QUOTATION_DOCUMENT_COPY } from '@/components/documents/quotationDocumentCopy';
+
 /**
  * Every word the customer's quotation page shows, in one object, so Phase J1 can put a
  * Nepali version beside it without touching the components. Functions take the values
  * they print (a formatted total, a date, a version).
  */
 export const QUOTATION_PAGE_COPY = {
-  kind: 'Quotation',
-  forCustomer: (name, address) => `For ${name}${address ? ` · ${address}` : ''}`,
-  version: (v) => `Version ${v}`,
-  validUntil: (date) => `Valid until ${date}`,
-  statusLabels: {
-    SENT: 'Awaiting your answer',
-    APPROVED: 'Accepted',
-    CONVERTED: 'Accepted',
-    CHANGES_REQUESTED: 'Changes requested',
-    REJECTED: 'Declined',
-    EXPIRED: 'Expired',
-    SUPERSEDED: 'Replaced',
-  },
-  totals: { subtotal: 'Subtotal', discount: 'Discount', vat: (rate) => `VAT ${rate}%`, total: 'Total' },
-  terms: 'Terms',
+  // The document's own words (header, rows, totals, terms) live with it, in English and Nepali.
+  ...QUOTATION_DOCUMENT_COPY.en,
   requestedChanges: {
     title: 'You asked us to change',
     body: 'This version includes those changes.',

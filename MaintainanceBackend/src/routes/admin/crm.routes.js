@@ -10,6 +10,7 @@ import * as quotations from '../../services/quotation.service.js';
 import { convertLead, customerMatches } from '../../services/convert.service.js';
 import { historyRoute } from './historyRoute.js';
 import { mountResource } from './mountResource.js';
+import { costWall } from '../../middleware/costWall.js';
 import * as rateLibrary from '../../services/rateLibrary.service.js';
 import { can } from '../../shared/permissions.js';
 import { recordEvent } from '../../services/audit.service.js';
@@ -18,6 +19,9 @@ import * as jobs from '../../services/job.service.js';
 import { quotationToJobSchema } from '../../shared/schemas/ops.js';
 
 const router = Router();
+// Quotation rows carry cost and margin (Phase L3); a convert answers with its quotation. costs:read only.
+router.use('/quotations', costWall);
+router.use('/leads', costWall);
 const readLeads = requires('leads:read');
 const writeLeads = requires('leads:write');
 
@@ -169,6 +173,14 @@ router.post('/quotations/:id/pull-back', writeQ, validate({ params: idParam, bod
   asyncHandler(async (req, res) => ok(res, await quotations.pullBackQuotation(req.params.id, req.body))));
 router.post('/quotations/:id/send', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await quotations.sendQuotation(req.params.id, req.user.id))));
+router.post('/quotations/preview', writeQ, validate({ body: s.quotationPreviewSchema }),
+  asyncHandler(async (req, res) => ok(res, await quotations.previewQuotation(req.body))));
+router.get('/quotations/:id/takeoff', readQ, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await quotations.quotationTakeoff(req.params.id))));
+router.post('/quotations/:id/reprice', writeQ, validate({ params: idParam, body: s.quotationRepriceSchema }),
+  asyncHandler(async (req, res) => ok(res, await quotations.repriceQuotation(req.params.id, req.body))));
+router.post('/quotations/:id/copy', writeQ, validate({ params: idParam, body: s.quotationCopySchema }),
+  asyncHandler(async (req, res) => created(res, await quotations.copyQuotation(req.params.id, req.body, req.user.id))));
 router.post('/quotations/:id/revise', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => created(res, await quotations.reviseQuotation(req.params.id, req.user.id))));
 // Scheduling the crew is dispatch's call, so this takes jobs:write rather than

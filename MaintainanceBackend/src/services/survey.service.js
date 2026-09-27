@@ -5,6 +5,7 @@ import { conflict, forbidden, notFound, unprocessable } from '../utils/AppError.
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
 import { lineAmount, toRupees } from '../utils/money.js';
 import { effectiveQty } from '../utils/quantity.js';
+import { withSections } from './boq.service.js';
 import { nextNumber } from '../utils/numbering.js';
 import { SURVEY_TRANSITIONS, JOB_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
 import * as jobs from './job.service.js';
@@ -445,6 +446,7 @@ export async function priceSurvey(id) {
       isOptional: item.isOptional,
       note: item.note,
       rateCardItemId: item.rateCardItemId ?? null,
+      materialId: item.materialId ?? null,
       ratePaisa,
       amountPaisa: ratePaisa == null ? null : lineAmount(qty, ratePaisa),
       source,
@@ -456,14 +458,23 @@ export async function priceSurvey(id) {
   return { surveyId: id, lines, subtotal, missing };
 }
 
-/** paisa -> the rupee wire format createQuotation() already speaks. */
-const toQuotationLine = (line, i) => ({
+/**
+ * A priced survey line → a BOQ row in the rupee wire format createQuotation() speaks (Phase L3): its kind,
+ * material, wastage (the BOQ applies it to the raw quantity), optional flag and note (as the spec) carried
+ * across — nothing the surveyor recorded is dropped.
+ */
+const toQuotationLine = (line) => ({
+  rowType: 'ITEM',
+  kind: line.kind,
   rateCardItemId: line.rateCardItemId ?? null,
+  materialId: line.materialId ?? null,
   description: line.description,
+  spec: line.note ?? null,
   unit: line.unit ?? undefined,
-  qty: line.qty,
+  qty: line.rawQty,
+  wastagePct: line.wastagePct ?? 0,
+  isOptional: Boolean(line.isOptional),
   rate: toRupees(line.ratePaisa ?? 0),
-  sortOrder: line.sortOrder ?? i,
 });
 
 /**
@@ -484,14 +495,13 @@ export async function buildQuotationFromSurvey(id, input = {}, userId) {
   if (survey.quotationId) throw conflict('This survey has already been quoted');
   assertTransition(SURVEY_TRANSITIONS, survey.status, 'QUOTED', 'survey');
 
-  const { items: overrides, includeOptional = false, ...quotationInput } = input;
+  const { items: overrides, includeOptional: _legacy, ...quotationInput } = input;
 
   let items = overrides;
   if (!items) {
     const priced = await priceSurvey(id);
-    const usable = priced.lines
-      .filter((l) => includeOptional || !l.isOptional)
-      .filter((l) => l.ratePaisa != null);
+    // Optional lines come along as optional rows — shown and priced, never totalled (Phase L3).
+    const usable = priced.lines.filter((l) => l.ratePaisa != null);
     if (!usable.length) {
       throw unprocessable(
         priced.lines.length
@@ -503,13 +513,17 @@ export async function buildQuotationFromSurvey(id, input = {}, userId) {
     items = usable.map(toQuotationLine);
   }
 
+  const service = survey.serviceId
+    ? await prisma.service.findUnique({ where: { id: survey.serviceId }, select: { name: true } })
+    : null;
   const quotation = await createQuotation(
     {
       ...quotationInput,
       customerId: survey.customerId,
       siteId: survey.siteId ?? undefined,
       leadId: survey.leadId ?? undefined,
-      items,
+      // Grouped by rate-card or material category unless the reviewer set the sections.
+      items: await withSections(items, service?.name ?? 'Works'),
     },
     userId,
   );

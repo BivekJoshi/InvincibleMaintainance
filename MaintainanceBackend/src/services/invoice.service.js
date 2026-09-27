@@ -162,14 +162,16 @@ export async function createFromJob(jobId, opts = {}) {
   if (!job.isBillable) throw unprocessable('This job is marked non-billable');
   if (job.invoicedAt) throw unprocessable('This job has already been invoiced');
 
-  const quote = job.quotation?.items?.length ? job.quotation : null;
+  // The priced rows: a SECTION or NOTE carries no money and an optional row is not in the total (Phase L3).
+  const quoted = job.quotation?.items?.filter((qi) => qi.rowType === 'ITEM' && !qi.isOptional) ?? [];
+  const quote = quoted.length ? job.quotation : null;
   if (quote && (opts.includeMaterials || opts.includeLabour)) {
     throw new AppError(422, 'QUOTED_JOB_BILLS_SCOPE',
       `Job ${job.number} is billed at quotation ${quote.number}, which is what the customer accepted. `
       + 'Invoice extra materials or labour separately.');
   }
   const items = quote
-    ? quote.items.map((qi) => ({ jobId, description: qi.description, unit: qi.unit, qty: qi.qty, rate: qi.rate }))
+    ? quoted.map((qi) => ({ jobId, description: qi.description, unit: qi.unit, qty: qi.qty, rate: qi.rate }))
     : await actualLines(job, opts);
 
   const [vatRate, dueDate] = await Promise.all([currentVatRate(), opts.dueDate ?? defaultDueDate()]);

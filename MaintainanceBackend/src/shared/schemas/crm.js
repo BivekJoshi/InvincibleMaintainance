@@ -6,7 +6,8 @@ import {
 import {
   BOOKING_SLOT_KEYS, BUDGET_BANDS, CONTACT_ACTIVITY_TYPES, CUSTOMER_TYPES, DECISION_MAKERS, LEAD_OUTCOMES, LEAD_SOURCES,
   LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, LOST_CATEGORIES, NEXT_ACTION_TYPES, PRIORITIES, PROPERTY_TYPES,
-  QUOTATION_DECISIONS, QUOTATION_STAGES, QUOTATION_STATUSES, RATE_MODES, RECIPE_COMPONENT_KINDS,
+  QUOTATION_DECISIONS, QUOTATION_ROW_TYPES, QUOTATION_STAGES, QUOTATION_STATUSES, RATE_MODES, RECIPE_COMPONENT_KINDS,
+  SURVEY_ITEM_KINDS,
 } from '../enums.js';
 
 /** A booking may be made for today or up to 90 days out — never for the past. */
@@ -327,15 +328,52 @@ export const tradeSchema = z.object({
   isActive,
 });
 
-const quotationItem = z.object({
-  rateCardItemId: z.string().optional().nullable(),
-  description: z.string().trim().min(1).max(500),
-  unit: z.string().trim().max(20).optional(),
-  qty: z.coerce.number().min(0.01).max(1_000_000),
-  rate: rupees,
-  sortOrder: z.coerce.number().int().min(0).default(0),
+const dimension = z.coerce.number().min(0).max(100_000).nullable().optional();
+
+/** One measurement-book row: nos × L × B × H over the dimensions given; `deduct` subtracts (a door, a window). */
+export const measurementRow = z.object({
+  area: z.string().trim().max(80).nullable().optional(),
+  description: z.string().trim().max(200).nullable().optional(),
+  nos: dimension,
+  l: dimension,
+  b: dimension,
+  h: dimension,
+  deduct: z.coerce.boolean().optional(),
 });
 
+/**
+ * One BOQ row (Phase L3), rates in RUPEES. A SECTION's title and a NOTE's text are its description. An ITEM
+ * needs a rate and a quantity or measurements; its quantity must come out above zero (the service answers
+ * 422 NEGATIVE_LINE otherwise). `id` is a stored row's, so its frozen recipe and cost are kept. Cost fields
+ * are not part of the row: a client-sent unitCost, costAmount or recipe is dropped here, never trusted.
+ */
+export const quotationRow = z.object({
+  id: z.string().min(1).optional(),
+  rowType: z.enum(QUOTATION_ROW_TYPES).default('ITEM'),
+  rateCardItemId: z.string().min(1).nullable().optional(),
+  materialId: z.string().min(1).nullable().optional(),
+  kind: z.enum(SURVEY_ITEM_KINDS).nullable().optional(),
+  description: z.string().trim().min(1).max(500),
+  spec: z.string().trim().max(2000).nullable().optional(),
+  unit: z.string().trim().max(20).nullable().optional(),
+  qty: z.coerce.number().min(-1_000_000).max(1_000_000).optional(),
+  measurements: z.array(measurementRow).max(200).nullable().optional(),
+  wastagePct: z.coerce.number().min(0).max(100).optional(),
+  rate: rupees.optional(),
+  isOptional: z.coerce.boolean().optional(),
+  isProvisional: z.coerce.boolean().optional(),
+  sortOrder: z.coerce.number().int().min(0).optional(),
+}).superRefine((row, ctx) => {
+  if (row.rowType !== 'ITEM') return;
+  if (row.rate == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rate'], message: 'Enter the rate' });
+  if (row.qty == null && !row.measurements?.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['qty'], message: 'Enter the quantity, or measure it' });
+  }
+});
+
+const quotationRows = z.array(quotationRow).max(500);
+
+/** A new quotation. A DRAFT may start with no rows (a blank BOQ); submitting needs a priced row. */
 export const quotationSchema = z.object({
   customerId: z.string().min(1),
   siteId: z.string().optional().nullable(),
@@ -345,11 +383,36 @@ export const quotationSchema = z.object({
   vatApplied: z.coerce.boolean().default(true),
   terms: optionalText,
   internalNote: optionalText,
-  items: z.array(quotationItem).min(1, 'Add at least one line item').max(200),
+  items: quotationRows.default([]),
 });
 
 export const quotationUpdateSchema = quotationSchema.partial().extend({
-  items: z.array(quotationItem).min(1).max(200).optional(),
+  items: quotationRows.optional(),
+});
+
+/**
+ * POST /admin/quotations/preview — unsaved rows through the same server code as a save, for the builder's
+ * live totals. `discountPct` or `targetTotal` (rupees, VAT included) has the server work out the discount.
+ */
+export const quotationPreviewSchema = z.object({
+  quotationId: z.string().min(1).optional(),
+  items: quotationRows.default([]),
+  discount: optionalRupees,
+  discountPct: z.coerce.number().min(0).max(100).optional(),
+  targetTotal: optionalRupees,
+  vatApplied: z.coerce.boolean().default(true),
+}).refine((v) => v.discountPct == null || v.targetTotal == null, {
+  message: 'Use a percentage or a target total, not both', path: ['targetTotal'],
+});
+
+/** POST /admin/quotations/:id/reprice — `apply: false` previews and writes nothing. */
+export const quotationRepriceSchema = z.object({ apply: z.boolean() });
+
+/** POST /admin/quotations/:id/copy — a new DRAFT from this one's rows, for this or another customer. */
+export const quotationCopySchema = z.object({
+  customerId: z.string().min(1).optional(),
+  siteId: z.string().min(1).nullable().optional(),
+  leadId: z.string().min(1).nullable().optional(),
 });
 
 export const quotationListQuery = z.object({

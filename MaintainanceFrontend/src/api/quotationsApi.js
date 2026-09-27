@@ -42,10 +42,14 @@ export const quotationsApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: (result, error, id) => [{ type: 'Quotation', id }],
     }),
+    /** `{ customerId, siteId?, leadId?, items? }` — a draft; since Phase L3 it may start with no rows. */
     createQuotation: build.mutation({
       query: (body) => ({ url: '/admin/quotations', method: 'POST', body }),
       transformResponse: (r) => r.data,
-      invalidatesTags: [{ type: 'Quotation', id: 'LIST' }, 'Dashboard'],
+      invalidatesTags: (result, error, { leadId } = {}) => [
+        { type: 'Quotation', id: 'LIST' }, 'Dashboard',
+        ...(leadId ? [{ type: 'Lead', id: leadId }, { type: 'Lead', id: 'LIST' }] : []),
+      ],
     }),
     updateQuotation: build.mutation({
       query: ({ id, ...body }) => ({ url: `/admin/quotations/${id}`, method: 'PUT', body }),
@@ -72,6 +76,49 @@ export const quotationsApi = apiSlice.injectEndpoints({
       query: (id) => ({ url: `/admin/quotations/${id}`, method: 'DELETE' }),
       invalidatesTags: listAndItem('Quotation'),
     }),
+    /**
+     * `POST /admin/quotations/preview` (Phase L3) — unsaved rows through the same server code as a save:
+     * `{ quotationId?, items, discount? | discountPct? | targetTotal?, vatApplied }` (rupees) →
+     * `{ items: [{ index, number, netQty, qty, amount, recipe, … }], totals, cost? }` (paisa). A query although
+     * it is a POST, like `deriveRateCost`: the builder asks again as the rows change, and the same rows are
+     * answered from the cache. The builder's live totals, amounts and margin, and the discount helpers.
+     */
+    previewQuotation: build.query({
+      query: (body) => ({ url: '/admin/quotations/preview', method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      keepUnusedDataFor: 30,
+    }),
+    /**
+     * `GET /admin/quotations/:id/takeoff` — what the saved rows need: materials in buying units with stock on
+     * hand and the shortfall, labour days per trade, other items, and the rows without a recipe. Cost only for
+     * `costs:read` (the API strips it). Tagged with the quotation, so a save refreshes it.
+     */
+    getQuotationTakeoff: build.query({
+      query: (id) => `/admin/quotations/${id}/takeoff`,
+      transformResponse: (r) => r.data,
+      providesTags: (result, error, id) => [{ type: 'Quotation', id }],
+    }),
+    /**
+     * `POST /admin/quotations/:id/reprice { apply }` — a DRAFT's rows re-priced from the rate library today:
+     * `apply: false` lists what would change and writes nothing; `apply: true` re-snapshots the recipes and
+     * rates and answers the quotation.
+     */
+    repriceQuotation: build.mutation({
+      query: ({ id, apply }) => ({ url: `/admin/quotations/${id}/reprice`, method: 'POST', body: { apply } }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, { id, apply }) => (apply && !error
+        ? [{ type: 'Quotation', id }, { type: 'Quotation', id: 'LIST' }, 'History']
+        : []),
+    }),
+    /** `POST /admin/quotations/:id/copy { customerId?, siteId?, leadId? }` → a new DRAFT with the same rows and terms. */
+    copyQuotation: build.mutation({
+      query: ({ id, ...body }) => ({ url: `/admin/quotations/${id}/copy`, method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, { leadId }) => [
+        { type: 'Quotation', id: 'LIST' }, 'Dashboard',
+        ...(leadId ? [{ type: 'Lead', id: leadId }, { type: 'Lead', id: 'LIST' }] : []),
+      ],
+    }),
     getRateCard: build.query({
       query: (params = {}) => ({ url: '/admin/rate-card', params }),
       transformResponse: (r) => ({ items: r.data, meta: r.meta }),
@@ -95,4 +142,9 @@ export const {
   useConvertQuotationToJobMutation,
   useDeleteQuotationMutation,
   useGetRateCardQuery,
+  usePreviewQuotationQuery,
+  useLazyPreviewQuotationQuery,
+  useGetQuotationTakeoffQuery,
+  useRepriceQuotationMutation,
+  useCopyQuotationMutation,
 } = quotationsApi;

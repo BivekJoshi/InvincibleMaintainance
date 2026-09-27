@@ -64,6 +64,11 @@ profit 10 %, derived rates rounded up to Rs 1, contract type, the 50/40/10 payme
 gate and its 7-day due date) sit in the finance group. Recipe norms are simplified for the demo — review
 them before quoting real work.
 
+Phase L3 adds one quotation as a real bill of quantities (customer Prakash Joshi, Bhaisepati): three
+sections, measured rows with a door deducted, a note, an optional flooring row and rows priced from the
+rate library with their recipes frozen — built through the same service as the builder, so its take-off
+and labour tabs have something to show.
+
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
 Both links open `<PUBLIC_WEB_ORIGIN>/reset-password`. With no `SMTP_HOST`, the email — link included — is

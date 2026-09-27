@@ -10,6 +10,11 @@ import { json, mockApi, page } from '@/test/mockApi';
 afterEach(() => vi.unstubAllGlobals());
 
 const toastTitles = (store) => store.getState().ui.toasts.map((t) => t.title);
+/** A cell of the recipe grid by row and column key. */
+const recipeCell = () => {
+  const grid = screen.getByRole('grid', { name: 'Recipe' });
+  return (row, key) => grid.querySelector(`[data-cell="${row}:${key}"]`);
+};
 
 /** What the API's `stripCosts` removes for a caller without costs:read (MaintainanceBackend/src/utils/moneyWall.js). */
 const COST_KEYS = new Set(['cost', 'unitCost', 'lineCost', 'costAmount', 'costTotal', 'costBreakdown', 'costComplete', 'margin', 'marginPct', 'overheadPct', 'profitPct', 'purchaseRate', 'dayWage']);
@@ -176,21 +181,24 @@ describe('the rate library form', () => {
     const { calls } = renderAs('MANAGER', '/admin/rate-card/r2');
     expect(await screen.findByDisplayValue('PLASTER-INT')).toBeInTheDocument();
 
-    // Above the form: out of date, and what the recipe gives today.
-    expect(screen.getByRole('status')).toHaveTextContent('Out of date. At today’s prices the recipe gives Rs. 374.00 a sq.m; the rate is Rs. 380.00.');
+    // Above the form: out of date, and what the recipe gives today. (The recipe grid's drag announcer is a status too.)
+    expect(screen.getAllByRole('status').find((el) => el.textContent.includes('Out of date')))
+      .toHaveTextContent('Out of date. At today’s prices the recipe gives Rs. 374.00 a sq.m; the rate is Rs. 380.00.');
     // The rate follows the recipe.
     expect(screen.getByLabelText('Rate')).toBeDisabled();
     expect(screen.getByText('Set from the recipe when you save.')).toBeInTheDocument();
 
-    // The recipe's lines, named from the records they carry.
-    expect(screen.getByRole('combobox', { name: 'Material 1' })).toHaveTextContent('CEM-OPC · OPC cement (kg)');
-    expect(screen.getByLabelText('Quantity of material 1')).toHaveValue(32);
-    expect(screen.getByLabelText('Wastage % for material 1')).toHaveValue(5);
+    // The recipe's lines (a grid since L3), named from the records they carry.
+    const cell = recipeCell();
+    expect(cell(0, 'item')).toHaveTextContent('CEM-OPC · OPC cement (kg)');
+    expect(cell(0, 'qty')).toHaveTextContent('32');
+    expect(cell(0, 'wastagePct')).toHaveTextContent('5');
     expect(screen.getByText('Bought as bag = 50 kg')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Labour 1' })).toHaveTextContent('MASON · Mason (राजमिस्त्री)');
-    expect(screen.getByLabelText('Man-days for labour 1')).toHaveValue(1.5);
-    expect(screen.getByLabelText('What equipment or other 1 is')).toHaveValue('Scaffolding hire');
-    expect(screen.getByLabelText('Cost per unit of equipment or other 1 (Rs)')).toHaveValue('200');
+    expect(cell(1, 'item')).toHaveTextContent('MASON · Mason (राजमिस्त्री)');
+    expect(cell(1, 'qty')).toHaveTextContent('1.5');
+    expect(cell(1, 'unit')).toHaveTextContent('man-days');
+    expect(cell(2, 'item')).toHaveTextContent('Scaffolding hire');
+    expect(cell(2, 'cost')).toHaveTextContent('200.00');
     expect(screen.getByText(/Quantities below make/)).toHaveTextContent('Quantities below make 10 sq.m of the work.');
     expect(screen.getByLabelText(/Overhead %/)).toHaveValue(10);
     expect(screen.getByLabelText(/Profit %/)).toHaveValue(15);
@@ -221,14 +229,20 @@ describe('the rate library form', () => {
   it('shows SALES the recipe’s quantities read-only, with no cost anywhere and no call for one', async () => {
     const { calls } = renderAs('SALES', '/admin/rate-card/r2');
     expect(await screen.findByDisplayValue('PLASTER-INT')).toBeDisabled();
-    expect(screen.getByRole('combobox', { name: 'Material 1' })).toHaveTextContent('CEM-OPC · OPC cement (kg)');
-    expect(screen.getByLabelText('Quantity of material 1')).toHaveValue(32);
-    expect(screen.getByLabelText('Man-days for labour 1')).toHaveValue(1.5);
-    expect(screen.getByLabelText('What equipment or other 1 is')).toHaveValue('Scaffolding hire');
+    const cell = recipeCell();
+    expect(cell(0, 'item')).toHaveTextContent('CEM-OPC · OPC cement (kg)');
+    expect(cell(0, 'qty')).toHaveTextContent('32');
+    expect(cell(1, 'qty')).toHaveTextContent('1.5');
+    expect(cell(2, 'item')).toHaveTextContent('Scaffolding hire');
     expect(screen.getByRole('status')).toHaveTextContent('Out of date');
+    // Read-only: a cell does not open for editing.
+    await userEvent.setup().click(cell(0, 'qty'));
+    await userEvent.setup().keyboard('{Enter}');
+    expect(within(screen.getByRole('grid', { name: 'Recipe' })).queryByRole('textbox')).not.toBeInTheDocument();
 
     expect(screen.queryByRole('heading', { name: 'Cost vs rate' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Cost per unit/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Cost \/ unit/ })).not.toBeInTheDocument();
+    expect(cell(2, 'cost')).toBeNull();
     expect(screen.queryByLabelText(/Overhead %/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Profit %/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Round up to/)).not.toBeInTheDocument();
@@ -250,23 +264,25 @@ describe('the rate library form', () => {
     await user.clear(recipeQty);
     await user.type(recipeQty, '10');
 
+    // The recipe is a grid (Phase L3): an added line is selected on its "What" cell, Enter opens the picker,
+    // and the rest is typed cell by cell — Tab moves across, typing overwrites, Enter saves.
     await user.click(screen.getByRole('button', { name: /Add material/ }));
-    await user.click(screen.getByRole('combobox', { name: 'Material 1' }));
+    await user.keyboard('{Enter}');
     await user.click(await screen.findByRole('option', { name: 'CEM-OPC · OPC cement (kg)' }));
     expect(screen.getByText('Bought as bag = 50 kg')).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Quantity of material 1'), '32');
-    await user.type(screen.getByLabelText('Wastage % for material 1'), '5');
+    await user.keyboard('{ArrowRight}32{Tab}5{Enter}');
 
     await user.click(screen.getByRole('button', { name: /Add labour/ }));
-    await user.click(screen.getByRole('combobox', { name: 'Labour 1' }));
+    await user.keyboard('{Enter}');
     await user.click(await screen.findByRole('option', { name: 'MASON · Mason (राजमिस्त्री)' }));
-    await user.type(screen.getByLabelText('Man-days for labour 1'), '1.5');
+    await user.keyboard('{ArrowRight}1.5{Enter}');
     await user.click(screen.getByRole('button', { name: /Add labour/ })); // left empty
 
     await user.click(screen.getByRole('button', { name: /Add equipment or other cost/ }));
-    await user.type(screen.getByLabelText('What equipment or other 1 is'), 'Scaffolding hire');
-    await user.type(screen.getByLabelText('Quantity of equipment or other 1'), '1');
-    await user.type(screen.getByLabelText('Cost per unit of equipment or other 1 (Rs)'), '1,200.50');
+    await user.keyboard('Scaffolding hire{Tab}{Tab}1{Tab}1,200.50{Enter}');
+    const cell = recipeCell();
+    expect(cell(0, 'qty')).toHaveTextContent('32');
+    expect(cell(3, 'cost')).toHaveTextContent('1,200.50');
 
     const card = screen.getByRole('heading', { name: 'Cost vs rate' }).closest('section');
     await waitFor(() => expect(within(card).getByText('Rs. 324.94')).toBeInTheDocument());

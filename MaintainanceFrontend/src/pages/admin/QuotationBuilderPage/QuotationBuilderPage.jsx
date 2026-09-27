@@ -2,9 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { ArrowLeft, ClipboardCheck, Contact, Phone, UserRoundSearch } from 'lucide-react';
-import {
-  useGetQuotationQuery, useGetRateCardQuery, useUpdateQuotationMutation,
-} from '@/api/quotationsApi';
+import { useGetQuotationQuery, useUpdateQuotationMutation } from '@/api/quotationsApi';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
@@ -12,7 +10,6 @@ import { RecordHistory } from '@/components/common/RecordHistory';
 import { StateBadge } from '@/components/common/StateBadge';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageTransition } from '@/three/motion/motionKit';
@@ -22,62 +19,65 @@ import { quotationFormSchema } from '@/form/schemas/quotation.schema';
 import { QUOTATION_STATUS_LABELS } from '@/config/constants';
 import { quotationActions, waitingFor } from '@/helpers/quotationActions';
 import { toastSuccess } from '@/redux/slices/uiSlice';
-import { formatDate, formatDateTime, formatNpr } from '@/helpers/format';
 import { QuotationActionBar } from './sections/QuotationActionBar';
 import { QuotationNotices } from './sections/QuotationNotices';
 import { SendPanel } from './sections/SendPanel';
 import { VersionSwitcher } from './sections/VersionSwitcher';
+import { TotalsCard } from './sections/TotalsCard';
+import { MarginCard } from './sections/MarginCard';
+import { TrailCard } from './sections/TrailCard';
+import { DiscountHelper } from './sections/DiscountHelper';
+import { RepriceButton } from './sections/RepriceButton';
+import { TakeoffTab } from './sections/TakeoffTab';
+import { LabourTab } from './sections/LabourTab';
+import { CustomerViewTab } from './sections/CustomerViewTab';
+import { useBoqFigures } from './useBoqFigures';
 
-const TABS = ['quotation', 'history'];
+/** The builder's tabs, in order. `boq` and `terms` are the one form's two panels. */
+const TABS = [
+  { value: 'boq', label: 'BOQ' },
+  { value: 'takeoff', label: 'Take-off' },
+  { value: 'labour', label: 'Labour' },
+  { value: 'terms', label: 'Payment & terms' },
+  { value: 'customer', label: 'Customer view' },
+  { value: 'history', label: 'History', capability: 'quotations:history' },
+];
+const FORM_TABS = ['boq', 'terms'];
+const TERMS_FIELDS = new Set(['validUntil', 'terms', 'internalNote']);
 
-/** The builder's form, described as data. The lines are one `lineItems` field. */
-const quotationFields = ({ rateCard, frozen }) => [
-  { name: 'items', type: 'lineItems', label: 'Line items', rateCard, disabled: frozen, required: true },
+/**
+ * The builder's form, described as data: the BOQ panel (the rows — a `lineItems` field on the kit's EditableGrid —
+ * the discount, its helpers and VAT) and the Payment & terms panel (today's terms field until Phase L4). One form,
+ * one Save; the panel not on screen stays mounted and keeps its values.
+ */
+const quotationFields = ({ tab, frozen, figures, stale, quotationId }) => [
   {
-    type: 'group', label: 'Terms', variant: 'card', fields: [
-      { name: 'discount', type: 'money', label: 'Discount', span: 'half' },
-      { name: 'validUntil', type: 'date', label: 'Valid until', time: '23:59', span: 'half', description: 'The customer can answer until the end of this day.' },
+    type: 'group', variant: 'card', label: 'Bill of quantities', hidden: tab !== 'boq',
+    description: frozen ? undefined : 'Arrow keys move, Enter edits, typing overwrites; / searches the rate library; paste rows from Excel.',
+    fields: [
+      { name: 'items', type: 'lineItems', label: 'Rows', gridLabel: 'Bill of quantities', figures, stale, costCapability: 'costs:read', disabled: frozen },
+      { name: 'discount', type: 'money', label: 'Discount', span: 'half', description: 'One amount, before VAT. The helpers below work it out on the server.' },
       { name: 'vatApplied', type: 'switch', label: 'Apply VAT', span: 'half' },
-      { name: 'terms', type: 'textarea', label: 'Terms shown to the customer', rows: 5 },
+      ...(frozen ? [] : [{ name: 'discountHelper', type: 'preview', label: 'Discount helpers', component: DiscountHelper, quotationId }]),
+    ],
+  },
+  {
+    type: 'group', variant: 'card', label: 'Payment & terms', hidden: tab !== 'terms',
+    description: 'What the customer agrees to. Phase L4 turns this into payment milestones and a terms library.',
+    fields: [
+      { name: 'validUntil', type: 'date', label: 'Valid until', time: '23:59', span: 'half', description: 'The customer can answer until the end of this day.' },
+      { name: 'terms', type: 'textarea', label: 'Terms shown to the customer', rows: 6 },
       { name: 'internalNote', type: 'textarea', label: 'Internal note', description: 'Staff only — never shown to the customer.', rows: 3 },
     ],
   },
 ];
 
-function Row({ label, value, strong }) {
-  return (
-    <div className={strong ? 'flex items-center justify-between border-t pt-3 text-base font-semibold' : 'flex items-center justify-between'}>
-      <span className={strong ? undefined : 'text-muted-foreground'}>{label}</span>
-      <span className="tabular-nums" data-testid={strong ? 'quotation-total' : undefined}>{value}</span>
-    </div>
-  );
-}
-
-/** Who moved it, when — the short version of the History tab. */
-function Trail({ q }) {
-  const rows = [
-    ['Prepared', q.createdBy?.name, q.createdAt],
-    q.submittedAt && ['Submitted', q.submittedBy?.name, q.submittedAt],
-    q.approvedAt && ['Approved', q.autoApproved ? 'Automatically' : q.approvedBy?.name, q.approvedAt],
-    q.sentAt && ['Sent', null, q.sentAt],
-    q.decidedAt && ['Customer answered', QUOTATION_STATUS_LABELS[q.status], q.decidedAt],
-  ].filter(Boolean);
-  return (
-    <ul className="space-y-1.5 text-sm">
-      {rows.map(([what, who, at]) => (
-        <li key={what} className="flex justify-between gap-3">
-          <span className="text-muted-foreground">{what}</span>
-          <span className="text-right">{who ? `${who} · ` : ''}{formatDateTime(at)}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /**
- * One quotation version: its lines and terms (editable only as a DRAFT, for
- * `quotations:write`), the action its state is waiting for, the customer's messages,
- * the link and its SMS/email, the versions, and the History tab.
+ * One quotation version, as a bill of quantities (Phase L3). Tabs: **BOQ** (the rows, discount and VAT — editable
+ * only as a DRAFT with `quotations:write`), **Take-off** (materials in buying units, stock and shortfall),
+ * **Labour** (man-days per trade and a crew-size calculator), **Payment & terms**, **Customer view** (the saved
+ * quotation as the link shows it) and **History**. The right rail: **Totals** (the server's live preview while
+ * editing, the saved figures otherwise), **Margin** (`costs:read` only), **Send** and **Trail**.
  */
 export default function QuotationBuilderPage() {
   const { id } = useParams();
@@ -87,20 +87,29 @@ export default function QuotationBuilderPage() {
   // ACCOUNTANT and DISPATCHER can reach this page on quotations:read alone.
   const { can, user } = useAuth();
   const canWrite = can('quotations:write');
+  const showMargin = can('costs:read');
 
   const { data: quotation, isLoading, error, refetch } = useGetQuotationQuery(id);
-  const { data: rateCard } = useGetRateCardQuery({ limit: 100 }, { skip: !canWrite });
   const [update] = useUpdateQuotationMutation();
   const [runAction, actionDialogs] = useQuotationActions();
   const [dirty, setDirty] = useState(false);
+  const [values, setValues] = useState(null);
   const [busy, setBusy] = useState(false);
   const onDirtyChange = useCallback((next) => setDirty(next), []);
+  // react-hook-form hands the same values object to every watcher: copy it, so each edit is a new preview request.
+  const onValuesChange = useCallback((next) => setValues({ ...next }), []);
 
   const frozen = quotation?.status !== 'DRAFT' || !canWrite;
-  const fields = useMemo(() => quotationFields({ rateCard: rateCard?.items ?? [], frozen }), [rateCard, frozen]);
+  const tabs = TABS.filter((t) => !t.capability || can(t.capability));
+  const asked = search.get('tab') === 'quotation' ? 'boq' : search.get('tab');
+  const tab = tabs.some((t) => t.value === asked) ? asked : 'boq';
+  const setTab = (next) => setSearch(next === 'boq' ? {} : { tab: next }, { replace: true });
 
-  const tab = TABS.includes(search.get('tab')) && can('quotations:history') ? search.get('tab') : 'quotation';
-  const setTab = (next) => setSearch(next === 'quotation' ? {} : { tab: next }, { replace: true });
+  const shown = useBoqFigures({ quotation, values, dirty, enabled: Boolean(quotation) && !frozen });
+  const fields = useMemo(
+    () => quotationFields({ tab, frozen, figures: shown.figures, stale: shown.stale, quotationId: quotation?.id }),
+    [tab, frozen, shown.figures, shown.stale, quotation?.id],
+  );
 
   if (isLoading) return <PageTransition><CardSkeleton /></PageTransition>;
   if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
@@ -108,6 +117,7 @@ export default function QuotationBuilderPage() {
   const q = quotation;
   const who = { can, userId: user?.id };
   const actions = quotationActions(q, who);
+  const formTab = FORM_TABS.includes(tab) ? tab : 'boq';
 
   const run = async (action) => {
     setBusy(true);
@@ -169,69 +179,78 @@ export default function QuotationBuilderPage() {
       <QuotationNotices quotation={q} can={can} userId={user?.id} />
 
       <Tabs value={tab} onValueChange={setTab}>
-        {can('quotations:history') ? (
-          <TabsList className="mb-4">
-            <TabsTrigger value="quotation">Quotation</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
+        <div className="-mx-1 mb-4 overflow-x-auto px-1">
+          <TabsList className="w-max">
+            {tabs.map((t) => <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>)}
           </TabsList>
-        ) : null}
+        </div>
 
-        <TabsContent value="quotation" className="mt-0">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <Card>
-              <CardContent className="p-4 sm:p-6">
-                {!canWrite ? (
-                  <p className="mb-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">You can read this quotation but not change it.</p>
-                ) : frozen ? (
-                  <p className="mb-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-                    Only a draft is edited. {q.status === 'PENDING_APPROVAL' || q.status === 'OFFICE_APPROVED'
-                      ? 'Send it back (or pull it back) to change it.'
-                      : 'Revise it to change the figures and keep the history.'}
-                  </p>
-                ) : null}
-                <ResourceForm
-                  key={`${q.id}:${frozen}`}
-                  schema={quotationFormSchema}
-                  fields={fields}
-                  defaultValues={q}
-                  readOnly={frozen}
-                  submitLabel="Save draft"
-                  onDirtyChange={onDirtyChange}
-                  onSubmit={async (body) => {
-                    await update({ id: q.id, ...body }).unwrap();
-                    dispatch(toastSuccess('Quotation saved', 'The totals have been worked out again.'));
-                  }}
-                />
-              </CardContent>
-            </Card>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 space-y-4">
+            {/* One form for the BOQ and Payment & terms tabs; it stays mounted (and keeps its edits) behind the others. */}
+            <TabsContent key="form" value={formTab} forceMount hidden={!FORM_TABS.includes(tab)} className="mt-0 space-y-3 data-[state=inactive]:hidden">
+              {!canWrite ? (
+                <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">You can read this quotation but not change it.</p>
+              ) : frozen ? (
+                <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                  Only a draft is edited. {q.status === 'PENDING_APPROVAL' || q.status === 'OFFICE_APPROVED'
+                    ? 'Send it back (or pull it back) to change it.'
+                    : 'Revise it to change the figures and keep the history.'}
+                </p>
+              ) : tab === 'boq' ? (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <RepriceButton quotation={q} disabledReason={dirty ? 'Save your changes first.' : undefined} />
+                </div>
+              ) : null}
+              <ResourceForm
+                key={`${q.id}:${frozen}`}
+                schema={quotationFormSchema}
+                fields={fields}
+                defaultValues={q}
+                readOnly={frozen}
+                submitLabel="Save draft"
+                stickyActions
+                onDirtyChange={onDirtyChange}
+                onValuesChange={onValuesChange}
+                onInvalid={(errors) => setTab(Object.keys(errors).every((k) => TERMS_FIELDS.has(k)) ? 'terms' : 'boq')}
+                onSubmit={async (body) => {
+                  await update({ id: q.id, ...body }).unwrap();
+                  dispatch(toastSuccess('Quotation saved', 'The server worked out the totals again.'));
+                }}
+              />
+            </TabsContent>
 
-            <div className="space-y-4">
-              <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-base">Totals</CardTitle></CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  {/* The server's figures from the last save — the browser never computes VAT. */}
-                  <Row label="Subtotal" value={formatNpr(q.subtotal)} />
-                  <Row label="Discount" value={`− ${formatNpr(q.discount)}`} />
-                  <Row label={`VAT ${q.vatApplied ? `(${q.vatRate}%)` : '(not applied)'}`} value={formatNpr(q.vatAmount)} />
-                  <Row label="Total" value={formatNpr(q.total)} strong />
-                  {dirty ? <p className="text-xs text-warning">Unsaved edits — save to recalculate.</p> : null}
-                  {q.validUntil ? <p className="text-xs text-muted-foreground">Valid until {formatDate(q.validUntil)}</p> : null}
-                </CardContent>
-              </Card>
-              <SendPanel quotation={q} />
-              <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-base">So far</CardTitle></CardHeader>
-                <CardContent><Trail q={q} /></CardContent>
-              </Card>
-            </div>
+            <TabsContent value="takeoff" className="mt-0">
+              {tab === 'takeoff' ? <TakeoffTab quotationId={q.id} dirty={dirty} /> : null}
+            </TabsContent>
+            <TabsContent value="labour" className="mt-0">
+              {tab === 'labour' ? <LabourTab quotationId={q.id} dirty={dirty} /> : null}
+            </TabsContent>
+            <TabsContent value="customer" className="mt-0">
+              {tab === 'customer' ? <CustomerViewTab quotation={q} dirty={dirty} defaultLocale={q.customer?.preferredLocale} /> : null}
+            </TabsContent>
+            {can('quotations:history') ? (
+              <TabsContent value="history" className="mt-0">
+                {tab === 'history' ? <RecordHistory endpoint={`/admin/quotations/${q.id}/history`} /> : null}
+              </TabsContent>
+            ) : null}
           </div>
-        </TabsContent>
 
-        {can('quotations:history') ? (
-          <TabsContent value="history" className="mt-0">
-            <RecordHistory endpoint={`/admin/quotations/${q.id}/history`} />
-          </TabsContent>
-        ) : null}
+          <aside className="space-y-4" aria-label="Totals, margin, sending and trail">
+            <TotalsCard
+              totals={shown.totals}
+              live={shown.live}
+              stale={shown.stale}
+              skipped={shown.skipped}
+              error={shown.error}
+              dirty={dirty && !frozen}
+              validUntil={q.validUntil}
+            />
+            {showMargin ? <MarginCard cost={shown.cost} stale={dirty && shown.stale} /> : null}
+            <SendPanel quotation={q} />
+            <TrailCard quotation={q} />
+          </aside>
+        </div>
       </Tabs>
 
       {actionDialogs}

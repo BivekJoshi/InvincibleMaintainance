@@ -73,14 +73,23 @@ export async function runSlaSweep() {
   const warnBefore = Number(await getSetting('sla.warnBeforeMinutes', env.business.slaWarnBeforeMinutes));
   const now = new Date();
 
-  const breached = await prisma.lead.findMany({
-    where: {
-      deletedAt: null, firstResponseAt: null, slaBreached: false,
-      slaDueAt: { lt: now }, status: { notIn: ['WON', 'LOST'] },
-    },
-    include: { assignedTo: { select: { id: true, name: true, email: true, phone: true } } },
-    take: 200,
-  });
+  // Newest breaches first — they are the ones someone can still rescue — in batches until none are left,
+  // so a backlog (a server that was down, a burst of enquiries) is never skipped for fresher leads.
+  const breached = [];
+  for (let batch = 0; batch < 25; batch += 1) {
+    const rows = await prisma.lead.findMany({
+      where: {
+        deletedAt: null, firstResponseAt: null, slaBreached: false,
+        slaDueAt: { lt: now }, status: { notIn: ['WON', 'LOST'] },
+        id: { notIn: breached.map((l) => l.id) },
+      },
+      include: { assignedTo: { select: { id: true, name: true, email: true, phone: true } } },
+      orderBy: { slaDueAt: 'desc' },
+      take: 200,
+    });
+    breached.push(...rows);
+    if (rows.length < 200) break;
+  }
 
   for (const lead of breached) {
     await prisma.lead.update({ where: { id: lead.id }, data: { slaBreached: true, priority: 'URGENT' } });

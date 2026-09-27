@@ -52,9 +52,9 @@ uploads the Playwright trace when it fails.
   the only kind `useBlocker` works in — with `signedInAs(role)` for capability checks.
 - Money, phone numbers and Nepali text are the three things that break (CLAUDE.md rule 5). Test them.
 
-### End-to-end tests (Phases F2, H1)
+### End-to-end tests (Phases F2, H1, L3)
 
-`npm run test:e2e` runs [Playwright](https://playwright.dev) over two flows in a real browser:
+`npm run test:e2e` runs [Playwright](https://playwright.dev) over three flows in a real browser:
 
 - `e2e/quotation-flow.spec.js` — the whole quotation loop: a customer books at `/book` on a phone-sized
   screen, the office prices and approves the quotation, the customer asks for changes in Nepali, the office
@@ -65,6 +65,11 @@ uploads the Playwright trace when it fails.
   and not saved, 22 kg is issued (stock falls by 22), time is recorded, costing reconciles, completion waits for
   the checklist, the job is completed and verified, and an admin drafts the case study. It clears Hari's
   tomorrow of jobs earlier runs left, and accepts a warning about the ones it cannot move.
+- `e2e/boq-flow.spec.js` — the BOQ builder (Phase L3; L4–L8 extend it): SALES starts a blank quotation from the
+  New quotation sheet, builds a section by keyboard, pastes 15 rows from `e2e/fixtures/boq-paste.tsv` (two text
+  rows become sections), adds a rate-library row with `/`, measures a line in feet-inches and marks one optional,
+  saves — the server's totals must equal what the builder showed — and submits; a MANAGER sees the margin,
+  approves and sends, and the customer's link shows the sections and the optional row.
 
 ```bash
 npx playwright install chromium     # once

@@ -8,7 +8,8 @@ import {
   useBuildQuotationFromSurveyMutation,
 } from '@/api/surveysApi';
 import { SurveyFindings } from '@/components/surveys/SurveyFindings';
-import { SurveyPricingTable, toQuotationItems } from '@/components/surveys/SurveyPricingTable';
+import { SurveyPricingTable } from '@/components/surveys/SurveyPricingTable';
+import { usePreviewQuotationQuery } from '@/api/quotationsApi';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { StatusBadge } from '@/components/ui/badge';
@@ -22,6 +23,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDispatch } from 'react-redux';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { formatDate, formatNpr } from '@/helpers/format';
+import { serverFiguresByKey, surveyQuotationRows } from '@/helpers/boq';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { skipToken } from '@reduxjs/toolkit/query';
 
 const QUOTABLE = ['SUBMITTED', 'IN_REVIEW'];
 
@@ -49,10 +53,31 @@ export default function SurveyReviewPage() {
   const [buildQuotation, { isLoading: building }] = useBuildQuotationFromSurveyMutation();
 
   const items = useMemo(
-    () => (pricing ? toQuotationItems(pricing.lines, draft) : []),
+    () => (pricing ? surveyQuotationRows(pricing.lines, draft) : []),
     [pricing, draft],
   );
   const ready = items.length > 0 && items.every((i) => Number.isFinite(i.rate));
+
+  // The amounts and subtotal are the server's: the rows as they stand go through the quotation preview.
+  const previewable = useMemo(() => {
+    const keys = [];
+    const rows = [];
+    items.forEach((item, i) => {
+      if (Number.isFinite(item.rate) && item.qty > 0) {
+        keys.push(pricing.lines[i].surveyItemId);
+        rows.push(item);
+      }
+    });
+    return { keys, body: { items: rows, vatApplied: true } };
+  }, [items, pricing]);
+  const livePricing = canQuote && Boolean(pricing) && QUOTABLE.includes(survey?.status);
+  const settledBody = useDebouncedValue(livePricing ? JSON.stringify(previewable.body) : null, 300);
+  const { data: preview, isFetching: previewing } = usePreviewQuotationQuery(settledBody ? JSON.parse(settledBody) : skipToken);
+  const previewKeys = useMemo(() => (settledBody ? previewable.keys : []), [settledBody]); // eslint-disable-line react-hooks/exhaustive-deps
+  const figures = useMemo(
+    () => (livePricing && preview ? serverFiguresByKey(preview.items, previewKeys) : null),
+    [livePricing, preview, previewKeys],
+  );
 
   if (isLoading) return <PageTransition><CardSkeleton /></PageTransition>;
   if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
@@ -171,6 +196,10 @@ export default function SurveyReviewPage() {
                   missing={pricing.missing}
                   draft={draft}
                   onChange={setDraft}
+                  readOnly={!canQuote || !quotable}
+                  figures={figures ?? undefined}
+                  totals={livePricing ? preview?.totals ?? null : { subtotal: pricing.subtotal }}
+                  stale={livePricing && (previewing || settledBody !== JSON.stringify(previewable.body))}
                 />
               </div>
             ) : null}

@@ -81,7 +81,7 @@ const toEntry = (row) => ({
  * keys, so an audit snapshot never shows what the live record hides. (A material's purchase rate stays in
  * the materials trail — the dispatcher who keeps stock records it.)
  */
-const COST_WALLED_MODELS = new Set(['RateCardItem', 'Trade']);
+const COST_WALLED_MODELS = new Set(['RateCardItem', 'Trade', 'Quotation', 'QuotationItem']);
 
 /**
  * @param {string} model  a Prisma model name ('Lead', 'Faq', 'RateCardItem')

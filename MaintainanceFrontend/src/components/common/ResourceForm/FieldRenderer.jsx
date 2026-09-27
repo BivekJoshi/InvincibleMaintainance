@@ -22,6 +22,8 @@ import { LineItemsField } from './fields/LineItemsField';
 import { ChecklistField } from './fields/ChecklistField';
 import { RecipeField } from './fields/RecipeField';
 import { PreviewField } from './fields/PreviewField';
+import { GridField } from './fields/GridField';
+import { MeasurementsField } from './fields/MeasurementsField';
 
 /**
  * Field type → component. `markdown` is an alias of `prose`: the public site renders
@@ -52,6 +54,8 @@ const FIELD_TYPES = {
   checklist: ChecklistField,
   recipe: RecipeField,
   preview: PreviewField,
+  grid: GridField,
+  measurements: MeasurementsField,
 };
 
 /** A safe DOM id for a field, from the form's `useId()` prefix and the field name. */
@@ -59,6 +63,8 @@ const fieldId = (prefix, name) => `${prefix}-${String(name).replace(/[^\w-]/g, '
 
 /** One field in its grid cell: full width unless `span: 'half'`; a group always is. */
 function FieldCell({ field, idPrefix }) {
+  // A hidden field keeps its value and still validates; it is simply not shown (a builder's other tab).
+  if (field.hidden && field.type !== 'group') return null;
   if (field.type === 'group') {
     return (
       <div className="sm:col-span-2">

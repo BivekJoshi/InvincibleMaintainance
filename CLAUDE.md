@@ -131,6 +131,9 @@ Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password1
    resource screen is a **registry entry** — one file in `MaintainanceFrontend/src/config/admin/resources/`,
    registered in `resourceRegistry.js` with a nav item in `adminNav.js` — rendered by the generic
    `ResourceListPage` / `ResourceEditPage`. Do not hand-roll another table, form or per-resource CMS page.
+   Spreadsheet-style editing (the BOQ builder, recipes, measurement sheets) is **`<EditableGrid>`**
+   (`components/common/EditableGrid/`, Phase L3), reached **only through ResourceForm field types**
+   (`lineItems`, `grid`, `measurements`, `recipe`) — never mounted directly by a page.
 4. Add shadcn components with `npx shadcn@latest add <name>` — do not hand-copy them.
 5. Money, phone numbers, and Nepali text are the three things that break. Test them.
 6. No secrets in the repo. Everything through `.env` with a matching `.env.example` entry.

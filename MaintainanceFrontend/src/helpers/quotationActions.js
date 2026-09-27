@@ -47,8 +47,16 @@ export function quotationActions(quotation, { can, userId }) {
   const action = (key, extra = {}) => ({ key, label: ACTION_LABELS[key], ...extra });
 
   switch (quotation.status) {
-    case 'DRAFT':
-      return write ? [action('submit', { primary: true })] : [];
+    case 'DRAFT': {
+      if (!write) return [];
+      // A detail record says what its rows are; a list row does not, and the API has the last word (Phase L3).
+      const rows = Array.isArray(quotation.items) ? quotation.items : null;
+      const priced = rows?.some((r) => (r.rowType ?? 'ITEM') === 'ITEM' && !r.isOptional);
+      return [action('submit', {
+        primary: true,
+        ...(rows && !priced ? { disabledReason: 'Add at least one row that counts toward the total before submitting.' } : {}),
+      })];
+    }
     case 'PENDING_APPROVAL':
       if (!approve) return [];
       return [

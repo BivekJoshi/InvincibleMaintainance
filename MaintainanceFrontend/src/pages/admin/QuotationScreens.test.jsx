@@ -9,6 +9,12 @@ import { json, mockApi, page } from '@/test/mockApi';
 afterEach(() => vi.unstubAllGlobals());
 
 const toastTitles = (store) => store.getState().ui.toasts.map((t) => t.title);
+/** A cell of the BOQ grid, by row and column key. */
+const cell = (row, key) => screen.getByRole('grid', { name: 'Bill of quantities' }).querySelector(`[data-cell="${row}:${key}"]`);
+const findCell = async (row, key) => {
+  await screen.findByRole('grid', { name: 'Bill of quantities' });
+  return cell(row, key);
+};
 
 const QUOTATION = {
   id: 'q1', number: 'QT-2083-0042', version: 1, status: 'DRAFT', total: 226000, subtotal: 200000, discount: 0,
@@ -105,38 +111,58 @@ describe('QuotationsPage', () => {
 });
 
 describe('QuotationBuilderPage', () => {
-  it('edits a draft in rupees, saves it, and holds Submit while there are unsaved edits', async () => {
+  it('edits a draft in rupees on the BOQ grid, shows the server’s preview, saves it, and holds Submit while there are unsaved edits', async () => {
     const user = userEvent.setup();
-    const { calls, store } = builder(QUOTATION, 'SALES', ({ method, path, body }) => {
-      if (method === 'PUT' && path === '/admin/quotations/q1') return json({ data: { ...QUOTATION, items: body.items } });
+    const { calls, store } = builder(QUOTATION, 'SALES', ({ method, path }) => {
+      if (method === 'POST' && path === '/admin/quotations/preview') {
+        return json({ data: {
+          items: [{ index: 0, rowType: 'ITEM', number: '1', netQty: 20, qty: 20, amount: 2501000 }],
+          totals: { subtotal: 2501000, discount: 0, vatApplied: true, vatRate: 13, vatAmount: 325130, total: 2826130, optionalTotal: 0, sections: [] },
+        } });
+      }
+      if (method === 'PUT' && path === '/admin/quotations/q1') return json({ data: { ...QUOTATION, subtotal: 2501000, total: 2826130 } });
       if (method === 'POST' && path === '/admin/quotations/q1/submit') return json({ data: { ...QUOTATION, status: 'PENDING_APPROVAL' } });
       return undefined;
     });
-    const rate = await screen.findByRole('textbox', { name: 'Rate for line 1' });
-    expect(rate).toHaveValue('100');
+    const rate = await findCell(0, 'rate');
+    expect(rate).toHaveTextContent('100.00');
+    expect(cell(0, 'amount')).toHaveTextContent('2,000.00');
     expect(screen.getByTestId('quotation-total')).toHaveTextContent('2,260');
 
-    await user.clear(rate);
-    await user.type(rate, '1,250.50');
+    await user.click(rate);
+    await user.keyboard('1,250.50{Enter}');
+    expect(cell(0, 'rate')).toHaveTextContent('1,250.50');
     expect(screen.getByRole('button', { name: 'Submit for approval' })).toBeDisabled();
+
+    // The totals and the row's amount are the server's answer to the rows as typed — never added up here.
+    await waitFor(() => expect(screen.getByTestId('quotation-total')).toHaveTextContent('28,261.30'), { timeout: 3000 });
+    expect(cell(0, 'amount')).toHaveTextContent('25,010.00');
+    expect(calls.find((c) => c.path === '/admin/quotations/preview').body).toEqual({
+      quotationId: 'q1', vatApplied: true, discount: 0,
+      items: [{ id: 'i1', rowType: 'ITEM', description: 'Crack filling', unit: 'rft', qty: 20, rate: 1250.5, isOptional: false, isProvisional: false }],
+    });
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body.items).toEqual([
-      { rateCardItemId: null, description: 'Crack filling', unit: 'rft', qty: 20, rate: 1250.5, sortOrder: 0 },
+      { id: 'i1', rowType: 'ITEM', description: 'Crack filling', unit: 'rft', qty: 20, rate: 1250.5, isOptional: false, isProvisional: false },
     ]));
+    // No cost ever leaves the browser.
+    expect(JSON.stringify(calls.find((c) => c.method === 'PUT').body)).not.toMatch(/unitCost|costAmount|recipe/);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Submit for approval' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'Submit for approval' }));
     await waitFor(() => expect(toastTitles(store)).toContain('QT-2083-0042 submitted'));
-  });
+  }, 15_000);
 
-  it('refuses a line with no description', async () => {
+  it('refuses a row with no description', async () => {
     const user = userEvent.setup();
     const { calls } = builder(QUOTATION, 'SALES');
-    const description = await screen.findByRole('textbox', { name: 'Description for line 1' });
-    await user.clear(description);
-    await user.type(screen.getByRole('textbox', { name: 'Rate for line 1' }), '5');
+    await user.click(await findCell(0, 'description'));
+    await user.keyboard('{Delete}');
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
-    expect(await screen.findByText('Describe the work')).toBeInTheDocument();
+    // The cell is marked, and the grid lists the problem as a link to the cell.
+    await user.click(await screen.findByRole('button', { name: 'Row 1 · Description: Describe the work' }));
+    expect(cell(0, 'description')).toHaveAttribute('aria-invalid', 'true');
+    expect(cell(0, 'description')).toHaveFocus();
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
 
@@ -147,7 +173,9 @@ describe('QuotationBuilderPage', () => {
       method === 'POST' && path === '/admin/quotations/q1/approve' ? json({ data: { ...waiting, status: 'OFFICE_APPROVED' } }) : undefined
     ));
     expect(await screen.findByText('Waiting for your approval.')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Rate for line 1' })).toBeDisabled();
+    await user.click(cell(0, 'rate'));
+    await user.keyboard('{Enter}9');
+    expect(within(screen.getByRole('grid', { name: 'Bill of quantities' })).queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save draft' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
 

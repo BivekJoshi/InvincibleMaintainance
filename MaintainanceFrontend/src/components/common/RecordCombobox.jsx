@@ -28,6 +28,10 @@ import { cn } from '@/helpers/utils';
  *   (`none` → "Unassigned"), listed first and never looked up
  * @param {string} [props.selectedLabel] the selected record's label when the caller already has it (a
  *   recipe line carries its material), so it is not looked up — a reader may not be allowed to
+ * @param {boolean} [props.defaultOpen]  open the list at once (an EditableGrid cell's editor)
+ * @param {string} [props.defaultSearch] what the search starts with (the letter typed over the cell)
+ * @param {(open: boolean) => void} [props.onOpenChange] told when the list opens or closes
+ * @param {boolean} [props.returnFocus]  false: closing leaves focus where the caller puts it (a grid moves on)
  */
 export function RecordCombobox({
   path,
@@ -44,10 +48,18 @@ export function RecordCombobox({
   className,
   fixedOptions = [],
   selectedLabel,
+  defaultOpen = false,
+  defaultSearch = '',
+  onOpenChange,
+  returnFocus = true,
   ...aria
 }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
+  const [open, setOpenState] = useState(defaultOpen);
+  const [q, setQ] = useState(defaultSearch);
+  const setOpen = (next) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
   const debouncedQ = useDebouncedValue(q);
 
   const labelOf = (row) => {
@@ -85,7 +97,11 @@ export function RecordCombobox({
             <ChevronsUpDown className="opacity-50" aria-hidden />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[220px] p-0" align="start">
+        <PopoverContent
+          className="w-[--radix-popover-trigger-width] min-w-[220px] p-0"
+          align="start"
+          onCloseAutoFocus={returnFocus ? undefined : (e) => e.preventDefault()}
+        >
           <Command shouldFilter={false}>
             <CommandInput value={q} onValueChange={setQ} placeholder={searchPlaceholder} />
             <CommandList>

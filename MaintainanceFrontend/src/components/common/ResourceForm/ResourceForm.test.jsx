@@ -307,3 +307,77 @@ describe('ResourceForm options added in L2', () => {
     expect(onSubmit.mock.calls[0][0]).toEqual({ mode: 'WORKED_OUT', rate: 380, packSize: null, packLabel: null });
   });
 });
+
+describe('ResourceForm — the EditableGrid field types (Phase L3)', () => {
+  const cellOf = (gridName, row, key) => screen.getByRole('grid', { name: gridName }).querySelector(`[data-cell="${row}:${key}"]`);
+
+  it('a `measurements` field reads feet-inches, previews each row and the total, and sends numbers', async () => {
+    const user = userEvent.setup();
+    const { measurementSheetFormSchema } = await import('@/form/schemas/quotation.schema');
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm
+        schema={measurementSheetFormSchema}
+        fields={[{ name: 'measurements', type: 'measurements', label: 'Measurement sheet', unit: 'sq.ft' }]}
+        defaultValues={{ measurements: [{ area: 'बैठक कोठा', description: 'East wall', nos: 1, l: 12, h: 10 }] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(cellOf('Measurement sheet', 0, 'value')).toHaveTextContent('120');
+    await user.click(screen.getByRole('button', { name: 'Add measurement' }));
+    await user.keyboard('बैठक कोठा{Tab}Door{Tab}1{Tab}3\'6"{Tab}{Tab}7\'{Tab} ');
+    expect(cellOf('Measurement sheet', 1, 'l')).toHaveTextContent('3.5');
+    expect(cellOf('Measurement sheet', 1, 'value')).toHaveTextContent('-24.5');
+    expect(screen.getByTestId('measurement-total')).toHaveTextContent('95.5');
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].measurements).toEqual([
+      { area: 'बैठक कोठा', description: 'East wall', nos: 1, l: 12, h: 10 },
+      { area: 'बैठक कोठा', description: 'Door', nos: 1, l: 3.5, h: 7, deduct: true },
+    ]);
+  });
+
+  it('a `measurements` field refuses a length it cannot read', async () => {
+    const user = userEvent.setup();
+    const { measurementSheetFormSchema } = await import('@/form/schemas/quotation.schema');
+    const onSubmit = vi.fn();
+    renderWithProviders(
+      <ResourceForm
+        schema={measurementSheetFormSchema}
+        fields={[{ name: 'measurements', type: 'measurements', label: 'Measurement sheet' }]}
+        defaultValues={{ measurements: [] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Add measurement' }));
+    await user.keyboard('Hall{Tab}{Tab}{Tab}twelve feet{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('button', { name: /Row 1 · L: Use a number, or feet and inches/ })).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('a generic `grid` field edits rows of small objects and drops a blank one', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue({});
+    const columns = [
+      { key: 'name', header: 'Name', grow: 1, editor: 'text' },
+      { key: 'qty', header: 'Qty', width: 80, editor: 'number', align: 'right' },
+    ];
+    renderWithProviders(
+      <ResourceForm
+        schema={z.object({ parts: z.array(z.object({ name: z.string(), qty: z.any() }).passthrough()) })}
+        fields={[{ name: 'parts', type: 'grid', label: 'Parts', columns }]}
+        defaultValues={{ parts: [{ name: 'Hinge', qty: 4 }] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    await user.click(cellOf('Parts', 0, 'qty'));
+    await user.keyboard('6{Tab}');
+    expect(cellOf('Parts', 1, 'name')).toHaveFocus();
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].parts).toEqual([{ name: 'Hinge', qty: 6 }]);
+  });
+});

@@ -1,43 +1,125 @@
 import { z } from 'zod';
 import { rupees } from './fields';
 import { parseRupees } from '@/helpers/format';
+import { boqRowBody, isBlankBoqRow, qtyOf, rateOf } from '@/helpers/boq';
+import { isBlankMeasurement, measurementsBody, parseLength } from '@/helpers/measurements';
+import { SURVEY_ITEM_KINDS } from '@/config/constants';
 
 /**
- * Mirrors `quotationItem` / `quotationUpdateSchema` and the approval bodies in
- * MaintainanceBackend/src/shared/schemas/crm.js. Rates and the discount are in **rupees**
- * (the API stores paisa and computes every total).
+ * Mirrors `quotationRow` / `quotationUpdateSchema` / `quotationPreviewSchema` and the approval bodies in
+ * MaintainanceBackend/src/shared/schemas/crm.js (Phase L3). Rates and the discount are in **rupees** (the API
+ * stores paisa and computes every amount, total and margin). A request never carries a cost.
  */
 
 const optionalText = z.string().trim().max(20000).optional().or(z.literal('')).transform((v) => v || undefined);
+const blank = (v) => v === undefined || v === null || String(v).trim() === '';
+const issue = (ctx, path, message) => ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
 
-export const quotationLineSchema = z.object({
-  rateCardItemId: z.string().optional().nullable(),
-  description: z.string().trim().min(1, 'Describe the work').max(500),
-  unit: z.string().trim().max(20).optional(),
-  qty: z.coerce.number({ invalid_type_error: 'Enter a quantity' }).min(0.01, 'At least 0.01').max(1_000_000),
-  // Typed with grouping or a `Rs.` prefix, as the money field accepts.
-  rate: z.preprocess(
-    (v) => (typeof v === 'string' ? (parseRupees(v) ?? (v.trim() ? Number.NaN : undefined)) : v),
-    z.number({ required_error: 'Enter a rate', invalid_type_error: 'Enter a rate in rupees' }).min(0, 'Cannot be negative').max(1_000_000_000),
-  ),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+/** A length as typed: a number or feet-inches (`12'6"`), 0 – 100,000. */
+function checkLength(ctx, value, path) {
+  if (blank(value)) return;
+  const n = parseLength(value);
+  if (!Number.isFinite(n)) issue(ctx, path, 'Use a number, or feet and inches like 12\'6"');
+  else if (n < 0 || n > 100_000) issue(ctx, path, 'Between 0 and 100,000');
+}
+
+/** One measurement-book row, as typed (lengths may be feet-inches). A blank row is allowed and dropped. */
+export const measurementRowSchema = z.object({
+  area: z.string().max(80, 'At most 80 characters').optional().nullable(),
+  description: z.string().max(200, 'At most 200 characters').optional().nullable(),
+  nos: z.any().optional(),
+  l: z.any().optional(),
+  b: z.any().optional(),
+  h: z.any().optional(),
+  deduct: z.boolean().optional(),
+}).passthrough().superRefine((row, ctx) => {
+  if (isBlankMeasurement(row)) return;
+  ['nos', 'l', 'b', 'h'].forEach((k) => checkLength(ctx, row[k], [k]));
 });
 
-/** A row the user added and left completely empty is not a line. */
-const isBlankLine = (l) => !String(l?.description ?? '').trim() && !String(l?.rate ?? '').trim() && !l?.rateCardItemId;
+/** A measurement sheet (≤ 200 rows) → the rows the API takes: numbers, blanks dropped. */
+export const measurementSheetSchema = z.array(measurementRowSchema)
+  .refine((rows) => rows.filter((r) => !isBlankMeasurement(r)).length <= 200, 'At most 200 measurements')
+  .transform(measurementsBody);
 
-/** The builder's form: a draft's lines and terms. `PUT /admin/quotations/:id`. */
+/** The measurement drawer's form. */
+export const measurementSheetFormSchema = z.object({ measurements: measurementSheetSchema });
+
+/**
+ * One BOQ row as the builder edits it: `rowType` ITEM | SECTION | NOTE, a description (a section's title, a
+ * note's text), a rate in rupees, a quantity typed or measured. A row left empty is allowed here — the list
+ * drops it — so an error's index is the row the grid shows.
+ */
+export const boqRowSchema = z.object({
+  _key: z.string().optional(),
+  id: z.string().optional().nullable(),
+  rowType: z.enum(['ITEM', 'SECTION', 'NOTE']).default('ITEM'),
+  description: z.string().max(500, 'At most 500 characters').optional().nullable(),
+  spec: z.string().max(2000, 'At most 2000 characters').optional().nullable(),
+  kind: z.enum(SURVEY_ITEM_KINDS).optional().nullable(),
+  rateCardItemId: z.string().optional().nullable(),
+  materialId: z.string().optional().nullable(),
+  unit: z.string().max(20, 'At most 20 characters').optional().nullable(),
+  qty: z.any().optional(),
+  measurements: z.array(measurementRowSchema).optional().nullable(),
+  wastagePct: z.any().optional(),
+  rate: z.any().optional(),
+  isOptional: z.boolean().optional(),
+  isProvisional: z.boolean().optional(),
+}).passthrough().superRefine((row, ctx) => {
+  if (isBlankBoqRow(row)) return;
+  const type = row.rowType ?? 'ITEM';
+  if (blank(row.description)) {
+    issue(ctx, ['description'], type === 'SECTION' ? 'Name the section' : type === 'NOTE' ? 'Write the note' : 'Describe the work');
+  }
+  if (type !== 'ITEM') return;
+  const rate = rateOf(row.rate);
+  if (rate === undefined) issue(ctx, ['rate'], 'Enter a rate');
+  else if (!Number.isFinite(rate)) issue(ctx, ['rate'], 'Enter a rate in rupees');
+  else if (rate > 1_000_000_000) issue(ctx, ['rate'], 'Too large');
+  const measured = (row.measurements ?? []).filter((m) => !isBlankMeasurement(m));
+  if (measured.length) {
+    if (measured.length > 200) issue(ctx, ['measurements'], 'At most 200 measurements');
+  } else {
+    const qty = qtyOf(row.qty);
+    if (qty === undefined) issue(ctx, ['qty'], 'Enter a quantity, or measure it');
+    else if (!Number.isFinite(qty)) issue(ctx, ['qty'], 'Enter a number');
+    else if (qty <= 0) issue(ctx, ['qty'], 'More than 0');
+    else if (qty > 1_000_000) issue(ctx, ['qty'], 'Too large');
+  }
+  const waste = qtyOf(row.wastagePct);
+  if (waste !== undefined && !(Number.isFinite(waste) && waste >= 0 && waste <= 100)) issue(ctx, ['wastagePct'], '0 to 100');
+});
+
+/** The rows → the request's rows: blanks dropped, rupees kept, measurements as numbers, no client keys or cost. */
+export const boqRowsSchema = z.array(boqRowSchema)
+  .refine((rows) => rows.filter((r) => !isBlankBoqRow(r)).length <= 500, 'At most 500 rows')
+  .transform((rows) => rows.filter((r) => !isBlankBoqRow(r)).map(boqRowBody));
+
+/** The builder's form: a draft's rows and terms. `PUT /admin/quotations/:id`. A draft may have no rows yet. */
 export const quotationFormSchema = z.object({
-  items: z.preprocess(
-    (v) => (Array.isArray(v) ? v.filter((l) => !isBlankLine(l)).map((l, i) => ({ ...l, sortOrder: i })) : v),
-    z.array(quotationLineSchema).min(1, 'Add at least one line').max(200),
-  ),
+  items: boqRowsSchema,
   discount: rupees.max(1_000_000_000).optional(),
   vatApplied: z.boolean(),
   validUntil: z.string().optional().nullable()
     .refine((v) => !v || new Date(v).getTime() > Date.now(), 'Choose a date in the future'),
   terms: optionalText,
   internalNote: optionalText,
+});
+
+/** The row drawer's form: the row's words and flags. */
+export const boqRowDetailsSchema = z.object({
+  description: z.string().trim().min(1, 'Write something').max(500),
+  spec: z.string().trim().max(2000).optional().or(z.literal('')).transform((v) => v || ''),
+  kind: z.enum(SURVEY_ITEM_KINDS).optional().nullable(),
+  isOptional: z.boolean().optional(),
+  isProvisional: z.boolean().optional(),
+});
+
+/** The discount helpers: a percentage off, or the total (VAT included) the customer should pay. */
+export const discountHelperSchema = z.object({
+  pct: z.preprocess((v) => (blank(v) ? undefined : Number(v)), z.number({ invalid_type_error: 'A number' }).min(0).max(100).optional()),
+  target: z.preprocess((v) => (blank(v) ? undefined : parseRupees(v) ?? Number.NaN), z.number({ invalid_type_error: 'Rupees' }).min(0).optional()),
 });
 
 /** Send back and pull back need a reason (3–1000); an approval's remark is optional. */
@@ -56,4 +138,30 @@ export const quotationChangeRequestSchema = z.object({
 });
 export const quotationDeclineSchema = z.object({
   note: z.string().trim().max(1000, 'Please keep it under 1000 characters').optional(),
+});
+
+/**
+ * The New quotation sheet (Phase L3): where a quotation starts — a blank BOQ, a submitted survey (built on the
+ * survey's review page), or a copy of another quotation. `needsConvert`: a lead that is not a customer yet, whose
+ * convert makes the customer and the site first. `needsCustomer`: nothing fixes the customer (the quotations
+ * list), so a blank one asks for it.
+ * @param {{ needsConvert?: boolean, needsCustomer?: boolean }} [ctx]
+ */
+export const newQuotationSchema = ({ needsConvert = false, needsCustomer = false } = {}) => z.object({
+  source: z.enum(['blank', 'survey', 'copy']),
+  customerId: z.string().optional().nullable(),
+  siteId: z.string().optional().nullable(),
+  surveyId: z.string().optional().nullable(),
+  fromQuotationId: z.string().optional().nullable(),
+  label: z.string().trim().max(120).optional(),
+  address: z.string().trim().max(400).optional(),
+  area: z.string().trim().max(120).optional(),
+}).superRefine((v, ctx) => {
+  if (v.source === 'survey' && !v.surveyId) issue(ctx, ['surveyId'], 'Choose the survey');
+  if (v.source === 'copy' && !v.fromQuotationId) issue(ctx, ['fromQuotationId'], 'Choose the quotation to copy');
+  if (v.source === 'blank' && needsCustomer && !v.customerId) issue(ctx, ['customerId'], 'Choose the customer');
+  if (needsConvert && v.source !== 'survey') {
+    if (!v.label) issue(ctx, ['label'], 'Name the site');
+    if (!v.address || v.address.length < 3) issue(ctx, ['address'], 'Where is the work?');
+  }
 });

@@ -879,19 +879,49 @@ model Quotation {
   @@index([leadId])
 }
 
+/// A BOQ row (Phase L3): a priced ITEM, a SECTION heading, or a NOTE. Numbering and section subtotals are computed.
+enum QuotationRowType {
+  ITEM
+  SECTION
+  NOTE
+}
+
+/// One row of a quotation's bill of quantities. Rates and amounts in paisa; SECTION and NOTE rows carry no money.
 model QuotationItem {
-  id             String  @id @default(cuid())
+  id             String           @id @default(cuid())
   quotationId    String
+  rowType        QuotationRowType @default(ITEM)
   rateCardItemId String?
+  materialId     String?
+  kind           SurveyItemKind?
+  /// A SECTION's title and a NOTE's text too.
   description    String
+  /// The long specification printed under the line.
+  spec           String?
   unit           String?
-  qty            Float   @default(1)
+  /// Measurement-book rows { area, description, nos, l, b, h, deduct }; when present they give netQty.
+  measurements   Json?
+  /// The quantity before wastage (measured or typed).
+  netQty         Float?
+  wastagePct     Float            @default(0)
+  /// The billed quantity: netQty with its wastage.
+  qty            Float            @default(1)
   rate           Int
   amount         Int
-  sortOrder      Int     @default(0)
+  /// Shown and priced, never totalled.
+  isOptional     Boolean          @default(false)
+  /// A provisional sum or quantity, settled by measurement (Phase L8).
+  isProvisional  Boolean          @default(false)
+  /// The recipe as it was when the row was priced (versioned JSON, rateLibrary snapshot) — a library change never reaches it.
+  recipe         Json?
+  /// Paisa per unit and for the line — costs:read only; null = unknown, never zero.
+  unitCost       Int?
+  costAmount     Int?
+  sortOrder      Int              @default(0)
 
   quotation    Quotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   rateCardItem RateCardItem? @relation(fields: [rateCardItemId], references: [id], onDelete: SetNull)
+  material     Material?     @relation(fields: [materialId], references: [id], onDelete: SetNull)
 
   @@index([quotationId, sortOrder])
 }
@@ -1278,6 +1308,7 @@ model Material {
   jobMaterials JobMaterial[]
   surveyItems  SurveyItem[]
   recipeLines  RateCardComponent[]
+  quotationItems QuotationItem[]
 
   @@index([isActive, sortOrder])
 }

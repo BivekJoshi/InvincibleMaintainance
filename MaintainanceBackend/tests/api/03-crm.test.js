@@ -521,8 +521,9 @@ describe('quotations', () => {
     expectStatus(await sales.delete(`/admin/quotations/${draft.id}`), 204);
   });
 
-  it('refuses a quotation with no lines or an unknown customer', async () => {
-    expectStatus(await sales.post('/admin/quotations').send({ customerId: customer.id, items: [] }), 400);
+  it('a draft may start blank (Phase L3) — submitting it is refused; an unknown customer is refused at once', async () => {
+    const blank = expectStatus(await sales.post('/admin/quotations').send({ customerId: customer.id, items: [] }), 201).data;
+    expect(expectStatus(await sales.post(`/admin/quotations/${blank.id}/submit`), 422).error.code).toBe('QUOTATION_INCOMPLETE');
     const res = await sales.post('/admin/quotations').send({ customerId: 'nope', items: [{ description: 'x', qty: 1, rate: 1 }] });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.status).toBeLessThan(500);

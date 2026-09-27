@@ -6,8 +6,11 @@ import { ok, created, noContent } from '../../utils/response.js';
 import { idParam } from '../../shared/schemas/common.js';
 import * as surveys from '../../services/survey.service.js';
 import * as s from '../../shared/schemas/survey.js';
+import { costWall } from '../../middleware/costWall.js';
 
 const router = Router();
+// Building a quotation from a survey answers with the quotation, whose rows carry cost (L-D4).
+router.use('/surveys', costWall);
 
 const readSurveys = requires('surveys:read');
 const writeSurveys = requires('surveys:write');

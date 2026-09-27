@@ -886,11 +886,41 @@ flags the item without changing its rate; SALES responses contain no cost keys; 
   column-level `capability`, entry-level `bulkActions`, `RecordCombobox selectedLabel`; a NumberField fix (clearing a
   field no longer shows the saved value). The rate library and "Trades & wages" sit in the Catalog group.
 
-**L3 · The BOQ builder (≈5 days)** — EditableGrid (keyboard, paste from Excel, rate-library search), sections,
+**L3 · The BOQ builder (≈5 days) · ✅ done 2026-09-27** — EditableGrid (keyboard, paste from Excel, rate-library search), sections,
 measurement and recipe drawers, take-off and labour tabs, margin panel, survey → BOQ keeps kind / material /
 wastage / optional, New quotation sheet. *Acceptance:* a 3-section, 40-row BOQ built by keyboard with 15 rows pasted
 from Excel, a library search, a measured line and an optional row; server totals equal the preview to the paisa;
 margin only for MANAGER; take-off and labour match the recipes; a revision copies rows, measurements, snapshots.
+
+**Deviations (Phase L3, 2026-09-27)**
+- **Client-sent cost is dropped by the schema** (not refused): `quotationRow` has no unitCost, costAmount or recipe,
+  so they never reach the service; a test proves a sent cost is replaced by the library's.
+- **The cost wall is path-scoped middleware** (`middleware/costWall.js` on `/quotations`, `/leads`, `/surveys`),
+  like the field wall, rather than an allowlist per endpoint: every quotation-returning route (convert, the survey
+  build, preview, reprice, copy, revise, history) is covered at one point. It is never router-wide — several routers
+  share `/admin`, and a router-wide wrapper would strip a dispatcher's purchase rates in the materials screens.
+- **A blank DRAFT is allowed** (items 0–500); submit needs at least one ITEM row that is not optional. The discount
+  helpers are preview inputs (`discountPct`, `targetTotal`); a target VAT rounding cannot reach lands on the nearest
+  total below (`money.js#discountForTarget`, property-tested).
+- **Frozen recipe v1** = { v, rateCardItemId, code, name, recipeQty, overheadPct, profitPct, components [{ kind,
+  materialId, tradeId, description, unit, qty, wastagePct, cost }], unitCost, complete, takenAt }. A MATERIAL row
+  freezes the material's purchase rate; anything else has an unknown cost. The margin is on the taxable amount and
+  null unless every totalled row's cost is known. Reprice (DRAFT) replaces rate, recipe and cost together.
+- **New endpoints beyond the plan:** `POST /admin/quotations/:id/copy` (the New quotation sheet's "copy existing").
+  The public view gains `boq { sections, optionalTotal }` so the customer's page can show section subtotals now.
+- **Consumers of quotation lines fixed for section rows:** invoicing a quoted job bills only the totalled ITEM rows;
+  the job title on accept (and convert-to-job) reads the first ITEM row.
+- **Survey → BOQ:** every line's kind, material, raw quantity + wastage, optional flag and note (as spec) carry across;
+  rows are grouped by rate-card / material category (the survey's service names the rest). An automatic build still
+  leaves out a line no catalogue can price; the review screen now sends every line, so an unpriced one must be
+  priced first.
+- **Found on the way — the SLA sweep** took 200 breached leads in no order: with a backlog (the shared test database
+  had 300+) a fresh breach could be skipped. It now takes the newest breaches first, in batches until none are left.
+- **Frontend:** EditableGrid adds Ctrl+Z, Shift+F10 (row menu) and Ctrl+M (measurement sheet) to the planned keys,
+  renders only visible rows above 60, and a test fails if a page imports it directly (STRUCTURE rule 9; CLAUDE.md
+  rule 3 updated). The quotation-flow e2e now waits for the builder before approving (a loose "Approve" locator
+  could match the list during the lazy load). A lead that is already a customer opens the builder straight after
+  "quote without a visit".
 
 **L4 · Terms & the customer document (≈3–4 days)** — contract type, payment schedule, duration, exclusions, terms
 library (`finance.quotationTerms` finally applied), `LOW_MARGIN` approval gate, sectioned public page (en/ne,
@@ -981,7 +1011,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | L0 Hotfixes ✅ 2026-09-26 | 1 | 33 | No double billing, no pay visible in the field app |
 | L1 Lead follow-through ✅ 2026-09-26 | 3 | 36 | Every lead has a next action; nothing goes cold unseen |
 | L2 Rate library & money wall ✅ 2026-09-27 | 4 | 40 | Recipe rates; cost only for managers |
-| L3 BOQ builder | 5 | 45 | Excel-grade quotation with take-off and labour days |
+| L3 BOQ builder ✅ 2026-09-27 | 5 | 45 | Excel-grade quotation with take-off and labour days |
 | L4 Terms & customer document | 4 | 49 | Payment schedule, contract type, print, Excel |
 | H2 Operations — field app | 3 | 52 | Photos, materials and job mutations offline |
 | L5 Site-visit kit | 4 | 56 | Confirmed visits, checklists, measurement sheet |

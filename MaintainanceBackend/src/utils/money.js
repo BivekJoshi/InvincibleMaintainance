@@ -136,7 +136,8 @@ export function boqTotals(rows, opts = {}) {
   let optionalTotal = 0;
   rows.forEach((row, i) => {
     if (row.rowType === 'SECTION') {
-      current = { index: i, title: row.title ?? null, subtotal: 0 };
+      // A stored SECTION row keeps its title in `description`.
+      current = { index: i, title: row.title ?? row.description ?? null, subtotal: 0 };
       sections.push(current);
     } else if (isItem(row)) {
       if (row.isOptional) { optionalTotal += rowAmounts[i]; return; }
@@ -176,4 +177,23 @@ export function finalBillTotals(lines, earlierBills, opts = {}) {
   const due = { taxable: contract.subtotal - contract.discount - billed.taxable, vat: contract.vatAmount - billed.vat };
   due.total = due.taxable + due.vat;
   return { contract, billed, due };
+}
+
+/** A discount of `pct`% of the subtotal (Phase L3's "%" helper): rounded once, between 0 and the subtotal. */
+export function discountForPct(subtotal, pct) {
+  return Math.min(Math.max(0, r((subtotal * Number(pct || 0)) / 100)), subtotal);
+}
+
+/**
+ * The discount that brings a document to `targetTotal` (VAT included) — "Rs 4,50,000 flat". The taxable
+ * amount is solved for, then nudged by a paisa so `documentTotals` lands on the target exactly or, when
+ * VAT rounding makes that impossible, on the nearest total below it. A target above the undiscounted
+ * total gives no discount.
+ */
+export function discountForTarget(subtotal, targetTotal, { vatApplied = true, vatRate = 13 } = {}) {
+  const totalFor = (taxable) => taxable + (vatApplied ? r((taxable * vatRate) / 100) : 0);
+  const guess = vatApplied ? Math.round((targetTotal * 100) / (100 + vatRate)) : targetTotal;
+  let taxable = Math.min(subtotal, Math.max(0, guess + 1));
+  while (taxable > 0 && totalFor(taxable) > targetTotal) taxable -= 1;
+  return subtotal - taxable;
 }

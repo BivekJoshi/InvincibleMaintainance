@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BadgeCheck, CircleCheck, Clock, Copy, FileText, Send, Undo2, Wrench } from 'lucide-react';
+import { BadgeCheck, CircleCheck, Clock, Copy, FilePlus2, FileText, Send, Undo2, Wrench } from 'lucide-react';
 import { useGetQuotationStageCountQuery, useGetQuotationsQuery } from '@/api/quotationsApi';
 import { useListParams } from '@/hooks/useListParams';
 import { useAuth } from '@/hooks/useAuth';
@@ -8,6 +9,8 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { StateBadge } from '@/components/common/StateBadge';
 import { StatusBadge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { NewQuotationSheet } from '@/components/quotations/NewQuotationSheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageTransition } from '@/three/motion/motionKit';
 import { QUOTATION_STAGE_TABS, QUOTATION_STATUS_LABELS } from '@/config/constants';
@@ -106,6 +109,7 @@ export default function QuotationsPage() {
   const stage = tabs.some((t) => t.value === params.stage) ? params.stage : defaultStage;
   const { data, isLoading, isFetching, error, refetch } = useGetQuotationsQuery({ ...params, stage });
   const [runAction, actionDialogs] = useQuotationActions();
+  const [creating, setCreating] = useState(false);
   const who = { can, userId: user?.id };
 
   const rowActions = (row) => {
@@ -123,7 +127,13 @@ export default function QuotationsPage() {
 
   return (
     <PageTransition>
-      <PageHeader title="Quotations" description="Priced work: approved in the office, then answered by the customer." />
+      <PageHeader
+        title="Quotations"
+        description="Priced work: approved in the office, then answered by the customer."
+        actions={can('quotations:write') ? (
+          <Button size="sm" onClick={() => setCreating(true)}><FilePlus2 aria-hidden /> New quotation</Button>
+        ) : null}
+      />
       <Tabs value={stage} onValueChange={(next) => setParams({ ...params, stage: next, page: 1 })} className="mb-4">
         <div className="-mx-1 overflow-x-auto px-1 pb-1">
           <TabsList className="h-auto w-max">
@@ -153,9 +163,10 @@ export default function QuotationsPage() {
         rowLabel={(row) => `${row.number} for ${row.customer?.name ?? 'a customer'}`}
         searchPlaceholder="Search number or customer…"
         emptyTitle={stage === 'approval' ? 'Nothing is waiting for approval' : 'No quotations here'}
-        emptyDescription="Build one from a submitted site survey, or start from a lead."
+        emptyDescription="Start one with New quotation — blank, from a site survey, or a copy of another."
       />
       {actionDialogs}
+      {creating ? <NewQuotationSheet open onOpenChange={setCreating} /> : null}
     </PageTransition>
   );
 }

@@ -11,6 +11,8 @@ import { apiSlice } from '@/api/apiSlice';
  * - `repriceRateCard` — `POST /admin/rate-card/reprice` (`rates:write`): `apply: false` previews what
  *   would change (`{ items: [{ id, code, name, rate, derivedRate, delta }] }`) and writes nothing;
  *   `apply: true` sets each rate to its derived rate and answers `applied`.
+ * - `searchRateLibrary` — `GET /admin/rate-card?q=&limit=20&onlyActive=true` (`rates:read`): the BOQ grid's `/`
+ *   search (Phase L3), on the server, so it finds any of the library and not only a first page.
  */
 
 const LIBRARY = { type: 'Cms', id: 'rate-card' };
@@ -24,6 +26,12 @@ export const rateLibraryApi = apiSlice.injectEndpoints({
       providesTags: [{ type: 'RateCard', id: 'DERIVE' }],
       keepUnusedDataFor: 30,
     }),
+    searchRateLibrary: build.query({
+      query: ({ q, limit = 20 } = {}) => ({ url: '/admin/rate-card', params: { limit, onlyActive: true, ...(q ? { q } : {}) } }),
+      transformResponse: (r) => r.data ?? [],
+      providesTags: [{ type: 'RateCard', id: 'LIST' }],
+      keepUnusedDataFor: 60,
+    }),
     repriceRateCard: build.mutation({
       query: ({ ids, apply }) => ({ url: '/admin/rate-card/reprice', method: 'POST', body: { ...(ids ? { ids } : {}), apply } }),
       transformResponse: (r) => r.data,
@@ -35,4 +43,4 @@ export const rateLibraryApi = apiSlice.injectEndpoints({
   }),
 });
 
-export const { useDeriveRateCostQuery, useRepriceRateCardMutation } = rateLibraryApi;
+export const { useDeriveRateCostQuery, useRepriceRateCardMutation, useSearchRateLibraryQuery } = rateLibraryApi;

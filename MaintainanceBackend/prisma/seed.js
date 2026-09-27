@@ -712,6 +712,56 @@ async function main() {
     console.log(`  follow-through demo: ${FOLLOW.length} leads to work, 1 quiet quotation, ${LOST.length} lost leads`);
   }
 
+  // ═══ BOQ demo (Phase L3): one quotation as a real bill of quantities — three sections, measured rows,
+  //     a NOTE, an optional row and rows priced from the rate library with their recipes frozen — so the
+  //     builder, the take-off and the labour tab have something to show. Built through the same service
+  //     as the screens. Guarded on its own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841700001' } }))) {
+    const { createQuotation } = await import('../src/services/quotation.service.js');
+    const card = async (code) => prisma.rateCardItem.findUnique({ where: { code } });
+    const [plaster, paint, damp, tiles] = await Promise.all(['PLASTER-INT', 'PAINT-INT', 'SEEP-CHEM', 'TILE-FLOOR'].map(card));
+    const cement = await prisma.material.findUnique({ where: { code: 'CEM-OPC' } });
+    const rupees = (paisa) => paisa / 100;
+    const boqCustomer = await prisma.customer.create({
+      data: {
+        name: 'Prakash Joshi', phone: '9841700001', preferredLocale: 'en',
+        sites: { create: { label: 'Home', address: 'Bhaisepati, Lalitpur', area: 'Bhaisepati', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    const q = await createQuotation({
+      customerId: boqCustomer.id,
+      siteId: boqCustomer.sites[0].id,
+      internalNote: 'Demo BOQ (Phase L3): ground-floor bedroom and kitchen after a seepage repair.',
+      items: [
+        { rowType: 'SECTION', description: 'Damp treatment' },
+        {
+          rateCardItemId: damp.id, kind: 'SERVICE', description: damp.name, unit: damp.unit, rate: rupees(damp.rate),
+          spec: 'Chip loose plaster to 1 m height, apply crystalline slurry in two coats, cure 72 hours.',
+          measurements: [
+            { area: 'Bedroom', description: 'North and west walls to 1 m', nos: 2, l: 12, h: 3.28 },
+            { area: 'Kitchen', description: 'Back wall to 1 m', l: 10, h: 3.28 },
+          ],
+        },
+        { rowType: 'NOTE', description: 'Walls must dry for 7 days before plaster and paint.' },
+        { rowType: 'SECTION', description: 'Plaster and paint' },
+        {
+          rateCardItemId: plaster.id, kind: 'SERVICE', description: plaster.name, unit: plaster.unit, rate: rupees(plaster.rate),
+          measurements: [
+            { area: 'Bedroom', description: 'Walls', nos: 2, l: 12, h: 9 },
+            { area: 'Bedroom', description: 'Door', l: 3, h: 7, deduct: true },
+          ],
+        },
+        { rateCardItemId: paint.id, kind: 'SERVICE', description: paint.name, unit: paint.unit, rate: rupees(paint.rate), qty: 820 },
+        { rowType: 'SECTION', description: 'Flooring' },
+        { rateCardItemId: tiles.id, kind: 'SERVICE', description: tiles.name, unit: tiles.unit, rate: rupees(tiles.rate), qty: 180, isOptional: true },
+        { kind: 'MATERIAL', materialId: cement.id, description: cement.name, unit: cement.unit, qty: 6, wastagePct: 5, rate: rupees(cement.sellRate) },
+      ],
+    }, users.SALES.id);
+    console.log(`  BOQ demo: ${q.number} — ${q.items.length} rows in ${q.boq.sections.length} sections`);
+  }
+
   console.log('\nSeed complete.');
   console.log('  Admin login:      admin@gharjatan.com.np / Password123');
   console.log('  Manager login:    manager@gharjatan.com.np / Password123');

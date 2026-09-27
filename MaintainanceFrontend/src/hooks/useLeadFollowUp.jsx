@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { ScheduleVisitDialog } from '@/components/leads/ScheduleVisitDialog';
-import { ConvertLeadSheet } from '@/components/leads/ConvertLeadSheet';
+import { NewQuotationSheet } from '@/components/quotations/NewQuotationSheet';
 import { toastSuccess } from '@/redux/slices/uiSlice';
 
 /**
@@ -11,8 +11,9 @@ import { toastSuccess } from '@/redux/slices/uiSlice';
  *   const result = await openFollowUp(lead, 'visit');   // the convert's result, or null on Cancel
  *
  * - `'visit'` — `ScheduleVisitDialog`: the customer, the inspection job and its survey. It toasts itself.
- * - `'quotation'` — `ConvertLeadSheet purpose="quotation"`: a draft quotation. Drafting does not move the
- *   lead (QUOTED means *sent*), so the toast says when it will.
+ * - `'quotation'` — the **New quotation** sheet (Phase L3: blank, from a survey, or a copy; for a lead that is not a
+ *   customer yet, blank is the convert with a draft). Drafting does not move the lead (QUOTED means *sent*), so the
+ *   toast says when it will. The result is the convert's (with `customer`) or `{ quotation }`.
  *
  * The outcome composer uses it for the `dialog` an activity's answer names; the board for a drop on
  * "Visit booked" or "Quoted". The caller renders `followUpDialogs`.
@@ -53,7 +54,7 @@ export function useLeadFollowUp() {
   if (asking?.kind === 'visit') {
     dialogs = <ScheduleVisitDialog lead={asking.lead} open onOpenChange={onOpenChange} onScheduled={finish} />;
   } else if (asking?.kind === 'quotation') {
-    dialogs = <ConvertLeadSheet lead={asking.lead} open purpose="quotation" onOpenChange={onOpenChange} onConverted={onQuoted} />;
+    dialogs = <NewQuotationSheet lead={asking.lead} open onOpenChange={onOpenChange} onCreated={onQuoted} />;
   }
 
   return [openFollowUp, dialogs];

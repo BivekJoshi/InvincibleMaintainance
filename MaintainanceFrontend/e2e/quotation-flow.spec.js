@@ -103,7 +103,10 @@ test('booking → survey → approval → change request → revision → accept
     await page.goto('/admin/quotations?stage=approval');
     await page.getByRole('row', { name: new RegExp(customerName) }).first().click();
     await expect(page).toHaveURL(new RegExp(`/admin/quotations/${quotationId}$`));
-    await page.getByRole('button', { name: 'Approve' }).click();
+    // The builder is a lazy chunk: wait for it, and name the button exactly — while the list is still on screen its
+    // "Prepared · approved" column-actions button also matches a loose 'Approve'.
+    await expect(page.getByTestId('waiting-for')).toContainText('Waiting for your approval');
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Approve this quotation' });
     await dialog.getByRole('textbox').fill('Rates match the rate card.');
     await dialog.getByRole('button', { name: 'Approve' }).click();

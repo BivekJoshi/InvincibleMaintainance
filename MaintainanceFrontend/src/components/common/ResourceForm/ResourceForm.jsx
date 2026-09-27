@@ -11,6 +11,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { cn } from '@/helpers/utils';
 import { FieldGrid } from './FieldRenderer';
+import { FormModeContext } from './formMode';
 import { flattenFields, toFormValues, toRequestValues } from './formValues';
 import { applyServerErrors } from './serverErrors';
 
@@ -46,9 +47,11 @@ const LEAVE = {
  *
  * Field types: text, textarea, prose (alias markdown), number, money, switch,
  * select/enum, relation, date, datetime, slug, stringList, keyValue, media,
- * mediaList, weekdays, objectList, lineItems, checklist, recipe (a rate-library recipe),
- * preview (a panel with no value), and `group` for sections. See `FieldRenderer.jsx`. A spec's
- * `adapt(values)` makes it follow the values; `nullable: true` sends an emptied value as null.
+ * mediaList, weekdays, objectList, checklist, preview (a panel with no value), `group` for
+ * sections, and the EditableGrid types (Phase L3): lineItems (a BOQ), grid, measurements and
+ * recipe. See `FieldRenderer.jsx`. A spec's `adapt(values)` makes it follow the values;
+ * `nullable: true` sends an emptied value as null; `hidden: true` keeps a field (and its value)
+ * without showing it.
  *
  * @param {object} props
  * @param {import('zod').ZodTypeAny} props.schema          validates the form values (money in rupees)
@@ -103,6 +106,7 @@ export function ResourceForm({
   const form = useZodForm(schema, { defaultValues: initial, mode: 'onTouched' });
   const { reset, setError, setFocus, formState: { isDirty, isSubmitting } } = form;
   const [formError, setFormError] = useState(null);
+  const formMode = useMemo(() => ({ readOnly: Boolean(readOnly || isSubmitting) }), [readOnly, isSubmitting]);
   const [confirm, confirmDialog] = useConfirm();
   const { blocker, setBypass } = useUnsavedChangesGuard(guard && isDirty);
 
@@ -174,7 +178,9 @@ export function ResourceForm({
         {intro}
         {errorAlert}
         <fieldset disabled={isSubmitting || readOnly} className="min-w-0">
-          <FieldGrid fields={fields} idPrefix={formId} />
+          <FormModeContext.Provider value={formMode}>
+            <FieldGrid fields={fields} idPrefix={formId} />
+          </FormModeContext.Provider>
         </fieldset>
         {mode === 'page' ? (
           <div

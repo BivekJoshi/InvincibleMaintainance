@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import QuotationPublicPage from './QuotationPublicPage';
 import { renderWithProviders } from '@/test/renderWithProviders';
 import { json, mockApi } from '@/test/mockApi';
+import uiReducer from '@/redux/slices/uiSlice';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -116,5 +117,45 @@ describe('the customer quotation page', () => {
     await user.click(await screen.findByRole('button', { name: 'Yes, accept' }));
     expect(await screen.findByText('This quotation has expired')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(/expired/);
+  });
+});
+
+describe('the customer quotation page — a bill of quantities (Phase L3)', () => {
+  const BOQ = {
+    ...QUOTATION,
+    items: [
+      { id: 's1', rowType: 'SECTION', number: 'A', description: 'Waterproofing', spec: null, qty: 0, rate: 0, amount: 0, isOptional: false, isProvisional: false },
+      { id: 'i1', rowType: 'ITEM', number: 'A.1', description: 'Seepage treatment', spec: 'Crystalline slurry, two coats', unit: 'sq.ft', qty: 240, rate: 22000, amount: 5280000, isOptional: false, isProvisional: false },
+      { id: 'n1', rowType: 'NOTE', number: null, description: 'मचान दररेटमा समावेश छ।', qty: 0, rate: 0, amount: 0, isOptional: false, isProvisional: false },
+      { id: 'i2', rowType: 'ITEM', number: 'A.2', description: 'Parapet coping', spec: null, unit: 'rft', qty: 40, rate: 50000, amount: 2000000, isOptional: true, isProvisional: false },
+      { id: 'i3', rowType: 'ITEM', number: 'A.3', description: 'Drain chamber', spec: null, unit: 'nos', qty: 2, rate: 405000, amount: 810000, isOptional: false, isProvisional: true },
+    ],
+  };
+  const rows = () => screen.getAllByRole('row').slice(1);
+
+  it('shows sections as numbered headings, notes as text, a spec under its row, and optional rows as not in the total', async () => {
+    open(BOQ);
+    expect(await screen.findByRole('heading', { name: 'Waterproofing' })).toBeInTheDocument();
+    expect(within(rows()[0]).getByText('A')).toBeInTheDocument();
+    expect(within(rows()[1]).getByText('A.1')).toBeInTheDocument();
+    expect(within(rows()[1]).getByText('Crystalline slurry, two coats')).toBeInTheDocument();
+    expect(rows()[2]).toHaveTextContent('मचान दररेटमा समावेश छ।');
+    expect(within(rows()[3]).getByText('Optional — not included in the total')).toBeInTheDocument();
+    expect(within(rows()[3]).getByText('(20,000.00)')).toBeInTheDocument();
+    expect(within(rows()[4]).getByText('Provisional — settled by measurement')).toBeInTheDocument();
+    // The total is the server's — the optional row is not in it.
+    expect(screen.getByText('Rs. 68,817.00')).toBeInTheDocument();
+  });
+
+  it('reads in Nepali when the site is in Nepali', async () => {
+    mockApi((call) => (call.method === 'GET' ? json({ data: BOQ }) : undefined));
+    renderWithProviders(<QuotationPublicPage />, {
+      path: '/quotation/:token', initialPath: '/quotation/tok-1',
+      preloadedState: { ui: { ...uiReducer(undefined, { type: '@@init' }), locale: 'ne' } },
+    });
+    expect(await screen.findByText('ऐच्छिक — जम्मामा समावेश छैन')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'विवरण' })).toBeInTheDocument();
+    expect(screen.getByText('उप-जम्मा')).toBeInTheDocument();
+    expect(screen.getByText('दरभाउपत्र')).toBeInTheDocument();
   });
 });

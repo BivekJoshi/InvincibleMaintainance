@@ -84,6 +84,16 @@ describe('admin survey inbox', () => {
     const body = expectStatus(await sales.post(`/admin/surveys/${inbox.id}/quotation`).send({}), 201);
     expect(body.data.quotation.id).toBeTruthy();
     expect(body.data.survey.status).toBe('QUOTED');
+
+    // Phase L3: what the surveyor recorded reaches the BOQ — kind, material, wastage on the raw quantity —
+    // grouped into sections by category (the unpriced, hand-priced line stays out of an automatic build).
+    const q = body.data.quotation;
+    const compound = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+    expect(q.items.filter((r) => r.rowType === 'SECTION').map((r) => r.description)).toEqual(['Waterproofing', 'Labour']);
+    expect(q.items.find((r) => r.materialId === compound.id)).toMatchObject({
+      rowType: 'ITEM', kind: 'MATERIAL', netQty: 15, wastagePct: 10, qty: 16.5, number: 'A.2',
+    });
+    expect(q.items.find((r) => r.kind === 'LABOUR')).toMatchObject({ number: 'B.1', unit: 'hour', qty: 16 });
     const again = await sales.post(`/admin/surveys/${inbox.id}/quotation`).send({});
     expect([409, 422]).toContain(again.status);
   });

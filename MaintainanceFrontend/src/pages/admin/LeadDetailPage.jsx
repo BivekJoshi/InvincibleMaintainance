@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  ArrowLeft, CalendarCheck, ChevronDown, ClipboardCheck, Contact, FileText, MessageCircle, Pencil, Phone, Trash2, UserPlus, UserRoundCheck,
+  ArrowLeft, CalendarCheck, ChevronDown, ClipboardCheck, Contact, FilePlus2, FileText, MessageCircle, Pencil, Phone, Trash2, UserPlus, UserRoundCheck,
 } from 'lucide-react';
 import { useDeleteLeadMutation, useGetLeadDuplicatesQuery, useGetLeadQuery } from '@/api/leadsApi';
 import { ScheduleVisitDialog } from '@/components/leads/ScheduleVisitDialog';
@@ -193,12 +193,19 @@ export default function LeadDetailPage() {
   const closed = ['WON', 'LOST'].includes(lead.status);
   const whatsapp = whatsappHref(lead.phone);
 
+  // What a follow-up made: a convert's result shows what it made; a draft for an existing customer opens in the builder.
+  const followedUp = (result) => {
+    if (!result) return;
+    if (result.customer) setConverted(result);
+    else if (result.quotation?.id) navigate(`/admin/quotations/${result.quotation.id}`);
+  };
+
   // "Change status" runs the board's rules: Visit booked books the visit, Quoted without a quotation
   // starts one (the lead moves when it is sent), Lost asks why.
   const moveTo = (to) => {
     const dialog = dropDialogFor(to, hasQuotation(lead));
     if (dialog === 'visit' || dialog === 'quotation') {
-      openFollowUp(lead, dialog).then((result) => { if (result) setConverted(result); });
+      openFollowUp(lead, dialog).then(followedUp);
     } else {
       changeStatus(lead, to);
     }
@@ -257,6 +264,11 @@ export default function LeadDetailPage() {
                 <Button variant="outline" size="sm" onClick={() => setOpen('edit')}><Pencil /> Edit</Button>
                 <LeadStatusMenu lead={lead} onChange={moveTo} />
                 <Button variant="outline" size="sm" onClick={() => setOpen('assign')}><UserPlus /> Assign</Button>
+                {can('quotations:write') && lead.status !== 'LOST' ? (
+                  <Button variant="outline" size="sm" onClick={() => openFollowUp(lead, 'quotation').then(followedUp)}>
+                    <FilePlus2 /> New quotation
+                  </Button>
+                ) : null}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button size="sm" disabled={lead.status === 'WON'}>
@@ -308,7 +320,7 @@ export default function LeadDetailPage() {
                   <ActivityComposer
                     lead={lead}
                     defaultType={closed ? 'note' : 'call'}
-                    onLogged={(_activity, followUp) => { if (followUp) setConverted(followUp); }}
+                    onLogged={(_activity, followUp) => followedUp(followUp)}
                   />
                 ) : null}
                 <Timeline lead={lead} />

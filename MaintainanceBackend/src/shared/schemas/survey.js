@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { id, listQuery, optionalText, unit } from './common.js';
 import { PRIORITIES, SURVEY_ITEM_KINDS, SURVEY_METRICS, SURVEY_STATUSES } from '../enums.js';
+import { quotationRow } from './crm.js';
 
 /**
  * The site survey is the one document in the system a field user writes.
@@ -84,21 +85,20 @@ export const surveyReviewSchema = z.object({
  * quotation endpoint — quotation.service.js converts to paisa on the way in.
  * Omit `items` to accept the priced survey as-is.
  */
+/**
+ * Build a quotation from a survey. `items` are BOQ rows (crm.js#quotationRow, rupees) — kind, material,
+ * wastage, optional and spec carried from the survey's lines; without SECTION rows the server groups them
+ * by category. Left out, the server prices the survey's lines itself.
+ */
 export const surveyQuotationSchema = z.object({
-  items: z.array(z.object({
-    rateCardItemId: z.string().nullish(),
-    description: z.string().trim().min(1).max(500),
-    unit: z.string().trim().max(20).optional(),
-    qty: z.coerce.number().positive().max(1_000_000),
-    rate: z.coerce.number().min(0).max(1_000_000_000),
-    sortOrder: z.coerce.number().int().min(0).max(10000).optional(),
-  })).min(1).max(200).optional(),
+  items: z.array(quotationRow).min(1).max(500).optional(),
   discount: z.coerce.number().min(0).max(1_000_000_000).optional(),
   vatApplied: z.coerce.boolean().optional(),
   validUntil: z.coerce.date().optional(),
   terms: optionalText,
   internalNote: optionalText,
-  includeOptional: z.coerce.boolean().default(false),
+  /** Kept for old clients: optional survey lines always become optional rows now (Phase L3). */
+  includeOptional: z.coerce.boolean().optional(),
 });
 
 export const surveyCreateSchema = z.object({

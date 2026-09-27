@@ -210,6 +210,54 @@ export const rateLibrary = {
   reorder: (items) => base.reorder(items),
 };
 
+/** The version of a quotation line's frozen recipe (QuotationItem.recipe). */
+export const RECIPE_SNAPSHOT_VERSION = 1;
+
+/**
+ * Library items as a quotation line freezes them (Phase L3, L-D1): each item's recipe with the price of
+ * every line at this moment (`cost`, paisa per unit; null = unknown), its unit cost at those prices, and
+ * the library's selling rate and category. A later price change never reaches the snapshot.
+ * @param {string[]} ids  rate-card item ids
+ * @returns {Promise<Map<string, { snapshot: object|null, unitCost: number|null, rate: number, category: string|null,
+ *   name: string, unit: string }>>}  snapshot is null for an item without a recipe
+ */
+export async function recipeSnapshots(ids) {
+  if (!ids.length) return new Map();
+  const [items, defaults] = await Promise.all([
+    prisma.rateCardItem.findMany({ where: { id: { in: ids } }, include: INCLUDE }),
+    recipeDefaults(),
+  ]);
+  const takenAt = new Date().toISOString();
+  return new Map(items.map((item) => {
+    const { cost } = derive(item, defaults);
+    const snapshot = item.components.length ? {
+      v: RECIPE_SNAPSHOT_VERSION,
+      rateCardItemId: item.id,
+      code: item.code,
+      name: item.name,
+      recipeQty: item.recipeQty,
+      overheadPct: item.overheadPct ?? defaults.overheadPct,
+      profitPct: item.profitPct ?? defaults.profitPct,
+      components: item.components.map((c) => ({
+        kind: c.kind,
+        materialId: c.materialId,
+        tradeId: c.tradeId,
+        description: c.description ?? c.material?.name ?? c.trade?.name ?? null,
+        unit: c.unit,
+        qty: c.qty,
+        wastagePct: c.wastagePct,
+        cost: priceOf(c),
+      })),
+      unitCost: cost?.complete ? cost.unitCost : null,
+      complete: Boolean(cost?.complete),
+      takenAt,
+    } : null;
+    return [item.id, {
+      snapshot, unitCost: snapshot?.unitCost ?? null, rate: item.rate, category: item.category, name: item.name, unit: item.unit,
+    }];
+  }));
+}
+
 /**
  * POST /admin/rate-card/derive — a recipe's cost and derived rate at today's prices, and the margin at the
  * form's `rate` (when sent) and at the derived rate. Nothing is saved; the client computes no money.

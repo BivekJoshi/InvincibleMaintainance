@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toPaisa, toRupees, lineAmount, documentTotals, formatNpr, sum,
   allocate, recipeCost, sellRate, margin, boqTotals, paymentSchedule, finalBillTotals, rs, proRata,
+  discountForPct, discountForTarget,
 } from '../src/utils/money.js';
 
 describe('money — integer paisa arithmetic', () => {
@@ -169,6 +170,36 @@ describe('money — Phase L2 building blocks', () => {
       const final = finalBillTotals(lines, schedule.slice(0, 2), opts);
       expect(final.due.total + schedule[0].total + schedule[1].total).toBe(contract.total);
       expect(final.due.vat + schedule[0].vat + schedule[1].vat).toBe(contract.vatAmount);
+    }
+  });
+});
+
+describe('money — discount helpers (Phase L3)', () => {
+  it('a percentage discount is rounded once and never above the subtotal', () => {
+    expect(discountForPct(1000000, 5)).toBe(50000);
+    expect(discountForPct(333333, 10)).toBe(33333);
+    expect(discountForPct(1000, 150)).toBe(1000);
+    expect(discountForPct(1000, -5)).toBe(0);
+  });
+
+  it('a target total (VAT included) gives the discount that lands on it to the paisa', () => {
+    // Rs 10,000 + 13% VAT = Rs 11,300; the customer wants "Rs 11,000 flat".
+    const discount = discountForTarget(1000000, 1100000, { vatApplied: true, vatRate: 13 });
+    expect(discount).toBe(26549);
+    expect(documentTotals([{ qty: 1, rate: 1000000 }], { discount, vatRate: 13 }).total).toBe(1100000);
+    expect(discountForTarget(1000000, 900000, { vatApplied: false })).toBe(100000);
+    expect(discountForTarget(1000000, 2000000, { vatApplied: true, vatRate: 13 })).toBe(0); // above the price: none
+  });
+
+  it('property: a reachable target is hit exactly, an unreachable one is not exceeded', () => {
+    const rnd = seeded(7);
+    for (let i = 0; i < 500; i += 1) {
+      const subtotal = 1 + Math.floor(rnd() * 50_000_000);
+      const target = Math.floor(rnd() * subtotal * 1.13);
+      const discount = discountForTarget(subtotal, target, { vatApplied: true, vatRate: 13 });
+      const total = documentTotals([{ qty: 1, rate: subtotal }], { discount, vatRate: 13 }).total;
+      expect(total).toBeLessThanOrEqual(target);
+      expect(target - total).toBeLessThanOrEqual(1);
     }
   });
 });

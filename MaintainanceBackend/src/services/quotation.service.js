@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { AppError, notFound, badRequest, conflict, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
-import { documentTotals, toPaisa, formatNpr } from '../utils/money.js';
+import { lineAmount, toPaisa, formatNpr } from '../utils/money.js';
 import { nextNumber } from '../utils/numbering.js';
 import { publicToken } from '../utils/tokens.js';
 import { QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
@@ -15,6 +15,8 @@ import { recordEvent } from './audit.service.js';
 import { createJob } from './job.service.js';
 import { adminJobPath, adminLeadMarkLostPath, adminQuotationPath, webUrl } from '../utils/links.js';
 import { addDays } from '../utils/dates.js';
+import { buildLines, costSummary, decorateBoq, takeoffFor, totalsFor } from './boq.service.js';
+import { recipeSnapshots } from './rateLibrary.service.js';
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true, preferredLocale: true } },
@@ -57,18 +59,10 @@ const KATHMANDU_OFFSET_MS = (5 * 60 + 45) * 60_000;
 const npr = (paisa) => `NPR ${formatNpr(paisa, { withSymbol: false })}`;
 const label = (q) => `${q.number} v${q.version}`;
 
-/** Converts rupee-denominated request items to paisa and computes document totals. */
-async function buildTotals(items, { discount = 0, vatApplied = true }) {
-  const vatRate = Number(await getSetting('finance.vatRate', env.business.vatRate));
-  const paisaItems = items.map((i, idx) => ({
-    ...i,
-    qty: Number(i.qty),
-    rate: toPaisa(i.rate),
-    sortOrder: i.sortOrder ?? idx,
-  }));
-  const totals = documentTotals(paisaItems, { discount: toPaisa(discount), vatApplied, vatRate });
-  return { ...totals, items: totals.lines };
-}
+/** The money columns a quotation stores, from `totalsFor`. */
+const totalsData = (t) => ({
+  subtotal: t.subtotal, discount: t.discount, vatApplied: t.vatApplied, vatRate: t.vatRate, vatAmount: t.vatAmount, total: t.total,
+});
 
 /**
  * The one expiry rule, shared by the customer's GET, the customer's decision and
@@ -193,7 +187,7 @@ export async function getQuotation(id) {
     // So the screen can say "someone else must approve this" without reading settings (MANAGER cannot).
     getSetting('quotation.makerChecker', true).then((v) => v !== false),
   ]);
-  return { ...q, versions, survey, messages, makerChecker };
+  return decorateBoq({ ...q, versions, survey, messages, makerChecker });
 }
 
 /** The customer's own messages about a quotation — what the Send panel reports on. */
@@ -206,8 +200,9 @@ const CUSTOMER_TEMPLATES = ['quotation_sent', 'quotation_accepted', 'quotation_c
  *   (lead convert); without one the quotation gets a transaction of its own
  */
 export async function createQuotation(input, userId, client = prisma) {
-  const { items, discount = 0, vatApplied = true, ...rest } = input;
-  const totals = await buildTotals(items, { discount, vatApplied });
+  const { items = [], discount = 0, vatApplied = true, ...rest } = input;
+  const rows = await buildLines(items);
+  const totals = await totalsFor(rows, { discount: toPaisa(discount), vatApplied });
   // Submitting needs a validity date; a quotation built from a survey or a convert has none of its own.
   if (!rest.validUntil) rest.validUntil = await defaultValidUntil();
 
@@ -218,13 +213,8 @@ export async function createQuotation(input, userId, client = prisma) {
         ...rest,
         number,
         createdById: userId ?? null,
-        subtotal: totals.subtotal,
-        discount: totals.discount,
-        vatApplied: totals.vatApplied,
-        vatRate: totals.vatRate,
-        vatAmount: totals.vatAmount,
-        total: totals.total,
-        items: { create: totals.items },
+        ...totalsData(totals),
+        items: { create: rows },
       },
       include: INCLUDE,
     });
@@ -233,7 +223,7 @@ export async function createQuotation(input, userId, client = prisma) {
       recordId: quotation.id,
       after: { number, status: quotation.status, total: quotation.total, customerId: quotation.customerId, leadId: quotation.leadId },
     }, tx);
-    return quotation;
+    return decorateBoq(quotation);
   };
   return client === prisma ? prisma.$transaction(run) : run(client);
 }
@@ -250,26 +240,130 @@ export async function updateQuotation(id, input) {
   }
   const { items, discount, vatApplied, ...rest } = input;
 
-  if (!items) {
-    return prisma.quotation.update({ where: { id }, data: rest, include: INCLUDE });
+  // Rows sent back with their ids keep their frozen recipe and cost (buildLines). A discount or VAT change
+  // without rows re-totals the stored ones — the totals never go stale.
+  if (!items && discount === undefined && vatApplied === undefined) {
+    return decorateBoq(await prisma.quotation.update({ where: { id }, data: rest, include: INCLUDE }));
   }
-  const totals = await buildTotals(items, {
-    discount: discount ?? existing.discount / 100,
+  const rows = items ? await buildLines(items, { existing: existing.items }) : existing.items.map(storedRow);
+  const totals = await totalsFor(rows, {
+    discount: discount !== undefined ? toPaisa(discount) : existing.discount,
     vatApplied: vatApplied ?? existing.vatApplied,
   });
-  return prisma.$transaction(async (tx) => {
+  return decorateBoq(await prisma.$transaction(async (tx) => {
     await tx.quotationItem.deleteMany({ where: { quotationId: id } });
     return tx.quotation.update({
       where: { id },
-      data: {
-        ...rest,
-        subtotal: totals.subtotal, discount: totals.discount, vatApplied: totals.vatApplied,
-        vatRate: totals.vatRate, vatAmount: totals.vatAmount, total: totals.total,
-        items: { create: totals.items },
-      },
+      data: { ...rest, ...totalsData(totals), items: { create: rows } },
       include: INCLUDE,
     });
+  }));
+}
+
+/** A stored row as a row to write again: its own columns, without its id or its quotation. */
+const storedRow = ({ id: _id, quotationId: _q, ...row }) => ({ ...row, measurements: row.measurements ?? undefined, recipe: row.recipe ?? undefined });
+
+/**
+ * POST /admin/quotations/preview — the builder's rows through the same code as a save (`buildLines`,
+ * `totalsFor`), nothing written. `quotationId` keeps that draft's frozen recipes for rows sent with ids.
+ * Cost and margin are in the answer; the cost wall strips them for callers without costs:read.
+ */
+export async function previewQuotation({ quotationId, items = [], discount = 0, discountPct, targetTotal, vatApplied = true }) {
+  const existing = quotationId ? (await findQuotation(quotationId)).items : [];
+  const rows = await buildLines(items, { existing });
+  const totals = await totalsFor(rows, {
+    discount: toPaisa(discount), discountPct, targetTotal: targetTotal != null ? toPaisa(targetTotal) : undefined, vatApplied,
   });
+  const numbered = (await decorateBoq({ items: rows, ...totalsData(totals) })).items;
+  return {
+    items: numbered.map((row, index) => ({
+      index, rowType: row.rowType, number: row.number, netQty: row.netQty ?? null, qty: row.qty, amount: row.amount,
+      recipe: row.recipe ?? null, unitCost: row.unitCost ?? null, costAmount: row.costAmount ?? null,
+    })),
+    totals,
+    cost: costSummary(rows, totals),
+  };
+}
+
+/** GET /admin/quotations/:id/takeoff — materials in buying units with stock, labour days by trade. */
+export async function quotationTakeoff(id) {
+  const q = await findQuotation(id);
+  return takeoffFor(q.items);
+}
+
+/**
+ * POST /admin/quotations/:id/reprice — a DRAFT's library rows re-priced from the rate library as it is
+ * now: the rate and the frozen recipe and cost. `apply: false` previews. Any other status is 422.
+ */
+export async function repriceQuotation(id, { apply }) {
+  const q = await findQuotation(id);
+  if (q.status !== 'DRAFT') {
+    throw new AppError(422, 'QUOTATION_NOT_DRAFT', 'Only a draft is repriced. Revise it to price a new version.');
+  }
+  const numbered = (await decorateBoq(q)).items;
+  const libraryRows = numbered.filter((row) => row.rowType === 'ITEM' && row.rateCardItemId);
+  const library = await recipeSnapshots([...new Set(libraryRows.map((row) => row.rateCardItemId))]);
+  const changes = libraryRows
+    .map((row) => ({ row, now: library.get(row.rateCardItemId) }))
+    .filter(({ row, now }) => now && (now.rate !== row.rate || now.unitCost !== row.unitCost
+      || JSON.stringify(now.snapshot?.components ?? null) !== JSON.stringify(row.recipe?.components ?? null)));
+  const preview = changes.map(({ row, now }) => ({
+    id: row.id, number: row.number, description: row.description,
+    rate: row.rate, newRate: now.rate, unitCost: row.unitCost, newUnitCost: now.unitCost,
+  }));
+  if (!apply || !changes.length) return { rows: preview, applied: 0 };
+
+  const changed = new Map(changes.map(({ row, now }) => [row.id, now]));
+  const rows = q.items.map((row) => {
+    const now = changed.get(row.id);
+    const out = storedRow(row);
+    if (!now) return out;
+    return {
+      ...out, rate: now.rate, recipe: now.snapshot ?? undefined, unitCost: now.unitCost,
+      costAmount: now.unitCost == null ? null : lineAmount(row.qty, now.unitCost),
+    };
+  });
+  const totals = await totalsFor(rows, { discount: q.discount, vatApplied: q.vatApplied });
+  await prisma.$transaction(async (tx) => {
+    await tx.quotationItem.deleteMany({ where: { quotationId: id } });
+    await tx.quotation.update({ where: { id }, data: { ...totalsData(totals), items: { create: rows } } });
+  });
+  return { rows: preview, applied: preview.length, quotation: await getQuotation(id) };
+}
+
+/**
+ * POST /admin/quotations/:id/copy — a new DRAFT (its own number, version 1) with this quotation's rows as
+ * they are — recipes and costs frozen as they were — its terms, discount and VAT choice, for the same
+ * customer or another. Not a revision: the source is untouched.
+ */
+export async function copyQuotation(id, { customerId, siteId, leadId } = {}, userId) {
+  const source = await findQuotation(id);
+  const rows = source.items.map(storedRow);
+  const totals = await totalsFor(rows, { discount: source.discount, vatApplied: source.vatApplied });
+  const created = await prisma.$transaction(async (tx) => {
+    const number = await nextNumber(tx, 'QT');
+    const copy = await tx.quotation.create({
+      data: {
+        number,
+        customerId: customerId ?? source.customerId,
+        siteId: customerId && customerId !== source.customerId ? (siteId ?? null) : (siteId ?? source.siteId),
+        leadId: leadId ?? (customerId && customerId !== source.customerId ? null : source.leadId),
+        validUntil: await defaultValidUntil(),
+        terms: source.terms,
+        internalNote: `Copied from ${label(source)}`,
+        createdById: userId ?? null,
+        ...totalsData(totals),
+        items: { create: rows },
+      },
+    });
+    await recordEvent('quotation.created', {
+      model: 'Quotation', recordId: copy.id,
+      after: { number, status: copy.status, total: copy.total, customerId: copy.customerId, leadId: copy.leadId },
+      meta: { copiedFrom: source.id },
+    }, tx);
+    return copy;
+  });
+  return getQuotation(created.id);
 }
 
 // ── internal approval
@@ -280,9 +374,10 @@ export async function updateQuotation(id, input) {
  * the system's decision, and is recorded as such.
  */
 export async function submitQuotation(id, userId) {
-  const q = await findQuotation(id, { _count: { select: { items: true } } });
+  const q = await findQuotation(id);
   assertMove(q.status, 'PENDING_APPROVAL');
-  if (!q._count.items) throw new AppError(422, 'QUOTATION_INCOMPLETE', 'Add at least one line before submitting.');
+  const priced = await prisma.quotationItem.count({ where: { quotationId: id, rowType: 'ITEM', isOptional: false } });
+  if (!priced) throw new AppError(422, 'QUOTATION_INCOMPLETE', 'Add at least one priced line (not optional) before submitting.');
   const customer = await prisma.customer.findFirst({ where: { id: q.customerId, deletedAt: null }, select: { id: true } });
   if (!customer) throw new AppError(422, 'QUOTATION_INCOMPLETE', 'This quotation has no active customer.');
   const now = new Date();
@@ -489,7 +584,8 @@ export async function reviseQuotation(id, userId) {
         requestedChanges: source.status === 'CHANGES_REQUESTED' ? source.decisionNote : null,
         createdById: userId ?? null,
         items: {
-          create: source.items.map(({ id: _i, quotationId: _q, ...rest }) => rest),
+          // Rows, measurements and frozen recipes as they are (Phase L3).
+          create: source.items.map(storedRow),
         },
       },
     });
@@ -525,6 +621,18 @@ async function replacementFor(q) {
 }
 
 /** What a customer may see: an allowlist, never the row. */
+/** The customer's BOQ: rows and section subtotals, never a cost, a recipe or a measurement's working. */
+async function publicBoq(q) {
+  const { items, boq } = await decorateBoq(q);
+  return {
+    items: items.map((i) => ({
+      id: i.id, rowType: i.rowType, number: i.number, description: i.description, spec: i.spec, unit: i.unit,
+      qty: i.qty, rate: i.rate, amount: i.amount, isOptional: i.isOptional, isProvisional: i.isProvisional, sortOrder: i.sortOrder,
+    })),
+    boq: { sections: boq.sections, optionalTotal: boq.optionalTotal },
+  };
+}
+
 async function publicView(q) {
   return {
     number: q.number,
@@ -545,9 +653,8 @@ async function publicView(q) {
     createdAt: q.createdAt,
     customer: { name: q.customer.name },
     site: q.site ? { label: q.site.label, address: q.site.address } : null,
-    items: q.items.map((i) => ({
-      id: i.id, description: i.description, unit: i.unit, qty: i.qty, rate: i.rate, amount: i.amount, sortOrder: i.sortOrder,
-    })),
+    // An allowlist: never a cost, a recipe or a measurement's working (Phase L3).
+    ...(await publicBoq(q)),
     replaced: await replacementFor(q),
     actions: q.status === 'SENT' ? [...QUOTATION_DECISIONS] : [],
   };
@@ -664,7 +771,7 @@ async function jobPlanFor(q) {
       select: { id: true },
     })
     : null;
-  const what = service?.name ?? q.items[0]?.description ?? 'Work';
+  const what = service?.name ?? q.items.find((i) => i.rowType === 'ITEM')?.description ?? 'Work';
   return {
     type: 'REPAIR',
     title: `${what} — ${q.number}`.slice(0, 200),
