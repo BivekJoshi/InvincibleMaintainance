@@ -787,15 +787,18 @@ async function main() {
   const boqDemo = await prisma.quotation.findFirst({
     where: { customer: { phone: '9841700001' }, deletedAt: null }, include: { stages: true },
   });
-  if (boqDemo && !boqDemo.stages.length) {
+  // Keyed on the duration, so a fresh database (where the demo was just made with the default schedule) and
+  // an older one end up the same.
+  if (boqDemo && boqDemo.estimatedDays == null) {
     const standard = await prisma.quotationTerms.findFirst({ where: { isDefault: true } });
     await prisma.quotation.update({
       where: { id: boqDemo.id },
       data: {
         estimatedDays: 6,
         exclusions: 'Water and electricity during the work are the owner\'s. Moving heavy furniture is not included.',
-        terms: boqDemo.terms ?? standard?.body ?? null,
+        terms: standard?.body ?? boqDemo.terms ?? null,
         stages: {
+          deleteMany: {},
           create: [
             { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT', sortOrder: 0 },
             { label: 'Plaster done', basisPoints: 4000, trigger: 'MILESTONE', sortOrder: 1 },

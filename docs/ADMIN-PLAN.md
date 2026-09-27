@@ -922,11 +922,39 @@ margin only for MANAGER; take-off and labour match the recipes; a revision copie
   could match the list during the lazy load). A lead that is already a customer opens the builder straight after
   "quote without a visit".
 
-**L4 · Terms & the customer document (≈3–4 days)** — contract type, payment schedule, duration, exclusions, terms
+**L4 · Terms & the customer document (≈3–4 days) · ✅ done 2026-09-27** — contract type, payment schedule, duration, exclusions, terms
 library (`finance.quotationTerms` finally applied), `LOW_MARGIN` approval gate, sectioned public page (en/ne,
 amount in words, decline reasons → LOST), "Opened" tracking, print route, `.xlsx` export (exceljs).
 *Acceptance:* the public page works en/ne at 360 px; print totals equal the page; the .xlsx formulas recompute to
 the same totals; SALES's export has no cost sheet; a low-margin quote needs the acknowledgement.
+
+**Deviations (Phase L4, 2026-09-27)**
+- **The terms library is the manager's** (`rates:write`; read with `rates:read` or `quotations:read`), with the Nepali
+  body as its own column (`bodyNe`) — the CMS translations table is `cms:write`, which a manager does not hold.
+  Exactly one default; a new quotation starts with its English body (then the `finance.quotationTerms` setting).
+- **The quotation stores its cost** (`costTotal`, `costComplete`, backfilled from the rows) so a list can show the
+  margin without reading every row; both are cost keys. The approval queue's Margin column reads them.
+- **Stage VAT** is split by the same basis points as the amount (`allocate`, from L2), not "last stage absorbs".
+- **The customer view has options**: `showMeasurements` (the measurements annex, default on — the customer sees how
+  each quantity was taken) and `summaryOnly` (section subtotals without the item rows). The public view gains
+  `letterhead` and BS `dates`, and every staff response carries the same for the print route (J2's PDFs).
+- **The total in words** is `money.js#amountInWords` (en and ne, lakh/crore) — the Nepali words for 1–99 are the
+  standard forms; a native speaker should proof them before launch (J1).
+- **A customer view is counted with one raw SQL statement** (a view is not an audited change) and stamped
+  `NOW() AT TIME ZONE 'UTC'`: the database session runs in Kathmandu time, so a bare `NOW()` — or a bound Date —
+  landed 5 h 45 min ahead in the UTC column (caught by the frontend's screenshot pass; a test pins it). Prisma's own
+  writes were checked and are unaffected.
+- **Excel:** BOQ, Measurements, Payment schedule and — costs:read only — Cost. Every formula caches the server's
+  figure; `23-quotation-document` strips the cached results and has LibreOffice recalculate, and the recomputed
+  subtotal, section subtotal and total equal the server's (skipped where LibreOffice is absent). exceljs's `uuid` is
+  overridden to ^11.1.1 (GHSA-w5hq-g745-h8pq). Audited as `export.xlsx`.
+- **The margin gate** treats an unknown cost as low, so hand-priced quotations now need the acknowledgement; the
+  shared `approveAndSend` test helper acknowledges, and the approval suite's draft is a costed MATERIAL row. The
+  e2e specs approve through the new dialog. Two tests hardened against a reused test database (the assignee list
+  now searches for the seeded accounts).
+- **Frontend:** the print route sits outside the admin shell, with a language toggle; new kit fields
+  `paymentSchedule` (EditableGrid) and `checkbox`; the decline dialog's six reason chips; "Opened N×" with WhatsApp and
+  Viber share; the lost dialog pre-fills `?category=`.
 
 **L5 · Site-visit kit (≈4 days, after H2)** — visit time window, site contact, confirm/reschedule link and
 day-before reminder; field survey stepper: customer's photos, GPS pin, service inspection templates, measurement
@@ -1012,7 +1040,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | L1 Lead follow-through ✅ 2026-09-26 | 3 | 36 | Every lead has a next action; nothing goes cold unseen |
 | L2 Rate library & money wall ✅ 2026-09-27 | 4 | 40 | Recipe rates; cost only for managers |
 | L3 BOQ builder ✅ 2026-09-27 | 5 | 45 | Excel-grade quotation with take-off and labour days |
-| L4 Terms & customer document | 4 | 49 | Payment schedule, contract type, print, Excel |
+| L4 Terms & customer document ✅ 2026-09-27 | 4 | 49 | Payment schedule, contract type, print, Excel |
 | H2 Operations — field app | 3 | 52 | Photos, materials and job mutations offline |
 | L5 Site-visit kit | 4 | 56 | Confirmed visits, checklists, measurement sheet |
 | I Finance & aftercare | 6 | 62 | Billing and retention |

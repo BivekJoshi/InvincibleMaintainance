@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-27 (Phase L3). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-27 (Phase L4). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -34,6 +34,7 @@ Updated 2026-09-27 (Phase L3). **Current build order: [`docs/ADMIN-PLAN.md`](doc
 | **v2 · L1 Lead follow-through** | **Every open lead has a next action and a clock:** call outcomes with rules (No answer books the retry, Book visit → CONTACTED + the booking dialog, Not interested closes as LOST…), `PATCH …/next-action`, contact attempts, time in stage, qualification (property, floors, age, budget band, decision maker incl. owner abroad). **QUOTED means sent:** drafts no longer move the lead; sending does and books the follow-up. **Reminders:** `leads:followups` (due actions, a 09:00 Kathmandu digest) and `pipeline:stale` (quiet leads, visits without surveys, unquoted surveys, waiting approvals, unanswered and expiring quotes), once each via `Notification.dedupeKey`; a decline or expiry asks "mark lost?". **LOST** needs a category and records the stage; `GET /admin/reports/lost` and the Lost leads page. Screens: NextActionCard, outcome composer, qualification card, Due today · Overdue · No next action views, "Nd in stage" chips, board drops that open the booking / quotation dialog. | ✅ 2026-09-26 |
 | **v2 · L2 Rate library & money wall** | **Recipe rates (L-D1):** a rate-library item holds what one unit of work needs — materials with wastage, labour man-days by trade, equipment and other costs, overhead and profit — and a DERIVED rate is priced from it by the server (`recipeCost` → `sellRate`, rounded up). A price or wage change never moves a rate: the item shows **Out of date** until a manager reprices it (preview → apply, `rate_card.repriced`). **Trades & wages**, pack sizes on materials, construction units (sq.m, cu.ft, cu.m, rmt, box, tin, trip…). **The cost wall (L-D4):** `costs:read` (MANAGER, ADMIN) alone sees cost, margin, recipe cost, purchase rates in the library and wages — stripped by the server everywhere else, history included; job costing and the job-margin report moved behind it; SALES reads the library but no longer writes it. `money.js` gains `allocate`, `recipeCost`, `sellRate`, `margin`, `boqTotals`, `paymentSchedule`, `finalBillTotals`; new `utils/quantity.js`. Screens: the Rate library (recipe field, live cost-vs-rate card, Out-of-date badge, bulk "Update to derived rate"), Trades & wages, the roles matrix. | ✅ 2026-09-27 |
 | **v2 · L3 The BOQ builder** | **The quotation is a bill of quantities:** ordered ITEM / SECTION / NOTE rows numbered A, A.1…, section subtotals, measurement sheets (nos × L × B × H with deductions, feet-inches input), wastage, optional rows shown but never totalled, provisional rows and specs. A row priced from the rate library **freezes its recipe and cost** (L-D1) — a library change reaches a draft only through Reprice (preview → apply). **EditableGrid** (keyboard-first: arrows, Enter, Tab, type-to-overwrite, Ctrl+Enter / Ctrl+Shift+Enter / Ctrl+D / Alt+↑↓ / `/` library search; paste from Excel with Indian digit grouping), reached only through ResourceForm field types. Builder tabs **BOQ · Take-off** (buying units, packs, stock, shortfall) **· Labour** (days per trade, crew calculator) **· Payment & terms · Customer view · History**, a live server preview with "%" and "target total" discount helpers, and a **margin rail for managers only** (the cost wall now covers quotations). **New quotation** sheet: blank · from survey · copy. Surveys carry kind, material, wastage, optional lines and notes into sectioned BOQs; the customer page shows sections, notes and optional rows. | ✅ 2026-09-27 |
+| **v2 · L4 Terms & the customer document** | **The contract around the BOQ:** lump sum or item rate (with the sentence the customer reads), a **payment schedule** (50·40·10 by default; stages must total 100 %, one advance at most; the server's amounts sum to the total exactly), duration, exclusions, and a **terms library** (English + Nepali, one default, the manager's). **The margin gate:** approving below `quotation.minMarginPct` (15 %) — or with any cost unknown — needs an explicit acknowledgement, recorded on the event; auto-approval never fires on a low margin; managers see a Margin column. **The customer's document:** letterhead, AD + BS dates, numbered sections with subtotals (or a section summary), notes, specs, optional rows, a measurements annex, the total in words (lakh/crore, en/ne), the schedule, the terms — on the link page (360 px, en/ne), a print route, and an **Excel workbook** whose formulas recalculate to the same totals (Cost sheet for managers only). Decline reasons feed the lost categories; "Opened N×" and WhatsApp/Viber share in the send panel. | ✅ 2026-09-27 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, the whole lead pipeline (list, board, detail, convert) and customers with their sites, the
@@ -119,12 +120,13 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A, B, C (C1 + C2), D (D1 + D2), E, F (F1 + F2), G, H1, **L0–L3** are done — the business flow runs end to end
+Phases A, B, C (C1 + C2), D (D1 + D2), E, F (F1 + F2), G, H1, **L0–L4** are done — the business flow runs end to end
 from the UI, an ADMIN can trace any record, a dispatcher runs the day from the board, and every open lead carries a next
-action, every rate can be built from a recipe, and a quotation is a bill of quantities. Phase L (2026-09-26) was
-inserted after H1: next is **Phase L4 — terms and the customer document** (`docs/prompts/PHASE-L4-terms-customer-document.md`:
-contract type, payment schedule, the low-margin approval gate, the sectioned public page, print and Excel), then H2
-(the field app's gaps, including the last raw Prisma calls, #15).
+action, every rate can be built from a recipe, and a quotation is a bill of quantities the customer reads as a proper
+document. Phase L (2026-09-26) was inserted after H1; with L0–L4 done, the order returns to **Phase H2 — the field
+app's gaps** (`docs/prompts/PHASE-H2-field-app.md`: photo upload, material logging, job mutations on the offline queue,
+job history, and the last raw Prisma calls, #15), then L5 (the site-visit kit, which needs H2's photo queue), then I
+(finance screens), then L6–L8.
 
 Left from H1 for later phases: the costing tab shows labour cost to every role that reads jobs (SALES, ACCOUNTANT), from
 which a rate can be worked out; a checklist cannot be reordered (no endpoint); `casestudy.service` stores
