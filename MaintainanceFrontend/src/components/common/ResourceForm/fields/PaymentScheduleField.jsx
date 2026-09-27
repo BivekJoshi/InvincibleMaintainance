@@ -24,14 +24,14 @@ const pctCell = (v) => (typeof v === 'number' ? `${formatQty(v)}%` : v ?? '');
  * amount column has no editor and shows only what `figures` (the preview's or the saved stages) gives.
  */
 const COLUMNS = [
-  { key: 'label', header: 'Stage', grow: 1.4, minWidth: 140, editor: 'text', maxLength: 80, placeholder: 'Advance' },
-  { key: 'pct', header: 'Share', width: 84, editor: 'number', align: 'right', format: pctCell, placeholder: '50' },
+  { key: 'label', header: 'Stage', grow: 1.4, minWidth: 120, editor: 'text', maxLength: 80, placeholder: 'Advance' },
+  { key: 'pct', header: 'Share', width: 72, editor: 'number', align: 'right', format: pctCell, placeholder: '50' },
   {
-    key: 'trigger', header: 'Falls due', width: 200, editor: 'select', options: TRIGGER_OPTIONS,
+    key: 'trigger', header: 'Falls due', width: 176, editor: 'select', options: TRIGGER_OPTIONS,
     format: (v) => PAYMENT_TRIGGER_LABELS[v] ?? v ?? '',
   },
   {
-    key: 'amount', header: 'Amount', width: 150, align: 'right', get: () => null,
+    key: 'amount', header: 'Amount', width: 128, align: 'right', get: () => null,
     format: (_v, _row, { meta }) => (meta?.total != null
       ? (
         <span className="tabular-nums" title={meta.vat ? `VAT ${formatNpr(meta.vat)}` : undefined}>

@@ -26,12 +26,14 @@ export function LineItemsTable({ items = [], showSymbol = true, locale = 'en', s
   const columns = numbered ? 5 : 4;
 
   return (
-    <div className="overflow-x-auto py-6">
+    <div className="py-6">
+      {/* On a phone the rates and amounts sit to the right: the table scrolls in its own box, never the page. */}
+      <p className="mb-2 text-xs text-muted-foreground sm:hidden print:hidden" data-testid="swipe-hint">{copy.swipe}</p>
       <Table>
         <TableHeader>
           <TableRow>
             {numbered ? <TableHead className="w-12">{copy.number}</TableHead> : null}
-            <TableHead>{copy.description}</TableHead>
+            <TableHead className="min-w-[9rem]">{copy.description}</TableHead>
             <TableHead className="text-right">{copy.qty}</TableHead>
             <TableHead className="text-right">{copy.rate}</TableHead>
             <TableHead className="text-right">{copy.amount}</TableHead>
@@ -50,7 +52,7 @@ export function LineItemsTable({ items = [], showSymbol = true, locale = 'en', s
                     <h3 className="text-sm">{item.description}</h3>
                     {item.spec ? <p className="mt-0.5 whitespace-pre-line text-xs font-normal normal-case tracking-normal text-muted-foreground">{item.spec}</p> : null}
                   </TableCell>
-                  <TableCell className="text-right text-xs font-semibold tabular-nums">
+                  <TableCell className="whitespace-nowrap text-right text-xs font-semibold tabular-nums">
                     {subtotal != null ? <span title={copy.sectionTotal(item.number ?? '')}>{money(subtotal)}</span> : null}
                   </TableCell>
                 </TableRow>
@@ -75,8 +77,8 @@ export function LineItemsTable({ items = [], showSymbol = true, locale = 'en', s
                 <TableCell className="whitespace-nowrap text-right align-top tabular-nums">
                   {formatQty(item.qty)}{item.unit ? <span className="text-muted-foreground"> {item.unit}</span> : null}
                 </TableCell>
-                <TableCell className="text-right align-top tabular-nums">{money(item.rate)}</TableCell>
-                <TableCell className="text-right align-top font-medium tabular-nums">
+                <TableCell className="whitespace-nowrap text-right align-top tabular-nums">{money(item.rate)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right align-top font-medium tabular-nums">
                   {item.isOptional ? `(${money(item.amount)})` : money(item.amount)}
                 </TableCell>
               </TableRow>

@@ -308,6 +308,32 @@ describe('the lead page', () => {
     }));
   });
 
+  it('?markLost=1&category=PRICE starts the dialog on the customer’s decline reason (Phase L4)', async () => {
+    const user = userEvent.setup();
+    const calls = detailApi();
+    const { router } = renderWithProviders(<LeadDetailPage />, {
+      path: '/admin/leads/:id', initialPath: '/admin/leads/l1?markLost=1&category=PRICE', preloadedState: signedInAs('SALES'),
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Mark सीता राई as lost' });
+    await waitFor(() => expect(router.state.location.search).toBe(''));
+    expect(within(dialog).getByRole('combobox', { name: /Why was it lost/ })).toHaveTextContent('Price too high');
+    // A person still decides: nothing is sent until they confirm.
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as lost' }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')).toMatchObject({
+      path: '/admin/leads/l1/status', body: { status: 'LOST', lostCategory: 'PRICE' },
+    }));
+  });
+
+  it('ignores a category it does not know', async () => {
+    detailApi();
+    renderWithProviders(<LeadDetailPage />, {
+      path: '/admin/leads/:id', initialPath: '/admin/leads/l1?markLost=1&category=NOT_A_REASON', preloadedState: signedInAs('SALES'),
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Mark सीता राई as lost' });
+    expect(within(dialog).getByRole('combobox', { name: /Why was it lost/ })).not.toHaveTextContent('Price too high');
+  });
+
   it('shows the next action, the outcome in the timeline, and what qualification is missing', async () => {
     const user = userEvent.setup();
     const calls = detailApi();

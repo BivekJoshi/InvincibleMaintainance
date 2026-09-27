@@ -44,6 +44,7 @@ export const QUOTATION_DOCUMENT_COPY = {
       optional: 'Optional — not included in the total',
       provisional: 'Provisional — settled by measurement',
       sectionTotal: (number) => `Total of ${number}`,
+      swipe: 'Swipe the table sideways to see the rates and amounts.',
     },
     summary: {
       title: 'Summary by section',
@@ -127,6 +128,7 @@ export const QUOTATION_DOCUMENT_COPY = {
       optional: 'ऐच्छिक — जम्मामा समावेश छैन',
       provisional: 'अस्थायी — नापपछि यकिन हुने',
       sectionTotal: (number) => `${number} को जम्मा`,
+      swipe: 'दर र रकम हेर्न तालिकालाई छेउतिर सार्नुहोस्।',
     },
     summary: {
       title: 'खण्डअनुसार सारांश',

@@ -1,12 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { apiAs, signIn } from './support/api.js';
+import { approveInDialog, rupeesText } from './support/quotation.js';
 
 /**
  * Phase L3's acceptance, end to end: SALES builds a bill of quantities in the builder — sections and rows by
  * keyboard, 15 rows pasted from Excel, a row from the rate library with `/`, a measured line and an optional
  * row — saves it, checks the server's totals are the ones the builder showed, and submits; a MANAGER sees the
- * margin, approves and sends. Phases L4–L8 extend this walk.
+ * margin, approves and sends. Phase L4: the pasted rows have no known cost, so the approval needs the low-margin
+ * acknowledgement; the customer opens the link on a 360 px phone — the sections, the default 50 · 40 · 10 payment
+ * schedule with the server's amounts, the total in words — SALES sees "Opened 1×", and the customer accepts.
+ * Phases L5–L8 extend this walk.
  *
  * Set-up that is not under test runs over the API; everything is keyed to a unique name and phone.
  */
@@ -29,7 +33,7 @@ const paisaOf = (text) => Math.round(Number(String(text).replace(/^[^\d]*/, '').
 
 test.describe.configure({ mode: 'serial' });
 
-test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured line; MANAGER approves and sends', async ({ browser }) => {
+test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured line; MANAGER approves and sends; the customer opens it on a phone and accepts', async ({ browser }) => {
   const [admin, sales, manager] = await Promise.all(['ADMIN', 'SALES', 'MANAGER'].map((r) => apiAs(r)));
   await admin.patch('/admin/settings', { values: { 'quotation.makerChecker': true, 'quotation.autoApproveBelow': 0 } });
   const customer = await sales.post('/admin/customers', { name: customerName, phone });
@@ -42,6 +46,7 @@ test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured li
   const number = (row) => grid.locator(`[data-row="${row}"] [role="rowheader"]`);
   const keys = async (...presses) => { for (const k of presses) await page.keyboard.press(k); };
   let quotationId;
+  let link;
 
   await test.step('SALES starts a blank quotation from the New quotation sheet', async () => {
     await signIn(page, 'SALES');
@@ -206,24 +211,87 @@ test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured li
     expect(record.boq.cost).toBeTruthy();
     expect(paisaOf(await mpage.getByTestId('quotation-total').innerText())).toBe(shown.total);
 
+    // Phase L4's margin gate: the pasted rows carry no cost, so the margin is unknown and the manager says so.
+    expect(record.costComplete).toBe(false);
     await mpage.getByRole('button', { name: 'Approve', exact: true }).click();
     const dialog = mpage.getByRole('dialog', { name: 'Approve this quotation' });
-    await dialog.getByRole('textbox').fill('BOQ checked.');
-    await dialog.getByRole('button', { name: 'Approve' }).click();
+    await expect(dialog.getByTestId('approve-margin')).toContainText('Unknown');
+    await expect(dialog.getByRole('checkbox', { name: /margin is unknown/ })).toBeVisible();
+    expect(await approveInDialog(mpage, 'BOQ checked.')).toBe('acknowledged');
     await expect(mpage.getByTestId('waiting-for')).toContainText('ready to send');
+    // The acknowledgement is recorded with the approval (an event's meta is the audit row's `changes`).
+    const trail = (await admin.list(`/admin/audit-logs?recordId=${quotationId}&limit=50`)).data;
+    expect(trail.find((r) => r.event === 'quotation.office_approved')?.changes).toMatchObject({
+      note: 'BOQ checked.', lowMargin: { acknowledged: true, costComplete: false },
+    });
+
     await mpage.getByRole('button', { name: 'Send to customer' }).click();
     await mpage.getByRole('alertdialog').getByRole('button', { name: 'Send' }).click();
     await expect(mpage.getByTestId('public-link')).toBeVisible();
-    const link = new URL(await mpage.getByTestId('public-link').innerText()).pathname;
-
-    // The customer's link shows the BOQ: sections as headings, the optional row marked.
-    const customerPage = await managerCtx.newPage();
-    await customerPage.goto(link);
-    await expect(customerPage.getByRole('heading', { name: 'SUBSTRUCTURE' })).toBeVisible();
-    await expect(customerPage.getByText('Optional — not included in the total')).toBeVisible();
+    link = new URL(await mpage.getByTestId('public-link').innerText()).pathname;
     await managerCtx.close();
   });
 
+  const customerCtx = await browser.newContext({ viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true });
+  const customerPage = await customerCtx.newPage();
+
+  await test.step('the customer opens the link on a phone: the sections, the payment schedule, the words', async () => {
+    const record = await sales.get(`/admin/quotations/${quotationId}`);
+    // A new quotation starts on the default schedule, and its stages add up to the total to the paisa.
+    expect(record.paymentStages.map((st) => [st.basisPoints, st.trigger])).toEqual([
+      [5000, 'ON_ACCEPT'], [4000, 'MILESTONE'], [1000, 'ON_COMPLETION'],
+    ]);
+    expect(record.paymentStages.reduce((sum, st) => sum + st.total, 0)).toBe(record.total);
+
+    await customerPage.goto(link);
+    await expect(customerPage.getByRole('heading', { name: 'SUBSTRUCTURE' })).toBeVisible();
+    await expect(customerPage.getByRole('heading', { name: 'MASONRY' })).toBeVisible();
+    await expect(customerPage.getByText('Optional — not included in the total')).toBeVisible();
+    await expect(customerPage.getByTestId('letterhead')).toBeVisible();
+    await expect(customerPage.getByTestId('total-in-words')).toContainText(record.totalInWords.en);
+
+    const schedule = customerPage.getByTestId('payment-schedule');
+    await schedule.scrollIntoViewIfNeeded();
+    await expect(schedule.getByRole('heading', { name: 'Payment schedule' })).toBeVisible();
+    const stageRows = schedule.locator('tbody tr');
+    await expect(stageRows).toHaveCount(3);
+    for (const [i, st] of record.paymentStages.entries()) {
+      await expect(stageRows.nth(i)).toContainText(st.label);
+      await expect(stageRows.nth(i)).toContainText(rupeesText(st.total));
+    }
+    await expect(stageRows.nth(0)).toContainText('On acceptance (advance)');
+    await expect(stageRows.nth(0)).toContainText('50%');
+
+    // The measurements annex opens on request, and the page never scrolls sideways at 360 px.
+    await customerPage.getByRole('button', { name: /Show the measurements/ }).click();
+    await expect(customerPage.getByTestId('measurements-annex')).toContainText('Living room — Four walls');
+    const overflow = await customerPage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  await test.step('SALES sees the customer opened it', async () => {
+    await page.reload();
+    const views = page.getByTestId('link-views');
+    await expect(views).toContainText('Opened 1×');
+    await expect(views).toContainText('First opened');
+    const record = await sales.get(`/admin/quotations/${quotationId}`);
+    expect(record.viewCount).toBe(1);
+    expect(record.firstViewedAt).toBeTruthy();
+    await expect(page.getByTestId('share-whatsapp')).toHaveAttribute('href', new RegExp(`^https://wa\\.me/977${phone}\\?text=`));
+  });
+
+  await test.step('the customer accepts', async () => {
+    await customerPage.getByRole('button', { name: 'Accept' }).click();
+    const dialog = customerPage.getByRole('dialog', { name: 'Accept this quotation?' });
+    await expect(dialog.getByTestId('accept-total')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Yes, accept' }).click();
+    await expect(customerPage.getByText('Thank you — quotation accepted')).toBeVisible();
+    expect((await sales.get(`/admin/quotations/${quotationId}`)).status).toBe('CONVERTED');
+    // The public view is an allowlist: no cost key, although every row was priced and one carries a recipe.
+    expect(costKeys(await sales.get(`/public/quotations/${link.split('/').pop()}`))).toEqual([]);
+  });
+
+  await customerCtx.close();
   await salesCtx.close();
   await Promise.all([admin, sales, manager].map((c) => c.dispose()));
 });

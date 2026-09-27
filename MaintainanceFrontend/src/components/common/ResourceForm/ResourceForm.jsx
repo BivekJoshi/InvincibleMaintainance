@@ -45,11 +45,11 @@ const LEAVE = {
  *   guard can be active per page: pass `guard={false}` to any second form.
  * - Render it once the record has loaded, so a saved slug is recognised as saved.
  *
- * Field types: text, textarea, prose (alias markdown), number, money, switch,
+ * Field types: text, textarea, prose (alias markdown), number, money, switch, checkbox (Phase L4),
  * select/enum, relation, date, datetime, slug, stringList, keyValue, media,
  * mediaList, weekdays, objectList, checklist, preview (a panel with no value), `group` for
  * sections, and the EditableGrid types (Phase L3): lineItems (a BOQ), grid, measurements and
- * recipe. See `FieldRenderer.jsx`. A spec's `adapt(values)` makes it follow the values;
+ * recipe — and paymentSchedule (Phase L4). See `FieldRenderer.jsx`. A spec's `adapt(values)` makes it follow the values;
  * `nullable: true` sends an emptied value as null; `hidden: true` keeps a field (and its value)
  * without showing it.
  *

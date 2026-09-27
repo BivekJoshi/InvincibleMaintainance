@@ -294,7 +294,6 @@ export default function QuotationBuilderPage() {
                 onValuesChange={onValuesChange}
                 onInvalid={(errors) => {
                   const keys = Object.keys(errors);
-                  console.log('INVALID', keys);
                   setTab(keys.some((k) => !FIELD_TAB[k]) ? 'boq' : FIELD_TAB[keys[0]]);
                 }}
                 onSubmit={async (body) => {

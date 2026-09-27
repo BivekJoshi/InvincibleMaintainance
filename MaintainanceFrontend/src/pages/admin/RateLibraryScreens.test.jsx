@@ -60,11 +60,11 @@ const DERIVED_ANSWER = {
   lines: [{ index: 0, lineCost: 50400 }, { index: 1, lineCost: 225000 }, { index: 2, lineCost: 20000 }],
 };
 
-/** The app's rate library and trades routes, as AppRoutes mounts them. */
+/** The app's rate library, trades and terms library routes, as AppRoutes mounts them. */
 function Screens() {
   return (
     <Routes>
-      {['rate-card', 'trades', 'materials'].flatMap((resource) => [
+      {['rate-card', 'trades', 'materials', 'quotation-terms'].flatMap((resource) => [
         <Route key={resource} path={`/admin/${resource}`} element={<ResourceListPage resource={resource} />} />,
         <Route key={`${resource}-new`} path={`/admin/${resource}/new`} element={<ResourceEditPage resource={resource} />} />,
         <Route key={`${resource}-id`} path={`/admin/${resource}/:id`} element={<ResourceEditPage resource={resource} />} />,
@@ -373,5 +373,46 @@ describe('trades and materials (Phase L2)', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(calls.find((c) => c.method === 'PUT' && c.path === '/admin/materials/m-cem')?.body)
       .toMatchObject({ packSize: null, packLabel: null, purchaseRate: 15, sellRate: 18 }));
+  });
+});
+
+describe('the terms library (Phase L4)', () => {
+  const TERMS = [
+    { id: 't1', title: 'Standard repair terms', body: '50% advance, the rest on completion.', bodyNe: '५०% अग्रिम, बाँकी काम सकिएपछि।', isDefault: true, isActive: true, sortOrder: 0 },
+    { id: 't2', title: 'Warranty', body: 'One year on workmanship.', bodyNe: null, isDefault: false, isActive: true, sortOrder: 1 },
+  ];
+
+  it('lists the terms with the default and whether each has Nepali; SALES reads them and changes nothing', async () => {
+    renderAs('SALES', '/admin/quotation-terms', ({ path }) => (path === '/admin/quotation-terms' ? page(TERMS) : undefined));
+    expect(await screen.findByText('Standard repair terms')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Standard repair terms/ })).getByText('Default')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Standard repair terms/ })).getByText('नेपाली ✓')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Warranty/ })).getByText('English only')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /New Terms/ })).not.toBeInTheDocument();
+  });
+
+  it('MANAGER writes terms in English and Nepali and makes them the default', async () => {
+    const user = userEvent.setup();
+    const { calls } = renderAs('MANAGER', '/admin/quotation-terms/new', ({ method, path }) => (
+      method === 'POST' && path === '/admin/quotation-terms' ? json({ data: { ...TERMS[0], id: 't3' } }, 201) : undefined));
+    await user.type(await screen.findByLabelText(/^Title/), 'Painting terms');
+    await user.type(screen.getByLabelText(/Terms \(English\)/), 'Two coats. 50% advance.');
+    const nepali = screen.getByLabelText('Terms (नेपाली)');
+    expect(nepali).toHaveAttribute('lang', 'ne');
+    await user.type(nepali, 'दुई कोट। ५०% अग्रिम।');
+    await user.click(screen.getByRole('switch', { name: 'Default for new quotations' }));
+    await user.click(screen.getByRole('button', { name: 'Create Terms' }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/admin/quotation-terms')?.body).toMatchObject({
+      title: 'Painting terms', body: 'Two coats. 50% advance.', bodyNe: 'दुई कोट। ५०% अग्रिम।', isDefault: true, isActive: true,
+    }));
+  });
+
+  it('refuses terms with no English text', async () => {
+    const user = userEvent.setup();
+    const { calls } = renderAs('MANAGER', '/admin/quotation-terms/new');
+    await user.type(await screen.findByLabelText(/^Title/), 'Empty');
+    await user.click(screen.getByRole('button', { name: 'Create Terms' }));
+    expect(await screen.findByText('Write the terms')).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 });

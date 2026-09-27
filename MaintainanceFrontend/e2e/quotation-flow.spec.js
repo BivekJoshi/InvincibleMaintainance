@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { apiAs, signIn } from './support/api.js';
+import { approveInDialog } from './support/quotation.js';
 
 /**
  * Phase F's acceptance, end to end: the customer books, the surveyor reports, the office
@@ -107,9 +108,8 @@ test('booking → survey → approval → change request → revision → accept
     // "Prepared · approved" column-actions button also matches a loose 'Approve'.
     await expect(page.getByTestId('waiting-for')).toContainText('Waiting for your approval');
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Approve this quotation' });
-    await dialog.getByRole('textbox').fill('Rates match the rate card.');
-    await dialog.getByRole('button', { name: 'Approve' }).click();
+    // Phase L4: a low or unknown margin needs the manager's acknowledgement; the helper gives it when asked.
+    await approveInDialog(page, 'Rates match the rate card.');
     await expect(page.getByTestId('waiting-for')).toContainText('ready to send');
   });
 
@@ -144,7 +144,8 @@ test('booking → survey → approval → change request → revision → accept
   const v2 = await sales.post(`/admin/quotations/${quotationId}/revise`);
   expect(v2).toMatchObject({ version: 2, status: 'DRAFT', requestedChanges: nepaliRequest });
   expect((await sales.post(`/admin/quotations/${v2.id}/submit`)).status).toBe('PENDING_APPROVAL');
-  expect((await manager.post(`/admin/quotations/${v2.id}/approve`, {})).status).toBe('OFFICE_APPROVED');
+  // The revision is priced like v1: acknowledge a low or unknown margin up front (Phase L4 — harmless when healthy).
+  expect((await manager.post(`/admin/quotations/${v2.id}/approve`, { acknowledgeLowMargin: true })).status).toBe('OFFICE_APPROVED');
   const sentV2 = await sales.post(`/admin/quotations/${v2.id}/send`);
   const secondLink = `/quotation/${sentV2.publicToken}`;
 

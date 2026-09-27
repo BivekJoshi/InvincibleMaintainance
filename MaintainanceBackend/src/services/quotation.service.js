@@ -810,8 +810,10 @@ export async function getByPublicToken(token) {
   const q = await prisma.quotation.findFirst({ where: { publicToken: token, deletedAt: null }, include: PUBLIC_INCLUDE });
   if (!q) throw notFound('Quotation');
   // The customer opened it (Phase L4) — the send panel's "Opened 2×". A page view is not a change to audit,
-  // so it is one raw statement, outside the audit extension.
-  await prisma.$executeRaw`UPDATE "Quotation" SET "viewCount" = "viewCount" + 1, "firstViewedAt" = COALESCE("firstViewedAt", NOW()) WHERE "id" = ${q.id}`;
+  // so it is one raw statement, outside the audit extension. The column is a timestamp without a zone that
+  // holds UTC, and the database session may run in Kathmandu time — NOW() or a bound Date would both land as
+  // Kathmandu wall-clock time — so the instant is converted to UTC in the statement.
+  await prisma.$executeRaw`UPDATE "Quotation" SET "viewCount" = "viewCount" + 1, "firstViewedAt" = COALESCE("firstViewedAt", NOW() AT TIME ZONE 'UTC') WHERE "id" = ${q.id}`;
   if (isExpired(q)) {
     await markExpired(q.id);
     q.status = 'EXPIRED';

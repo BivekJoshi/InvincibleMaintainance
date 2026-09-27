@@ -54,7 +54,8 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     items: [{ description: 'Terrace waterproofing', unit: 'sq.ft', qty: 200, rate: 275 }],
   });
   await sales.post(`/admin/quotations/${quotation.id}/submit`);
-  await manager.post(`/admin/quotations/${quotation.id}/approve`, {});
+  // Phase L4's margin gate: a set-up quotation is approved whatever its margin, so say so.
+  await manager.post(`/admin/quotations/${quotation.id}/approve`, { acknowledgeLowMargin: true });
   const sent = await sales.post(`/admin/quotations/${quotation.id}/send`);
   const publicApi = await request.newContext({ baseURL: `${E2E.apiBase}/` });
   const decided = await publicApi.post(`public/quotations/${sent.publicToken}/decide`, { data: { decision: 'approve' } });

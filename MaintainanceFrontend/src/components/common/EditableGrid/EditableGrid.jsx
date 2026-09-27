@@ -75,7 +75,7 @@ function layoutOf(columns, row, offset) {
 /**
  * **EditableGrid** — the admin kit's spreadsheet (Phase L3), on TanStack-style column specs and dnd-kit.
  * Pages never render it: they reach it through ResourceForm field types (`lineItems`, `grid`,
- * `measurements`, `recipe`), which is how CLAUDE.md rule 3 still holds.
+ * `measurements`, `recipe`, `paymentSchedule`), which is how CLAUDE.md rule 3 still holds.
  *
  * - One cell edits at a time. It saves on Enter (and moves down), Tab (and moves across — past the last
  *   cell it adds a row) and blur; Esc cancels. Typing on a selected cell overwrites it.

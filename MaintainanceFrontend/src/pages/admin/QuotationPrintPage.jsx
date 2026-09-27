@@ -51,7 +51,7 @@ export default function QuotationPrintPage() {
         </div>
       </div>
       <main
-        className="print-sheet theme-light mx-auto my-4 max-w-[210mm] bg-background p-5 text-foreground shadow-sm sm:my-8 sm:p-[14mm] print:m-0 print:max-w-none print:p-0 print:shadow-none"
+        className="print-sheet theme-light mx-auto my-4 max-w-[210mm] bg-background p-5 text-foreground shadow-sm sm:my-8 sm:p-[14mm] print:m-0 print:max-w-none print:bg-transparent print:p-0 print:shadow-none"
         data-testid="print-sheet"
       >
         <QuotationDocument quotation={q} locale={locale} showSymbol print />

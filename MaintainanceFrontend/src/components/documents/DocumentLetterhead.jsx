@@ -24,6 +24,7 @@ export function DocumentLetterhead({ letterhead, copy }) {
         <p className="text-lg font-bold leading-tight">{companyName}</p>
         {tagline ? <p className="text-xs text-muted-foreground">{tagline}</p> : null}
         {place ? <p className="mt-1 text-xs text-muted-foreground">{place}</p> : null}
+        {/* Phones on one line, the email on its own (on a phone it would otherwise break mid-address; in print, beside them). */}
         <p className="text-xs text-muted-foreground">
           {phones.length ? (
             <>
@@ -31,17 +32,17 @@ export function DocumentLetterhead({ letterhead, copy }) {
               {phones.map((p, i) => (
                 <span key={p}>
                   {i ? ' · ' : ''}
-                  <a href={`tel:${p.replace(/[^\d+]/g, '')}`} className="tabular-nums hover:text-primary hover:underline">{p}</a>
+                  <a href={`tel:${p.replace(/[^\d+]/g, '')}`} className="whitespace-nowrap tabular-nums hover:text-primary hover:underline">{p}</a>
                 </span>
               ))}
             </>
           ) : null}
           {email ? (
-            <>
-              {phones.length ? ' · ' : ''}
+            <span className="block sm:inline print:inline">
+              {phones.length ? <span className="hidden sm:inline print:inline"> · </span> : null}
               <span className="sr-only">{copy.email}: </span>
-              <a href={`mailto:${email}`} className="break-all hover:text-primary hover:underline">{email}</a>
-            </>
+              <a href={`mailto:${email}`} className="hover:text-primary hover:underline [overflow-wrap:anywhere]">{email}</a>
+            </span>
           ) : null}
         </p>
       </div>

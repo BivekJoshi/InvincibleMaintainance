@@ -428,7 +428,7 @@ describe('the BOQ builder — contract, schedule, terms and the customer’s doc
     await user.click(screen.getByRole('tab', { name: 'BOQ' }));
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(await screen.findByText('The stages add up to 95% — they must make 100%')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Payment & terms' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Payment & terms' })).toHaveAttribute('aria-selected', 'true'));
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
 

@@ -20,13 +20,13 @@ src/
 ├── helpers/        Pure functions.
 └── styles/         Tailwind entry + CSS variables.
 
-e2e/                The Playwright suite: the quotation loop (Phase F2), the dispatch walk-through (Phase H1) and the BOQ (Phase L3).
+e2e/                The Playwright suite: the quotation loop (Phase F2), the dispatch walk-through (Phase H1) and the BOQ (Phases L3–L4).
 ├── quotation-flow.spec.js
 ├── operations-flow.spec.js   schedule by drag and by dialog, double-book warning, materials, time, costing, complete, verify, case study
-├── boq-flow.spec.js    SALES builds a 3-section BOQ by keyboard, pastes 15 rows, adds a `/` library row, a measured and an optional row, saves (server totals = what the builder showed), submits; MANAGER sees the margin, approves, sends. L4–L8 extend it
+├── boq-flow.spec.js    SALES builds a 3-section BOQ by keyboard, pastes 15 rows, adds a `/` library row, a measured and an optional row, saves (server totals = what the builder showed), submits; MANAGER sees the margin, approves (L4: the unknown cost needs the acknowledgement, recorded in the event), sends; the customer opens the link at 360 px (sections, the 50 · 40 · 10 schedule with the server's amounts, the words, the annex, no sideways scroll), SALES sees "Opened 1×", the customer accepts; the public view has no cost key. L5–L8 extend it
 ├── fixtures/           boq-paste.tsv — the 15 rows pasted from "Excel" (a header, two text-only section rows, Indian grouping, `Rs.`)
 ├── global-setup.js     migrates and seeds the *_test database
-└── support/            e2eEnv.js (ports, database, the API's environment), api.js (HTTP + signIn)
+└── support/            e2eEnv.js (ports, database, the API's environment), api.js (HTTP + signIn), quotation.js (`approveInDialog` — ticks the low-margin acknowledgement when the dialog or the API asks — and `rupeesText`)
 ```
 
 ## api/
@@ -42,7 +42,9 @@ sends the Bearer token, so the API answers 401. The pattern (worked example:
 holds serialisable values — and the page builds the `Blob` and clicks a temporary link. That way
 the request carries the token and survives a 401 → refresh → retry. For CSV, prepend `'﻿'`
 to the Blob: `res.text()` strips the byte-order mark the API sends, and Excel needs it to read
-Devanagari.
+Devanagari. A **binary** file (Phase L4's quotation `.xlsx`, `quotationsApi#exportQuotationXlsx`) is cached as
+**base64 text** — `responseHandler` encodes `res.arrayBuffer()` with `helpers/download#arrayBufferToBase64` (an
+error answer stays the API's JSON) — and the page saves it with `downloadBase64(base64, filename, type)`.
 
 `apiCore.js` exports only the core pieces. Domain endpoint files are **not** re-exported:
 a barrel there would drag the back office's endpoints into the marketing bundle.
@@ -89,7 +91,10 @@ The CRM files (Phase E):
   **`getQuotationTakeoff`** (tagged with the quotation, so a save refreshes it), **`repriceQuotation({ id, apply })`** (a preview
   invalidates nothing; `apply: true` the quotation, the list and History) and **`copyQuotation({ id, customerId?, siteId?, leadId? })`**.
   `createQuotation` takes `items: []` (a blank draft). `getRateCard` stays for older callers; the builder searches with
-  `rateLibraryApi#searchRateLibrary`.
+  `rateLibraryApi#searchRateLibrary`. Phase L4: **`exportQuotationXlsx(id)`** (the binary download above, lazy,
+  `keepUnusedDataFor: 0`), `approveQuotation` takes `acknowledgeLowMargin`, and the preview body carries
+  `paymentStages` when the schedule on screen is whole. The terms picker reads the library through
+  `cmsApi#listResource({ resource: 'quotation-terms' })`.
 - `rateLibraryApi.js` (Phase L2) — the rate library's two calls beyond the registry's eight: **`deriveRateCost`**
   (`POST /admin/rate-card/derive`, `costs:read` — a **query** although it is a POST, like `previewTemplate`: the Cost vs rate
   card asks again as the recipe changes; tag `{ type: 'RateCard', id: 'DERIVE' }`) and **`repriceRateCard({ ids, apply })`**
@@ -107,13 +112,13 @@ The CRM files (Phase E):
 | `theme/` | The colour-mode controls: `ThemeToggle` (one button) and `ThemeModeSwitch` (all three modes). Both read the theme context; neither takes state as a prop. |
 | `layout/` | The three shells — `SiteLayout`, `AdminLayout/`, `TechLayout` — plus what the public one is made of: `SiteHeader/`, `SiteFooter`, `MobileCallBar`. |
 | `site/` | Marketing presentation, **one component per file**: `ServiceCard`, `ProjectCard`, `CategoryTile`, `PageHero`, `SectionShell`, `SectionHeading`, `Media`, `Breadcrumb`, `PromiseList`, `FaqList`, `FilterChip`, `PriceTag`, `Cta`, `Eyebrow`, `Stars`, `DataIcon`, `ProseBody` (long CMS copy — shared with the admin's prose preview). |
-| `documents/` | The customer-facing sheet a token link opens: `DocumentShell`, `DocumentHeader`, `LineItemsTable` (since L3 a BOQ: SECTION rows as numbered headings with their subtotal, NOTE rows as text, a row's `spec` under it, optional rows "not included in the total", provisional ones marked — an invoice's lines read as before), `TotalsList`, `DocumentNotice`, and Phase L3's **`QuotationDocument`** (header, rows, totals, terms of a quotation in `en` / `ne`) with its words in **`quotationDocumentCopy.js`** — the public quotation page and the builder's Customer view both render it. Shared by the quotation, invoice and warranty pages. |
+| `documents/` | The customer-facing sheet a token link opens: `DocumentShell` (tighter edges on a phone since L4), `DocumentHeader`, `LineItemsTable` (since L3 a BOQ: SECTION rows as numbered headings with their subtotal, NOTE rows as text, a row's `spec` under it, optional rows "not included in the total", provisional ones marked — an invoice's lines read as before; since L4 money never wraps and, on a phone, a line says to swipe the table for the rates and amounts), `TotalsList`, `DocumentNotice`, and Phase L3's **`QuotationDocument`** with its words (en **and** ne) in **`quotationDocumentCopy.js`** — the public quotation page, the builder's Customer view and (L4) the print route all render it. Phase L4 added **`DocumentLetterhead`** (logo, name, address, call-link phones, email, PAN/VAT — the API's `letterhead`), **`PaymentScheduleTable`** (stage · share · the server's amount with its VAT; the footer is the quotation's own total), **`SectionSummaryTable`** (`summaryOnly`: section subtotals only) and **`MeasurementsAnnex`** (collapsible on the page, open in print). See "Quotations — terms and the customer document (Phase L4)". Shared by the quotation, invoice and warranty pages. |
 | `media/` | The media library screen's own parts: `MediaFolderTree` (folders as an indented tree) and `MediaDetailsSheet` (one file's facts, URL and alt/caption/folder form — a `ResourceForm` sheet) — and `MediaCell`, a list column's thumbnail of one media id (the gallery, features). |
 | `projects/` | `ProjectGalleryTab` — the Gallery tab of a project's edit page (add from the library or upload, drag or Move earlier/later, remove; each change saves at once through the project image endpoints) — and `ProjectName`, a project's title from its id for a list column. |
 | `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
 | `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog` (a required lost category, then the words — required only for "Other"), `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (**the outcome composer** — see "Lead follow-through (Phase L1)"), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice; both report completion before they close, so a caller can tell done from Cancel — L1's new-quotation use of it became `quotations/NewQuotationSheet` in L3), `ConvertResult` (what a convert made, with links), `LeadPhotoGallery` (what the customer photographed, with a lightbox: arrow keys, thumbnails, full size), `ResponseRunway` (the SLA board's hero: every unanswered lead on its two-hour clock; `RunwayStrip` is the one-line version on the dashboard) `LeadStageTrack` (a lead's road from New to Won on its page; a lost lead shows its category and the stage it was lost at), and Phase L1's `NextActionCard`, `QualificationCard` and `StageAgeChip` (see "Lead follow-through (Phase L1)"). |
 | `rateLibrary/` | Phase L2's rate library parts: `RateCostCard` (the edit form's live **Cost vs rate** card — a `preview` field behind `costs:read`), `RepricePreview` ("Update to derived rate"'s before/after table, inside the confirmation) and `RateLibraryIntro` (above a saved rate: how its rate is set, and "Out of date" with what its recipe gives today). See "The rate library and the money wall (Phase L2)". Phase L3's **`RateLibrarySearch`** is the BOQ grid's `/`: a cmdk palette over the server search — Enter adds the highlighted item, Shift+Enter ticks several, each becomes a row priced from the library (`helpers/boq.js#libraryRow`). |
-| `quotations/` | Phase L3's **`NewQuotationSheet`** — the one way a quotation starts: blank · from a survey · copy. See "Quotations — the BOQ builder (Phase L3)". |
+| `quotations/` | Phase L3's **`NewQuotationSheet`** — the one way a quotation starts: blank · from a survey · copy. See "Quotations — the BOQ builder (Phase L3)". Phase L4's **`ApproveQuotationDialog`** — the margin, a remark, and the low-margin acknowledgement (`useQuotationActions` opens it for Approve). |
 | `customers/` | `CustomerFormSheet` (new customer), `CustomerAvatar` (initials in a steady colour; squared for a company), `CustomerBook` (the list's summary tiles, each a filter) and `MapPinInput` ("use map pin": pasted coordinates fill a site's latitude and longitude — it sits in the site form's `intro`, inside the form). |
 | `jobs/` | Phase H1, shared by the jobs list, the job page and the dispatch board: `JobFormSheet` (new job; the site and quotation follow the customer), `ScheduleJobDialog` (window, who goes, lead, "text the customer" — the board's non-drag path), `AssignJobDialog`, `CompleteJobDialog` (note, signature photo, rating, warranty). |
 | `stock/` | `StockMovementsSheet` — one material's movements, paged (Phase H1). |
@@ -186,7 +191,7 @@ in view when a wide table scrolls sideways.
 
 The kit's editable grid, on TanStack-style column specs and dnd-kit. **Pages never render it**: they reach it only
 through ResourceForm field types — `lineItems` (a quotation's BOQ), `grid` (generic), `measurements` (a measurement
-sheet) and `recipe` (the rate library's) — which is how CLAUDE.md rule 3 still holds (a test in `EditableGrid.test.jsx`
+sheet), `recipe` (the rate library's) and, since Phase L4, `paymentSchedule` (a quotation's stages) — which is how CLAUDE.md rule 3 still holds (a test in `EditableGrid.test.jsx`
 fails if a page or a registry entry imports it). The folder: `EditableGrid.jsx` (state, keyboard, clipboard, the visible
 window), `GridRow.jsx` (one memoised row; a sortable shell only when the grid is editable), `GridCellEditor.jsx` (the one
 editor on screen: text, number, money, length, a `select` list, or a column's own `renderEditor`), `gridKeys.js` (the
@@ -280,11 +285,12 @@ so a cleared input would otherwise show the saved number again.
 
 | `type` | Value | Extra spec |
 |---|---|---|
-| `text` / `textarea` | string | `inputType`, `maxLength`, `rows` |
+| `text` / `textarea` | string | `inputType`, `maxLength`, `rows`; a textarea's `lang: 'ne'` gives Nepali text the Devanagari face (the terms library's Nepali body) |
 | `prose` (alias `markdown`) | plain text, blank line between paragraphs — **not** markdown, because the site renders `ProseBody` | `rows` |
 | `number` | number | `min`, `max`, `step` |
 | `money` | **rupees** (typed with grouping, `1,23,45,678.90`); the record's paisa converted on load | — |
-| `switch` | boolean | — |
+| `switch` | boolean — a setting that is on or off | — |
+| `checkbox` | boolean — a statement ticked on purpose (Phase L4: "I approve it below the minimum margin"); a schema's `refine(v => v)` makes it required | `tone: 'warning'` |
 | `select` / `enum` | string; optional fields get "None" | `options` (values or `{ value, label }` — a plain value is title-cased, so pass `{ value, label }` for units and codes; a label may be JSX, as the icon picker's are), `noneLabel` |
 | `relation` | id, or null to unlink | `relation: { path, labelKey?, valueKey?, params? }` |
 | `date` | UTC ISO of the start of that day in Kathmandu | — |
@@ -300,6 +306,7 @@ so a cleared input would otherwise show the saved number again.
 | `grid` | an array of small objects edited as a spreadsheet — the generic EditableGrid field; a completely blank row is dropped | `columns` (EditableGrid column specs, a module constant), `makeRow`, `maxItems`, `addLabel`, `emptyText`, `footer(rows)` |
 | `measurements` | a measurement sheet: rows of area, description, nos, L, B, H and deduct. Lengths take **feet-inches** (`12'6"` → 12.5, `12'` → 12, `6"` → 0.5 — `helpers/measurements#parseLength`) and show as the number they were read as; each row's value (nos × L × B × H over the dimensions it has, negative for a deduction) and the sheet's total are a **preview** — the saved quantity is the server's. Sent as numbers, blank rows dropped (`measurementSheetSchema`) | `unit` (named in the total) |
 | `recipe` | a rate-library recipe (Phase L2; on EditableGrid since L3): the API's `components` — one row per line: **What** (a material from `materials.path` or a trade from `trades.path` in a record picker that opens on Enter — or the words, for equipment and other), Kind, quantity (the material's own unit, man-days), unit, wastage % (materials), cost per unit in **rupees** (equipment and other; the column only for `costCapability`). "Add material / labour / equipment or other cost" put a line at the end of its section and select it; Ctrl+Enter adds one below. A line names its material or trade from the record it carries (`RecordCombobox selectedLabel`), so a reader who may not list materials sees names, and "Bought as bag = 50 kg" under a material with a pack. `helpers/recipe.js` converts both ways | `materials`, `trades` (`{ path, params }`), `costCapability`, `per: { qty, unit }` (the "Quantities below make 10 sq.m" line) |
+| `paymentSchedule` | a quotation's **payment schedule** (Phase L4, on EditableGrid): one row per stage — label, **share in %**, when it falls due (`PAYMENT_TRIGGER_LABELS`: on acceptance / at a milestone / on completion) — and an Amount column that shows only the server's figure (`figures`, matched by position; "—" when there is none). Presets **50 · 40 · 10**, **40 · 30 · 20 · 10** and **100 on completion** above the grid (`PAYMENT_SCHEDULE_PRESETS`; the matching one is pressed), a live "Adds up to 100%." / "90% — 10% short" line under it. The record's stages (basis points) come in through `helpers/paymentSchedule#toStageRows`; `quotation.schema#paymentScheduleSchema` refuses what the API refuses (not exactly 100 %, two advances, 0.01–100 %, two decimals, a stage unnamed, 1–10 stages) and sends `{ label, basisPoints, trigger }`; no stages sends nothing (the API keeps its schedule). **Never a money sum** — shares only | `figures`, `stale`, `maxItems` (10) |
 | `preview` | **no value** — a panel worked out from the form's values; never loaded or sent (`DISPLAY_TYPES` in `formValues.js`), and the registry test does not look for it in the schema. `component` renders inside the form and reads the values with `useWatch()`. The rate library's Cost vs rate card, behind `capability: 'costs:read'` | `component` |
 | `objectList` | an array of small objects, one row each (move up/down, remove); a completely empty row is dropped on save — give the schema a `z.preprocess` that drops blank rows too, since validation runs first | `itemFields: [{ name, label, type?: 'text' \| 'select', options?, placeholder?, maxLength?, className? }]`, `itemLabel`, `addLabel`, `maxItems` |
 | `group` | collapsible section (e.g. SEO); opens itself on an error inside. `variant: 'card'` is an always-open titled card (the settings page) | `fields`, `defaultOpen`, `variant` |
@@ -366,6 +373,7 @@ Every CMS resource the API mounts has a screen. `cms` means `cms:read` to open a
 | Pages | registry `pages` | `/admin/content/pages` · cms | Blog & pages | `/:slug` (e.g. `/about`), CMS button links |
 | Rate library (the rate card until L2) | registry `rate-card`, own `basePath`; the `recipe` field, a `preview` cost card, `bulkActions` "Update to derived rate", cost columns behind `costs:read` | `/admin/rate-card` · rates:read / rates:write; History rates:read (the API masks cost in it) | Catalog | quotation lines, survey pricing, `/pricing` rate table |
 | Trades & wages | registry `trades`, own `basePath`; the day wage behind `costs:read` | `/admin/trades` · rates:read / rates:write | Catalog | — (a recipe's labour) |
+| Terms library | registry `quotation-terms` (Phase L4), own `basePath`; the English body and the Nepali `bodyNe` as two textareas (a column of its own, not a translation — so no LocaleTabs); **Default** moves the flag (the API's rule) | `/admin/quotation-terms` · rates:read / rates:write (the API also lets `quotations:read` list it); History rates:read | Catalog | — (a new quotation starts with the default's text; the builder's terms picker) |
 | Technicians | registry `technicians`, own `basePath`, switch = **availability** (`activeField: 'isAvailable'`) | `/admin/technicians` · technicians:read / technicians:write; the rate field and the History tab need technicians:write | Operations | — |
 | Job templates | registry `job-templates`, own `basePath`; steps as an `objectList` | `/admin/job-templates` · jobs:read / jobs:write | Operations | — (a new job copies the steps) |
 | Materials | registry `materials`, own `basePath`; pack size and name (`nullable`) since L2 | `/admin/materials` · materials:read / materials:write (the API also lets `rates:write` list and read them, for the recipe picker) | Operations | — (stock is the Stock page; a recipe's materials) |
@@ -485,7 +493,8 @@ reads is a trap for an editor.
 |---|---|---|
 | `/admin/quotations` | `QuotationsPage` | CustomTable under the API's `?stage=` tabs — Drafts · Needs approval · Ready to send · With customer · Customer asked for changes · Won · Declined/Expired · All. An approver opens on **Needs approval**; the count on that tab is theirs (`countCapability`), everyone else sees the tab without a number. A row's menu offers exactly what its state allows |
 | `/admin/quotations/:id` | `QuotationBuilderPage/` | one version: the form (a draft only), the action bar, the notices, the totals, the customer link and its messages, the trail, and the History tab |
-| `/quotation/:token` | `pages/public/QuotationPublicPage/` | the customer's page: the document, then **Accept · Ask for changes · Decline** |
+| `/quotation/:token` | `pages/public/QuotationPublicPage/` | the customer's page: the document, then **Accept · Ask for changes · Decline** (L4: decline offers reason chips) |
+| `/admin/quotations/:id/print` | `pages/admin/QuotationPrintPage` (Phase L4) | the document on an A4 sheet, no app chrome — see "Quotations — terms and the customer document (Phase L4)" |
 
 - **`helpers/quotationActions.js`** is the single table of what may be done: `quotationActions(quotation, { can, userId })`
   returns `[{ key, label, primary?, note?, disabledReason? }]`, and `waitingFor()` is the line under the title.
@@ -503,11 +512,11 @@ reads is a trap for an editor.
 - `sections/`: `QuotationActionBar` (buttons, with the reason a disabled one is disabled), `QuotationNotices` (the
   customer's change request, what a revision answers, a send-back reason, an automatic approval, the self-approval
   rule), `SendPanel` (the public link, Copy, Open, and each SMS/email with its delivery state) and `VersionSwitcher`.
-- The customer's page keeps **every word in one object**, `quotationPageCopy.js`, for Phase J1 to translate, and
+- The customer's page keeps **every word in one object**, `quotationPageCopy.js` — since Phase L4 `{ en, ne }` with `pageCopy(locale)`, both complete (a test compares their keys) — and
   decides what to show with the pure `quotationPageState.js` (open · accepted · changes · declined · expired ·
   replaced · replacedPending · closed) — both beside the page, both unit-tested. Its three buttons each open one
-  confirm step: Accept repeats the total, Ask for changes takes a message (5–1000 characters), Decline an optional
-  reason. No login, no code, no typed name (D4). It is checked at 360px in the end-to-end run.
+  confirm step: Accept repeats the total, Ask for changes takes a message (5–1000 characters), Decline offers reason
+  chips (L4) and an optional note. No login, no code, no typed name (D4). It is checked at 360px in the end-to-end run.
 - `api/quotationsApi.js` has the queues (`getQuotations`, `getQuotationStageCount`), the record, the draft save and
   the moves (`submit · approve · sendBack · pullBack · send · revise · convertToJob`). Every move invalidates the
   quotation, the list, `Dashboard`, `History` and `Notification`.
@@ -527,14 +536,15 @@ from the rate library carries its recipe as frozen when first saved.
 | **BOQ** | the `lineItems` grid, the discount (one amount) with its **helpers** — "%" and "target total" (`sections/DiscountHelper`, a `preview` field) ask the server's preview for the discount and fill the field — and VAT. On a DRAFT, **Reprice from the library** (`sections/RepriceButton`): `apply: false` → the before/after in a confirmation → `apply: true`; held while the form has edits |
 | **Take-off** | `sections/TakeoffTab` — the saved rows' materials in **buying units** (packs × pack label), stock on hand and the shortfall, equipment and other, and the rows without a recipe; a Cost column only for `costs:read` |
 | **Labour** | `sections/LabourTab` — man-days per trade, and a **crew size** per trade that shows the duration (days ÷ crew — quantity maths only, `helpers/boq.js#crewDuration`) |
-| **Payment & terms** | the terms, valid until and internal note (today's fields until Phase L4) — the other panel of the **same form**: one Save, and the panel not shown keeps its edits (`hidden` groups; a refused save opens the panel with the first error) |
-| **Customer view** | `sections/CustomerViewTab` — the saved quotation through `components/documents/QuotationDocument`, exactly as the link shows it, in English or नेपाली (starting in the customer's language) |
+| **Payment & terms** | Phase L4: **Contract** (contract type with the sentence the customer reads, duration in days, exclusions), **Payment schedule** (a `paymentSchedule` field with the server's stage amounts) and **Terms** (valid until, the **terms picker** `sections/TermsPicker`, the terms, the internal note) — another panel of the **same form**: one Save, and the panel not shown keeps its edits (`hidden` groups; a refused save opens the panel with the first error — `FIELD_TAB`) |
+| **Customer view** | the form's third panel since L4 — **What the customer sees**: `showMeasurements`, `summaryOnly` — and under it `sections/CustomerViewTab`: the saved quotation through `components/documents/QuotationDocument`, exactly as the link shows it (the two switches apply before a save), in English or नेपाली (starting in the customer's language) |
 | **History** | `RecordHistory` (`quotations:history`) |
 
 The right rail: **Totals** (`sections/TotalsCard` — the server's live preview while the BOQ has edits, dimmed and `aria-busy`
 while a newer answer is on its way, the saved figures otherwise; section subtotals and the optional total under it),
 **Margin** (`sections/MarginCard` — cost total and margin, **only for `costs:read`**; unknown, never guessed, while a row has
-no cost), **Send** (`SendPanel`) and **Trail** (`sections/TrailCard`).
+no cost), **Send** (`SendPanel`) and **Trail** (`sections/TrailCard`). The header (L4): **Print** (a new tab on the print route)
+and **Excel** (the `.xlsx`).
 
 - **`useBoqFigures`** (beside the page) is the one source of amounts, totals and margin: nothing edited → the saved
   quotation's; edits → `helpers/boq.js#previewRequest(values)` (rows that cannot be priced yet are left out and counted)
@@ -574,6 +584,93 @@ and labour, Customer view, terms, `/`, keyboard sections and paste, the measurem
 `QuotationScreens.test.jsx` (the builder's approval loop on the grid), `components/quotations/NewQuotationSheet.test.jsx`
 (the three paths, and from a customer), `SurveyReviewPage.test.jsx`, the BOQ block of `QuotationPublicPage.test.jsx`
 (sections, notes, optional; Nepali), and `e2e/boq-flow.spec.js`.
+
+## Quotations — terms and the customer document (Phase L4)
+
+What a contract needs around the BOQ (L-D2, L-D3, L-D4 in ADMIN-PLAN §4), and the customer's document on the link, in
+print and in Excel. **The client computes no money**: stage amounts, totals, section subtotals, the words and the margin
+are the server's; BS dates come from the server (`dates.*Bs`); no cost key ever reaches a customer-facing screen or the
+print.
+
+**The customer's document** — `components/documents/QuotationDocument`, rendered by `/quotation/:token`, the builder's
+Customer view and the print route, in this order:
+
+| Part | From the API | Component |
+|---|---|---|
+| Letterhead: logo, company, tagline, address, phones (call links), email, **PAN/VAT No.** | `letterhead` | `DocumentLetterhead` |
+| Number, "For …", status (not in print), version, **Date** and **Valid until**, each AD with its BS twin — "26 Sept 2026 (2083-06-10 B.S.)" | `createdAt`, `validUntil`, `dates.createdAtBs`, `dates.validUntilBs` | `DocumentHeader` + `DocumentDates` |
+| The BOQ — sections numbered with subtotals, notes, specs, optional rows "Optional — not included in the total" — or, with `summaryOnly`, the **section summary** | `items`, `boq.sections` | `LineItemsTable` / `SectionSummaryTable` |
+| Totals, the optional total apart (not in a summary) | `subtotal`, `discount`, `vatAmount`, `total`, `boq.optionalTotal` | `TotalsList` |
+| **Amount in words**, in the page's language | `totalInWords.en` / `.ne` | — |
+| **How the final bill is worked out** (the contract type's sentence), **Estimated duration**, **Not included in this price** | `contractType`, `estimatedDays`, `exclusions` | `ContractTerms` |
+| **Payment schedule**: stage, when it falls due, share, amount (incl. VAT), and the total | `paymentStages[]` (`total`, `vat`) | `PaymentScheduleTable` |
+| Terms | `terms` | — |
+| **Measurements annex** — each measured row's sheet (where, nos × L × B × H, deductions, the line's quantity — quantity maths only) and its quantity in the bill; collapsed on the page, open in print; never with `summaryOnly` or `showMeasurements: false` | `items[].measurements` | `MeasurementsAnnex` |
+
+Every word is in `quotationDocumentCopy.js` (the document) and `pages/public/QuotationPublicPage/quotationPageCopy.js`
+(the answers, the decline reasons) as `{ en, ne }`; `quotationPageState.test.js` holds the two languages to the same keys.
+Numbers stay in Latin digits. Everything works at 360 px: tables scroll inside their own box (the test checks every table
+sits in an `overflow-x-auto`; the end-to-end run checks the page never scrolls sideways) and the BOQ says so on a phone
+("Swipe the table sideways…", the description kept at least 9rem wide), the schedule is three columns with the trigger under
+the label (left out when the label already says it), the letterhead's email takes its own line, and `DocumentShell` keeps
+~300 px for the sheet on a phone.
+
+**Decline reasons** — the decline dialog offers chips (a single-choice `ToggleGroup`, optional; a second tap takes it back)
+for `DECLINE_CATEGORIES` (`config/constants.js` — PRICE "Too expensive", COMPETITOR, POSTPONED, BUDGET, OWN_LABOUR, OTHER; a
+friendly subset of `LOST_CATEGORIES`, mirror-tested), sent as the decision's `category`. The office sees it on the builder
+("The customer declined — Price too high"), and the "Mark lost?" notification links to `?markLost=1&category=PRICE`, which
+`LeadDetailPage` turns into `changeStatus(lead, 'LOST', { lostCategory })` — the dialog starts on it; a person confirms.
+
+**The print route** — `/admin/quotations/:id/print` (`pages/admin/QuotationPrintPage`, lazy, `quotations:read`, outside the
+admin shell): a toolbar (`print:hidden` — Back, English / नेपाली starting in the customer's language, **Print** →
+`window.print()`) over an A4 sheet (`.print-sheet.theme-light`) with the document in its print layout (`print`: no status
+badge, the annex open, figures with their symbol). `styles/globals.css` holds `@media print` (A4, margins, rows never split)
+and **`.theme-light`** — the light palette re-declared on an element, so the sheet is paper even in dark mode. The tab's
+title (`QT-… v2 — customer`) is what the print dialog suggests as a file name. **No cost, even for a manager** (a test renders
+a manager's record, cost and all, and finds none of it). J2's PDFs render this route.
+
+**The builder (Payment & terms, Customer view)** — see the tab table in Phase L3's section. The contract type's description
+is the customer's own sentence (`documentCopy('en').contract`, through the field's `adapt`); the schedule's amounts come from
+`useBoqFigures().stages` — the saved stages, or the preview's for the schedule on screen (`helpers/boq#previewRequest` sends
+`paymentStages` only when `helpers/paymentSchedule#validScheduleBody` says it is whole; `stages` is null — "—" — until then).
+The **terms picker** (`sections/TermsPicker`, a `preview` field) lists the library's entries in use: **Use these terms**
+(replaces — asked first when the text differs), **Add below**, and for a customer whose language is Nepali **Use the Nepali
+text** where an entry has one. The header's **Excel** downloads `export.xlsx` (the BOQ with live formulas, measurements, the
+schedule; a Cost sheet only for `costs:read` — the API's rule) as `QT-….xlsx`.
+
+**The send panel** (`sections/SendPanel`) — Copy, Open, **WhatsApp** (`helpers/contact#whatsappShareHref`: a chat with the
+customer's mobile, else WhatsApp's picker) and **Viber** (`viberShareHref`: `viber://forward?text=`), both carrying a short
+message with the link in the customer's language; and **"Opened 2×"** with "First opened …" in Kathmandu time (`viewCount`,
+`firstViewedAt` — the public GET stamps them), or "Not opened yet".
+
+**The margin gate** (L-D4) — `ApproveQuotationDialog`: the approver (`costs:read`) sees the margin (`helpers/quotationActions#
+marginOf` — the record's `margin` / `costComplete` / `costTotal`, or L3's `boq.cost`); an unknown cost asks for the
+acknowledgement (a `checkbox` field) up front; a known margin below `quotation.minMarginPct` is the API's to judge — its 422
+`LOW_MARGIN` (`details: { marginPct, minMarginPct, costComplete }`) shows its message and brings the box up, and the approval
+is sent again with `acknowledgeLowMargin: true`. The quotations list gains a **Margin** column (`costs:read` only — "10% ·
+Rs. …", or "Unknown").
+
+**Parts**: `helpers/paymentSchedule.js` (`parsePct`, `basisPointsOf`, `formatShare`, `toStageRows` — stable keys —,
+`stageBody` / `scheduleBody`, `scheduleTotal`, `presetRows`, `matchingPreset`, `validScheduleBody`), `helpers/download.js`
+(`arrayBufferToBase64`, `downloadBase64`, `saveBlob`), `helpers/contact.js` (the two share links), `config/constants.js`
+(`CONTRACT_TYPES` / `_LABELS`, `PAYMENT_TRIGGERS` / `_LABELS`, `PAYMENT_SCHEDULE_PRESETS`, `DECLINE_CATEGORIES`),
+`form/schemas/quotation.schema.js` (`paymentStageRowSchema`, `paymentScheduleSchema`, the contract fields on
+`quotationFormSchema`, `approveQuotationSchema(acknowledge)`, `changeRequestSchema(messages)` / `declineSchema(messages)` —
+the customer's messages in their language — and `quotationTermsSchema`), `config/auditEvents.js` (`export.xlsx` "Quotation
+exported to Excel").
+
+Tests: the Phase L4 block of `QuotationPublicPage.test.jsx` (en and ne at 360 px — letterhead, AD+BS dates, sections, optional
+rows and total, words, contract, duration, exclusions, the schedule's amounts, the annex; `summaryOnly`; the decline chips
+sending the category, in both languages), `quotationPageState.test.js` (en/ne parity, decline words),
+`helpers/paymentSchedule.test.js`, the L4 block of `ResourceForm.test.jsx` (`paymentSchedule`: 100 %, presets, basis points,
+server amounts; `checkbox`), the L4 block of `QuotationBuilder.test.jsx` (contract sentence, schedule amounts from the saved
+record then the preview, a preset re-asking the preview, a schedule short of 100 % never sent and stopping the save,
+duration and exclusions saved, the terms picker in English and Nepali, Customer view switches with no cost for a manager,
+"Opened 2×", the share links, Print and Excel), the margin-gate block of `QuotationScreens.test.jsx` (LOW_MARGIN → the
+acknowledgement → sent again; unknown cost up front; the Margin column for MANAGER and not for SALES; the decline reason),
+`QuotationPrintPage.test.jsx` (no cost key, `window.print()`), the terms library in `RateLibraryScreens.test.jsx`, the
+`&category=` block in `LeadFollowUp.test.jsx`, `crmMirror.test.js` (contract types, triggers, presets, decline categories,
+`export.xlsx`), `adminNav.test.js` (Terms library), and `e2e/boq-flow.spec.js`.
 
 ## Platform (Phase G)
 
@@ -719,7 +816,9 @@ them and refuse what the API would.
   off. The Filters panel has the same **Next action** filter.
 - **Lost** — `LostReasonDialog` asks a category (`LOST_CATEGORIES`, required) beside the words; `useLeadStatusChange`
   sends `{ status: 'LOST', lostCategory, lostReason? }`. A declined or expired quotation's notification links to
-  `/admin/leads/:id?markLost=1`, which opens it — a person decides; nothing is lost automatically.
+  `/admin/leads/:id?markLost=1`, which opens it — a person decides; nothing is lost automatically. Since Phase L4 a decline
+  carries the customer's reason as `&category=PRICE`, and the dialog starts on that category
+  (`changeStatus(lead, 'LOST', { lostCategory })` → `LostReasonDialog defaultCategory`).
 - `helpers/leadFollowUp.js` — `nextActionState` (none · overdue · today · later, "today" by Kathmandu's calendar),
   `formatWhen`, `lateBy`, `daysInStage`, `stageAgeLabel`, `isClosedLead`, `qualificationSummary`.
 - Tests: `pages/admin/LeadFollowUp.test.jsx` (the card, the composer, the lost dialog, the views, `?markLost=1`, the
@@ -1018,7 +1117,8 @@ links, and which role may see each), `homeSections.js` (what each home
 section shows, where its content is edited, which ones take a `limit`, and `toSectionItems`), and `settingsForm.js`
 (the settings screen as data — see "Which screen is which").
 
-`helpers/` is behaviour with no state (Phase L3 added `boq.js` and `measurements.js` — see "Quotations — the BOQ builder
+`helpers/` is behaviour with no state (Phase L4 added `paymentSchedule.js` and `download.js` — see "Quotations — terms and
+the customer document (Phase L4)"; Phase L3 added `boq.js` and `measurements.js` — see "Quotations — the BOQ builder
 (Phase L3)"; Phase L2 added `recipe.js` — see "The rate library and the money wall"; Phase H1 added `jobActions.js` and `dispatchBoard.js` — see "Operations
 (Phase H1)" — and `formatMinutes` in `format.js`; Phase G added `auditDiff.js`, `sms.js`, `recordLinks.js` and
 `capabilityMatrix.js` — see "Platform (Phase G)"): `format.js` (money — `rupeesToPaisa`, `parseRupees`,
@@ -1086,6 +1186,8 @@ every new form.
 8. **Cost is the server's.** The client never works out a cost; it shows one only behind `costs:read` (a field's,
    column's or tab's capability), even though the API already strips it for everyone else. See "The rate library and the
    money wall (Phase L2)". Since Phase L3 the same holds for every amount on a quotation: totals, section subtotals,
-   discounts from % or a target, and margins come from the server's preview.
-9. **EditableGrid is reached only through ResourceForm field types** (`lineItems`, `grid`, `measurements`, `recipe`) —
+   discounts from % or a target, and margins come from the server's preview; since Phase L4 also each payment stage's
+   amount and the total in words. A customer-facing screen and the print never show a cost key, even to a manager.
+9. **EditableGrid is reached only through ResourceForm field types** (`lineItems`, `grid`, `measurements`, `recipe`,
+   `paymentSchedule`) —
    never imported by a page or a registry entry. Every drag has a keyboard equivalent.

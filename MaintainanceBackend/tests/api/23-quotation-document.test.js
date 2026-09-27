@@ -166,7 +166,8 @@ describe('the customer\'s page', () => {
     await anon().get(`/public/quotations/${token}`);
     const after = expectStatus(await sales.get(`/admin/quotations/${q.id}`), 200).data;
     expect(after.viewCount).toBe(before.viewCount + 2);
-    expect(after.firstViewedAt).toBeTruthy();
+    // Stamped in UTC like every other instant — not the database session's Kathmandu wall clock.
+    expect(Math.abs(new Date(after.firstViewedAt).getTime() - Date.now())).toBeLessThan(5 * 60_000);
     // Page views are not audited changes.
     expect(await prisma.auditLog.count({ where: { recordId: q.id, model: 'Quotation', action: 'update', changes: { path: ['viewCount'], not: null } } })).toBe(0);
   });

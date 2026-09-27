@@ -22,7 +22,7 @@ export function TotalsList({ rows, className }) {
           )}
         >
           <dt className={cn(!row.emphasis && !row.tone && 'text-muted-foreground')}>{row.label}</dt>
-          <dd className="tabular-nums">{row.value}</dd>
+          <dd className="whitespace-nowrap tabular-nums">{row.value}</dd>
         </div>
       ))}
     </dl>

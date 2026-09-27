@@ -257,3 +257,115 @@ describe('QuotationBuilderPage', () => {
     expect(await screen.findByRole('button', { name: 'Convert to job' })).toBeInTheDocument();
   });
 });
+
+describe('the margin gate on approval (Phase L4)', () => {
+  const LOW = {
+    ...QUOTATION, status: 'PENDING_APPROVAL', costTotal: 180000, costComplete: true, margin: { amount: 20000, pct: 10 },
+  };
+  const lowMarginError = (details) => json({
+    error: {
+      code: 'LOW_MARGIN',
+      message: details.costComplete ? 'The margin is 10% — below the 15% minimum. Approve only if you mean to.' : 'Some rows have no known cost, so the margin is unknown. Approve only if you mean to.',
+      details,
+    },
+  }, 422);
+
+  it('shows the approver the margin; a LOW_MARGIN answer asks for the acknowledgement, and the approval is sent again with it', async () => {
+    const user = userEvent.setup();
+    const { calls, store } = builder(LOW, 'MANAGER', ({ method, path, body }) => {
+      if (method !== 'POST' || path !== '/admin/quotations/q1/approve') return undefined;
+      return body.acknowledgeLowMargin
+        ? json({ data: { ...LOW, status: 'OFFICE_APPROVED' } })
+        : lowMarginError({ marginPct: 10, minMarginPct: 15, costComplete: true });
+    });
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve this quotation' });
+    expect(within(dialog).getByTestId('approve-margin')).toHaveTextContent('Rs. 200.00 · 10%');
+    // A known margin: the minimum is the server's to judge, so no box yet.
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+    await user.type(within(dialog).getByRole('textbox', { name: /Remark/ }), 'दर जाँचियो');
+    await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+
+    expect(await within(dialog).findByText(/below the 15% minimum. Approve only if you mean to/)).toBeInTheDocument();
+    const box = await within(dialog).findByRole('checkbox', { name: /I approve it below the 15% minimum margin/ });
+    expect(within(dialog).getByTestId('approve-margin')).toHaveTextContent('Below the 15% minimum.');
+    // The box must be ticked on purpose.
+    await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    expect(await within(dialog).findByText('Tick this to approve it anyway')).toBeInTheDocument();
+    expect(calls.filter((c) => c.path === '/admin/quotations/q1/approve')).toHaveLength(1);
+
+    await user.click(box);
+    await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(calls.filter((c) => c.path === '/admin/quotations/q1/approve').map((c) => c.body)).toEqual([
+      { note: 'दर जाँचियो' },
+      { note: 'दर जाँचियो', acknowledgeLowMargin: true },
+    ]));
+    await waitFor(() => expect(toastTitles(store)).toContain('QT-2083-0042 approved'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Approve this quotation' })).not.toBeInTheDocument());
+  });
+
+  it('asks for the acknowledgement at once when a row’s cost is unknown', async () => {
+    const user = userEvent.setup();
+    const unknown = { ...LOW, costTotal: 120000, costComplete: false, margin: null };
+    const { calls } = builder(unknown, 'MANAGER', ({ method, path }) => (
+      method === 'POST' && path === '/admin/quotations/q1/approve' ? json({ data: { ...unknown, status: 'OFFICE_APPROVED' } }) : undefined
+    ));
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve this quotation' });
+    expect(within(dialog).getByTestId('approve-margin')).toHaveTextContent('Unknown');
+    expect(within(dialog).getByText(/Some rows have no known cost/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('checkbox', { name: /I approve it although the margin is unknown/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(calls.find((c) => c.path === '/admin/quotations/q1/approve')?.body).toEqual({ acknowledgeLowMargin: true }));
+  });
+
+  it('a healthy margin approves in one step with no box', async () => {
+    const user = userEvent.setup();
+    const healthy = { ...LOW, margin: { amount: 60000, pct: 30 } };
+    const { calls } = builder(healthy, 'MANAGER', ({ method, path }) => (
+      method === 'POST' && path === '/admin/quotations/q1/approve' ? json({ data: { ...healthy, status: 'OFFICE_APPROVED' } }) : undefined
+    ));
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve this quotation' });
+    expect(within(dialog).getByTestId('approve-margin')).toHaveTextContent('Rs. 600.00 · 30%');
+    await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(calls.find((c) => c.path === '/admin/quotations/q1/approve')?.body).toEqual({}));
+  });
+
+  it('names the reason a customer picked when they declined', async () => {
+    builder({ ...QUOTATION, status: 'REJECTED', declineCategory: 'PRICE', decisionNote: 'अर्को ठाउँमा सस्तो पाइयो', decidedAt: '2026-09-18T04:00:00.000Z' }, 'SALES');
+    expect(await screen.findByText('The customer declined — Price too high')).toBeInTheDocument();
+    expect(screen.getByText('अर्को ठाउँमा सस्तो पाइयो')).toBeInTheDocument();
+  });
+
+  it('adds a Margin column to the list for costs:read — never for SALES', async () => {
+    const rows = [
+      LOW,
+      { ...QUOTATION, id: 'q2', number: 'QT-2083-0043', status: 'PENDING_APPROVAL', costTotal: null, costComplete: false, margin: null },
+    ];
+    mockApi(({ path, query }) => {
+      if (path !== '/admin/quotations') return undefined;
+      return query.limit === '1' ? json({ data: [], meta: { total: 2 } }) : page(rows);
+    });
+    const { unmount } = renderWithProviders(<QuotationsPage />, { path: '/admin/quotations', preloadedState: signedInAs('MANAGER') });
+    await screen.findByText('QT-2083-0042');
+    expect(screen.getByRole('columnheader', { name: /Margin/ })).toBeInTheDocument();
+    const cells = screen.getAllByTestId('row-margin');
+    expect(cells[0]).toHaveTextContent('10%');
+    expect(cells[0]).toHaveTextContent('Rs. 200.00');
+    expect(within(screen.getByRole('row', { name: /QT-2083-0043/ })).getByText('Unknown')).toBeInTheDocument();
+    unmount();
+    vi.unstubAllGlobals();
+
+    // SALES: the API strips the figures, and the column is not there at all.
+    const stripped = rows.map(({ costTotal: _c, costComplete: _k, margin: _m, ...r }) => r);
+    mockApi(({ path, query }) => {
+      if (path !== '/admin/quotations') return undefined;
+      return query.limit === '1' ? json({ data: [], meta: { total: 2 } }) : page(stripped);
+    });
+    renderWithProviders(<QuotationsPage />, { path: '/admin/quotations', preloadedState: signedInAs('SALES') });
+    await screen.findByText('QT-2083-0042');
+    expect(screen.queryByRole('columnheader', { name: /Margin/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('row-margin')).not.toBeInTheDocument();
+  });
+});

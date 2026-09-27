@@ -2,6 +2,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatNpr } from '@/helpers/format';
 import { formatShare } from '@/helpers/paymentSchedule';
 
+const sameWords = (a, b) => Boolean(a && b) && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
 /**
  * A quotation's payment schedule as the customer reads it (L-D3, Phase L4): each stage's label, when it falls due
  * (in the customer's words), its share and its amount **from the server** — `money.js#paymentSchedule` splits the
@@ -32,7 +34,10 @@ export function PaymentScheduleTable({ stages = [], total, vatApplied, copy, sho
             <TableRow key={st.id ?? `${i}-${st.label}`} data-trigger={st.trigger}>
               <TableCell className="px-2 align-top">
                 <p className="font-medium">{st.label}</p>
-                <p className="text-xs text-muted-foreground">{copy.triggers[st.trigger] ?? st.trigger}</p>
+                {/* When it falls due — unless the label already says exactly that ("On completion"). */}
+                {sameWords(st.label, copy.triggers[st.trigger]) ? null : (
+                  <p className="text-xs text-muted-foreground">{copy.triggers[st.trigger] ?? st.trigger}</p>
+                )}
               </TableCell>
               <TableCell className="px-2 text-right align-top tabular-nums">{formatShare(st.basisPoints)}</TableCell>
               <TableCell className="px-2 text-right align-top">
