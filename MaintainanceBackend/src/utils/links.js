@@ -19,8 +19,11 @@ export const webUrl = (path) => `${webOrigin()}${path}`;
 /** `/admin/leads/:id` — the lead's page in the back office. */
 export const adminLeadPath = (id) => `/admin/leads/${id}`;
 
-/** The lead's page with the Mark lost dialog open — after a decline or an expiry, a person decides. */
-export const adminLeadMarkLostPath = (id) => `${adminLeadPath(id)}?markLost=1`;
+/**
+ * The lead's page with the Mark lost dialog open — after a decline or an expiry, a person decides. A
+ * customer's decline reason (Phase L4) pre-fills the category.
+ */
+export const adminLeadMarkLostPath = (id, category) => `${adminLeadPath(id)}?markLost=1${category ? `&category=${category}` : ''}`;
 
 /** `/admin/leads?…` — the leads list with filters in the URL, e.g. `{ nextAction: 'due_today' }`. */
 export const adminLeadsPath = (query = {}) => {

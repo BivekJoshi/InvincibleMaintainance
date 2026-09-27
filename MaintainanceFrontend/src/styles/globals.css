@@ -9,7 +9,10 @@
  * Everything else is warm paper and hairline greys. No component hardcodes a hex.
  */
 @layer base {
-  :root {
+  /* `.theme-light` re-declares the light palette on an element inside a dark page: the print sheet
+     (`/admin/quotations/:id/print`) is paper, whatever the app's mode, and its descendants inherit it. */
+  :root,
+  .theme-light {
     color-scheme: light;
 
     --background: 40 30% 98%;
@@ -464,5 +467,29 @@
 
   @media (prefers-reduced-motion: reduce) {
     .animate-indeterminate { animation: none; }
+  }
+}
+
+/* Printing a document (Phase L4: /admin/quotations/:id/print). The route has no app chrome; its toolbar is
+   `print:hidden`. A4 with even margins, and the sheet's tints kept so section rows and the totals read on paper. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm 12mm 14mm;
+  }
+
+  html,
+  body {
+    background: transparent !important;
+  }
+
+  .print-sheet {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* A table row (a BOQ row, a stage) never splits across two pages. */
+  .print-sheet tr {
+    break-inside: avoid;
   }
 }

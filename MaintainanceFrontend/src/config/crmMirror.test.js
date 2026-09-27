@@ -10,6 +10,7 @@ import {
   LOST_CATEGORIES, LOST_CATEGORY_LABELS, PROPERTY_TYPES, PROPERTY_TYPE_LABELS, BUDGET_BANDS, BUDGET_BAND_LABELS,
   DECISION_MAKERS, DECISION_MAKER_LABELS,
   UNITS, RATE_MODES, RATE_MODE_LABELS, RECIPE_COMPONENT_KINDS, RECIPE_COMPONENT_LABELS,
+  CONTRACT_TYPES, CONTRACT_TYPE_LABELS, PAYMENT_TRIGGERS, PAYMENT_TRIGGER_LABELS, PAYMENT_SCHEDULE_PRESETS, DECLINE_CATEGORIES,
 } from '@/config/constants';
 import { AUDIT_EVENT_LABELS } from '@/config/auditEvents';
 import { PERMISSIONS, can } from '@/helpers/permissions';
@@ -115,5 +116,26 @@ describe('the CRM rules mirror the API', () => {
     expect(Object.keys(RATE_MODE_LABELS)).toEqual(RATE_MODES);
     expect(RECIPE_COMPONENT_KINDS).toEqual(API_ENUMS.RECIPE_COMPONENT_KINDS);
     expect(Object.keys(RECIPE_COMPONENT_LABELS)).toEqual(RECIPE_COMPONENT_KINDS);
+  });
+
+  it('contract types, payment triggers and the decline reasons are the API’s, and each has words (Phase L4)', () => {
+    expect(CONTRACT_TYPES).toEqual(API_ENUMS.CONTRACT_TYPES);
+    expect(Object.keys(CONTRACT_TYPE_LABELS)).toEqual(CONTRACT_TYPES);
+    expect(PAYMENT_TRIGGERS).toEqual(API_ENUMS.PAYMENT_TRIGGERS);
+    expect(Object.keys(PAYMENT_TRIGGER_LABELS)).toEqual(PAYMENT_TRIGGERS);
+    // The customer's decline reasons are lost categories, so the "Mark lost?" prompt can start from one.
+    expect(DECLINE_CATEGORIES.every((c) => API_ENUMS.LOST_CATEGORIES.includes(c))).toBe(true);
+    expect(DECLINE_CATEGORIES).toContain('OTHER');
+    // Every preset is a schedule the API accepts: 100 %, at most one advance, known triggers.
+    for (const preset of PAYMENT_SCHEDULE_PRESETS) {
+      expect(preset.stages.reduce((sum, st) => sum + st.pct * 100, 0), preset.key).toBe(10000);
+      expect(preset.stages.filter((st) => st.trigger === 'ON_ACCEPT').length).toBeLessThanOrEqual(1);
+      expect(preset.stages.every((st) => PAYMENT_TRIGGERS.includes(st.trigger))).toBe(true);
+    }
+  });
+
+  it('the Excel export is audited in words (Phase L4)', () => {
+    expect(API_ENUMS.AUDIT_EVENTS.EXPORT_XLSX).toBe('export.xlsx');
+    expect(AUDIT_EVENT_LABELS['export.xlsx']).toBe('Quotation exported to Excel');
   });
 });

@@ -192,7 +192,9 @@ describe('frozen recipes and cost (L-D1, L-D4)', () => {
     const pub = expectStatus(await anon().get(`/public/quotations/${publicToken}`), 200).data;
     expect(costKeys(pub)).toEqual([]);
     expect(pub.items.map((r) => r.rowType)).toEqual(['SECTION', 'ITEM', 'NOTE', 'SECTION', 'ITEM', 'ITEM', 'SECTION', 'ITEM']);
-    expect(pub.items.every((r) => r.recipe === undefined && r.measurements === undefined)).toBe(true);
+    expect(pub.items.every((r) => r.recipe === undefined)).toBe(true);
+    // The measurements annex (Phase L4): a measured row shows how its quantity was taken, never its cost.
+    expect(pub.items[1].measurements).toHaveLength(2);
     expect(pub.boq).toEqual({ sections: expect.any(Array), optionalTotal: 200000 });
     expect(pub.boq.sections.map((sec) => sec.subtotal)).toEqual([1170000, 1029000, 300000]);
   });

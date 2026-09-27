@@ -381,3 +381,105 @@ describe('ResourceForm — the EditableGrid field types (Phase L3)', () => {
     expect(onSubmit.mock.calls[0][0].parts).toEqual([{ name: 'Hinge', qty: 6 }]);
   });
 });
+
+describe('ResourceForm — the payment schedule and checkbox field types (Phase L4)', () => {
+  const cellOf = (row, key) => screen.getByRole('grid', { name: 'Payment stages' }).querySelector(`[data-cell="${row}:${key}"]`);
+  const STAGES = [
+    { id: 'st1', label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT', taxable: 3645000, vat: 473850, total: 4118850 },
+    { id: 'st2', label: 'Running bill', basisPoints: 4000, trigger: 'MILESTONE', taxable: 2916000, vat: 379080, total: 3295080 },
+    { id: 'st3', label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION', taxable: 729000, vat: 94770, total: 823770 },
+  ];
+
+  it('loads stages as shares with the server’s amounts, must make 100 %, offers the presets and sends basis points', async () => {
+    const user = userEvent.setup();
+    const { paymentScheduleSchema } = await import('@/form/schemas/quotation.schema');
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm
+        schema={z.object({ paymentStages: paymentScheduleSchema })}
+        fields={[{ name: 'paymentStages', type: 'paymentSchedule', label: 'Payment stages', figures: STAGES }]}
+        defaultValues={{ paymentStages: STAGES }}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(cellOf(0, 'pct')).toHaveTextContent('50%');
+    expect(cellOf(0, 'trigger')).toHaveTextContent('On acceptance (advance)');
+    // The amount is the server's figure for the stage — the field multiplies nothing.
+    expect(cellOf(0, 'amount')).toHaveTextContent('Rs. 41,188.50');
+    expect(cellOf(2, 'amount')).toHaveTextContent('Rs. 8,237.70');
+    expect(screen.getByRole('button', { name: '50 · 40 · 10' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('schedule-total')).toHaveTextContent('Adds up to 100%.');
+
+    // 50 + 30 + 10: refused here, as the API would.
+    await user.click(cellOf(1, 'pct'));
+    await user.keyboard('30{Enter}');
+    expect(screen.getByTestId('schedule-total')).toHaveTextContent('Adds up to 90% — 10% short. The stages must make 100%.');
+    expect(screen.getByRole('button', { name: '50 · 40 · 10' })).toHaveAttribute('aria-pressed', 'false');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('The stages add up to 90% — they must make 100%')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // A preset replaces the rows.
+    await user.click(screen.getByRole('button', { name: '40 · 30 · 20 · 10' }));
+    expect(screen.getByRole('grid', { name: 'Payment stages' }).querySelectorAll('[data-row]')).toHaveLength(4);
+    expect(cellOf(3, 'trigger')).toHaveTextContent('On completion');
+    expect(screen.getByTestId('schedule-total')).toHaveTextContent('Adds up to 100%.');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].paymentStages).toEqual([
+      { label: 'Advance', basisPoints: 4000, trigger: 'ON_ACCEPT' },
+      { label: 'Running bill 1', basisPoints: 3000, trigger: 'MILESTONE' },
+      { label: 'Running bill 2', basisPoints: 2000, trigger: 'MILESTONE' },
+      { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+    ]);
+  });
+
+  it('“100 on completion” is one stage, and a new stage is typed in Nepali', async () => {
+    const user = userEvent.setup();
+    const { paymentScheduleSchema } = await import('@/form/schemas/quotation.schema');
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm
+        schema={z.object({ paymentStages: paymentScheduleSchema })}
+        fields={[{ name: 'paymentStages', type: 'paymentSchedule', label: 'Payment stages' }]}
+        defaultValues={{ paymentStages: [] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(screen.getByText('No stages yet. Pick a preset, or add a stage.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '100 on completion' }));
+    expect(cellOf(0, 'pct')).toHaveTextContent('100%');
+    // Nothing to show yet: no amount is made up.
+    expect(cellOf(0, 'amount')).toHaveTextContent('—');
+    await user.click(cellOf(0, 'pct'));
+    await user.keyboard('60{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Add stage' }));
+    await user.keyboard('अग्रिम{Tab}40{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].paymentStages).toEqual([
+      { label: 'On completion', basisPoints: 6000, trigger: 'ON_COMPLETION' },
+      { label: 'अग्रिम', basisPoints: 4000, trigger: 'MILESTONE' },
+    ]);
+  });
+
+  it('a `checkbox` field is a statement ticked on purpose', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm
+        schema={z.object({ agreed: z.boolean().refine((v) => v, 'Tick it to go on') })}
+        fields={[{ name: 'agreed', type: 'checkbox', label: 'I have read it', description: 'Recorded with the change.' }]}
+        defaultValues={{}}
+        onSubmit={onSubmit}
+      />,
+    );
+    const box = screen.getByRole('checkbox', { name: 'I have read it' });
+    expect(box).not.toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Tick it to go on')).toBeInTheDocument();
+    await user.click(box);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit.mock.calls[0][0]).toEqual({ agreed: true }));
+  });
+});

@@ -14,6 +14,7 @@ function savedFigures(q) {
       vatAmount: q?.vatAmount, total: q?.total, optionalTotal: q?.boq?.optionalTotal ?? 0, sections: q?.boq?.sections ?? [],
     },
     cost: q?.boq?.cost ?? null,
+    stages: q?.paymentStages ?? [],
   };
 }
 
@@ -26,8 +27,11 @@ function savedFigures(q) {
  * stay up, marked `stale`; a newer edit keeps the last answer up, also `stale`, until its own arrives.
  *
  * @param {{ quotation: object, values: object|null, dirty: boolean, enabled: boolean }} opts
- * @returns {{ figures: Map<string, object>, totals: object, cost: object|null, stale: boolean, live: boolean,
- *   skipped: number, error: object|null }}
+ * The payment schedule's amounts come the same way (Phase L4): the saved stages', or the preview's for the schedule
+ * on screen — a schedule is sent with the preview only when it is whole (100 %), and `stages` is null until then.
+ *
+ * @returns {{ figures: Map<string, object>, totals: object, cost: object|null, stages: object[]|null, stale: boolean,
+ *   live: boolean, skipped: number, error: object|null }}
  */
 export function useBoqFigures({ quotation, values, dirty, enabled }) {
   const saved = useMemo(() => savedFigures(quotation), [quotation]);
@@ -42,7 +46,9 @@ export function useBoqFigures({ quotation, values, dirty, enabled }) {
   const [answer, setAnswer] = useState(null);
 
   useEffect(() => {
-    if (currentData && request) setAnswer({ bodyKey, keys: request.keys, skipped: request.skipped, data: currentData });
+    if (currentData && request) {
+      setAnswer({ bodyKey, keys: request.keys, skipped: request.skipped, stagesSent: request.stagesSent, data: currentData });
+    }
   }, [currentData, bodyKey]); // eslint-disable-line react-hooks/exhaustive-deps -- `request` is `bodyKey`'s
 
   // A save (or a reload) makes the saved figures current again.
@@ -54,6 +60,8 @@ export function useBoqFigures({ quotation, values, dirty, enabled }) {
     figures: serverFiguresByKey(answer.data.items, answer.keys, answer.data.totals?.sections),
     totals: answer.data.totals,
     cost: answer.data.cost ?? null,
+    // Only a whole schedule is sent; while the one on screen is not, no stage has an amount.
+    stages: answer.stagesSent ? answer.data.paymentStages ?? [] : null,
   } : null), [answer]);
 
   if (!active) return { ...saved, stale: false, live: false, skipped: 0, error: null };

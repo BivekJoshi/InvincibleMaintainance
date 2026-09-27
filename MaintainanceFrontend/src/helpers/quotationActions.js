@@ -155,3 +155,23 @@ export function sentAge(quotation, now = Date.now()) {
   if (days <= 0) return 'Sent today';
   return `Sent ${days} day${days === 1 ? '' : 's'} ago`;
 }
+
+/**
+ * A quotation's margin as the API sent it — only to `costs:read` (the money wall strips it for everyone else): the
+ * record's `margin` / `costComplete` / `costTotal` (Phase L4, also on list rows), or Phase L3's `boq.cost`. Nothing is
+ * worked out here. `known` is true when the margin is a figure, false when a cost is unknown (the approval then needs
+ * an acknowledgement), and null when no cost was sent at all.
+ *
+ * @param {object|null|undefined} q
+ * @returns {{ margin: { amount: number, pct: number|null }|null, costComplete: boolean|undefined,
+ *   costTotal: number|null, known: boolean|null }}
+ */
+export function marginOf(q) {
+  const cost = q?.boq?.cost ?? null;
+  const margin = q?.margin !== undefined ? q.margin : cost?.margin;
+  const costComplete = q?.costComplete ?? cost?.costComplete;
+  const costTotal = q?.costTotal ?? cost?.costTotal ?? null;
+  const sent = margin !== undefined || costComplete !== undefined;
+  const known = sent ? Boolean(costComplete !== false && margin && margin.pct != null) : null;
+  return { margin: margin ?? null, costComplete, costTotal, known };
+}

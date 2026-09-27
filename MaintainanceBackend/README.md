@@ -69,6 +69,12 @@ sections, measured rows with a door deducted, a note, an optional flooring row a
 rate library with their recipes frozen — built through the same service as the builder, so its take-off
 and labour tabs have something to show.
 
+Phase L4 adds the **terms library** (a default "Standard terms" in English and Nepali, and a waterproofing
+warranty entry), gives the BOQ demo a 50/40/10 schedule, a 6-day duration and exclusions, and seeds a
+quotation priced under the minimum margin, waiting for approval (customer Sunil Maharjan) — approving it
+asks for the acknowledgement. Dependency: **exceljs** (the quotation's Excel export); `package.json` overrides its
+`uuid` to ^11.1.1 (GHSA-w5hq-g745-h8pq — exceljs only uses uuid v4, but the patched version costs nothing).
+
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
 Both links open `<PUBLIC_WEB_ORIGIN>/reset-password`. With no `SMTP_HOST`, the email — link included — is

@@ -1,5 +1,5 @@
 import {
-  Blocks, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, Hammer, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
+  Blocks, BookText, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, Hammer, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
   HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, LogIn,
   MessageSquareQuote, MessageSquareText, Newspaper, Package, Receipt, Ruler, ScrollText, Send, Settings, ShieldCheck,
   Sparkles, Tag, Tags, Timer, TrendingDown, UserCog, Users, Wallet, Wrench,
@@ -98,6 +98,7 @@ export const ADMIN_NAV = [
     items: [
       { to: '/admin/rate-card', label: 'Rate library', icon: Ruler, capability: 'rates:read', editLabel: 'Edit' },
       { to: '/admin/trades', label: 'Trades & wages', icon: Hammer, capability: 'rates:read', editLabel: 'Edit' },
+      { to: '/admin/quotation-terms', label: 'Terms library', icon: BookText, capability: 'rates:read', editLabel: 'Edit' },
       { to: '/admin/job-templates', label: 'Job templates', icon: ClipboardList, capability: 'jobs:read', editLabel: 'Edit' },
       { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', editLabel: 'Edit' },
       { to: '/admin/material-categories', label: 'Material categories', icon: FolderTree, capability: 'materials:read', editLabel: 'Edit' },

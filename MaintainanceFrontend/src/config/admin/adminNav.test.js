@@ -36,7 +36,7 @@ describe('admin nav', () => {
   });
 
   it('shows ACCOUNTANT the rate library and trades, read-only by capability', () => {
-    expect(navOf('ACCOUNTANT').Catalog).toEqual(['Rate library', 'Trades & wages', 'Job templates']);
+    expect(navOf('ACCOUNTANT').Catalog).toEqual(['Rate library', 'Trades & wages', 'Terms library', 'Job templates']);
     expect(navOf('ACCOUNTANT').Content).toBeUndefined();
   });
 
@@ -48,6 +48,18 @@ describe('admin nav', () => {
       expect(navOf(role).Catalog ?? [], role).not.toContain('Rate library');
     }
     expect(breadcrumbsFor('/admin/trades/cl1')).toEqual([{ label: 'Catalog' }, { label: 'Trades & wages', to: '/admin/trades' }, { label: 'Edit' }]);
+  });
+
+  it('puts the terms library beside the rate library, for whoever reads rates (Phase L4)', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SALES', 'ACCOUNTANT']) {
+      expect(navOf(role).Catalog, role).toContain('Terms library');
+    }
+    for (const role of ['DISPATCHER', 'EDITOR', 'SURVEYOR', 'TECHNICIAN']) {
+      expect(navOf(role).Catalog ?? [], role).not.toContain('Terms library');
+    }
+    expect(breadcrumbsFor('/admin/quotation-terms/new')).toEqual([
+      { label: 'Catalog' }, { label: 'Terms library', to: '/admin/quotation-terms' }, { label: 'New' },
+    ]);
   });
 
   it('shows the admin platform screens to ADMIN alone', () => {
@@ -73,7 +85,7 @@ describe('admin nav', () => {
     expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations', 'Lost leads']);
     // SALES reads jobs, templates and technicians (to pick a surveyor); dispatch and stock are not theirs.
     expect(nav.Operations).toEqual(['Jobs', 'Technicians']);
-    expect(nav.Catalog).toEqual(['Rate library', 'Trades & wages', 'Job templates']);
+    expect(nav.Catalog).toEqual(['Rate library', 'Trades & wages', 'Terms library', 'Job templates']);
     expect(landingPathFor('SALES')).toBe('/admin');
     expect(contentHomeFor('SALES')).toBe('/admin');
   });

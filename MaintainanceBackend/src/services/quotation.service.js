@@ -2,11 +2,13 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { AppError, notFound, badRequest, conflict, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
-import { lineAmount, toPaisa, formatNpr } from '../utils/money.js';
+import { amountInWords, lineAmount, margin, paymentSchedule, toPaisa, formatNpr } from '../utils/money.js';
+import { formatBs } from '../utils/nepaliDate.js';
 import { nextNumber } from '../utils/numbering.js';
 import { publicToken } from '../utils/tokens.js';
 import { QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
-import { QUOTATION_DECISIONS, QUOTATION_STAGES, ROLES } from '../shared/enums.js';
+import { CONTRACT_TYPES, QUOTATION_DECISIONS, QUOTATION_STAGES, ROLES } from '../shared/enums.js';
+import { resolveMediaMap } from './media.service.js';
 import { can } from '../shared/permissions.js';
 import { getSetting } from './settings.service.js';
 import { notify, notifyUsers, userIdsWithRoles } from './notify.service.js';
@@ -23,6 +25,7 @@ const INCLUDE = {
   site: { select: { id: true, label: true, address: true, area: true } },
   lead: { select: { id: true, name: true, status: true, assignedToId: true } },
   items: { orderBy: { sortOrder: 'asc' } },
+  stages: { orderBy: { sortOrder: 'asc' } },
   createdBy: { select: { id: true, name: true } },
   submittedBy: { select: { id: true, name: true } },
   approvedBy: { select: { id: true, name: true } },
@@ -63,6 +66,74 @@ const label = (q) => `${q.number} v${q.version}`;
 const totalsData = (t) => ({
   subtotal: t.subtotal, discount: t.discount, vatApplied: t.vatApplied, vatRate: t.vatRate, vatAmount: t.vatAmount, total: t.total,
 });
+
+/** The cost columns a quotation stores (Phase L4), so a list shows the margin without reading every row. */
+const costData = (rows, totals) => {
+  const { costTotal, costComplete } = costSummary(rows, totals);
+  return { costTotal, costComplete };
+};
+
+/** Payment stages as rows to write, in the order given. */
+const stageRows = (stages) => stages.map((st, sortOrder) => ({ label: st.label, basisPoints: st.basisPoints, trigger: st.trigger, sortOrder }));
+
+const FALLBACK_SCHEDULE = [
+  { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT' },
+  { label: 'Running bill', basisPoints: 4000, trigger: 'MILESTONE' },
+  { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+];
+
+/** What a new quotation starts with (Phase L4): the settings' contract type and schedule, the library's default terms. */
+async function contractDefaults() {
+  const [contractType, schedule, terms] = await Promise.all([
+    getSetting('quotation.defaultContractType', 'LUMP_SUM'),
+    getSetting('quotation.defaultPaymentSchedule', FALLBACK_SCHEDULE),
+    prisma.quotationTerms.findFirst({ where: { isDefault: true, isActive: true, deletedAt: null }, select: { body: true } }),
+  ]);
+  const valid = Array.isArray(schedule) && schedule.reduce((a, st) => a + Number(st.basisPoints || 0), 0) === 10000;
+  return {
+    contractType: CONTRACT_TYPES.includes(contractType) ? contractType : 'LUMP_SUM',
+    stages: valid ? schedule : FALLBACK_SCHEDULE,
+    terms: terms?.body ?? (await getSetting('finance.quotationTerms', null)),
+  };
+}
+
+/** The company as a document states it: the letterhead of the print, the customer's page and J2's PDFs. */
+async function letterhead() {
+  const keys = ['contact.companyName', 'contact.address', 'contact.city', 'contact.phonePrimary', 'contact.phoneSecondary',
+    'contact.email', 'finance.panVatNo', 'branding.logoId', 'branding.tagline'];
+  const [name, address, city, phone1, phone2, email, panVatNo, logoId, tagline] = await Promise.all(keys.map((k) => getSetting(k, null)));
+  const media = logoId ? await resolveMediaMap([logoId]) : {};
+  return {
+    companyName: name ?? env.appName, address, city, phones: [phone1, phone2].filter(Boolean), email,
+    panVatNo: panVatNo || null, logo: logoId ? media[logoId] ?? null : null, tagline,
+  };
+}
+
+/**
+ * What a quotation says as a document (Phase L4): each payment stage with its amount (money.js#paymentSchedule —
+ * they sum to the total), the total in words (en and ne), BS dates, the letterhead, and — stripped by the cost
+ * wall for anyone without costs:read — its margin.
+ */
+async function documentFields(q) {
+  const stages = q.stages ?? [];
+  return {
+    paymentStages: stages.length ? paymentSchedule(q, stages).map(({ quotationId: _q, ...st }) => st) : [],
+    totalInWords: { en: amountInWords(q.total, 'en'), ne: amountInWords(q.total, 'ne') },
+    dates: {
+      createdAtBs: q.createdAt ? formatBs(q.createdAt) : null,
+      validUntilBs: q.validUntil ? formatBs(q.validUntil) : null,
+      sentAtBs: q.sentAt ? formatBs(q.sentAt) : null,
+    },
+    letterhead: await letterhead(),
+    margin: q.costComplete ? margin(q.subtotal - q.discount, q.costTotal) : null,
+  };
+}
+
+/** The staff shape of a quotation: its BOQ numbered and summarised, and its document fields. */
+async function present(q) {
+  const decorated = await decorateBoq(q);
+  return { ...decorated, ...(await documentFields(q)) };
+}
 
 /**
  * The one expiry rule, shared by the customer's GET, the customer's decision and
@@ -158,7 +229,9 @@ export async function listQuotations(query) {
     prisma.quotation.findMany({ where, orderBy, skip, take, include: INCLUDE }),
     prisma.quotation.count({ where }),
   ]);
-  return { items, meta: meta({ page, limit, total }) };
+  // The margin for the approval queue (Phase L4), from the stored cost; the cost wall strips it.
+  const withMargin = items.map((row) => ({ ...row, margin: row.costComplete ? margin(row.subtotal - row.discount, row.costTotal) : null }));
+  return { items: withMargin, meta: meta({ page, limit, total }) };
 }
 
 /**
@@ -187,7 +260,7 @@ export async function getQuotation(id) {
     // So the screen can say "someone else must approve this" without reading settings (MANAGER cannot).
     getSetting('quotation.makerChecker', true).then((v) => v !== false),
   ]);
-  return decorateBoq({ ...q, versions, survey, messages, makerChecker });
+  return present({ ...q, versions, survey, messages, makerChecker });
 }
 
 /** The customer's own messages about a quotation — what the Send panel reports on. */
@@ -200,9 +273,12 @@ const CUSTOMER_TEMPLATES = ['quotation_sent', 'quotation_accepted', 'quotation_c
  *   (lead convert); without one the quotation gets a transaction of its own
  */
 export async function createQuotation(input, userId, client = prisma) {
-  const { items = [], discount = 0, vatApplied = true, ...rest } = input;
+  const { items = [], discount = 0, vatApplied = true, paymentStages, ...rest } = input;
   const rows = await buildLines(items);
   const totals = await totalsFor(rows, { discount: toPaisa(discount), vatApplied });
+  const defaults = await contractDefaults();
+  if (!rest.contractType) rest.contractType = defaults.contractType;
+  if (rest.terms === undefined) rest.terms = defaults.terms;
   // Submitting needs a validity date; a quotation built from a survey or a convert has none of its own.
   if (!rest.validUntil) rest.validUntil = await defaultValidUntil();
 
@@ -214,7 +290,9 @@ export async function createQuotation(input, userId, client = prisma) {
         number,
         createdById: userId ?? null,
         ...totalsData(totals),
+        ...costData(rows, totals),
         items: { create: rows },
+        stages: { create: stageRows(paymentStages ?? defaults.stages) },
       },
       include: INCLUDE,
     });
@@ -223,7 +301,7 @@ export async function createQuotation(input, userId, client = prisma) {
       recordId: quotation.id,
       after: { number, status: quotation.status, total: quotation.total, customerId: quotation.customerId, leadId: quotation.leadId },
     }, tx);
-    return decorateBoq(quotation);
+    return present(quotation);
   };
   return client === prisma ? prisma.$transaction(run) : run(client);
 }
@@ -238,27 +316,38 @@ export async function updateQuotation(id, input) {
         : 'Create a revision to change it.'
     }`);
   }
-  const { items, discount, vatApplied, ...rest } = input;
+  const { items, discount, vatApplied, paymentStages, ...rest } = input;
 
   // Rows sent back with their ids keep their frozen recipe and cost (buildLines). A discount or VAT change
-  // without rows re-totals the stored ones — the totals never go stale.
-  if (!items && discount === undefined && vatApplied === undefined) {
-    return decorateBoq(await prisma.quotation.update({ where: { id }, data: rest, include: INCLUDE }));
-  }
-  const rows = items ? await buildLines(items, { existing: existing.items }) : existing.items.map(storedRow);
-  const totals = await totalsFor(rows, {
-    discount: discount !== undefined ? toPaisa(discount) : existing.discount,
-    vatApplied: vatApplied ?? existing.vatApplied,
-  });
-  return decorateBoq(await prisma.$transaction(async (tx) => {
-    await tx.quotationItem.deleteMany({ where: { quotationId: id } });
-    return tx.quotation.update({
-      where: { id },
-      data: { ...rest, ...totalsData(totals), items: { create: rows } },
-      include: INCLUDE,
+  // without rows re-totals the stored ones — the totals never go stale. Sent stages replace the schedule.
+  const data = { ...rest };
+  let rows = null;
+  if (items || discount !== undefined || vatApplied !== undefined) {
+    rows = items ? await buildLines(items, { existing: existing.items }) : existing.items.map(storedRow);
+    const totals = await totalsFor(rows, {
+      discount: discount !== undefined ? toPaisa(discount) : existing.discount,
+      vatApplied: vatApplied ?? existing.vatApplied,
     });
+    Object.assign(data, totalsData(totals), costData(rows, totals));
+  }
+  return present(await prisma.$transaction(async (tx) => {
+    if (rows) {
+      await tx.quotationItem.deleteMany({ where: { quotationId: id } });
+      data.items = { create: rows };
+    }
+    if (paymentStages) {
+      await tx.quotationPaymentStage.deleteMany({ where: { quotationId: id } });
+      data.stages = { create: stageRows(paymentStages) };
+    }
+    return tx.quotation.update({ where: { id }, data, include: INCLUDE });
   }));
 }
+
+/** The contract fields a revision or a copy carries across (Phase L4). */
+const contractCopy = (q) => ({
+  contractType: q.contractType, estimatedDays: q.estimatedDays, exclusions: q.exclusions,
+  showMeasurements: q.showMeasurements, summaryOnly: q.summaryOnly,
+});
 
 /** A stored row as a row to write again: its own columns, without its id or its quotation. */
 const storedRow = ({ id: _id, quotationId: _q, ...row }) => ({ ...row, measurements: row.measurements ?? undefined, recipe: row.recipe ?? undefined });
@@ -268,7 +357,7 @@ const storedRow = ({ id: _id, quotationId: _q, ...row }) => ({ ...row, measureme
  * `totalsFor`), nothing written. `quotationId` keeps that draft's frozen recipes for rows sent with ids.
  * Cost and margin are in the answer; the cost wall strips them for callers without costs:read.
  */
-export async function previewQuotation({ quotationId, items = [], discount = 0, discountPct, targetTotal, vatApplied = true }) {
+export async function previewQuotation({ quotationId, items = [], paymentStages, discount = 0, discountPct, targetTotal, vatApplied = true }) {
   const existing = quotationId ? (await findQuotation(quotationId)).items : [];
   const rows = await buildLines(items, { existing });
   const totals = await totalsFor(rows, {
@@ -282,6 +371,8 @@ export async function previewQuotation({ quotationId, items = [], discount = 0, 
     })),
     totals,
     cost: costSummary(rows, totals),
+    paymentStages: paymentStages ? paymentSchedule(totals, paymentStages) : [],
+    totalInWords: { en: amountInWords(totals.total, 'en'), ne: amountInWords(totals.total, 'ne') },
   };
 }
 
@@ -326,7 +417,7 @@ export async function repriceQuotation(id, { apply }) {
   const totals = await totalsFor(rows, { discount: q.discount, vatApplied: q.vatApplied });
   await prisma.$transaction(async (tx) => {
     await tx.quotationItem.deleteMany({ where: { quotationId: id } });
-    await tx.quotation.update({ where: { id }, data: { ...totalsData(totals), items: { create: rows } } });
+    await tx.quotation.update({ where: { id }, data: { ...totalsData(totals), ...costData(rows, totals), items: { create: rows } } });
   });
   return { rows: preview, applied: preview.length, quotation: await getQuotation(id) };
 }
@@ -352,8 +443,11 @@ export async function copyQuotation(id, { customerId, siteId, leadId } = {}, use
         terms: source.terms,
         internalNote: `Copied from ${label(source)}`,
         createdById: userId ?? null,
+        ...contractCopy(source),
         ...totalsData(totals),
+        ...costData(rows, totals),
         items: { create: rows },
+        stages: { create: stageRows(source.stages) },
       },
     });
     await recordEvent('quotation.created', {
@@ -386,7 +480,8 @@ export async function submitQuotation(id, userId) {
   }
 
   const threshold = Math.max(0, Math.round(Number(await getSetting('quotation.autoApproveBelow', 0)) || 0));
-  const auto = threshold > 0 && q.total < threshold;
+  // A small quotation approves itself — never on a low or unknown margin (Phase L4): a person looks at those.
+  const auto = threshold > 0 && q.total < threshold && !(await marginCheck(q)).low;
 
   await prisma.$transaction(async (tx) => {
     await moveStatus(tx, q, 'PENDING_APPROVAL', {
@@ -421,19 +516,43 @@ export async function submitQuotation(id, userId) {
 }
 
 /** PENDING_APPROVAL → OFFICE_APPROVED. The maker never checks their own work while quotation.makerChecker is on. */
-export async function approveQuotation(id, { note } = {}, userId) {
+/**
+ * The margin gate (L-D4, Phase L4): low when the margin on the taxable amount is below
+ * `quotation.minMarginPct`, or when any totalled row's cost is unknown — an unknown cost is never taken
+ * as a healthy margin.
+ */
+async function marginCheck(q) {
+  const minMarginPct = Number(await getSetting('quotation.minMarginPct', 15));
+  const m = q.costComplete ? margin(q.subtotal - q.discount, q.costTotal) : null;
+  const low = !q.costComplete || m?.pct == null || m.pct < minMarginPct;
+  return { low, marginPct: m?.pct ?? null, minMarginPct, costComplete: q.costComplete };
+}
+
+export async function approveQuotation(id, { note, acknowledgeLowMargin = false } = {}, userId) {
   const q = await findQuotation(id);
   assertMove(q.status, 'OFFICE_APPROVED');
   const makerChecker = (await getSetting('quotation.makerChecker', true)) !== false;
   if (makerChecker && q.createdById && q.createdById === userId) {
     throw new AppError(403, 'SELF_APPROVAL', 'You prepared this quotation, so another approver must approve it.');
   }
+  const check = await marginCheck(q);
+  if (check.low && !acknowledgeLowMargin) {
+    const { low: _low, ...details } = check;
+    throw new AppError(422, 'LOW_MARGIN', check.costComplete
+      ? `The margin is ${check.marginPct}% — below the ${check.minMarginPct}% minimum. Approve only if you mean to.`
+      : 'Some rows have no known cost, so the margin is unknown. Approve only if you mean to.', details);
+  }
+  const meta = {
+    ...(note ? { note } : {}),
+    ...(check.low ? { lowMargin: { marginPct: check.marginPct, minMarginPct: check.minMarginPct, costComplete: check.costComplete, acknowledged: true } } : {}),
+  };
   await prisma.$transaction(async (tx) => {
     await moveStatus(tx, q, 'OFFICE_APPROVED', {
       approvedById: userId, approvedAt: new Date(), approvalNote: note ?? null, autoApproved: false,
     });
     await recordEvent('quotation.office_approved', {
-      model: 'Quotation', recordId: id, before: { status: q.status }, after: { status: 'OFFICE_APPROVED' }, ...(note ? { meta: { note } } : {}),
+      model: 'Quotation', recordId: id, before: { status: q.status }, after: { status: 'OFFICE_APPROVED' },
+      ...(Object.keys(meta).length ? { meta } : {}),
     }, tx);
   });
   if (q.createdById !== userId) {
@@ -507,7 +626,7 @@ async function leadQuoted(tx, q, actorId) {
  * After a decline or an expiry: ask the salesperson and the author whether the lead is lost. It is
  * never marked lost automatically — they may revise, or the customer may still say yes.
  */
-async function promptMarkLost(q, why) {
+async function promptMarkLost(q, why, category) {
   if (!q.leadId) return;
   const lead = await prisma.lead.findFirst({ where: { id: q.leadId, deletedAt: null, status: { notIn: ['WON', 'LOST'] } }, select: { id: true } });
   if (!lead) return;
@@ -515,7 +634,7 @@ async function promptMarkLost(q, why) {
     type: 'lead_mark_lost',
     title: `${why} — mark the lead lost?`,
     body: `Revise ${label(q)}, or record why the lead was lost.`,
-    link: adminLeadMarkLostPath(lead.id),
+    link: adminLeadMarkLostPath(lead.id, category),
   });
 }
 
@@ -583,10 +702,14 @@ export async function reviseQuotation(id, userId) {
         terms: source.terms, internalNote: source.internalNote,
         requestedChanges: source.status === 'CHANGES_REQUESTED' ? source.decisionNote : null,
         createdById: userId ?? null,
+        ...contractCopy(source),
+        costTotal: source.costTotal, costComplete: source.costComplete,
         items: {
           // Rows, measurements and frozen recipes as they are (Phase L3).
           create: source.items.map(storedRow),
         },
+        // The schedule and the contract carry across (Phase L4).
+        stages: { create: stageRows(source.stages) },
       },
     });
     await recordEvent('quotation.revised', {
@@ -621,13 +744,18 @@ async function replacementFor(q) {
 }
 
 /** What a customer may see: an allowlist, never the row. */
-/** The customer's BOQ: rows and section subtotals, never a cost, a recipe or a measurement's working. */
+/**
+ * The customer's BOQ: rows and section subtotals — never a cost or a recipe. Measurements come along when the
+ * quotation shows them (the annex); a section summary sends the SECTION rows alone.
+ */
 async function publicBoq(q) {
   const { items, boq } = await decorateBoq(q);
+  const shown = q.summaryOnly ? items.filter((i) => i.rowType === 'SECTION') : items;
   return {
-    items: items.map((i) => ({
+    items: shown.map((i) => ({
       id: i.id, rowType: i.rowType, number: i.number, description: i.description, spec: i.spec, unit: i.unit,
       qty: i.qty, rate: i.rate, amount: i.amount, isOptional: i.isOptional, isProvisional: i.isProvisional, sortOrder: i.sortOrder,
+      ...(q.showMeasurements && i.measurements ? { measurements: i.measurements } : {}),
     })),
     boq: { sections: boq.sections, optionalTotal: boq.optionalTotal },
   };
@@ -653,8 +781,18 @@ async function publicView(q) {
     createdAt: q.createdAt,
     customer: { name: q.customer.name },
     site: q.site ? { label: q.site.label, address: q.site.address } : null,
-    // An allowlist: never a cost, a recipe or a measurement's working (Phase L3).
+    // An allowlist: never a cost or a recipe (Phases L3, L4).
     ...(await publicBoq(q)),
+    contractType: q.contractType,
+    estimatedDays: q.estimatedDays,
+    exclusions: q.exclusions,
+    summaryOnly: q.summaryOnly,
+    ...(({ paymentStages, totalInWords, dates, letterhead: head }) => ({
+      paymentStages: paymentStages.map(({ label: l, basisPoints, trigger, taxable, vat, total }) => ({ label: l, basisPoints, trigger, taxable, vat, total })),
+      totalInWords,
+      dates: { createdAtBs: dates.createdAtBs, validUntilBs: dates.validUntilBs },
+      letterhead: head,
+    }))(await documentFields(q)),
     replaced: await replacementFor(q),
     actions: q.status === 'SENT' ? [...QUOTATION_DECISIONS] : [],
   };
@@ -664,12 +802,16 @@ const PUBLIC_INCLUDE = {
   customer: { select: { name: true } },
   site: { select: { label: true, address: true } },
   items: { orderBy: { sortOrder: 'asc' } },
+  stages: { orderBy: { sortOrder: 'asc' } },
 };
 
 /** Customer-facing view resolved by public token — no auth. */
 export async function getByPublicToken(token) {
   const q = await prisma.quotation.findFirst({ where: { publicToken: token, deletedAt: null }, include: PUBLIC_INCLUDE });
   if (!q) throw notFound('Quotation');
+  // The customer opened it (Phase L4) — the send panel's "Opened 2×". A page view is not a change to audit,
+  // so it is one raw statement, outside the audit extension.
+  await prisma.$executeRaw`UPDATE "Quotation" SET "viewCount" = "viewCount" + 1, "firstViewedAt" = COALESCE("firstViewedAt", NOW()) WHERE "id" = ${q.id}`;
   if (isExpired(q)) {
     await markExpired(q.id);
     q.status = 'EXPIRED';
@@ -886,9 +1028,11 @@ export async function requestQuotationChanges(id, answer) {
 /** Customer declines: SENT → REJECTED. The lead is not marked LOST — sales decides that. */
 export async function declineQuotation(id, answer = {}) {
   const q = await openForAnswer(id);
-  const { note } = answer;
+  const { note, category } = answer;
   await prisma.$transaction(async (tx) => {
     await claimAnswer(tx, q, 'REJECTED', answer);
+    // Why they said no (Phase L4): a lost-lead category the "Mark lost?" prompt starts from.
+    if (category) await tx.quotation.update({ where: { id: q.id }, data: { declineCategory: category } });
     await recordEvent('quotation.customer_rejected', {
       model: 'Quotation', recordId: q.id, before: { status: 'SENT' }, after: { status: 'REJECTED' }, ...(note ? { meta: { note } } : {}),
     }, tx);
@@ -903,7 +1047,7 @@ export async function declineQuotation(id, answer = {}) {
     link: adminQuotationPath(q.id),
     related: { model: 'Quotation', id: q.id },
   });
-  await promptMarkLost(q, `${q.customer.name} declined ${label(q)}`);
+  await promptMarkLost(q, `${q.customer.name} declined ${label(q)}`, category);
 
   return publicView(await prisma.quotation.findUnique({ where: { id: q.id }, include: PUBLIC_INCLUDE }));
 }
@@ -919,10 +1063,12 @@ const ANSWERS = {
  * functions above, which a signed-in customer account (Phase K) calls directly.
  * @param {{ ip?: string|null, userAgent?: string|null }} [client]
  */
-export async function decideByToken(token, { decision, note }, client = {}) {
+export async function decideByToken(token, { decision, note, category }, client = {}) {
   const q = await prisma.quotation.findFirst({ where: { publicToken: token, deletedAt: null }, select: { id: true } });
   if (!q) throw notFound('Quotation');
-  return ANSWERS[decision](q.id, { note, ip: client.ip ?? null, userAgent: client.userAgent ?? null });
+  return ANSWERS[decision](q.id, {
+    note, ip: client.ip ?? null, userAgent: client.userAgent ?? null, ...(decision === 'reject' && category ? { category } : {}),
+  });
 }
 
 /**

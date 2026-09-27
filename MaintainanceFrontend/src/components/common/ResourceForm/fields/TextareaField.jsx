@@ -2,7 +2,7 @@ import { useController } from 'react-hook-form';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '../FormField';
 
-/** `{ type: 'textarea', rows?, maxLength?, placeholder? }` */
+/** `{ type: 'textarea', rows?, maxLength?, placeholder?, lang? }` — `lang: 'ne'` gives Nepali text the Devanagari face. */
 export function TextareaField({ field, id }) {
   const { field: input, fieldState } = useController({ name: field.name });
 
@@ -19,6 +19,7 @@ export function TextareaField({ field, id }) {
           onBlur={input.onBlur}
           placeholder={field.placeholder}
           maxLength={field.maxLength}
+          lang={field.lang}
           disabled={field.disabled}
         />
       )}

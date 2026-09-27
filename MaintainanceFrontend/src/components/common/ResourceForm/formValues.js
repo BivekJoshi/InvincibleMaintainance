@@ -2,6 +2,7 @@ import { paisaToRupees } from '@/helpers/format';
 import { recipeBody, toRecipeRows } from '@/helpers/recipe';
 import { boqRowBody, isBlankBoqRow, toBoqRows } from '@/helpers/boq';
 import { measurementsBody } from '@/helpers/measurements';
+import { scheduleBody, toStageRows } from '@/helpers/paymentSchedule';
 
 /** Field types that show something and hold no value of their own (the rate library's cost card). */
 export const DISPLAY_TYPES = new Set(['preview']);
@@ -20,10 +21,10 @@ export function flattenFields(fields = []) {
 function emptyValue(type) {
   switch (type) {
     case 'text': case 'textarea': case 'prose': case 'markdown': case 'slug': return '';
-    case 'switch': return false;
+    case 'switch': case 'checkbox': return false;
     case 'relation': return null;
     case 'stringList': case 'mediaList': case 'weekdays': case 'objectList': case 'lineItems': case 'checklist': case 'recipe':
-    case 'grid': case 'measurements': return [];
+    case 'grid': case 'measurements': case 'paymentSchedule': return [];
     case 'keyValue': return {};
     default: return undefined;
   }
@@ -58,6 +59,8 @@ export function toFormValues(fields, record) {
     if (f.type === 'lineItems' && Array.isArray(value)) value = toBoqRows(value);
     if (f.type === 'recipe' && Array.isArray(value)) value = toRecipeRows(value);
     if ((f.type === 'measurements' || f.type === 'grid') && Array.isArray(value)) value = value.map((row) => ({ ...row }));
+    // Stages arrive in basis points with the server's amounts; the grid edits a share in % and never holds an amount.
+    if (f.type === 'paymentSchedule' && Array.isArray(value)) value = toStageRows(value);
     if (value == null) value = f.defaultValue ?? emptyValue(f.type);
     out[f.name] = value;
   }
@@ -85,6 +88,12 @@ export function toRequestValues(fields, values) {
       // The quotation schema already turns rows into the request's; rows still carrying a client key are converted here.
       const rows = Array.isArray(value) ? value : [];
       out[f.name] = rows.some((r) => r && '_key' in r) ? rows.filter((r) => !isBlankBoqRow(r)).map(boqRowBody) : rows;
+    } else if (f.type === 'paymentSchedule') {
+      // The schema already sends `{ label, basisPoints, trigger }`; rows still carrying a client key are converted
+      // here. No stages is no change: the API keeps the schedule it has (or starts a new quotation on the default).
+      const rows = Array.isArray(value) ? value : undefined;
+      const body = rows && rows.some((r) => r && '_key' in r) ? scheduleBody(rows) : rows;
+      out[f.name] = body?.length ? body : undefined;
     } else if (f.type === 'measurements') {
       out[f.name] = measurementsBody(Array.isArray(value) ? value : []);
     } else if (f.type === 'grid') {

@@ -1,4 +1,5 @@
 import { paisaToRupees, parseRupees } from '@/helpers/format';
+import { validScheduleBody } from '@/helpers/paymentSchedule';
 import { isBlankMeasurement, measurementsBody } from '@/helpers/measurements';
 
 /**
@@ -167,7 +168,8 @@ export function isPreviewable(body) {
  *
  * @param {{ items?: object[], discount?: number, vatApplied?: boolean }} values
  * @param {{ quotationId?: string }} [opts]
- * @returns {{ body: object, keys: string[], skipped: number }}
+ * @returns {{ body: object, keys: string[], skipped: number, stagesSent: boolean }}  `stagesSent`: the body carries
+ *   the payment schedule (only a whole one is sent), so the answer's `paymentStages` are the ones on screen
  */
 export function previewRequest(values = {}, { quotationId } = {}) {
   const keys = [];
@@ -184,15 +186,19 @@ export function previewRequest(values = {}, { quotationId } = {}) {
     items.push(body);
   }
   const discount = rateOf(values.discount);
+  // Phase L4: a whole payment schedule rides along, so the server answers each stage's amount for these totals.
+  const paymentStages = Array.isArray(values.paymentStages) ? validScheduleBody(values.paymentStages) : null;
   return {
     body: {
       ...(quotationId ? { quotationId } : {}),
       items,
       ...(finite(discount) ? { discount } : {}),
       vatApplied: values.vatApplied !== false,
+      ...(paymentStages ? { paymentStages } : {}),
     },
     keys,
     skipped,
+    stagesSent: Boolean(paymentStages),
   };
 }
 

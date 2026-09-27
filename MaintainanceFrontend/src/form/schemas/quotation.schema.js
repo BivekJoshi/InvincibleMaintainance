@@ -3,7 +3,10 @@ import { rupees } from './fields';
 import { parseRupees } from '@/helpers/format';
 import { boqRowBody, isBlankBoqRow, qtyOf, rateOf } from '@/helpers/boq';
 import { isBlankMeasurement, measurementsBody, parseLength } from '@/helpers/measurements';
-import { SURVEY_ITEM_KINDS } from '@/config/constants';
+import { CONTRACT_TYPES, LOST_CATEGORIES, PAYMENT_TRIGGERS, SURVEY_ITEM_KINDS } from '@/config/constants';
+import {
+  formatShare, isBlankStage, parsePct, scheduleBody, scheduleTotal,
+} from '@/helpers/paymentSchedule';
 
 /**
  * Mirrors `quotationRow` / `quotationUpdateSchema` / `quotationPreviewSchema` and the approval bodies in
@@ -96,7 +99,53 @@ export const boqRowsSchema = z.array(boqRowSchema)
   .refine((rows) => rows.filter((r) => !isBlankBoqRow(r)).length <= 500, 'At most 500 rows')
   .transform((rows) => rows.filter((r) => !isBlankBoqRow(r)).map(boqRowBody));
 
-/** The builder's form: a draft's rows and terms. `PUT /admin/quotations/:id`. A draft may have no rows yet. */
+/**
+ * One payment stage as the builder edits it (Phase L4): its words, its share **in %** and when it falls due. A row
+ * left empty is allowed here — the list drops it — so an error's index is the grid's row.
+ */
+export const paymentStageRowSchema = z.object({
+  _key: z.string().optional(),
+  label: z.string().max(80, 'At most 80 characters').optional().nullable(),
+  pct: z.any().optional(),
+  trigger: z.enum(PAYMENT_TRIGGERS).optional().nullable(),
+}).passthrough().superRefine((row, ctx) => {
+  if (isBlankStage(row)) return;
+  if (blank(row.label)) issue(ctx, ['label'], 'Name the stage');
+  const pct = parsePct(row.pct);
+  if (pct === undefined) issue(ctx, ['pct'], 'Enter its share in %');
+  else if (!Number.isFinite(pct)) issue(ctx, ['pct'], 'Enter a number, e.g. 40');
+  else if (pct < 0.01 || pct > 100) issue(ctx, ['pct'], 'Between 0.01 and 100');
+  else if (Math.abs(pct * 100 - Math.round(pct * 100)) > 1e-6) issue(ctx, ['pct'], 'At most two decimals');
+  if (!row.trigger) issue(ctx, ['trigger'], 'Say when it falls due');
+});
+
+/**
+ * A quotation's payment schedule (L-D3) → the request's `paymentStages` (`{ label, basisPoints, trigger }`). Mirrors
+ * the API's `paymentStages`: 1–10 stages making exactly 100 % (10000 basis points), at most one advance on
+ * acceptance. No stages at all sends nothing — the API keeps the schedule it has.
+ */
+export const paymentScheduleSchema = z.array(paymentStageRowSchema).superRefine((rows, ctx) => {
+  const stages = rows.filter((r) => !isBlankStage(r));
+  if (!stages.length) return;
+  if (stages.length > 10) issue(ctx, [], 'At most 10 stages');
+  const { totalBp, readable } = scheduleTotal(stages);
+  if (readable && totalBp !== 10000) issue(ctx, [], `The stages add up to ${formatShare(totalBp)} — they must make 100%`);
+  if (stages.filter((r) => r.trigger === 'ON_ACCEPT').length > 1) issue(ctx, [], 'Only one stage can be the advance on acceptance');
+}).transform((rows) => {
+  const body = scheduleBody(rows);
+  return body.length ? body : undefined;
+});
+
+/** The duration in days, as typed: blank is none (sent as null — the field is `nullable`). */
+const estimatedDays = z.preprocess(
+  (v) => (blank(v) || Number.isNaN(v) ? null : Number(v)),
+  z.number({ invalid_type_error: 'Enter a number of days' }).positive('More than 0 days').max(3650, 'At most 3650 days').nullable().optional(),
+);
+
+/**
+ * The builder's form: a draft's rows, the contract around them (Phase L4) and its terms. `PUT /admin/quotations/:id`.
+ * A draft may have no rows yet. Mirrors `quotationUpdateSchema` (with the contract fields) in the API.
+ */
 export const quotationFormSchema = z.object({
   items: boqRowsSchema,
   discount: rupees.max(1_000_000_000).optional(),
@@ -105,6 +154,12 @@ export const quotationFormSchema = z.object({
     .refine((v) => !v || new Date(v).getTime() > Date.now(), 'Choose a date in the future'),
   terms: optionalText,
   internalNote: optionalText,
+  contractType: z.enum(CONTRACT_TYPES).optional(),
+  estimatedDays,
+  exclusions: z.string().trim().max(4000, 'At most 4000 characters').optional().or(z.literal('')).transform((v) => v || undefined),
+  paymentStages: paymentScheduleSchema.optional(),
+  showMeasurements: z.boolean().optional(),
+  summaryOnly: z.boolean().optional(),
 });
 
 /** The row drawer's form: the row's words and flags. */
@@ -122,6 +177,18 @@ export const discountHelperSchema = z.object({
   target: z.preprocess((v) => (blank(v) ? undefined : parseRupees(v) ?? Number.NaN), z.number({ invalid_type_error: 'Rupees' }).min(0).optional()),
 });
 
+/**
+ * The approve dialog (Phase L4): an optional remark, and — when the margin is below the minimum or unknown — the
+ * approver's explicit acknowledgement, which the API needs as `acknowledgeLowMargin: true` (else 422 LOW_MARGIN).
+ * @param {boolean} acknowledge  whether the acknowledgement is asked for
+ */
+export const approveQuotationSchema = (acknowledge) => z.object({
+  note: z.string().trim().max(1000, 'At most 1000 characters').optional().transform((v) => v || undefined),
+  acknowledgeLowMargin: acknowledge
+    ? z.boolean().refine((v) => v === true, 'Tick this to approve it anyway')
+    : z.boolean().optional(),
+});
+
 /** Send back and pull back need a reason (3–1000); an approval's remark is optional. */
 export const quotationNoteSchema = (required) => z.object({
   note: required
@@ -129,16 +196,29 @@ export const quotationNoteSchema = (required) => z.object({
     : z.string().trim().max(1000).optional().transform((v) => v || undefined),
 });
 
+const CUSTOMER_MESSAGES = {
+  tooShort: 'Tell us a little more (at least 5 characters)',
+  tooLong: 'Please keep it under 1000 characters',
+};
+
 /**
  * The customer's answer on the link. Mirrors `quotationDecisionSchema`: a change request
- * says what to change (5–1000 characters); a decline reason is optional.
+ * says what to change (5–1000 characters); a decline reason is optional, and so is its
+ * category (Phase L4: one of the lost-lead categories the page offers as chips). The page
+ * passes its messages in the customer's language.
+ * @param {{ tooShort?: string, tooLong?: string }} [messages]
  */
-export const quotationChangeRequestSchema = z.object({
-  note: z.string().trim().min(5, 'Tell us a little more (at least 5 characters)').max(1000, 'Please keep it under 1000 characters'),
+export const changeRequestSchema = (messages = {}) => {
+  const m = { ...CUSTOMER_MESSAGES, ...messages };
+  return z.object({ note: z.string().trim().min(5, m.tooShort).max(1000, m.tooLong) });
+};
+/** @param {{ tooLong?: string }} [messages] */
+export const declineSchema = (messages = {}) => z.object({
+  note: z.string().trim().max(1000, messages.tooLong ?? CUSTOMER_MESSAGES.tooLong).optional(),
+  category: z.enum(LOST_CATEGORIES).optional().nullable(),
 });
-export const quotationDeclineSchema = z.object({
-  note: z.string().trim().max(1000, 'Please keep it under 1000 characters').optional(),
-});
+export const quotationChangeRequestSchema = changeRequestSchema();
+export const quotationDeclineSchema = declineSchema();
 
 /**
  * The New quotation sheet (Phase L3): where a quotation starts — a blank BOQ, a submitted survey (built on the
@@ -164,4 +244,21 @@ export const newQuotationSchema = ({ needsConvert = false, needsCustomer = false
     if (!v.label) issue(ctx, ['label'], 'Name the site');
     if (!v.address || v.address.length < 3) issue(ctx, ['address'], 'Where is the work?');
   }
+});
+
+const termsSortOrder = z.coerce.number().int().min(0).max(100000).default(0);
+
+/**
+ * The terms library (Phase L4) — `/admin/quotation-terms`. Mirrors `quotationTermsSchema` in the API's
+ * shared/schemas/crm.js: a title, the English body (what a new quotation starts with when it is the default), an
+ * optional Nepali body, and the default flag (setting it takes the flag from the others).
+ */
+export const quotationTermsSchema = z.object({
+  title: z.string().trim().min(2, 'At least 2 characters').max(120, 'At most 120 characters'),
+  body: z.string().trim().min(1, 'Write the terms').max(8000, 'At most 8000 characters'),
+  bodyNe: z.string().trim().max(8000, 'At most 8000 characters').optional().nullable()
+    .transform((v) => (v ? v : null)),
+  isDefault: z.coerce.boolean().default(false),
+  sortOrder: termsSortOrder,
+  isActive: z.coerce.boolean().default(true),
 });

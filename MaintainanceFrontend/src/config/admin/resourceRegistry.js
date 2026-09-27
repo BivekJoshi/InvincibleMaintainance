@@ -5,6 +5,7 @@ import { serviceCategories } from './resources/serviceCategories';
 import { services } from './resources/services';
 import { rateCard } from './resources/rateCard';
 import { trades } from './resources/trades';
+import { quotationTerms } from './resources/quotationTerms';
 import { projects } from './resources/projects';
 import { offers } from './resources/offers';
 import { pricingPlans } from './resources/pricingPlans';
@@ -23,7 +24,7 @@ import { materialCategories } from './resources/materialCategories';
 import { suppliers } from './resources/suppliers';
 
 /**
- * Every registry resource — the CMS, the rate library and its trades (Phase L2) and, since Phase H1,
+ * Every registry resource — the CMS, the rate library and its trades (Phase L2), the terms library (Phase L4) and, since Phase H1,
  * the operations lists (technicians, job templates, materials, material categories, suppliers) — the back office manages
  * through the generic pages
  * (`pages/admin/ResourceListPage`, `ResourceEditPage`). One file per resource under
@@ -125,7 +126,7 @@ const WEBSITE_COPY = {
 export const RESOURCES = Object.fromEntries(
   [
     serviceCategories, services, heroSlides, projects, offers, pricingPlans, testimonials, faqs, galleryImages,
-    features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard, trades,
+    features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard, trades, quotationTerms,
     technicians, jobTemplates, materials, materialCategories, suppliers,
   ].map((entry) => [entry.resource, entry]),
 );

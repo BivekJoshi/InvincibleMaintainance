@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ArrowLeft, ClipboardCheck, Contact, Phone, UserRoundSearch } from 'lucide-react';
-import { useGetQuotationQuery, useUpdateQuotationMutation } from '@/api/quotationsApi';
+import {
+  ArrowLeft, ClipboardCheck, Contact, FileSpreadsheet, Phone, Printer, UserRoundSearch,
+} from 'lucide-react';
+import { useGetQuotationQuery, useLazyExportQuotationXlsxQuery, useUpdateQuotationMutation } from '@/api/quotationsApi';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
@@ -16,9 +18,11 @@ import { PageTransition } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useQuotationActions } from '@/hooks/useQuotationActions';
 import { quotationFormSchema } from '@/form/schemas/quotation.schema';
-import { QUOTATION_STATUS_LABELS } from '@/config/constants';
+import { CONTRACT_TYPES, CONTRACT_TYPE_LABELS, QUOTATION_STATUS_LABELS } from '@/config/constants';
+import { documentCopy } from '@/components/documents/quotationDocumentCopy';
 import { quotationActions, waitingFor } from '@/helpers/quotationActions';
-import { toastSuccess } from '@/redux/slices/uiSlice';
+import { downloadBase64 } from '@/helpers/download';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { QuotationActionBar } from './sections/QuotationActionBar';
 import { QuotationNotices } from './sections/QuotationNotices';
 import { SendPanel } from './sections/SendPanel';
@@ -31,9 +35,10 @@ import { RepriceButton } from './sections/RepriceButton';
 import { TakeoffTab } from './sections/TakeoffTab';
 import { LabourTab } from './sections/LabourTab';
 import { CustomerViewTab } from './sections/CustomerViewTab';
+import { TermsPicker } from './sections/TermsPicker';
 import { useBoqFigures } from './useBoqFigures';
 
-/** The builder's tabs, in order. `boq` and `terms` are the one form's two panels. */
+/** The builder's tabs, in order. `boq`, `terms` and `customer` are the one form's three panels. */
 const TABS = [
   { value: 'boq', label: 'BOQ' },
   { value: 'takeoff', label: 'Take-off' },
@@ -42,15 +47,26 @@ const TABS = [
   { value: 'customer', label: 'Customer view' },
   { value: 'history', label: 'History', capability: 'quotations:history' },
 ];
-const FORM_TABS = ['boq', 'terms'];
-const TERMS_FIELDS = new Set(['validUntil', 'terms', 'internalNote']);
+const FORM_TABS = ['boq', 'terms', 'customer'];
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** The panel each field outside the BOQ lives on — a refused save opens the panel with the first error. */
+const FIELD_TAB = {
+  validUntil: 'terms', terms: 'terms', internalNote: 'terms',
+  contractType: 'terms', estimatedDays: 'terms', exclusions: 'terms', paymentStages: 'terms',
+  showMeasurements: 'customer', summaryOnly: 'customer',
+};
+const CONTRACT_OPTIONS = CONTRACT_TYPES.map((value) => ({ value, label: CONTRACT_TYPE_LABELS[value] }));
+/** What the customer reads for a contract type — the document's own sentence (L-D2). */
+const contractSentence = (type) => documentCopy('en').contract[type]?.body;
 
 /**
  * The builder's form, described as data: the BOQ panel (the rows — a `lineItems` field on the kit's EditableGrid —
- * the discount, its helpers and VAT) and the Payment & terms panel (today's terms field until Phase L4). One form,
- * one Save; the panel not on screen stays mounted and keeps its values.
+ * the discount, its helpers and VAT), the Payment & terms panel (Phase L4: the contract type with the sentence the
+ * customer reads, the duration, the exclusions, the payment schedule — a `paymentSchedule` field — the terms with
+ * the library picker, validity and the internal note) and the Customer view panel's two options. One form, one
+ * Save; the panels not on screen stay mounted and keep their values.
  */
-const quotationFields = ({ tab, frozen, figures, stale, quotationId }) => [
+const quotationFields = ({ tab, frozen, figures, stale, stages, quotationId, customerLocale }) => [
   {
     type: 'group', variant: 'card', label: 'Bill of quantities', hidden: tab !== 'boq',
     description: frozen ? undefined : 'Arrow keys move, Enter edits, typing overwrites; / searches the rate library; paste rows from Excel.',
@@ -62,12 +78,51 @@ const quotationFields = ({ tab, frozen, figures, stale, quotationId }) => [
     ],
   },
   {
-    type: 'group', variant: 'card', label: 'Payment & terms', hidden: tab !== 'terms',
-    description: 'What the customer agrees to. Phase L4 turns this into payment milestones and a terms library.',
+    type: 'group', variant: 'card', label: 'Contract', hidden: tab !== 'terms',
+    description: 'How the final bill is worked out, how long the work takes, and what the price leaves out — all shown to the customer.',
+    fields: [
+      {
+        name: 'contractType', type: 'select', label: 'Contract type', options: CONTRACT_OPTIONS, span: 'half', required: true,
+        adapt: (values) => ({ description: contractSentence(values.contractType) ? `The customer reads: “${contractSentence(values.contractType)}”` : undefined }),
+      },
+      {
+        name: 'estimatedDays', type: 'number', label: 'Estimated duration (days)', min: 1, max: 3650, step: 1, span: 'half', nullable: true,
+        description: 'Shown as “About N days”. Leave empty to leave it out.',
+      },
+      {
+        name: 'exclusions', type: 'textarea', label: 'Not included in the price', rows: 3, maxLength: 4000, nullable: true,
+        placeholder: 'Water and electricity during the work are provided by the owner.\nShifting furniture is not included.',
+      },
+    ],
+  },
+  {
+    type: 'group', variant: 'card', label: 'Payment schedule', hidden: tab !== 'terms',
+    description: 'How the total is paid, stage by stage. A stage “On acceptance” is the advance. The amounts are the server’s, for the totals on screen.',
+    fields: [
+      { name: 'paymentStages', type: 'paymentSchedule', label: 'Payment stages', figures: stages ?? undefined, stale },
+    ],
+  },
+  {
+    type: 'group', variant: 'card', label: 'Terms', hidden: tab !== 'terms',
+    description: 'What the customer agrees to.',
     fields: [
       { name: 'validUntil', type: 'date', label: 'Valid until', time: '23:59', span: 'half', description: 'The customer can answer until the end of this day.' },
+      ...(frozen ? [] : [{ name: 'termsPicker', type: 'preview', label: 'Terms library', component: TermsPicker, customerLocale }]),
       { name: 'terms', type: 'textarea', label: 'Terms shown to the customer', rows: 6 },
       { name: 'internalNote', type: 'textarea', label: 'Internal note', description: 'Staff only — never shown to the customer.', rows: 3 },
+    ],
+  },
+  {
+    type: 'group', variant: 'card', label: 'What the customer sees', hidden: tab !== 'customer',
+    fields: [
+      {
+        name: 'showMeasurements', type: 'switch', label: 'Show the measurements', span: 'half', defaultValue: true,
+        description: 'An annex with the measurement sheet behind each measured row, on the link and the print.',
+      },
+      {
+        name: 'summaryOnly', type: 'switch', label: 'Section totals only', span: 'half',
+        description: 'The customer sees each section’s subtotal, not the item rows. Totals, schedule and terms are unchanged.',
+      },
     ],
   },
 ];
@@ -75,9 +130,12 @@ const quotationFields = ({ tab, frozen, figures, stale, quotationId }) => [
 /**
  * One quotation version, as a bill of quantities (Phase L3). Tabs: **BOQ** (the rows, discount and VAT — editable
  * only as a DRAFT with `quotations:write`), **Take-off** (materials in buying units, stock and shortfall),
- * **Labour** (man-days per trade and a crew-size calculator), **Payment & terms**, **Customer view** (the saved
- * quotation as the link shows it) and **History**. The right rail: **Totals** (the server's live preview while
- * editing, the saved figures otherwise), **Margin** (`costs:read` only), **Send** and **Trail**.
+ * **Labour** (man-days per trade and a crew-size calculator), **Payment & terms** (Phase L4: contract type,
+ * duration, exclusions, the payment schedule with the server's stage amounts, the terms and the library picker),
+ * **Customer view** (showMeasurements / summaryOnly, and the saved quotation as the link shows it) and **History**.
+ * The header: **Print** (`/admin/quotations/:id/print`, no cost even for a manager) and **Excel** (the .xlsx, through
+ * RTK Query). The right rail: **Totals** (the server's live preview while editing, the saved figures otherwise),
+ * **Margin** (`costs:read` only), **Send** (the link, "Opened N×", WhatsApp and Viber) and **Trail**.
  */
 export default function QuotationBuilderPage() {
   const { id } = useParams();
@@ -106,10 +164,14 @@ export default function QuotationBuilderPage() {
   const setTab = (next) => setSearch(next === 'boq' ? {} : { tab: next }, { replace: true });
 
   const shown = useBoqFigures({ quotation, values, dirty, enabled: Boolean(quotation) && !frozen });
+  const customerLocale = quotation?.customer?.preferredLocale;
   const fields = useMemo(
-    () => quotationFields({ tab, frozen, figures: shown.figures, stale: shown.stale, quotationId: quotation?.id }),
-    [tab, frozen, shown.figures, shown.stale, quotation?.id],
+    () => quotationFields({
+      tab, frozen, figures: shown.figures, stale: shown.stale, stages: shown.stages, quotationId: quotation?.id, customerLocale,
+    }),
+    [tab, frozen, shown.figures, shown.stale, shown.stages, quotation?.id, customerLocale],
   );
+  const [fetchXlsx, { isFetching: exporting }] = useLazyExportQuotationXlsxQuery();
 
   if (isLoading) return <PageTransition><CardSkeleton /></PageTransition>;
   if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
@@ -118,6 +180,16 @@ export default function QuotationBuilderPage() {
   const who = { can, userId: user?.id };
   const actions = quotationActions(q, who);
   const formTab = FORM_TABS.includes(tab) ? tab : 'boq';
+
+  // The workbook comes through RTK Query (the Bearer token, the 401 → refresh → retry), never a bare link.
+  const exportXlsx = async () => {
+    try {
+      const file = await fetchXlsx(q.id).unwrap();
+      downloadBase64(file, `${q.number}${q.version > 1 ? `-v${q.version}` : ''}.xlsx`, XLSX_TYPE);
+    } catch (err) {
+      dispatch(toastError('Could not export the quotation', err?.data?.error?.message ?? 'Please try again in a moment.'));
+    }
+  };
 
   const run = async (action) => {
     setBusy(true);
@@ -134,9 +206,17 @@ export default function QuotationBuilderPage() {
         title={`${q.number}${q.version > 1 ? ` · v${q.version}` : ''}`}
         description={`${q.customer?.name} · ${q.site?.address ?? q.customer?.phone}`}
         actions={(
-          <Button variant="ghost" size="sm" onClick={() => navigate('/admin/quotations')}>
-            <ArrowLeft aria-hidden /> Quotations
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/admin/quotations')}>
+              <ArrowLeft aria-hidden /> Quotations
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/admin/quotations/${q.id}/print`} target="_blank" rel="noreferrer"><Printer aria-hidden /> Print</Link>
+            </Button>
+            <Button variant="outline" size="sm" loading={exporting} onClick={exportXlsx}>
+              <FileSpreadsheet aria-hidden /> Excel
+            </Button>
+          </div>
         )}
       >
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -212,12 +292,25 @@ export default function QuotationBuilderPage() {
                 stickyActions
                 onDirtyChange={onDirtyChange}
                 onValuesChange={onValuesChange}
-                onInvalid={(errors) => setTab(Object.keys(errors).every((k) => TERMS_FIELDS.has(k)) ? 'terms' : 'boq')}
+                onInvalid={(errors) => {
+                  const keys = Object.keys(errors);
+                  console.log('INVALID', keys);
+                  setTab(keys.some((k) => !FIELD_TAB[k]) ? 'boq' : FIELD_TAB[keys[0]]);
+                }}
                 onSubmit={async (body) => {
                   await update({ id: q.id, ...body }).unwrap();
                   dispatch(toastSuccess('Quotation saved', 'The server worked out the totals again.'));
                 }}
               />
+              {/* The Customer view panel: its two options above (in the form), the document as the link shows it here. */}
+              {tab === 'customer' ? (
+                <CustomerViewTab
+                  quotation={q}
+                  dirty={dirty}
+                  defaultLocale={customerLocale}
+                  options={values ? { showMeasurements: values.showMeasurements, summaryOnly: values.summaryOnly } : undefined}
+                />
+              ) : null}
             </TabsContent>
 
             <TabsContent value="takeoff" className="mt-0">
@@ -226,9 +319,7 @@ export default function QuotationBuilderPage() {
             <TabsContent value="labour" className="mt-0">
               {tab === 'labour' ? <LabourTab quotationId={q.id} dirty={dirty} /> : null}
             </TabsContent>
-            <TabsContent value="customer" className="mt-0">
-              {tab === 'customer' ? <CustomerViewTab quotation={q} dirty={dirty} defaultLocale={q.customer?.preferredLocale} /> : null}
-            </TabsContent>
+
             {can('quotations:history') ? (
               <TabsContent value="history" className="mt-0">
                 {tab === 'history' ? <RecordHistory endpoint={`/admin/quotations/${q.id}/history`} /> : null}

@@ -8,7 +8,7 @@ import { json, mockApi, page } from '@/test/mockApi';
 afterEach(() => vi.unstubAllGlobals());
 
 const toastTitles = (store) => store.getState().ui.toasts.map((t) => t.title);
-const COST_KEYS = ['unitCost', 'costAmount', 'cost', 'overheadPct', 'profitPct', 'costTotal', 'margin'];
+const COST_KEYS = ['unitCost', 'costAmount', 'cost', 'overheadPct', 'profitPct', 'costTotal', 'costComplete', 'margin'];
 /** What the API sends a reader without costs:read: the same record with every cost key gone. */
 function withoutCosts(value) {
   if (Array.isArray(value)) return value.map(withoutCosts);
@@ -63,8 +63,15 @@ const TAKEOFF = {
 
 const LIBRARY = [{ id: 'rc9', code: 'PLASTER-INT', name: 'Internal plaster repair', unit: 'sq.ft', rate: 9500, rateMode: 'MANUAL', category: 'Repair', components: [] }];
 
-/** A preview answer that follows the request: every item's amount and a subtotal the test does not check by sum. */
+/**
+ * A preview answer that follows the request: every item's amount and a subtotal the test does not check by sum,
+ * and — when the request carries a schedule (Phase L4) — a made-up amount per stage, so the test can tell the
+ * preview's figures from the saved ones.
+ */
 const previewAnswer = (body) => ({
+  ...(body.paymentStages ? {
+    paymentStages: body.paymentStages.map((st, i) => ({ ...st, taxable: 0, vat: 0, total: 1_000_000 * (i + 1) + 1 })),
+  } : {}),
   items: body.items.map((row, index) => ({ index, rowType: row.rowType, number: null, netQty: row.qty ?? 196, qty: row.qty ?? 196, amount: 111100 })),
   totals: {
     subtotal: 7777700, discount: body.discountPct != null ? 388885 : Math.round((body.discount ?? 0) * 100), vatApplied: true, vatRate: 13,
@@ -328,5 +335,204 @@ describe('the BOQ builder — building by keyboard', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Reprice' }));
     await waitFor(() => expect(calls.filter((c) => c.path === '/admin/quotations/q7/reprice').map((c) => c.body)).toEqual([{ apply: false }, { apply: true }]));
     await waitFor(() => expect(toastTitles(store)).toContain('1 row repriced'));
+  });
+});
+
+/** The same BOQ with what Phase L4 adds to a staff record (MANAGER's view; `open` strips the cost for others). */
+const L4 = {
+  ...BOQ,
+  contractType: 'LUMP_SUM', estimatedDays: 14, exclusions: null, showMeasurements: true, summaryOnly: false,
+  firstViewedAt: null, viewCount: 0, declineCategory: null,
+  paymentStages: [
+    { id: 'st1', label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT', sortOrder: 0, taxable: 2750000, vat: 357500, total: 3107500 },
+    { id: 'st2', label: 'Running bill', basisPoints: 4000, trigger: 'MILESTONE', sortOrder: 1, taxable: 2200000, vat: 286000, total: 2486000 },
+    { id: 'st3', label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION', sortOrder: 2, taxable: 550000, vat: 71500, total: 621500 },
+  ],
+  totalInWords: { en: 'Rupees Sixty-Two Thousand One Hundred Fifty Only', ne: 'रुपैयाँ बयसट्ठी हजार एक सय पचास मात्र' },
+  dates: { createdAtBs: '2083-05-31', validUntilBs: '2083-07-14', sentAtBs: null },
+  letterhead: { companyName: 'Gharjatan Home Services', address: 'Baneshwor', city: 'Kathmandu', phones: ['01-5407720'], email: null, panVatNo: '609876543', logo: null, tagline: null },
+  costTotal: 4200000, costComplete: true, margin: { amount: 1300000, pct: 23.64 },
+};
+
+const TERMS = [
+  { id: 't1', title: 'Standard repair terms', body: '50% advance, the rest on completion.', bodyNe: '५०% अग्रिम, बाँकी काम सकिएपछि।', isDefault: true, isActive: true, sortOrder: 0 },
+  { id: 't2', title: 'Warranty', body: 'One year on workmanship.', bodyNe: null, isDefault: false, isActive: true, sortOrder: 1 },
+];
+
+describe('the BOQ builder — contract, schedule, terms and the customer’s document (Phase L4)', () => {
+  const stagesGrid = () => screen.getByRole('grid', { name: 'Payment stages' });
+  const stageCell = (row, key) => stagesGrid().querySelector(`[data-cell="${row}:${key}"]`);
+
+  it('Payment & terms: the contract says what it means, the schedule shows the server’s amounts, a preset asks the preview, and a save sends it all', async () => {
+    const user = userEvent.setup();
+    const { calls } = open('SALES', () => undefined, L4);
+    await user.click(await screen.findByRole('tab', { name: 'Payment & terms' }));
+
+    // The contract type, with the sentence the customer reads.
+    expect(screen.getByRole('combobox', { name: /Contract type/ })).toHaveTextContent('Lump sum');
+    expect(screen.getByText(/The customer reads: “A fixed price for the work quoted/)).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: /Contract type/ }));
+    await user.click(await screen.findByRole('option', { name: 'Item rate (measured)' }));
+    expect(screen.getByText(/we measure it when finished and bill the measured quantity/)).toBeInTheDocument();
+
+    // The saved stages' amounts, from the server.
+    expect(stageCell(0, 'pct')).toHaveTextContent('50%');
+    expect(stageCell(0, 'amount')).toHaveTextContent('Rs. 31,075.00');
+
+    // A preset: the preview is asked with the schedule on screen, and its stage amounts replace the saved ones.
+    await user.click(screen.getByRole('button', { name: '40 · 30 · 20 · 10' }));
+    await waitFor(() => expect(calls.filter((c) => c.path === '/admin/quotations/preview').at(-1)?.body.paymentStages)
+      .toEqual([
+        { label: 'Advance', basisPoints: 4000, trigger: 'ON_ACCEPT' },
+        { label: 'Running bill 1', basisPoints: 3000, trigger: 'MILESTONE' },
+        { label: 'Running bill 2', basisPoints: 2000, trigger: 'MILESTONE' },
+        { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+      ]), { timeout: 3000 });
+    await waitFor(() => expect(stageCell(3, 'amount')).toHaveTextContent('Rs. 40,000.01'));
+
+    // A schedule that is not whole is never sent, and no stage shows an amount for it.
+    await user.click(stageCell(0, 'pct'));
+    await user.keyboard('45{Enter}');
+    await waitFor(() => expect(stageCell(0, 'amount')).toHaveTextContent('—'), { timeout: 3000 });
+    expect(calls.filter((c) => c.path === '/admin/quotations/preview').at(-1).body.paymentStages).toBeUndefined();
+    await user.click(stageCell(0, 'pct'));
+    await user.keyboard('40{Enter}');
+
+    await user.clear(screen.getByRole('spinbutton', { name: 'Estimated duration (days)' }));
+    await user.type(screen.getByRole('spinbutton', { name: 'Estimated duration (days)' }), '21');
+    await user.type(screen.getByRole('textbox', { name: 'Not included in the price' }), 'पानी र बिजुली घरधनीको।');
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(putBody(calls)).toMatchObject({
+      contractType: 'ITEM_RATE',
+      estimatedDays: 21,
+      exclusions: 'पानी र बिजुली घरधनीको।',
+      paymentStages: [
+        { label: 'Advance', basisPoints: 4000, trigger: 'ON_ACCEPT' },
+        { label: 'Running bill 1', basisPoints: 3000, trigger: 'MILESTONE' },
+        { label: 'Running bill 2', basisPoints: 2000, trigger: 'MILESTONE' },
+        { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+      ],
+      showMeasurements: true,
+      summaryOnly: false,
+    }));
+    // A stage never carries an amount, and nothing about cost leaves the browser.
+    expect(JSON.stringify(putBody(calls))).not.toMatch(/"total"|"vat"|"taxable"|unitCost|costAmount|costTotal|margin/);
+  }, 20_000);
+
+  it('a schedule that does not make 100 % stops the save and opens its tab', async () => {
+    const user = userEvent.setup();
+    const { calls } = open('SALES', () => undefined, L4);
+    await user.click(await screen.findByRole('tab', { name: 'Payment & terms' }));
+    await user.click(stageCell(2, 'pct'));
+    await user.keyboard('5{Enter}');
+    await user.click(screen.getByRole('tab', { name: 'BOQ' }));
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText('The stages add up to 95% — they must make 100%')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Payment & terms' })).toHaveAttribute('aria-selected', 'true');
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  it('the terms picker inserts a library entry — replacing after a question, or below — and offers the Nepali text to a Nepali customer', async () => {
+    const user = userEvent.setup();
+    const { calls } = open('SALES', ({ path }) => (path === '/admin/quotation-terms' ? page(TERMS) : undefined), L4);
+    await user.click(await screen.findByRole('tab', { name: 'Payment & terms' }));
+    const picker = await screen.findByTestId('terms-picker');
+    const terms = screen.getByRole('textbox', { name: 'Terms shown to the customer' });
+    expect(await within(picker).findByText('Standard repair terms')).toBeInTheDocument();
+    expect(calls.find((c) => c.path === '/admin/quotation-terms').query).toMatchObject({ onlyActive: 'true' });
+
+    await user.click(within(picker).getByRole('button', { name: 'Use these terms: Standard repair terms' }));
+    const ask = await screen.findByRole('alertdialog', { name: 'Replace the terms on this quotation?' });
+    await user.click(within(ask).getByRole('button', { name: 'Replace' }));
+    await waitFor(() => expect(terms).toHaveValue('50% advance, the rest on completion.'));
+
+    await user.click(within(picker).getByRole('button', { name: 'Add below: Warranty' }));
+    expect(terms).toHaveValue('50% advance, the rest on completion.\n\nOne year on workmanship.');
+
+    // The customer reads Nepali, and this entry has a Nepali text; the other has none, so offers none.
+    expect(within(picker).queryByRole('button', { name: 'Use the Nepali text: Warranty' })).not.toBeInTheDocument();
+    await user.click(within(picker).getByRole('button', { name: 'Use the Nepali text: Standard repair terms' }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Replace' }));
+    await waitFor(() => expect(terms).toHaveValue('५०% अग्रिम, बाँकी काम सकिएपछि।'));
+
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(putBody(calls)).toMatchObject({ terms: '५०% अग्रिम, बाँकी काम सकिएपछि।' }));
+  }, 15_000);
+
+  it('Customer view: “Section totals only” and the measurements follow the switches before a save, with no cost for a manager', async () => {
+    const user = userEvent.setup();
+    const { calls } = open('MANAGER', () => undefined, L4);
+    await user.click(await screen.findByRole('tab', { name: 'Customer view' }));
+    const view = await screen.findByTestId('customer-view');
+    await user.click(screen.getByRole('radio', { name: 'English' }));
+    expect(within(view).getByTestId('letterhead')).toHaveTextContent('PAN / VAT No. 609876543');
+    expect(within(view).getByTestId('quotation-date')).toHaveTextContent('(2083-05-31 B.S.)');
+    expect(within(view).getByTestId('total-in-words')).toHaveTextContent('Rupees Sixty-Two Thousand One Hundred Fifty Only');
+    expect(within(view).getByTestId('measurements-annex')).toBeInTheDocument();
+    expect(within(view).getByTestId('payment-schedule')).toHaveTextContent('Rs. 31,075.00');
+
+    await user.click(screen.getByRole('switch', { name: 'Section totals only' }));
+    expect(within(view).getByTestId('section-summary')).toHaveTextContent('Waterproofing');
+    expect(within(view).queryByText('Terrace membrane')).not.toBeInTheDocument();
+    expect(within(view).queryByTestId('measurements-annex')).not.toBeInTheDocument();
+    // The manager's record carries cost; the document shows none of it.
+    expect(within(view).queryByText(/42,000|13,000|23.64/)).not.toBeInTheDocument();
+    expect(view.textContent).not.toMatch(/margin|cost/i);
+
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(putBody(calls)).toMatchObject({ summaryOnly: true, showMeasurements: true }));
+  });
+
+  it('the link: “Opened 2×” and when first, and WhatsApp and Viber shares in the customer’s language', async () => {
+    const sent = {
+      ...L4, status: 'SENT', publicToken: 'tok-9', sentAt: '2026-09-20T04:00:00.000Z',
+      viewCount: 2, firstViewedAt: '2026-09-20T09:30:00.000Z',
+    };
+    open('SALES', () => undefined, sent);
+    const views = await screen.findByTestId('link-views');
+    expect(views).toHaveTextContent('Opened 2×');
+    // 09:30 UTC is 15:15 in Kathmandu.
+    expect(views).toHaveTextContent('First opened 20 Sept 2026, 15:15');
+    const link = `${window.location.origin}/quotation/tok-9`;
+    const whatsapp = screen.getByTestId('share-whatsapp');
+    expect(whatsapp.getAttribute('href')).toMatch(/^https:\/\/wa\.me\/9779841500005\?text=/);
+    const text = decodeURIComponent(whatsapp.getAttribute('href').split('?text=')[1]);
+    expect(text).toContain('नमस्ते सीता गुरुङ');
+    expect(text).toContain(link);
+    expect(screen.getByTestId('share-viber').getAttribute('href')).toBe(`viber://forward?text=${encodeURIComponent(text)}`);
+  });
+
+  it('a link not opened yet says so', async () => {
+    open('SALES', () => undefined, { ...L4, status: 'SENT', publicToken: 'tok-9', sentAt: '2026-09-20T04:00:00.000Z' });
+    expect(await screen.findByTestId('link-views')).toHaveTextContent('Not opened yet');
+  });
+
+  it('Print opens the print route; Excel downloads the workbook through the API', async () => {
+    const user = userEvent.setup();
+    const blobs = [];
+    Object.assign(URL, { createObjectURL: vi.fn((blob) => { blobs.push(blob); return 'blob:xlsx'; }), revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00, 0x7f]);
+    const { calls } = open('SALES', ({ path }) => (path === '/admin/quotations/q7/export.xlsx'
+      ? new Response(bytes, { headers: { 'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' } })
+      : undefined), L4);
+    expect(await screen.findByRole('link', { name: 'Print' })).toHaveAttribute('href', '/admin/quotations/q7/print');
+    await user.click(screen.getByRole('button', { name: 'Excel' }));
+    await waitFor(() => expect(blobs).toHaveLength(1));
+    expect(calls.some((c) => c.path === '/admin/quotations/q7/export.xlsx')).toBe(true);
+    // The bytes arrive intact (a zip's signature), as an .xlsx named for the quotation.
+    expect([...new Uint8Array(await blobs[0].arrayBuffer())]).toEqual([...bytes]);
+    expect(blobs[0].type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(click.mock.contexts[0].download).toBe('QT-2083-0077.xlsx');
+    click.mockRestore();
+  });
+
+  it('a failed export says so', async () => {
+    const user = userEvent.setup();
+    const { store } = open('SALES', ({ path }) => (path === '/admin/quotations/q7/export.xlsx'
+      ? json({ error: { code: 'FORBIDDEN', message: 'You cannot export this quotation.' } }, 403)
+      : undefined), L4);
+    await user.click(await screen.findByRole('button', { name: 'Excel' }));
+    await waitFor(() => expect(store.getState().ui.toasts.map((t) => t.description)).toContain('You cannot export this quotation.'));
   });
 });

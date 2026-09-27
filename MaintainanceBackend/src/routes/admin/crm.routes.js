@@ -12,6 +12,8 @@ import { historyRoute } from './historyRoute.js';
 import { mountResource } from './mountResource.js';
 import { costWall } from '../../middleware/costWall.js';
 import * as rateLibrary from '../../services/rateLibrary.service.js';
+import { quotationTerms } from '../../services/quotationTerms.service.js';
+import { exportQuotationXlsx } from '../../services/quotationExport.service.js';
 import { can } from '../../shared/permissions.js';
 import { recordEvent } from '../../services/audit.service.js';
 import * as s from '../../shared/schemas/crm.js';
@@ -144,6 +146,10 @@ mountResource(router, 'rate-card', rateLibrary.rateLibrary, s.rateCardItemSchema
   },
 });
 mountResource(router, 'trades', rateLibrary.trades, s.tradeSchema, { capability: 'rates' });
+// The terms library (Phase L4): the manager's, like the rate library; whoever writes quotations reads it.
+mountResource(router, 'quotation-terms', quotationTerms, s.quotationTermsSchema, {
+  capability: 'rates', readAlso: ['quotations:read'], historyCapability: 'rates:read',
+});
 
 // ── quotations
 const readQ = requires('quotations:read');
@@ -173,6 +179,13 @@ router.post('/quotations/:id/pull-back', writeQ, validate({ params: idParam, bod
   asyncHandler(async (req, res) => ok(res, await quotations.pullBackQuotation(req.params.id, req.body))));
 router.post('/quotations/:id/send', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await quotations.sendQuotation(req.params.id, req.user.id))));
+router.get('/quotations/:id/export.xlsx', readQ, validate({ params: idParam }),
+  asyncHandler(async (req, res) => {
+    const { filename, buffer } = await exportQuotationXlsx(req.params.id, { role: req.user.role });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }));
 router.post('/quotations/preview', writeQ, validate({ body: s.quotationPreviewSchema }),
   asyncHandler(async (req, res) => ok(res, await quotations.previewQuotation(req.body))));
 router.get('/quotations/:id/takeoff', readQ, validate({ params: idParam }),

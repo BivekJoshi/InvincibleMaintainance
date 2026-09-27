@@ -300,6 +300,51 @@ export const RECIPE_COMPONENT_LABELS = {
 /** MANUAL: the rate is typed (a recipe, if any, only costs it). DERIVED: the recipe sets the rate. */
 export const RATE_MODES = ['MANUAL', 'DERIVED'];
 export const RATE_MODE_LABELS = { MANUAL: 'Manual', DERIVED: 'Recipe' };
+/**
+ * How the final bill is worked out (L-D2, Phase L4): LUMP_SUM — the quoted price ± variations the customer
+ * approves; ITEM_RATE — the finished work is measured and billed at the quoted rates. The office's words; the
+ * sentence the customer reads (en and ne) is `components/documents/quotationDocumentCopy.js#contract`.
+ */
+export const CONTRACT_TYPES = ['LUMP_SUM', 'ITEM_RATE'];
+export const CONTRACT_TYPE_LABELS = { LUMP_SUM: 'Lump sum', ITEM_RATE: 'Item rate (measured)' };
+/** When a payment stage falls due (L-D3, Phase L4). The customer's words are in the document copy. */
+export const PAYMENT_TRIGGERS = ['ON_ACCEPT', 'MILESTONE', 'ON_COMPLETION'];
+export const PAYMENT_TRIGGER_LABELS = { ON_ACCEPT: 'On acceptance (advance)', MILESTONE: 'At a milestone', ON_COMPLETION: 'On completion' };
+/**
+ * The payment schedules one click away in the builder (Phase L4). Percentages, not money: the server works out
+ * each stage's amount. The first is `quotation.defaultPaymentSchedule`'s seeded value.
+ */
+export const PAYMENT_SCHEDULE_PRESETS = [
+  {
+    key: '50-40-10',
+    label: '50 · 40 · 10',
+    stages: [
+      { label: 'Advance', pct: 50, trigger: 'ON_ACCEPT' },
+      { label: 'Running bill', pct: 40, trigger: 'MILESTONE' },
+      { label: 'On completion', pct: 10, trigger: 'ON_COMPLETION' },
+    ],
+  },
+  {
+    key: '40-30-20-10',
+    label: '40 · 30 · 20 · 10',
+    stages: [
+      { label: 'Advance', pct: 40, trigger: 'ON_ACCEPT' },
+      { label: 'Running bill 1', pct: 30, trigger: 'MILESTONE' },
+      { label: 'Running bill 2', pct: 20, trigger: 'MILESTONE' },
+      { label: 'On completion', pct: 10, trigger: 'ON_COMPLETION' },
+    ],
+  },
+  {
+    key: '100-completion',
+    label: '100 on completion',
+    stages: [{ label: 'On completion', pct: 100, trigger: 'ON_COMPLETION' }],
+  },
+];
+/**
+ * The reasons a customer is offered when declining a quotation (Phase L4) — a customer-friendly subset of
+ * `LOST_CATEGORIES`, sent as the decision's `category`; the "Mark lost?" prompt starts from it.
+ */
+export const DECLINE_CATEGORIES = ['PRICE', 'COMPETITOR', 'POSTPONED', 'BUDGET', 'OWN_LABOUR', 'OTHER'];
 export const LOCALES = [
   { code: 'en', label: 'English' },
   { code: 'ne', label: 'नेपाली' },

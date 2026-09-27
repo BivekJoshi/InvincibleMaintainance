@@ -7,7 +7,7 @@ import {
   ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage,
   BlogPage, BlogPostPage, GenericPage, SettingsPage,
   LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, LostReportPage, CustomersPage, CustomerDetailPage, SurveysPage,
-  SurveyReviewPage, QuotationsPage, QuotationBuilderPage, ResourceListPage, ResourceEditPage,
+  SurveyReviewPage, QuotationsPage, QuotationBuilderPage, QuotationPrintPage, ResourceListPage, ResourceEditPage,
   HomeComposerPage, MediaLibraryPage, ResetPasswordPage,
   JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
   UsersPage, RolesPage, AuditLogPage, LoginActivityPage, MessageLogsPage, MessageTemplatesPage, MessageTemplateEditPage,
@@ -59,6 +59,13 @@ export function AppRoutes() {
         {/* Where a reset link and a new account's invite land */}
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
+        {/* A quotation's print (Phase L4): the back office's, but a sheet of paper — no shell, no sidebar */}
+        <Route element={<RequireAuth roles={OFFICE_ROLES} />}>
+          <Route element={<RequireAuth capability="quotations:read" />}>
+            <Route path="/admin/quotations/:id/print" element={<QuotationPrintPage />} />
+          </Route>
+        </Route>
+
         {/* Back office — every role except the field app's */}
         <Route element={<RequireAuth roles={OFFICE_ROLES} />}>
           <Route element={<AdminLayout />}>
@@ -86,9 +93,9 @@ export function AppRoutes() {
               <Route path="/admin/quotations" element={<QuotationsPage />} />
               <Route path="/admin/quotations/:id" element={<QuotationBuilderPage />} />
             </Route>
-            {/* The rate library and its trades (Phase L2): registry entries with their own addresses (their basePath) */}
+            {/* The rate library and its trades (Phase L2), and the terms library (Phase L4): registry entries with their own addresses (their basePath) */}
             <Route element={<RequireAuth capability="rates:read" />}>
-              {['rate-card', 'trades'].map((resource) => [
+              {['rate-card', 'trades', 'quotation-terms'].map((resource) => [
                 <Route key={resource} path={`/admin/${resource}`} element={<ResourceListPage resource={resource} />} />,
                 <Route key={`${resource}-new`} path={`/admin/${resource}/new`} element={<ResourceEditPage resource={resource} />} />,
                 <Route key={`${resource}-id`} path={`/admin/${resource}/:id`} element={<ResourceEditPage resource={resource} />} />,

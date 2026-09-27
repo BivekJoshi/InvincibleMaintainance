@@ -24,6 +24,8 @@ import { RecipeField } from './fields/RecipeField';
 import { PreviewField } from './fields/PreviewField';
 import { GridField } from './fields/GridField';
 import { MeasurementsField } from './fields/MeasurementsField';
+import { PaymentScheduleField } from './fields/PaymentScheduleField';
+import { CheckboxField } from './fields/CheckboxField';
 
 /**
  * Field type → component. `markdown` is an alias of `prose`: the public site renders
@@ -56,6 +58,8 @@ const FIELD_TYPES = {
   preview: PreviewField,
   grid: GridField,
   measurements: MeasurementsField,
+  paymentSchedule: PaymentScheduleField,
+  checkbox: CheckboxField,
 };
 
 /** A safe DOM id for a field, from the form's `useId()` prefix and the field name. */

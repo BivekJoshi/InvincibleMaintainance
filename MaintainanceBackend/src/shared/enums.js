@@ -88,6 +88,13 @@ export const UNITS = [
 ];
 /** What a recipe component is (RateCardComponent.kind). */
 export const RECIPE_COMPONENT_KINDS = ['MATERIAL', 'LABOUR', 'EQUIPMENT', 'OTHER'];
+/**
+ * How the final bill is worked out (L-D2, Phase L4): LUMP_SUM — the quoted price ± customer-approved
+ * variations; ITEM_RATE — the finished work is measured and billed at the quoted rates.
+ */
+export const CONTRACT_TYPES = ['LUMP_SUM', 'ITEM_RATE'];
+/** When a payment stage falls due (L-D3): the advance on acceptance, a running bill, or on completion. */
+export const PAYMENT_TRIGGERS = ['ON_ACCEPT', 'MILESTONE', 'ON_COMPLETION'];
 /** A quotation's BOQ rows (Phase L3): a priced ITEM, a SECTION heading, or a NOTE. */
 export const QUOTATION_ROW_TYPES = ['ITEM', 'SECTION', 'NOTE'];
 /** DERIVED: the rate comes from the recipe; MANUAL: typed, the recipe (if any) only costs it. */
@@ -173,6 +180,8 @@ export const AUDIT_EVENTS = Object.freeze({
   MESSAGE_RETRIED: 'message.retried',
   /** A rate-library item's rate set to its derived rate by a deliberate reprice (Phase L2). */
   RATE_CARD_REPRICED: 'rate_card.repriced',
+  /** A quotation downloaded as an Excel workbook (Phase L4) — who, and whether it carried the cost sheet. */
+  EXPORT_XLSX: 'export.xlsx',
 });
 
 /** The sign-in events: what the login activity screen lists. */

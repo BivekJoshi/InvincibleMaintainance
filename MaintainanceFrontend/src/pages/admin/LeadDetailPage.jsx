@@ -36,7 +36,9 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useLeadStatusChange } from '@/hooks/useLeadStatusChange';
 import { useLeadFollowUp } from '@/hooks/useLeadFollowUp';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
-import { ACTIVITY_LABELS, LEAD_OUTCOME_LABELS, LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS } from '@/config/constants';
+import {
+  ACTIVITY_LABELS, LEAD_OUTCOME_LABELS, LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS, LOST_CATEGORIES,
+} from '@/config/constants';
 import { formatDate, formatDateTime, formatNpr, initials, relativeTime, titleCase } from '@/helpers/format';
 import { canDrop, dropDialogFor, hasQuotation, toneStyle } from '@/helpers/leadBoard';
 import { whatsappHref } from '@/helpers/contact';
@@ -129,7 +131,8 @@ function LinkedRecords({ lead, can }) {
  * qualify, merge duplicates, convert (with or without a visit), and its History.
  *
  * `?markLost=1` — the link a declined or expired quotation's notification carries — opens the Mark
- * lost dialog once the lead has loaded, then leaves the address.
+ * lost dialog once the lead has loaded, then leaves the address. `&category=PRICE` (the customer's decline reason,
+ * Phase L4) starts the dialog on that lost category.
  */
 export default function LeadDetailPage() {
   const { id } = useParams();
@@ -158,11 +161,15 @@ export default function LeadDetailPage() {
     }
     if (!lead || markLostHandled.current) return;
     markLostHandled.current = true;
+    const category = search.get('category');
     const rest = new URLSearchParams(search);
     rest.delete('markLost');
+    rest.delete('category');
     setSearch(rest, { replace: true });
     if (!canWrite) return;
-    if (canDrop(lead.status, 'LOST')) changeStatus(lead, 'LOST');
+    // The customer's decline reason (Phase L4) starts the dialog on that category; the person still decides.
+    const lostCategory = LOST_CATEGORIES.includes(category) ? category : undefined;
+    if (canDrop(lead.status, 'LOST')) changeStatus(lead, 'LOST', { lostCategory });
     else dispatch(toastError(`${lead.name} is already ${LEAD_STATUS_LABELS[lead.status]}`, 'Nothing to mark lost.'));
   }, [markLost, lead, search, setSearch, canWrite, changeStatus, dispatch]);
 

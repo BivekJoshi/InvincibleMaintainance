@@ -27,13 +27,20 @@ beforeAll(async () => {
   const users = await prisma.user.findMany({ where: { email: { in: Object.values(USERS) } } });
   ids = Object.fromEntries(Object.entries(USERS).map(([role, email]) => [role, users.find((u) => u.email === email)?.id]));
   expectStatus(await setSettings({ 'quotation.autoApproveBelow': 0, 'quotation.makerChecker': true }), 200);
+  crystalline = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
 });
 
 afterAll(async () => {
   await setSettings({ 'quotation.autoApproveBelow': 0, 'quotation.makerChecker': true });
 });
 
-/** A customer, a lead assigned to SALES and a DRAFT quotation for them, all created by SALES. */
+/**
+ * A customer, a lead assigned to SALES and a DRAFT quotation for them, all created by SALES. Its line is a
+ * MATERIAL row priced from WP-CRYST (purchase Rs 450), so its cost is known and — at the default Rs 1,000 —
+ * its margin is healthy: the approval tests here are about approval, not the Phase L4 margin gate.
+ */
+let crystalline;
+
 async function draft({
   locale = 'en', email = true, rate = 1000, qty = 2, validUntil = daysFromNow(15), client = sales, leadStatus, serviceId,
 } = {}) {
@@ -56,7 +63,7 @@ async function draft({
     customerId: customer.id,
     leadId: lead.id,
     ...(validUntil ? { validUntil: validUntil.toISOString() } : {}),
-    items: [{ description: 'Crack filling', unit: 'rft', qty, rate }],
+    items: [{ description: 'Crack filling', kind: 'MATERIAL', materialId: crystalline.id, unit: 'rft', qty, rate }],
   }), 201).data;
   return { customer, lead, quotation };
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toPaisa, toRupees, lineAmount, documentTotals, formatNpr, sum,
   allocate, recipeCost, sellRate, margin, boqTotals, paymentSchedule, finalBillTotals, rs, proRata,
-  discountForPct, discountForTarget,
+  discountForPct, discountForTarget, amountInWords,
 } from '../src/utils/money.js';
 
 describe('money — integer paisa arithmetic', () => {
@@ -201,5 +201,23 @@ describe('money — discount helpers (Phase L3)', () => {
       expect(total).toBeLessThanOrEqual(target);
       expect(target - total).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe('money — the amount in words (Phase L4, lakh and crore)', () => {
+  it('English, in the Nepali/Indian grouping', () => {
+    expect(amountInWords(1234567890, 'en')).toBe('Rupees One Crore Twenty-Three Lakh Forty-Five Thousand Six Hundred Seventy-Eight and Ninety Paisa Only');
+    expect(amountInWords(282387000, 'en')).toBe('Rupees Twenty-Eight Lakh Twenty-Three Thousand Eight Hundred Seventy Only');
+    expect(amountInWords(100, 'en')).toBe('Rupees One Only');
+    expect(amountInWords(5, 'en')).toBe('Rupees Zero and Five Paisa Only');
+    expect(amountInWords(0, 'en')).toBe('Rupees Zero Only');
+    expect(amountInWords(150000000000, 'en')).toBe('Rupees One Hundred Fifty Crore Only');
+  });
+
+  it('Nepali, with its own word for every number to ninety-nine', () => {
+    expect(amountInWords(1234567890, 'ne')).toBe('रुपैयाँ एक करोड तेइस लाख पैँतालीस हजार छ सय अठहत्तर र नब्बे पैसा मात्र');
+    expect(amountInWords(282387000, 'ne')).toBe('रुपैयाँ अट्ठाइस लाख तेइस हजार आठ सय सत्तरी मात्र');
+    expect(amountInWords(9900, 'ne')).toBe('रुपैयाँ उनान्सय मात्र');
+    expect(amountInWords(0, 'ne')).toBe('रुपैयाँ शून्य मात्र');
   });
 });

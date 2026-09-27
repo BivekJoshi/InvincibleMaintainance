@@ -2,8 +2,9 @@ import { useCallback, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { FormDialog } from '@/components/common/FormDialog';
+import { ApproveQuotationDialog } from '@/components/quotations/ApproveQuotationDialog';
 import {
-  useApproveQuotationMutation, useConvertQuotationToJobMutation, usePullBackQuotationMutation,
+  useConvertQuotationToJobMutation, usePullBackQuotationMutation,
   useReviseQuotationMutation, useSendBackQuotationMutation, useSendQuotationMutation, useSubmitQuotationMutation,
 } from '@/api/quotationsApi';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -11,14 +12,8 @@ import { quotationNoteSchema } from '@/form/schemas/quotation.schema';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { formatNpr } from '@/helpers/format';
 
-/** The note dialog's words per action. */
+/** The note dialog's words per action. Approve has its own dialog (the margin and its acknowledgement). */
 const NOTE_COPY = {
-  approve: {
-    title: 'Approve this quotation',
-    description: 'It can then be sent to the customer. A remark is optional.',
-    label: 'Remark (optional)',
-    submitLabel: 'Approve',
-  },
   sendBack: {
     title: 'Send back to the draft',
     description: 'Whoever prepared it sees this note on the quotation and can edit and resubmit it.',
@@ -36,7 +31,9 @@ const NOTE_COPY = {
 /**
  * Runs a quotation action from `helpers/quotationActions` — the one way a screen moves
  * a quotation. Actions with a note ask for it first; sending, revising and converting
- * ask for a confirmation. A refusal toasts the API's reason.
+ * ask for a confirmation. A refusal toasts the API's reason. Approve opens
+ * `ApproveQuotationDialog` (Phase L4): the margin, a remark, and the low-margin
+ * acknowledgement when the API asks for it.
  *
  *   const [runAction, actionDialogs] = useQuotationActions();
  *   await runAction(action, quotation);   // true when it ran
@@ -48,9 +45,9 @@ export function useQuotationActions() {
   const navigate = useNavigate();
   const [confirm, confirmDialog] = useConfirm();
   const [asking, setAsking] = useState(null); // { action, quotation, resolve }
+  const [approving, setApproving] = useState(null); // { quotation, resolve }
 
   const [submit] = useSubmitQuotationMutation();
-  const [approve] = useApproveQuotationMutation();
   const [sendBack] = useSendBackQuotationMutation();
   const [pullBack] = usePullBackQuotationMutation();
   const [send] = useSendQuotationMutation();
@@ -65,6 +62,9 @@ export function useQuotationActions() {
     const name = `${q.number}${q.version > 1 ? ` v${q.version}` : ''}`;
     if (action.disabledReason) return false;
 
+    if (action.key === 'approve') {
+      return new Promise((resolve) => setApproving({ quotation: q, resolve }));
+    }
     if (action.note) {
       return new Promise((resolve) => setAsking({ action, quotation: q, resolve }));
     }
@@ -142,10 +142,10 @@ export function useQuotationActions() {
       submitLabel={copy?.submitLabel}
       onSubmit={async ({ note }) => {
         const { action, quotation: q, resolve } = asking;
-        const mutate = { approve, sendBack, pullBack }[action.key];
+        const mutate = { sendBack, pullBack }[action.key];
         // A refusal throws: the dialog stays open with the API's message.
         await mutate({ id: q.id, ...(note ? { note } : {}) }).unwrap();
-        const verb = { approve: 'approved', sendBack: 'sent back', pullBack: 'pulled back' }[action.key];
+        const verb = { sendBack: 'sent back', pullBack: 'pulled back' }[action.key];
         dispatch(toastSuccess(`${q.number} ${verb}`));
         resolve(true);
         setAsking(null);
@@ -153,5 +153,23 @@ export function useQuotationActions() {
     />
   );
 
-  return [run, <>{dialog}{confirmDialog}</>];
+  const approveDialog = (
+    <ApproveQuotationDialog
+      quotation={approving?.quotation ?? null}
+      open={Boolean(approving)}
+      onOpenChange={(open) => {
+        if (open) return;
+        approving?.resolve(false);
+        setApproving(null);
+      }}
+      onApproved={() => {
+        const q = approving.quotation;
+        dispatch(toastSuccess(`${q.number} approved`));
+        approving.resolve(true);
+        setApproving(null);
+      }}
+    />
+  );
+
+  return [run, <>{dialog}{approveDialog}{confirmDialog}</>];
 }

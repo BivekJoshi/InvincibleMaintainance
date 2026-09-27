@@ -14,8 +14,9 @@ import { NewQuotationSheet } from '@/components/quotations/NewQuotationSheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageTransition } from '@/three/motion/motionKit';
 import { QUOTATION_STAGE_TABS, QUOTATION_STATUS_LABELS } from '@/config/constants';
-import { quotationActions, sentAge, validityWarning } from '@/helpers/quotationActions';
+import { marginOf, quotationActions, sentAge, validityWarning } from '@/helpers/quotationActions';
 import { formatDate, formatDateTime, formatNpr } from '@/helpers/format';
+import { cn } from '@/helpers/utils';
 
 const ACTION_ICONS = {
   submit: Send, approve: CircleCheck, sendBack: Undo2, pullBack: Undo2, send: Send, revise: Copy, convert: Wrench,
@@ -85,6 +86,34 @@ const columns = [
   { key: 'updatedAt', header: 'Last change', sortable: true, cell: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(r.updatedAt)}</span> },
 ];
 
+/**
+ * The Margin column (Phase L4) — only for `costs:read`: the server's margin on each row (the list sends it to those
+ * holders only), "Unknown" while a row's cost is unknown. Most useful on Needs approval, where it is the approver's
+ * first look at what they are signing.
+ */
+const marginColumn = {
+  key: 'margin', header: 'Margin', label: 'Margin', className: 'text-right',
+  cell: (r) => {
+    const m = marginOf(r);
+    if (m.known === null) return <span className="text-xs text-muted-foreground">—</span>;
+    if (!m.known) return <StateBadge tone="warning">Unknown</StateBadge>;
+    return (
+      <div className="whitespace-nowrap text-right" data-testid="row-margin">
+        <p className={cn('font-medium tabular-nums', m.margin.amount < 0 && 'text-destructive')}>{m.margin.pct}%</p>
+        <p className="text-[11px] tabular-nums text-muted-foreground">{formatNpr(m.margin.amount)}</p>
+      </div>
+    );
+  },
+  exportValue: (r) => {
+    const m = marginOf(r);
+    return m.known ? `${m.margin.pct}%` : m.known === false ? 'Unknown' : '';
+  },
+};
+const COST_COLUMNS = (() => {
+  const at = columns.findIndex((c) => c.key === 'total') + 1;
+  return [...columns.slice(0, at), marginColumn, ...columns.slice(at)];
+})();
+
 function TabCount({ stage }) {
   const { data } = useGetQuotationStageCountQuery(stage);
   if (!data) return null;
@@ -98,6 +127,7 @@ function TabCount({ stage }) {
 /**
  * The quotation queues (`?stage=`): drafts, waiting for approval, ready to send, with the
  * customer, changes asked, won, lost, all. A row's menu offers what its state allows.
+ * A holder of `costs:read` also sees each row's margin (Phase L4).
  */
 export default function QuotationsPage() {
   const navigate = useNavigate();
@@ -149,7 +179,7 @@ export default function QuotationsPage() {
       <CustomTable
         storageKey="quotations"
         exportable
-        columns={columns}
+        columns={can('costs:read') ? COST_COLUMNS : columns}
         data={data?.items}
         meta={data?.meta}
         isLoading={isLoading}

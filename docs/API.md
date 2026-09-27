@@ -71,12 +71,22 @@ GET  /public/quotations/:token        customer views a quotation — an allowlis
                                         request this version answers), createdAt, customer { name },
                                         site { label, address } | null, items[] { id, rowType, number,
                                         description, spec, unit, qty, rate, amount, isOptional,
-                                        isProvisional, sortOrder } (never a cost, recipe or measurement),
+                                        isProvisional, sortOrder, measurements? (when showMeasurements) } —
+                                        SECTION rows only when summaryOnly; never a cost or a recipe —,
+                                        boq { sections, optionalTotal }, contractType, estimatedDays,
+                                        exclusions, summaryOnly, paymentStages [{ label, basisPoints, trigger,
+                                        taxable, vat, total }], totalInWords { en, ne }, dates { createdAtBs,
+                                        validUntilBs }, letterhead (Phase L4). Each GET stamps firstViewedAt and
+                                        adds one to viewCount (one raw statement — a view is not audited).
+                                        A key-scan test proves no cost, margin, recipe or pay key,
                                         replaced: { token } of the newest version when it is SENT, else null,
                                         actions: ['approve','request_changes','reject'] while SENT, else [] }
                                       A SENT quotation past validUntil is moved to EXPIRED on open.
 POST /public/quotations/:token/decide decisionLimiter (20 per IP per 15 min) · no login, no OTP (D4)
-                                      { decision: approve | request_changes | reject, note? }
+                                      { decision: approve | request_changes | reject, note?, category? }
+                                      category (reject only): a lost-lead category — stored as the
+                                      quotation's declineCategory and carried by the "mark lost?" link
+                                      (/admin/leads/:id?markLost=1&category=…)
                                       note: request_changes 5–1000 chars (required); reject optional
                                       (≤1000); approve ignores it. IP and user agent are recorded.
                                       Only a SENT quotation within validUntil takes an answer:
@@ -452,7 +462,9 @@ GET    /admin/quotations            quotations:read · ?stage&status&customerId&
                                     (CHANGES_REQUESTED) · won (APPROVED, CONVERTED) · lost (REJECTED,
                                     EXPIRED) · all (everything, SUPERSEDED included). No stage = all.
                                     status narrows within the stage. 400 on an unknown stage or status.
-                                    Rows add submittedBy, approvedBy { id, name } and lead.assignedToId.
+                                    Rows add submittedBy, approvedBy { id, name } and lead.assignedToId, and —
+                                    costs:read only — costTotal, costComplete and margin { amount, pct } | null
+                                    (from the stored cost; the approval queue's margin column).
 GET    /admin/quotations/:id        quotations:read · adds parent { id, number, version, status, decisionNote },
                                     supersededBy { id, number, version, status }, revisions[], and
                                     versions[] { id, number, version, status, total, createdAt } — the
@@ -497,6 +509,30 @@ A quotation is a BILL OF QUANTITIES (Phase L3): one ordered list of rows, as an 
     — on the taxable amount, null unless every totalled row's cost is known } }.
   © = costs:read only (MANAGER, ADMIN): every /admin/quotations* and /admin/leads* response passes the cost
   wall (middleware/costWall.js), and the quotation history is masked the same way.
+The CONTRACT around the BOQ (Phase L4) — on POST, PUT and preview: contractType LUMP_SUM|ITEM_RATE (default
+quotation.defaultContractType), estimatedDays? (days), exclusions? (≤4000), showMeasurements (default true — the
+customer's measurements annex), summaryOnly (default false — the customer sees section subtotals only),
+paymentStages? [{ label (1–80), basisPoints (1–10000), trigger ON_ACCEPT|MILESTONE|ON_COMPLETION }] (1–10; must
+sum to 10000 and have at most one ON_ACCEPT — 400; omitted on create = quotation.defaultPaymentSchedule, 50/40/10;
+on PUT it replaces the schedule). A new quotation's terms default to the terms library's default entry (then the
+finance.quotationTerms setting). Staff responses add contractType, estimatedDays, exclusions, showMeasurements,
+summaryOnly, firstViewedAt, viewCount, declineCategory, paymentStages [{ id, label, basisPoints, trigger,
+sortOrder, taxable, vat, total }] (money.js#paymentSchedule — both the taxable amount and the VAT split by the
+same basis points, so the stages sum to the total exactly), totalInWords { en, ne } (lakh/crore), dates
+{ createdAtBs, validUntilBs, sentAtBs }, letterhead { companyName, address, city, phones, email, panVatNo, logo,
+tagline } and, costs:read only, costTotal, costComplete, margin. Revisions and copies carry the contract and
+the schedule. Preview adds paymentStages (for sent stages) and totalInWords.
+GET    /admin/quotations/:id/export.xlsx  quotations:read · the workbook (exceljs): BOQ (live formulas — amount =
+                                    ROUND(qty × rate, 2), section subtotals and the subtotal over rows marked "In
+                                    total", discount, VAT, total; a measured row's qty links to its measurement
+                                    total), Measurements, Payment schedule, and a Cost sheet ONLY for costs:read.
+                                    Every formula stores the server's figure as its cached result; recalculated
+                                    (LibreOffice, in 23-quotation-document) it gives the same totals. Audited as
+                                    export.xlsx { number, version, costSheet }.
+/admin/quotation-terms              THE TERMS LIBRARY (Phase L4) — mountResource: read rates:read or
+                                    quotations:read, write rates:write (the manager's), history rates:read ·
+                                    { title (2–120), body (1–8000, English), bodyNe? (Nepali), isDefault (one
+                                    default: saving one moves the flag), sortOrder, isActive }
 POST   /admin/quotations/preview    quotations:write · { quotationId?, items, discount? (rupees) | discountPct?
                                     (0–100) | targetTotal? (rupees, VAT included), vatApplied } — the builder's
                                     live figures through the same code as a save, nothing written ->
@@ -535,9 +571,15 @@ POST   /admin/quotations/:id/submit     quotations:write · DRAFT → PENDING_AP
                                     (actorType system) — for every version, revisions included.
                                     Otherwise every active MANAGER and ADMIN except the submitter gets
                                     quotation_submitted (in-app + email). -> 200 the quotation (GET shape)
-POST   /admin/quotations/:id/approve    quotations:approve · { note? ≤1000 } · PENDING_APPROVAL → OFFICE_APPROVED
-                                    sets approvedById, approvedAt, approvalNote. 403 SELF_APPROVAL when
-                                    quotation.makerChecker is on (default) and the caller created it.
+POST   /admin/quotations/:id/approve    quotations:approve · { note? ≤1000, acknowledgeLowMargin? } · PENDING_APPROVAL →
+                                    OFFICE_APPROVED · sets approvedById, approvedAt, approvalNote. 403 SELF_APPROVAL
+                                    when quotation.makerChecker is on (default) and the caller created it.
+                                    THE MARGIN GATE (L-D4, Phase L4): when the margin on the taxable amount is
+                                    below quotation.minMarginPct (15) or any totalled row's cost is unknown →
+                                    422 LOW_MARGIN { details: { marginPct | null, minMarginPct, costComplete } }
+                                    unless acknowledgeLowMargin is true; then quotation.office_approved carries
+                                    meta.lowMargin { marginPct, minMarginPct, costComplete, acknowledged: true }.
+                                    Auto-approval (submit) never fires on a low or unknown margin.
                                     The creator gets quotation_office_approved (in-app).
 POST   /admin/quotations/:id/send-back  quotations:approve · { note 3–1000 } · PENDING_APPROVAL → DRAFT
                                     sentBackReason = note; the creator gets quotation_sent_back (in-app)

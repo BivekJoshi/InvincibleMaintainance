@@ -1,4 +1,5 @@
 import { apiSlice, listAndItem, tagList } from '@/api/apiSlice';
+import { arrayBufferToBase64 } from '@/helpers/download';
 
 /**
  * The quotation screens' endpoints: the list and its stage queues, the builder, and the
@@ -57,7 +58,11 @@ export const quotationsApi = apiSlice.injectEndpoints({
       invalidatesTags: (result, error, arg) => [...listAndItem('Quotation')(result, error, arg), 'History'],
     }),
     submitQuotation: move(build, 'submit'),
-    /** `{ id, note? }` */
+    /**
+     * `{ id, note?, acknowledgeLowMargin? }` — below `quotation.minMarginPct`, or with a cost unknown, the API
+     * answers 422 `LOW_MARGIN` (`details: { marginPct, minMarginPct, costComplete }`) until the approver
+     * acknowledges it (Phase L4).
+     */
     approveQuotation: move(build, 'approve'),
     /** `{ id, note }` */
     sendBackQuotation: move(build, 'send-back'),
@@ -119,6 +124,20 @@ export const quotationsApi = apiSlice.injectEndpoints({
         ...(leadId ? [{ type: 'Lead', id: leadId }, { type: 'Lead', id: 'LIST' }] : []),
       ],
     }),
+    /**
+     * `GET /admin/quotations/:id/export.xlsx` (Phase L4) — the quotation as an Excel workbook: the BOQ with live
+     * formulas, the measurements and the payment schedule, and a Cost sheet only for `costs:read`. The download
+     * pattern of `exportLeadsCsv` (a lazy query, nothing kept), but binary: the answer is cached as base64 text,
+     * because the store holds only serialisable values — `helpers/download#downloadBase64` makes the file. An
+     * error answer is the API's JSON envelope. The API audits every export (`export.xlsx`).
+     */
+    exportQuotationXlsx: build.query({
+      query: (id) => ({
+        url: `/admin/quotations/${id}/export.xlsx`,
+        responseHandler: async (res) => (res.ok ? arrayBufferToBase64(await res.arrayBuffer()) : res.json().catch(() => null)),
+      }),
+      keepUnusedDataFor: 0,
+    }),
     getRateCard: build.query({
       query: (params = {}) => ({ url: '/admin/rate-card', params }),
       transformResponse: (r) => ({ items: r.data, meta: r.meta }),
@@ -147,4 +166,5 @@ export const {
   useGetQuotationTakeoffQuery,
   useRepriceQuotationMutation,
   useCopyQuotationMutation,
+  useLazyExportQuotationXlsxQuery,
 } = quotationsApi;

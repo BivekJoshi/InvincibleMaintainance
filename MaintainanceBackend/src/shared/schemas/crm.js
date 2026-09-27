@@ -4,7 +4,8 @@ import {
   preferredLocale, rupees, sortOrder, unit,
 } from './common.js';
 import {
-  BOOKING_SLOT_KEYS, BUDGET_BANDS, CONTACT_ACTIVITY_TYPES, CUSTOMER_TYPES, DECISION_MAKERS, LEAD_OUTCOMES, LEAD_SOURCES,
+  BOOKING_SLOT_KEYS, BUDGET_BANDS, CONTACT_ACTIVITY_TYPES, CONTRACT_TYPES, CUSTOMER_TYPES, DECISION_MAKERS, LEAD_OUTCOMES,
+  LEAD_SOURCES, PAYMENT_TRIGGERS,
   LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, LOST_CATEGORIES, NEXT_ACTION_TYPES, PRIORITIES, PROPERTY_TYPES,
   QUOTATION_DECISIONS, QUOTATION_ROW_TYPES, QUOTATION_STAGES, QUOTATION_STATUSES, RATE_MODES, RECIPE_COMPONENT_KINDS,
   SURVEY_ITEM_KINDS,
@@ -373,7 +374,32 @@ export const quotationRow = z.object({
 
 const quotationRows = z.array(quotationRow).max(500);
 
-/** A new quotation. A DRAFT may start with no rows (a blank BOQ); submitting needs a priced row. */
+/**
+ * A payment schedule (L-D3, Phase L4): 1–10 stages in basis points summing to exactly 10000 (100 %), at
+ * most one ON_ACCEPT (the advance). Amounts are the server's (money.js#paymentSchedule).
+ */
+export const paymentStages = z.array(z.object({
+  label: z.string().trim().min(1).max(80),
+  basisPoints: z.coerce.number().int().min(1).max(10000),
+  trigger: z.enum(PAYMENT_TRIGGERS),
+})).min(1).max(10)
+  .refine((stages) => stages.reduce((a, st) => a + st.basisPoints, 0) === 10000, { message: 'The stages must add up to 100 %' })
+  .refine((stages) => stages.filter((st) => st.trigger === 'ON_ACCEPT').length <= 1, { message: 'Only one stage can be the advance on acceptance' });
+
+/** The contract around the BOQ (Phase L4) — the same fields on create, update and preview. */
+const contractFields = {
+  contractType: z.enum(CONTRACT_TYPES).optional(),
+  estimatedDays: z.coerce.number().positive().max(3650).nullable().optional(),
+  exclusions: z.string().trim().max(4000).nullable().optional(),
+  showMeasurements: z.coerce.boolean().optional(),
+  summaryOnly: z.coerce.boolean().optional(),
+  paymentStages: paymentStages.optional(),
+};
+
+/**
+ * A new quotation. A DRAFT may start with no rows (a blank BOQ); submitting needs a priced row. Left out,
+ * the contract type, the payment schedule and the terms come from the settings and the terms library.
+ */
 export const quotationSchema = z.object({
   customerId: z.string().min(1),
   siteId: z.string().optional().nullable(),
@@ -384,6 +410,7 @@ export const quotationSchema = z.object({
   terms: optionalText,
   internalNote: optionalText,
   items: quotationRows.default([]),
+  ...contractFields,
 });
 
 export const quotationUpdateSchema = quotationSchema.partial().extend({
@@ -397,6 +424,7 @@ export const quotationUpdateSchema = quotationSchema.partial().extend({
 export const quotationPreviewSchema = z.object({
   quotationId: z.string().min(1).optional(),
   items: quotationRows.default([]),
+  paymentStages: paymentStages.optional(),
   discount: optionalRupees,
   discountPct: z.coerce.number().min(0).max(100).optional(),
   targetTotal: optionalRupees,
@@ -430,8 +458,13 @@ export const quotationListQuery = z.object({
 });
 
 /** An approver's optional remark. */
+/**
+ * Approve. Below quotation.minMarginPct, or with a cost unknown, the approver must say so
+ * (`acknowledgeLowMargin: true`) — otherwise 422 LOW_MARGIN (Phase L4).
+ */
 export const quotationApproveSchema = z.object({
   note: z.string().trim().max(1000).optional(),
+  acknowledgeLowMargin: z.boolean().optional(),
 });
 
 /** Send back (approver) and pull back (sales): the reason is what the next editor reads. */
@@ -448,6 +481,8 @@ export const quotationDecisionSchema = z.object({
   decision: z.enum(QUOTATION_DECISIONS),
   note: z.string().trim().max(1000).optional()
     .transform((v) => v || undefined),
+  /** Why the customer declined (a lost-lead category, Phase L4) — the "Mark lost?" prompt starts from it. */
+  category: z.enum(LOST_CATEGORIES).optional(),
 }).superRefine((v, ctx) => {
   if (v.decision === 'request_changes' && (!v.note || v.note.length < 5)) {
     ctx.addIssue({ code: 'custom', path: ['note'], message: 'Tell us what you would like changed (at least 5 characters)' });
@@ -466,4 +501,14 @@ export const estimateSchema = z.object({
 export const lostReportQuery = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
+});
+
+/** The terms library (Phase L4) — /admin/quotation-terms. Setting isDefault moves the flag from the others. */
+export const quotationTermsSchema = z.object({
+  title: z.string().trim().min(2).max(120),
+  body: z.string().trim().min(1).max(8000),
+  bodyNe: z.string().trim().max(8000).nullable().optional(),
+  isDefault: z.coerce.boolean().default(false),
+  sortOrder,
+  isActive,
 });

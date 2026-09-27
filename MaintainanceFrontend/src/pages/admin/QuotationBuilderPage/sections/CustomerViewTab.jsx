@@ -7,11 +7,23 @@ import { SavedOnlyNotice } from './TakeoffTab';
 
 /**
  * The Customer view tab: the saved quotation as the customer's link shows it — the same `QuotationDocument`
- * the public page renders, in English or Nepali. It reads only the customer's fields, so a manager's view shows
- * no cost either.
+ * the public page and the print render, in English or Nepali (starting in the customer's language). It reads only
+ * the customer's fields, so a manager's view shows no cost either.
+ *
+ * `options` are the panel's two switches as they stand in the form (`showMeasurements`, `summaryOnly`, Phase L4):
+ * the document follows them before they are saved, so the office sees what each one does. Every figure is still
+ * the saved quotation's.
+ *
+ * @param {{ quotation: object, dirty: boolean, defaultLocale?: string,
+ *   options?: { showMeasurements?: boolean, summaryOnly?: boolean } }} props
  */
-export function CustomerViewTab({ quotation, dirty, defaultLocale = 'en' }) {
+export function CustomerViewTab({ quotation, dirty, defaultLocale = 'en', options }) {
   const [locale, setLocale] = useState(defaultLocale === 'ne' ? 'ne' : 'en');
+  const shown = {
+    ...quotation,
+    ...(typeof options?.showMeasurements === 'boolean' ? { showMeasurements: options.showMeasurements } : {}),
+    ...(typeof options?.summaryOnly === 'boolean' ? { summaryOnly: options.summaryOnly } : {}),
+  };
   return (
     <div className="space-y-3">
       <SavedOnlyNotice dirty={dirty} />
@@ -25,8 +37,8 @@ export function CustomerViewTab({ quotation, dirty, defaultLocale = 'en' }) {
         </ToggleGroup>
       </div>
       <Card data-testid="customer-view">
-        <CardContent className="p-6 sm:p-8">
-          <QuotationDocument quotation={quotation} locale={locale} />
+        <CardContent className="p-4 sm:p-8">
+          <QuotationDocument quotation={shown} locale={locale} />
         </CardContent>
       </Card>
     </div>

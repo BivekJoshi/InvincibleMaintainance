@@ -166,7 +166,10 @@ export async function approveAndSend(id, { requestId } = {}) {
   const lapsed = q.validUntil && q.validUntil < new Date() ? q.validUntil : null;
   if (!q.validUntil || lapsed) await prisma.quotation.update({ where: { id }, data: { validUntil: daysFromNow(15) } });
   const submitted = expectStatus(await sales.post(`/admin/quotations/${id}/submit`), 200).data;
-  if (submitted.status === 'PENDING_APPROVAL') expectStatus(await manager.post(`/admin/quotations/${id}/approve`).send({}), 200);
+  // Most callers are not testing the Phase L4 margin gate, and their lines have no known cost: acknowledged.
+  if (submitted.status === 'PENDING_APPROVAL') {
+    expectStatus(await manager.post(`/admin/quotations/${id}/approve`).send({ acknowledgeLowMargin: true }), 200);
+  }
   const send = sales.post(`/admin/quotations/${id}/send`);
   expectStatus(await (requestId ? send.set('X-Request-Id', requestId) : send), 200);
   if (lapsed) await prisma.quotation.update({ where: { id }, data: { validUntil: lapsed } });

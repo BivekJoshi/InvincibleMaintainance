@@ -94,8 +94,11 @@ describe('the service picker', () => {
 describe('assignment', () => {
   it('GET /admin/leads/assignees lists active sales, manager and admin staff only', async () => {
     const rows = expectStatus(await sales.get('/admin/leads/assignees'), 200).data;
-    expect(rows.map((u) => u.id)).toEqual(expect.arrayContaining([salesId, adminId]));
     expect(rows.every((u) => ['SALES', 'MANAGER', 'ADMIN'].includes(u.role))).toBe(true);
+    // Found by search: a reused test database holds many throwaway sales users, so the seeded ones
+    // are not always on the first page.
+    const seeded = await Promise.all(['sales@gharjatan', 'admin@gharjatan'].map(async (q) => expectStatus(await sales.get(`/admin/leads/assignees?q=${q}`), 200).data));
+    expect(seeded.flat().map((u) => u.id)).toEqual(expect.arrayContaining([salesId, adminId]));
     expect(rows[0]).not.toHaveProperty('passwordHash');
     const found = expectStatus(await sales.get('/admin/leads/assignees?q=sales'), 200).data;
     expect(found.map((u) => u.id)).toContain(salesId);

@@ -12,7 +12,7 @@ import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { selectLocale } from '@/redux/slices/uiSlice';
 import { formatNpr } from '@/helpers/format';
 import { QuotationDecision } from './sections/QuotationDecision';
-import { QUOTATION_PAGE_COPY as COPY } from './quotationPageCopy';
+import { pageCopy } from './quotationPageCopy';
 import { quotationPageState } from './quotationPageState';
 
 /**
@@ -20,9 +20,11 @@ import { quotationPageState } from './quotationPageState';
  * no code, no typed name — a single-purpose token scoped to this one version. The page
  * reads the answer the API returns, so what it shows after a tap is the recorded state.
  *
- * The document itself (`components/documents/QuotationDocument`) follows the site's language
- * (en / ne): its sections as headings with their number, notes as text, a row's specification
- * under it, and optional rows marked "not included in the total" (Phase L3).
+ * Since Phase L4 it is the company's quotation as a document (`components/documents/QuotationDocument`): the
+ * letterhead, the number with its AD and BS dates, the BOQ (or its section summary), totals and the total in
+ * words, the contract wording, duration, exclusions, the payment schedule with each stage's amount, the terms and
+ * the measurements annex — every figure the server's. Every word, the document's and the answer's, follows the
+ * site's language (en / ne); it works at 360 px. Opening it is counted by the API (`firstViewedAt`, `viewCount`).
  */
 export default function QuotationPublicPage() {
   const { token } = useParams();
@@ -32,6 +34,7 @@ export default function QuotationPublicPage() {
   const [answerError, setAnswerError] = useState(null);
   const { phone } = useSiteSettings();
   const locale = useSelector(selectLocale);
+  const copy = pageCopy(locale);
 
   if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
   if (isLoading) return <div className="container max-w-3xl py-14"><Skeleton className="h-96 w-full rounded-xl" /></div>;
@@ -41,15 +44,17 @@ export default function QuotationPublicPage() {
   const state = quotationPageState(data);
   const total = formatNpr(data.total);
 
-  const onAnswer = async (decision, note) => {
+  /** @param {'approve'|'request_changes'|'reject'} decision  @param {{ note?: string, category?: string }} [extra] */
+  const onAnswer = async (decision, { note, category } = {}) => {
     setAnswerError(null);
     try {
-      const quotation = await decide({ token, decision, ...(note ? { note } : {}) }).unwrap();
+      const body = { token, decision, ...(note ? { note } : {}), ...(category ? { category } : {}) };
+      const quotation = await decide(body).unwrap();
       setAnswered({ token, quotation });
       return true;
     } catch (err) {
       const code = err?.data?.error?.code;
-      setAnswerError(err?.data?.error?.message ?? COPY.error);
+      setAnswerError(err?.data?.error?.message ?? copy.error);
       // It expired, was replaced or was answered elsewhere: show what it is now.
       if (['QUOTATION_EXPIRED', 'QUOTATION_REPLACED', 'QUOTATION_ANSWERED', 'QUOTATION_NOT_OPEN'].includes(code)) {
         setAnswered(null);
@@ -67,20 +72,21 @@ export default function QuotationPublicPage() {
         locale={locale}
         notice={data.requestedChanges && state.kind === 'open' ? (
           <div className="mt-6">
-            <DocumentNotice tone="info" icon={MessageSquareText} animate={false} title={COPY.requestedChanges.title}>
+            <DocumentNotice tone="info" icon={MessageSquareText} animate={false} title={copy.requestedChanges.title}>
               <span lang="ne" className="block whitespace-pre-wrap">{data.requestedChanges}</span>
-              {COPY.requestedChanges.body}
+              {copy.requestedChanges.body}
             </DocumentNotice>
           </div>
         ) : null}
       />
 
-      <div className="mt-8 border-t pt-6">
+      <div className="mt-8 border-t pt-6" lang={locale}>
         <QuotationDecision
           state={state}
           quotation={data}
           total={total}
           phone={phone}
+          copy={copy}
           onAnswer={onAnswer}
           answering={answering}
           error={answerError}

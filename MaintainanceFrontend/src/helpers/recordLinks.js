@@ -26,6 +26,7 @@ const PARENTS = {
   LeadNote: ['leadId', 'Lead'],
   CustomerSite: ['customerId', 'Customer'],
   QuotationItem: ['quotationId', 'Quotation'],
+  QuotationPaymentStage: ['quotationId', 'Quotation'],
   ProjectImage: ['projectId', 'Project'],
   JobAssignment: ['jobId', 'Job'],
   JobTask: ['jobId', 'Job'],

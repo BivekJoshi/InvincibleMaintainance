@@ -762,6 +762,77 @@ async function main() {
     console.log(`  BOQ demo: ${q.number} — ${q.items.length} rows in ${q.boq.sections.length} sections`);
   }
 
+  // ═══ Phase L4: the terms library, the BOQ demo's contract, and a quotation below the minimum margin
+  //     waiting for approval — so the gate shows. Each part tops up an older database.
+
+  if (!(await prisma.quotationTerms.count())) {
+    const standard = D.SETTINGS.find((st) => st.key === 'finance.quotationTerms')?.value ?? '';
+    await prisma.quotationTerms.createMany({
+      data: [
+        {
+          title: 'Standard terms', body: standard, isDefault: true, sortOrder: 0,
+          bodyNe: '१. यो दरभाउ जारी मितिदेखि १५ दिनसम्म मान्य हुनेछ।\n२. काम सुरु गर्नुअघि ५०% अग्रिम भुक्तानी आवश्यक छ।\n'
+            + '३. उल्लेख नभएसम्म दरमा भ्याट समावेश छैन।\n४. कामको एक महिनाको वारेन्टी हुनेछ।',
+        },
+        {
+          title: 'Waterproofing — extended warranty', sortOrder: 1,
+          body: 'Waterproofing carries a 3-year warranty against seepage through the treated area, provided the surface is not '
+            + 'drilled or re-plastered by others. The warranty does not cover structural cracks that open after the work.',
+        },
+      ],
+    });
+    console.log('  terms library: 2 (the standard one is the default)');
+  }
+
+  const boqDemo = await prisma.quotation.findFirst({
+    where: { customer: { phone: '9841700001' }, deletedAt: null }, include: { stages: true },
+  });
+  if (boqDemo && !boqDemo.stages.length) {
+    const standard = await prisma.quotationTerms.findFirst({ where: { isDefault: true } });
+    await prisma.quotation.update({
+      where: { id: boqDemo.id },
+      data: {
+        estimatedDays: 6,
+        exclusions: 'Water and electricity during the work are the owner\'s. Moving heavy furniture is not included.',
+        terms: boqDemo.terms ?? standard?.body ?? null,
+        stages: {
+          create: [
+            { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT', sortOrder: 0 },
+            { label: 'Plaster done', basisPoints: 4000, trigger: 'MILESTONE', sortOrder: 1 },
+            { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION', sortOrder: 2 },
+          ],
+        },
+      },
+    });
+    console.log(`  BOQ demo contract: ${boqDemo.number} — 50/40/10, 6 days`);
+  }
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841700002' } }))) {
+    const { createQuotation } = await import('../src/services/quotation.service.js');
+    const crystalline = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+    const lowCustomer = await prisma.customer.create({
+      data: {
+        name: 'Sunil Maharjan', phone: '9841700002', preferredLocale: 'ne',
+        sites: { create: { label: 'Home', address: 'Kirtipur, Kathmandu', area: 'Kirtipur', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    // Sold at Rs 480 against a purchase rate of Rs 450: a 6% margin, under the 15% minimum.
+    const low = await createQuotation({
+      customerId: lowCustomer.id,
+      siteId: lowCustomer.sites[0].id,
+      internalNote: 'Demo (Phase L4): priced under the minimum margin — approving it asks for the acknowledgement.',
+      items: [
+        { rowType: 'SECTION', description: 'Damp treatment' },
+        { kind: 'MATERIAL', materialId: crystalline.id, description: crystalline.name, unit: crystalline.unit, qty: 40, rate: 480 },
+      ],
+    }, users.SALES.id);
+    await prisma.quotation.update({
+      where: { id: low.id }, data: { status: 'PENDING_APPROVAL', submittedAt: new Date(), submittedById: users.SALES.id },
+    });
+    console.log(`  low-margin demo: ${low.number} waiting for approval`);
+  }
+
   console.log('\nSeed complete.');
   console.log('  Admin login:      admin@gharjatan.com.np / Password123');
   console.log('  Manager login:    manager@gharjatan.com.np / Password123');

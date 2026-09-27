@@ -863,6 +863,24 @@ model Quotation {
   total            Int             @default(0)
   terms            String?
   internalNote     String?
+  /// How the final bill is worked out (L-D2, Phase L4).
+  contractType     ContractType    @default(LUMP_SUM)
+  /// The work's duration in days, as promised to the customer.
+  estimatedDays    Float?
+  /// What the price does not include ("water and electricity by the owner").
+  exclusions       String?
+  /// The customer's page: the measurements annex, and item rows or section subtotals only.
+  showMeasurements Boolean         @default(true)
+  summaryOnly      Boolean         @default(false)
+  /// What the totalled rows cost (paisa), stored at each save so lists show the margin cheaply — costs:read only.
+  costTotal        Int?
+  /// true only when every totalled row's cost is known.
+  costComplete     Boolean         @default(false)
+  /// When the customer first opened the link, and how often they have.
+  firstViewedAt    DateTime?
+  viewCount        Int             @default(0)
+  /// The customer's reason when they declined (a lost-lead category).
+  declineCategory  LostCategory?
   publicToken      String?         @unique
   submittedAt      DateTime?
   submittedById    String?
@@ -899,6 +917,7 @@ model Quotation {
   supersededBy Quotation?      @relation("QuotationSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
   supersedes   Quotation[]     @relation("QuotationSupersession")
   items        QuotationItem[]
+  stages       QuotationPaymentStage[]
   jobs         Job[]
   invoices     Invoice[]
   survey       SiteSurvey?
@@ -907,6 +926,51 @@ model Quotation {
   @@index([customerId])
   @@index([parentId])
   @@index([leadId])
+}
+
+/// How the final bill is worked out (L-D2).
+enum ContractType {
+  LUMP_SUM
+  ITEM_RATE
+}
+
+/// When a payment stage falls due (L-D3).
+enum PaymentTrigger {
+  ON_ACCEPT
+  MILESTONE
+  ON_COMPLETION
+}
+
+/// One stage of a quotation's payment schedule (Phase L4): its share in basis points (the stages sum to 10000).
+/// Amounts are computed (money.js#paymentSchedule), never stored.
+model QuotationPaymentStage {
+  id          String         @id @default(cuid())
+  quotationId String
+  label       String
+  basisPoints Int
+  trigger     PaymentTrigger
+  sortOrder   Int            @default(0)
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@index([quotationId, sortOrder])
+}
+
+/// The terms library (Phase L4): reusable terms a quotation starts from. One is the default. The manager's.
+model QuotationTerms {
+  id        String    @id @default(cuid())
+  title     String
+  body      String
+  /// The Nepali text, for a customer who reads Nepali.
+  bodyNe    String?
+  isDefault Boolean   @default(false)
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([isActive, sortOrder])
 }
 
 /// A BOQ row (Phase L3): a priced ITEM, a SECTION heading, or a NOTE. Numbering and section subtotals are computed.

@@ -65,6 +65,7 @@ export const AUDIT_EVENT_LABELS = {
   'quotation.superseded': 'Quotation superseded',
 
   'rate_card.repriced': 'Rate library repriced',
+  'export.xlsx': 'Quotation exported to Excel',
 };
 
 /** Plain words for a model row's table, for rows that are not a named event. */
@@ -86,6 +87,8 @@ export const AUDIT_MODEL_LABELS = {
   Payment: 'payment',
   ProjectImage: 'gallery picture',
   Translation: 'Nepali copy',
+  QuotationPaymentStage: 'payment stage',
+  QuotationTerms: 'terms',
   RateCardItem: 'rate',
   RateCardComponent: 'recipe line',
   Trade: 'trade',

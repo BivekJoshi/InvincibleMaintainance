@@ -176,7 +176,10 @@ links — ip and user agent say who), `system` (tasks, and scripts with no conte
   masked the same way. The client never sends a cost: the server prices recipes from the library.
   Quotation rows (Phase L3) carry a frozen recipe and cost: the `/admin/quotations*`, `/admin/leads*` and
   `/admin/surveys*` routes run the cost wall as path-scoped middleware (`middleware/costWall.js` — never
-  router-wide, since several routers share `/admin`), and the public quotation view is an allowlist.
+  router-wide, since several routers share `/admin`), and the public quotation view is an allowlist
+  (`quotation.service.js#publicView`) — sell rates, totals, sections, measurements, the schedule and the words,
+  and a key-scan test (23-quotation-document) proving no cost, margin, recipe or pay key. The customer's Excel
+  copy has no Cost sheet. Approval has a margin gate (`quotation.minMarginPct`; unknown cost counts as low).
 - **Rate library (L-D1).** A rate is a recipe at a moment's prices: `money.js#recipeCost` → `sellRate`
   (rounded up). Price changes flag items `outOfDate`; rates move only through a reprice (preview → apply,
   `rate_card.repriced`). Quantities (measurements, wastage, packs, take-offs) live in `utils/quantity.js`,
