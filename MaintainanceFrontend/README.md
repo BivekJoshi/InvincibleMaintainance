@@ -52,9 +52,9 @@ uploads the Playwright trace when it fails.
   the only kind `useBlocker` works in — with `signedInAs(role)` for capability checks.
 - Money, phone numbers and Nepali text are the three things that break (CLAUDE.md rule 5). Test them.
 
-### End-to-end tests (Phases F2, H1, L3, H2, L5)
+### End-to-end tests (Phases F2, H1, L3, H2, L5, I)
 
-`npm run test:e2e` runs [Playwright](https://playwright.dev) over four flows in a real browser:
+`npm run test:e2e` runs [Playwright](https://playwright.dev) over these flows in a real browser:
 
 - `e2e/quotation-flow.spec.js` — the whole quotation loop: a customer books at `/book` on a phone-sized
   screen, the office prices and approves the quotation, the customer asks for changes in Nepali, the office
@@ -80,6 +80,15 @@ uploads the Playwright trace when it fails.
   way, start, a tick and the timer; then with the browser offline a photo (`e2e/fixtures/site-photo.jpg`), a material
   and a tick wait on the phone; back online the queue drains by itself; the last tick, a drawn signature, complete —
   and the dispatcher finds the photos, the signature, the material, the time and the warranty.
+- `e2e/aftercare-flow.spec.js` — aftercare (Phase I): a job completed over the API with a 30-day warranty; the
+  customer raises a claim from the certificate link on a 360 px phone, with no account; the dispatcher accepts it in
+  the claims queue and the free WARRANTY job is in the dispatch queue, unassigned; then the dispatcher creates an AMC
+  contract through the calendar, and the visits saved are exactly the schedule the sheet previewed.
+- `e2e/finance-flow.spec.js` — finance (Phase I), as the accountant (`accounts@gharjatan.com.np`): a job completed
+  over the API with billable material is invoiced from Invoices › Create from job (it bills what it used), sent, paid
+  in part by eSewa, that payment voided (struck through, the balance back up), then settled by cash and a bank
+  transfer to PAID; aging lists it while money is owed and drops it once paid, collections show the two payments and
+  not the voided one, and the collections CSV (the API's, with the dates on screen) carries its header and the row.
 
 ```bash
 npx playwright install chromium     # once

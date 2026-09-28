@@ -304,7 +304,14 @@ export const QUOTATION_STAGE_TABS = [
   { value: 'all', label: 'All', statuses: null },
 ];
 export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 'VOID'];
+/** An invoice's state in the office's words (Phase I). The server derives it; the UI never sets it. */
+export const INVOICE_STATUS_LABELS = {
+  DRAFT: 'Draft', SENT: 'Sent', PARTIAL: 'Part paid', PAID: 'Paid', OVERDUE: 'Overdue', VOID: 'Void',
+};
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
+export const PAYMENT_METHOD_LABELS = {
+  CASH: 'Cash', BANK: 'Bank transfer', ESEWA: 'eSewa', KHALTI: 'Khalti', FONEPAY: 'Fonepay', CHEQUE: 'Cheque',
+};
 /** How a site team measures and buys (Phase L2 added the metric and pack units). Recipe quantities use each material's own unit. */
 export const UNITS = [
   'sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set',
@@ -363,6 +370,27 @@ export const PAYMENT_SCHEDULE_PRESETS = [
  * `LOST_CATEGORIES`, sent as the decision's `category`; the "Mark lost?" prompt starts from it.
  */
 export const DECLINE_CATEGORIES = ['PRICE', 'COMPETITOR', 'POSTPONED', 'BUDGET', 'OWN_LABOUR', 'OTHER'];
+
+// ── Aftercare (Phase I) — each list mirrors the API's `shared/enums.js` (`config/aftercareMirror.test.js`).
+/** A warranty's state. CLAIMED: a claim is open on it; the status is the server's (voiding has its own route). */
+export const WARRANTY_STATUSES = ['ACTIVE', 'EXPIRED', 'VOID', 'CLAIMED'];
+export const WARRANTY_STATUS_LABELS = { ACTIVE: 'Active', CLAIMED: 'Claim open', EXPIRED: 'Expired', VOID: 'Void' };
+/** A warranty claim's life: open → accepted (a free WARRANTY job) | rejected; open or accepted → resolved. */
+export const CLAIM_STATUSES = ['open', 'accepted', 'rejected', 'resolved'];
+export const CLAIM_STATUS_LABELS = { open: 'Open', accepted: 'Accepted', rejected: 'Rejected', resolved: 'Resolved' };
+export const AMC_STATUSES = ['active', 'expired', 'cancelled'];
+export const AMC_STATUS_LABELS = { active: 'Active', expired: 'Expired', cancelled: 'Cancelled' };
+export const AMC_BILLING_CYCLES = ['annual', 'quarterly', 'monthly'];
+export const AMC_BILLING_CYCLE_LABELS = { annual: 'Annual', quarterly: 'Quarterly', monthly: 'Monthly' };
+/** An AMC visit: pending until a job is made for it (a week before it is due), then scheduled, completed or missed. */
+export const AMC_VISIT_STATUSES = ['pending', 'scheduled', 'completed', 'missed'];
+export const AMC_VISIT_STATUS_LABELS = { pending: 'Not booked yet', scheduled: 'Job made', completed: 'Done', missed: 'Missed' };
+/** skipped: the customer has no address on that channel; failed: the provider refused it. */
+export const REMINDER_STATUSES = ['pending', 'sent', 'failed', 'skipped'];
+export const REMINDER_STATUS_LABELS = { pending: 'Pending', sent: 'Sent', failed: 'Failed', skipped: 'Skipped' };
+/** A service reminder goes out by one of these (the message log's channels). */
+export const REMINDER_CHANNEL_LABELS = { sms: 'SMS', email: 'Email' };
+
 export const LOCALES = [
   { code: 'en', label: 'English' },
   { code: 'ne', label: 'नेपाली' },

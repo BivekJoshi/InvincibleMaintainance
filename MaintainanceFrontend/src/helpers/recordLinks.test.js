@@ -32,8 +32,15 @@ describe('recordHref', () => {
     expect(recordHref({ model: 'RateCardComponent', recordId: 'c1', after: { rateCardItemId: 'r9' } })).toBe('/admin/rate-card/r9');
   });
 
-  it('has no link for records without a screen yet', () => {
-    expect(recordHref({ model: 'Invoice', recordId: 'i1' })).toBeNull();
+  it('has no link for records without a screen', () => {
+    expect(recordHref({ model: 'Report', recordId: null })).toBeNull();
     expect(recordHref({ model: 'Lead', recordId: null })).toBeNull();
+  });
+
+  it('links an invoice, its payments and lines, and an expense (Phase I)', () => {
+    expect(recordHref({ model: 'Invoice', recordId: 'i1' })).toBe('/admin/invoices/i1');
+    expect(recordHref({ model: 'Payment', recordId: 'p1', after: { invoiceId: 'i1', amount: 100000 } })).toBe('/admin/invoices/i1');
+    expect(recordHref({ model: 'InvoiceItem', recordId: 'it1', before: { invoiceId: 'i2' } })).toBe('/admin/invoices/i2');
+    expect(recordHref({ model: 'Expense', recordId: 'ex1' })).toBe('/admin/expenses/ex1');
   });
 });

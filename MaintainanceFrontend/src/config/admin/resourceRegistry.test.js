@@ -14,9 +14,9 @@ const mounter = readApi('mountResource.js');
 /**
  * Every file that mounts registry resources through `mountResource`: content, operations (since H1),
  * the rate library and its trades (crm.routes.js, since L2 — the last hand-mounted resource moved over), and
- * the inspection templates (surveys.routes.js, since L5).
+ * the inspection templates (surveys.routes.js, since L5) and the expenses (finance.routes.js, Phase I).
  */
-const MOUNTING_FILES = ['cms.routes.js', 'ops.routes.js', 'crm.routes.js', 'surveys.routes.js'].map(readApi);
+const MOUNTING_FILES = ['cms.routes.js', 'ops.routes.js', 'crm.routes.js', 'surveys.routes.js', 'finance.routes.js'].map(readApi);
 const MOUNTED = new Set(MOUNTING_FILES.flatMap((src) => [...src.matchAll(/mountResource\(router, '([a-z-]+)'/g)].map((m) => m[1])));
 const isMounted = (r) => MOUNTED.has(r);
 
@@ -88,7 +88,8 @@ describe('resource registry', () => {
       expect(TEXT_TYPES.has(field.type)).toBe(true);
     }
     for (const filter of entry.filters ?? []) {
-      expect(['enum', 'boolean', 'relation', 'dateRange']).toContain(filter.type);
+      // `text`: typed and applied on Enter (an expense's category, Phase I).
+      expect(['enum', 'boolean', 'relation', 'dateRange', 'text']).toContain(filter.type);
       if (filter.defaultValue != null) expect(filter.options.map((o) => o.value)).toContain(filter.defaultValue);
     }
     if (entry.reorderWithin) {

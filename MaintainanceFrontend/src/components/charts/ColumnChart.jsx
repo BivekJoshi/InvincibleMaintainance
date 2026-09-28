@@ -20,10 +20,11 @@ function columnPath(x, y, w, h) {
  *   data: object[], valueKey: string, renderLabel: (d: object, i: number) => [string, string],
  *   highlight?: number, color: string, accent: string, label: string,
  *   describe: (d: object) => string, onSelect?: (d: object) => void, height?: number,
- * }} props
+ *   formatValue?: (value: number) => string,
+ * }} props  `formatValue` words the figure on a column's cap (money: `formatNprShort`, Phase I)
  */
 export function ColumnChart({
-  data, valueKey, renderLabel, highlight, color, accent, label, describe, onSelect, height = 200,
+  data, valueKey, renderLabel, highlight, color, accent, label, describe, onSelect, height = 200, formatValue = String,
 }) {
   const [ref, width] = useElementWidth();
   const reduced = useReducedMotion();
@@ -66,7 +67,7 @@ export function ColumnChart({
                 transition={{ duration: 0.7, delay: 0.1 + i * 0.05, ease: [0.16, 1, 0.3, 1] }}
               />
               <text x={cx} y={base - h - 6} textAnchor="middle" className={on ? 'fill-foreground text-[11px] font-bold' : 'fill-muted-foreground text-[11px] font-medium'}>
-                {value}
+                {formatValue(value)}
               </text>
               <text x={cx} y={base + 16} textAnchor="middle" className={on ? 'fill-foreground text-[11px] font-semibold' : 'fill-muted-foreground text-[11px]'}>
                 {top}

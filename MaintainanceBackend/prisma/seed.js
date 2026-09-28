@@ -982,6 +982,98 @@ async function main() {
       + `${flagged.number} submitted with the ${damp ? 'damp' : 'no'} checklist, 2 rooms measured, 4 photos`);
   }
 
+  // ═══ finance & aftercare demo (Phase I): receivables in every aging bucket, a paid invoice with a voided
+  //     payment struck through, a draft and a void one, expenses on a job, an open warranty claim for the queue,
+  //     an AMC contract due for renewal and a reminder the provider refused. Guarded on its own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841900001' } }))) {
+    const demo = await prisma.customer.create({
+      data: {
+        name: 'Bishnu Prasad Koirala', phone: '9841900001', email: 'bishnu.koirala@example.com', preferredLocale: 'en',
+        sites: { create: { label: 'Home', address: 'Maharajgunj, Kathmandu', area: 'Maharajgunj', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    const site = demo.sites[0];
+    const lines = (area) => [
+      { description: 'Crystalline damp treatment', unit: 'sq.ft', qty: area, rate: toPaisa(220) },
+      { description: 'Waterproof plaster', unit: 'sq.ft', qty: area, rate: toPaisa(95) },
+    ];
+    const invoice = async ({ area, issued, due, status, payments = [], extra = {} }) => {
+      const t = documentTotals(lines(area).map((l, i) => ({ ...l, sortOrder: i })), { vatApplied: true, vatRate: 13 });
+      const paid = payments.filter((p) => !p.voidedAt).reduce((a, p) => a + p.amount, 0);
+      return prisma.invoice.create({
+        data: {
+          number: await prisma.$transaction((tx) => nextNumber(tx, 'INV')), customerId: demo.id, status,
+          issuedAt: days(issued), dueDate: days(due), subtotal: t.subtotal, discount: t.discount, vatApplied: true, vatRate: 13,
+          vatAmount: t.vatAmount, total: t.total, paidAmount: paid,
+          ...(status === 'DRAFT' ? {} : { publicToken: token(), sentAt: days(issued) }),
+          note: 'Demo (Phase I)', ...extra,
+          items: { create: t.lines },
+          ...(payments.length ? { payments: { create: payments } } : {}),
+        },
+      });
+    };
+    const made = [
+      await invoice({ area: 120, issued: -3, due: 12, status: 'SENT' }),
+      await invoice({ area: 200, issued: -27, due: -12, status: 'OVERDUE', payments: [{ amount: toPaisa(20000), method: 'KHALTI', reference: 'KH-55120', receivedAt: days(-10) }] }),
+      await invoice({ area: 90, issued: -60, due: -45, status: 'OVERDUE' }),
+      await invoice({ area: 150, issued: -115, due: -100, status: 'OVERDUE' }),
+      await invoice({ area: 80, issued: 0, due: 15, status: 'DRAFT' }),
+      await invoice({ area: 60, issued: -20, due: -5, status: 'VOID', extra: { voidReason: 'Raised against the wrong customer' } }),
+    ];
+    // Paid in two parts, after an eSewa payment that was entered twice and voided.
+    const t = documentTotals(lines(100).map((l, i) => ({ ...l, sortOrder: i })), { vatApplied: true, vatRate: 13 });
+    const first = toPaisa(20000);
+    made.push(await invoice({
+      area: 100, issued: -18, due: -3, status: 'PAID',
+      payments: [
+        { amount: first, method: 'ESEWA', reference: 'ESW-77341', receivedAt: days(-14), voidedAt: days(-14), voidReason: 'Entered twice', voidedById: users.ACCOUNTANT.id },
+        { amount: first, method: 'CASH', receivedAt: days(-14), receivedBy: users.ACCOUNTANT.id },
+        { amount: t.total - first, method: 'BANK', reference: 'NIC-ASIA 0042', receivedAt: days(-4), receivedBy: users.ACCOUNTANT.id },
+      ],
+    }));
+
+    // A finished job with a warranty and an open claim — the claims queue's demo — and its expenses.
+    const tech = await prisma.technician.findFirst({ where: { user: { email: 'hari@gharjatan.com.np' } } });
+    const done = await prisma.job.create({
+      data: {
+        number: await prisma.$transaction((tx) => nextNumber(tx, 'JOB')), type: 'REPAIR', customerId: demo.id, siteId: site.id,
+        title: 'Bathroom wall seepage — ground floor', status: 'COMPLETED', scheduledStart: days(-20), actualStart: days(-20),
+        actualEnd: days(-18), completionNote: 'Treated and replastered.', isBillable: true, invoicedAt: days(-18),
+        assignments: tech ? { create: { technicianId: tech.id, isLead: true } } : undefined,
+      },
+    });
+    const warranty = await prisma.warranty.create({
+      data: { jobId: done.id, customerId: demo.id, scope: 'Workmanship on the treated bathroom wall', startsAt: days(-18), endsAt: days(12), publicToken: token(), status: 'CLAIMED' },
+    });
+    await prisma.warrantyClaim.create({
+      data: { warrantyId: warranty.id, description: 'A damp patch has come back at the skirting, about a foot wide, since last week\'s rain.' },
+    });
+    await prisma.expense.createMany({
+      data: [
+        { category: 'Transport', amount: toPaisa(1850), jobId: done.id, vendor: 'Pathao', spentAt: days(-20), approvedBy: users.ACCOUNTANT.id },
+        { category: 'Scaffolding hire', amount: toPaisa(3500), jobId: done.id, vendor: 'Shrestha Scaffolding', spentAt: days(-20), approvedBy: users.ACCOUNTANT.id },
+        { category: 'Food for crew', amount: toPaisa(960.5), jobId: done.id, spentAt: days(-19), approvedBy: users.ACCOUNTANT.id, note: 'Khaja for three' },
+        { category: 'Tools', amount: toPaisa(4200), vendor: 'Bhatbhateni Hardware', spentAt: days(-8), approvedBy: users.ACCOUNTANT.id, note: 'Moisture meter probes' },
+      ],
+    });
+
+    // Up for renewal within the 60-day preset, and a reminder the SMS provider refused.
+    await prisma.amcContract.create({
+      data: {
+        number: await prisma.$transaction((tx) => nextNumber(tx, 'AMC')), customerId: demo.id, siteId: site.id,
+        planName: 'Annual Home Care — Premium', coveredServices: ['seepage', 'plumbing'], startDate: days(-325), endDate: days(40),
+        visitsPerYear: 2, amount: toPaisa(36000), billingCycle: 'annual',
+        visits: { create: [{ dueDate: days(-143), status: 'completed' }, { dueDate: days(39) }] },
+      },
+    });
+    await prisma.serviceReminder.create({
+      data: { customerId: demo.id, dueAt: days(-2), channel: 'sms', status: 'failed', message: 'Your pre-monsoon terrace check is due. Reply or call us to book. - Ghar Jatan' },
+    });
+    console.log(`  finance & aftercare demo: ${made.length} invoices across the aging buckets, 4 expenses, 1 open claim, 1 renewal due`);
+  }
+
   console.log('\nSeed complete.');
   console.log('  Admin login:      admin@gharjatan.com.np / Password123');
   console.log('  Manager login:    manager@gharjatan.com.np / Password123');

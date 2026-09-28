@@ -33,6 +33,19 @@ export const mediaApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       invalidatesTags: [{ type: 'Media', id: 'LIST' }],
     }),
+    /**
+     * One picture to an upload endpoint of the caller's own (Phase I: `POST /admin/expenses/bill`, `expenses:write`) —
+     * multipart, the file under `files` — answered 201 with the media object (`{ id, url, thumb, … }`). The kit's
+     * `photoUpload` field sends through it, for a role that may not browse the library (no `media:read`).
+     */
+    uploadPhotoTo: build.mutation({
+      query: ({ path, file }) => {
+        const body = new FormData();
+        body.append('files', file);
+        return { url: path, method: 'POST', body };
+      },
+      transformResponse: (r) => (Array.isArray(r?.data) ? r.data[0] : r?.data),
+    }),
     /** `{ alt, caption, folderId }` — alt text can change but not be emptied; `folderId: null` moves a file out. */
     updateMedia: build.mutation({
       query: ({ id, ...body }) => ({ url: `/admin/media/${id}`, method: 'PUT', body }),
@@ -58,6 +71,6 @@ export const mediaApi = apiSlice.injectEndpoints({
 });
 
 export const {
-  useGetMediaListQuery, useGetMediaFoldersQuery, useGetMediaQuery, useUploadMediaMutation,
+  useGetMediaListQuery, useGetMediaFoldersQuery, useGetMediaQuery, useUploadMediaMutation, useUploadPhotoToMutation,
   useUpdateMediaMutation, useDeleteMediaMutation, useCreateMediaFolderMutation, useDeleteMediaFolderMutation,
 } = mediaApi;

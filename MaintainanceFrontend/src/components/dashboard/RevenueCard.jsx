@@ -25,6 +25,9 @@ export function RevenueCard({ revenue, className }) {
       title="Invoiced and collected"
       subtitle="Running totals, last 30 days"
       icon={Receipt}
+      // Phase I: the full report, by month, service or technician, with CSV.
+      to="/admin/finance/reports?report=revenue"
+      linkLabel="Open the report"
       className={className}
       table={(
         <ChartTable

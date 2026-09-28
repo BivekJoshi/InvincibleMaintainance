@@ -27,7 +27,9 @@ const messageOf = (err) => err?.data?.error?.message;
  * CMS list has: the on/off switch, Edit / View on site / Hide / Delete, bulk delete,
  * Reorder, and Trash. An entry may add row actions of its own (`rowActions`) and bulk
  * actions (`bulkActions`), open on a filter (`defaultValue`), allow Reorder only within one
- * filter (`reorderWithin`), and show a column only to a capability (`column.capability`).
+ * filter (`reorderWithin`), and show a column only to a capability (`column.capability`). An entry with
+ * `toggle: false` has no on/off column or Hide/Show (expenses, Phase I — the model has no such column), and
+ * `footer(meta)` renders the server's figures for the list under the table (the expenses' total).
  *
  * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
  */
@@ -61,6 +63,7 @@ function ResourceList({ entry, canWrite }) {
   const screenPath = screenPathOf(entry);
   const copy = activeCopyOf(entry);
   const activeField = activeFieldOf(entry);
+  const toggles = entry.toggle !== false;
   const editHref = (row) => `${screenPath}/${row.id}`;
   const nameOf = (row) => entry.titleOf(row);
 
@@ -163,9 +166,9 @@ function ResourceList({ entry, canWrite }) {
       ...(href ? [{ label: 'View on site', icon: ExternalLink, onSelect: () => window.open(href, '_blank', 'noopener') }] : []),
       ...extra,
       ...(canWrite ? [
-        row[activeField]
+        ...(!toggles ? [] : [row[activeField]
           ? { label: copy.turnOff, icon: EyeOff, onSelect: () => onToggle(row) }
-          : { label: copy.turnOn, icon: Eye, onSelect: () => onToggle(row) },
+          : { label: copy.turnOn, icon: Eye, onSelect: () => onToggle(row) }]),
         { label: 'Delete', icon: Trash2, destructive: true, onSelect: () => onDelete([row]) },
       ] : []),
     ];
@@ -198,7 +201,7 @@ function ResourceList({ entry, canWrite }) {
       ) : null}
       <CustomTable
         storageKey={`content:${entry.resource}`}
-        columns={[...entry.columns.filter(allowed), activeColumn]}
+        columns={[...entry.columns.filter(allowed), ...(toggles ? [activeColumn] : [])]}
         data={data?.items}
         meta={data?.meta}
         isLoading={isLoading}
@@ -220,6 +223,7 @@ function ResourceList({ entry, canWrite }) {
         reorderDisabledReason={canReorder && !reorderScoped ? entry.reorderHint : undefined}
         onReorder={onReorder}
       />
+      {entry.footer && data?.meta ? entry.footer(data.meta, { inTrash }) : null}
       {confirmDialog}
     </PageTransition>
   );

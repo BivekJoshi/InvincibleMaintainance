@@ -3,8 +3,12 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { validate } from '../../middleware/validate.js';
 import { requires } from '../../middleware/authorize.js';
 import { historyRoute } from './historyRoute.js';
-import { ok, created, noContent } from '../../utils/response.js';
-import { idParam, listQuery, toPartial } from '../../shared/schemas/common.js';
+import { mountResource } from './mountResource.js';
+import { uploadImages } from '../../middleware/upload.js';
+import { uploadLimiter } from '../../middleware/rateLimit.js';
+import { reportRoute } from './reportRoute.js';
+import { ok, created } from '../../utils/response.js';
+import { idParam } from '../../shared/schemas/common.js';
 import * as invoices from '../../services/invoice.service.js';
 import * as reports from '../../services/report.service.js';
 import * as s from '../../shared/schemas/ops.js';
@@ -51,24 +55,22 @@ router.get('/payments', requires('payments:read'), validate({ query: s.paymentLi
   ok(res, items, meta);
 }));
 
-// ── expenses
-router.get('/expenses', requires('expenses:read'), validate({ query: listQuery.passthrough() }),
-  asyncHandler(async (req, res) => { const { items, meta } = await invoices.expenses.list(req.query); ok(res, items, meta); }));
-router.get('/expenses/:id', requires('expenses:read'), validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await invoices.expenses.get(req.params.id))));
-router.post('/expenses', requires('expenses:write'), validate({ body: s.expenseSchema }),
-  asyncHandler(async (req, res) => created(res, await invoices.expenses.create(req.body, req.user.id))));
-router.put('/expenses/:id', requires('expenses:write'), validate({ params: idParam, body: toPartial(s.expenseSchema) }),
-  asyncHandler(async (req, res) => ok(res, await invoices.expenses.update(req.params.id, req.body))));
-router.delete('/expenses/:id', requires('expenses:write'), validate({ params: idParam }),
-  asyncHandler(async (req, res) => { await invoices.expenses.remove(req.params.id); noContent(res); }));
+// ── expenses: a registry resource (Phase I) — no toggle and no reorder, an expense has neither
+mountResource(router, 'expenses', invoices.expenses, s.expenseSchema, {
+  capability: 'expenses', query: s.expenseListQuery, toggle: false, reorder: false,
+  extra: (r, { read, write }) => {
+    r.get('/expenses/categories', read, asyncHandler(async (_req, res) => ok(res, await invoices.expenses.categories())));
+    r.post('/expenses/bill', write, uploadLimiter, uploadImages.array('files', 1), asyncHandler(async (req, res) =>
+      created(res, await invoices.expenses.uploadBill(req.files, { userId: req.user.id }))));
+  },
+});
 
-// ── reports
-const readReports = requires('reports:finance');
-router.get('/reports/aging', readReports, asyncHandler(async (_req, res) => ok(res, await reports.agingReport())));
-router.get('/reports/revenue', readReports, asyncHandler(async (req, res) => ok(res, await reports.revenueReport(req.query))));
-router.get('/reports/collections', readReports, asyncHandler(async (req, res) => ok(res, await reports.collectionsReport(req.query))));
-router.get('/customers/:id/statement', readReports, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await reports.customerStatement(req.params.id))));
+// ── reports: JSON, or ?format=csv (routes/admin/reportRoute.js)
+router.get('/reports/aging', ...reportRoute('aging', 'reports:finance', () => reports.agingReport()));
+router.get('/reports/revenue', ...reportRoute('revenue', 'reports:finance', (q) => reports.revenueReport(q)));
+router.get('/reports/collections', ...reportRoute('collections', 'reports:finance', (q) => reports.collectionsReport(q)));
+router.get('/customers/:id/statement', ...reportRoute('statement', 'reports:finance', (q) => reports.customerStatement(q.customerId), {
+  params: idParam, scope: (req) => ({ customerId: req.params.id }),
+}));
 
 export default router;

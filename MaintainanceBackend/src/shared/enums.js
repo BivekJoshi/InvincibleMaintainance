@@ -88,6 +88,15 @@ export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const STOCK_MOVEMENT_TYPES = ['PURCHASE', 'ISSUE_TO_JOB', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
 export const WARRANTY_STATUSES = ['ACTIVE', 'EXPIRED', 'VOID', 'CLAIMED'];
+/** A warranty claim's life (Phase I names them): open → accepted (a free job) | rejected; accepted → resolved. */
+export const CLAIM_STATUSES = ['open', 'accepted', 'rejected', 'resolved'];
+export const AMC_STATUSES = ['active', 'expired', 'cancelled'];
+export const AMC_BILLING_CYCLES = ['annual', 'quarterly', 'monthly'];
+export const AMC_VISIT_STATUSES = ['pending', 'scheduled', 'completed', 'missed'];
+/** skipped: the customer has no address on that channel. failed: the provider refused it. */
+export const REMINDER_STATUSES = ['pending', 'sent', 'failed', 'skipped'];
+/** How the revenue report groups invoices (Phase I). */
+export const REVENUE_GROUPS = ['month', 'day', 'service', 'technician'];
 /** How a site team measures and buys. Recipe quantities use each material's own unit (no conversion). */
 export const UNITS = [
   'sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set',
@@ -165,6 +174,10 @@ export const AUDIT_EVENTS = Object.freeze({
   INVOICE_VOIDED: 'invoice.voided',
   PAYMENT_RECORDED: 'payment.recorded',
   PAYMENT_VOIDED: 'payment.voided',
+
+  WARRANTY_VOIDED: 'warranty.voided',
+  /** A claim accepted (a free job), rejected or resolved — `meta.status` says which (Phase I). */
+  WARRANTY_CLAIM_DECIDED: 'warranty.claim_decided',
 
   SURVEY_SUBMITTED: 'survey.submitted',
   SURVEY_RETURNED: 'survey.returned',

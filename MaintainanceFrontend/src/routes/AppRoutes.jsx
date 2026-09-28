@@ -6,10 +6,12 @@ import {
   HomePage, ServicesPage, ServiceDetailPage, PricingPage, ContactPage, BookingPage,
   ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage, VisitPublicPage,
   BlogPage, BlogPostPage, GenericPage, SettingsPage,
-  LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, LostReportPage, CustomersPage, CustomerDetailPage, SurveysPage,
+  LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SurveysPage,
   SurveyReviewPage, QuotationsPage, QuotationBuilderPage, QuotationPrintPage, ResourceListPage, ResourceEditPage,
   HomeComposerPage, MediaLibraryPage, ResetPasswordPage,
   JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
+  InvoicesPage, InvoiceDetailPage, InvoicePrintPage, PaymentsPage, FinanceReportsPage, ReportsPage,
+  WarrantiesPage, WarrantyDetailPage, WarrantyClaimsPage, AmcContractsPage, AmcContractDetailPage, ServiceRemindersPage,
   UsersPage, RolesPage, AuditLogPage, LoginActivityPage, MessageLogsPage, MessageTemplatesPage, MessageTemplateEditPage,
   TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, TechHistoryPage, NotFoundPage,
 } from './routeModules';
@@ -71,6 +73,10 @@ export function AppRoutes() {
           <Route element={<RequireAuth capability="quotations:read" />}>
             <Route path="/admin/quotations/:id/print" element={<QuotationPrintPage />} />
           </Route>
+          {/* An invoice's print (Phase I), the same pattern */}
+          <Route element={<RequireAuth capability="invoices:read" />}>
+            <Route path="/admin/invoices/:id/print" element={<InvoicePrintPage />} />
+          </Route>
         </Route>
 
         {/* Back office — every role except the field app's */}
@@ -84,9 +90,25 @@ export function AppRoutes() {
               <Route path="/admin/leads/:id" element={<LeadDetailPage />} />
               <Route path="/admin/sla" element={<SlaBoardPage />} />
             </Route>
-            {/* The sales reports (Phase L1: why leads are lost); Phase I10 folds them into /admin/reports */}
-            <Route element={<RequireAuth capability="reports:sales" />}>
-              <Route path="/admin/reports/lost" element={<LostReportPage />} />
+            {/* The sales and operations reports (Phase I10): each group checks its own capability (sales, ops, costs:read);
+                /admin/reports opens the first the role may see, /admin/reports/lost (Phase L1's address) Sales › Lost leads */}
+            <Route path="/admin/reports" element={<ReportsPage />} />
+            <Route path="/admin/reports/:group" element={<ReportsPage />} />
+            {/* Finance (Phase I): invoices, payments, the finance reports; expenses are a registry entry (its basePath) */}
+            <Route element={<RequireAuth capability="invoices:read" />}>
+              <Route path="/admin/invoices" element={<InvoicesPage />} />
+              <Route path="/admin/invoices/:id" element={<InvoiceDetailPage />} />
+            </Route>
+            <Route element={<RequireAuth capability="payments:read" />}>
+              <Route path="/admin/finance/payments" element={<PaymentsPage />} />
+            </Route>
+            <Route element={<RequireAuth capability="reports:finance" />}>
+              <Route path="/admin/finance/reports" element={<FinanceReportsPage />} />
+            </Route>
+            <Route element={<RequireAuth capability="expenses:read" />}>
+              <Route path="/admin/expenses" element={<ResourceListPage resource="expenses" />} />
+              <Route path="/admin/expenses/new" element={<ResourceEditPage resource="expenses" />} />
+              <Route path="/admin/expenses/:id" element={<ResourceEditPage resource="expenses" />} />
             </Route>
             <Route element={<RequireAuth capability="customers:read" />}>
               <Route path="/admin/customers" element={<CustomersPage />} />
@@ -135,6 +157,20 @@ export function AppRoutes() {
                 <Route key={`${resource}-new`} path={`/admin/${resource}/new`} element={<ResourceEditPage resource={resource} />} />,
                 <Route key={`${resource}-id`} path={`/admin/${resource}/:id`} element={<ResourceEditPage resource={resource} />} />,
               ])}
+            </Route>
+            {/* Aftercare (Phase I). A claim's own address opens the queue with its decision sheet (the claim notification's link). */}
+            <Route element={<RequireAuth capability="warranties:read" />}>
+              <Route path="/admin/warranties" element={<WarrantiesPage />} />
+              <Route path="/admin/warranties/:id" element={<WarrantyDetailPage />} />
+              <Route path="/admin/warranty-claims" element={<WarrantyClaimsPage />} />
+              <Route path="/admin/warranty-claims/:id" element={<WarrantyClaimsPage />} />
+            </Route>
+            <Route element={<RequireAuth capability="amc:read" />}>
+              <Route path="/admin/amc-contracts" element={<AmcContractsPage />} />
+              <Route path="/admin/amc-contracts/:id" element={<AmcContractDetailPage />} />
+            </Route>
+            <Route element={<RequireAuth capability="reminders:read" />}>
+              <Route path="/admin/service-reminders" element={<ServiceRemindersPage />} />
             </Route>
             {/* CMS resources from config/admin/resourceRegistry.js; each page checks its entry's own capability */}
             <Route element={<RequireAuth capability="cms:read" />}>

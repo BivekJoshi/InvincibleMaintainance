@@ -23,6 +23,7 @@ import { materials } from './resources/materials';
 import { materialCategories } from './resources/materialCategories';
 import { suppliers } from './resources/suppliers';
 import { inspectionTemplates } from './resources/inspectionTemplates';
+import { expenses } from './resources/expenses';
 
 /**
  * Every registry resource — the CMS, the rate library and its trades (Phase L2), the terms library (Phase L4), the inspection
@@ -77,6 +78,10 @@ import { inspectionTemplates } from './resources/inspectionTemplates';
  *
  * @property {string} [activeField] the boolean the list's switch and Hide/Show act on (default `isActive`); the
  *                                    API's `PATCH /:id/toggle` flips the same column (technicians: `isAvailable`)
+ * @property {boolean} [toggle]      false: no on/off switch and no Hide/Show — the model has no such column and the
+ *                                    API mounts no toggle (expenses, Phase I)
+ * @property {(meta: object, ctx: { inTrash: boolean }) => import('react').ReactNode} [footer]  under the list: the
+ *                                    server's figures for it (the expenses' `meta.totals.total`)
  *
  * Field specs may also say `lockedOnEdit: true`: editable on a new record, read-only once saved
  * (a content block's key, which the site looks blocks up by), and `capability`: shown only to a user
@@ -129,7 +134,7 @@ export const RESOURCES = Object.fromEntries(
   [
     serviceCategories, services, heroSlides, projects, offers, pricingPlans, testimonials, faqs, galleryImages,
     features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard, trades, quotationTerms,
-    technicians, jobTemplates, materials, materialCategories, suppliers, inspectionTemplates,
+    technicians, jobTemplates, materials, materialCategories, suppliers, inspectionTemplates, expenses,
   ].map((entry) => [entry.resource, entry]),
 );
 

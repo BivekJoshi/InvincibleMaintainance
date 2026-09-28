@@ -32,6 +32,8 @@ const ALSO_READ_AS = {
   'material-categories': ['Stock'],
   technicians: ['Dispatch', { type: 'Technician', id: 'LIST' }],
   'inspection-templates': ['Survey'],
+  // An expense is a job's cost (its Costing tab) and a line in the margin report (Phase I).
+  expenses: ['Job', 'Report'],
 };
 const alsoFor = (resource) => ALSO_READ_AS[resource] ?? [];
 

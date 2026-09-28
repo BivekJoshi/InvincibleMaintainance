@@ -38,6 +38,19 @@ export function formatNpr(paisa, { withSymbol = true } = {}) {
 /** Sums a list of paisa amounts safely. */
 export const sum = (nums) => nums.reduce((a, b) => a + Number(b || 0), 0);
 
+/** What is still owed on a document: total less paid, never below zero (an overpayment is refused upstream). */
+export const outstanding = (total, paid) => Math.max(0, Number(total || 0) - Number(paid || 0));
+
+/**
+ * Paisa as plain rupees with two decimals — `123456` → `'1234.56'`, `-5` → `'-0.05'` — for a CSV cell a
+ * spreadsheet reads as a number. Integer arithmetic, so no float ever shows as 1234.5599999.
+ */
+export function rupeesText(paisa) {
+  const n = Math.round(Number(paisa || 0));
+  const abs = Math.abs(n);
+  return `${n < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}
+
 /** Rounds half away from zero — for signed amounts (a variation's omission line), where `r` would lean up. */
 export const rs = (n) => (Math.sign(n) * Math.round(Math.abs(n) + Number.EPSILON)) || 0;
 

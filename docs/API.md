@@ -141,7 +141,8 @@ POST /public/visits/:token/respond    visitLimiter (10 per IP per 15 min) · { a
                                       every active DISPATCHER (in-app, type visit_reschedule_requested, linking
                                       /admin/jobs/:id). 422 VISIT_CLOSED once canAnswer is false. A new window
                                       (POST /admin/jobs/:id/schedule) clears the answer.
-GET  /public/invoices/:token          customer views an invoice (read-only; paid offline)
+GET  /public/invoices/:token          customer views an invoice (read-only; paid offline) — with `balance`, the
+                                      office's figure (Phase I)
                                       payments[] include voided ones with voidedAt set (shown struck
                                       through); paidAmount already excludes them
 GET  /public/warranties/:token
@@ -1003,8 +1004,18 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
 ## Admin — Finance (`ADMIN`, `ACCOUNTANT`)
 
 ```
-/admin/invoices                     GET ?status&customerId&overdueOnly&from&to&q, POST, GET /:id, PUT /:id
-                                    no DELETE — an invoice is voided, never removed
+/admin/invoices                     GET ?status&customerId&overdueOnly=true|false&from&to&q&page&limit&sort, POST,
+                                    GET /:id, PUT /:id · no DELETE — an invoice is voided, never removed
+                                    from/to: Kathmandu days (YYYY-MM-DD, 400 otherwise) on issuedAt. sort:
+                                    number|issuedAt|dueDate|total|createdAt, - for descending (400 otherwise).
+                                    Every invoice response (Phase I) carries balance — total − paidAmount,
+                                    never below zero; 0 on a VOID invoice — and publicUrl (the customer's /invoice/:token page,
+                                    null until sent). The list's meta adds counts { all, DRAFT, SENT, PARTIAL,
+                                    OVERDUE, PAID, VOID } under the other filters (the status tabs). GET /:id
+                                    adds jobs [{ id, number, title }] — the jobs its lines bill.
+                                    PUT /:id: a DRAFT only — 422 INVOICE_LOCKED once sent (void it and issue
+                                    another). A change to the discount or the VAT choice alone re-prices the
+                                    stored lines through documentTotals.
 GET    /admin/invoices/:id/history  invoices:history (ACCOUNTANT, ADMIN) · see "Record history"
 POST   /admin/invoices/:id/send
 POST   /admin/invoices/:id/void     { reason }
@@ -1029,29 +1040,129 @@ POST   /admin/invoices/:id/payments/:paymentId/void   payments:write · { reason
                                     back down: PAID → PARTIAL, or → SENT / OVERDUE (past due) when none
                                     are left. 400 no reason · 404 payment not on this invoice ·
                                     422 already voided
-GET    /admin/payments              ?q&method&customerId&from&to    payments:read
-                                    q matches the payment reference, invoice number or customer.
-                                    Voided payments are listed, flagged by voidedAt — never hidden
-/admin/expenses                     GET, GET /:id, POST, PUT /:id, DELETE /:id
-GET  /admin/reports/aging
-GET  /admin/reports/revenue         ?groupBy=service|month|technician
-GET  /admin/reports/collections     ?from&to   payments received, summed by method (voided excluded)
-GET  /admin/customers/:id/statement             ledger of invoices and payments (voided excluded)
+GET    /admin/payments              ?q&method&customerId&from&to&page&limit&sort    payments:read
+                                    q matches the payment reference, invoice number or customer; from/to are
+                                    Kathmandu days on receivedAt; sort receivedAt|amount (± ).
+                                    Voided payments are listed, flagged by voidedAt — never hidden.
+                                    meta.totals (Phase I) { total, count, byMethod { CASH: paisa, … } } —
+                                    the filtered payments NOT voided: the list's footer
+/admin/expenses                     A REGISTRY RESOURCE (Phase I) — mountResource, expenses:read / :write:
+                                    GET ?q (category, vendor, note)&category&jobId&from&to (Kathmandu days on
+                                    spentAt)&deleted, GET /:id, POST, PUT /:id, DELETE /:id (soft),
+                                    PATCH /:id/restore, GET /:id/history. No toggle and no reorder (404): an
+                                    expense has neither. Body { category, amount (rupees), jobId?, vendor?,
+                                    billMediaId?, spentAt?, note? }; approvedBy is the recording user, never
+                                    the body's. Rows add approver { id, name } | null, job { id, number } | null
+                                    and bill (media: url, thumb) | null; the list's meta.totals { total } sums
+                                    the filtered expenses (the search included).
+GET    /admin/expenses/categories   expenses:read → string[] — the categories in use, for suggestions
+POST   /admin/expenses/bill         expenses:write · multipart, one image in `files` → 201 the media { id, url,
+                                    thumb, … } — the bill's photo, stored in the "Expense bills" folder, for
+                                    billMediaId. expenses:write, not media:write: ACCOUNTANT attaches a bill but
+                                    cannot change the website's pictures
 ```
 
-## Admin — Aftercare (reads `ADMIN`, `DISPATCHER`, `SALES`, `MANAGER`; writes `ADMIN`, `DISPATCHER`)
+**Reports (Phase I).** Every report below — and the sales and ops ones under Platform — takes `?from&to`
+(Kathmandu `YYYY-MM-DD`, inclusive; default the last 30 Kathmandu days, today included; 400 otherwise) and
+**`?format=csv`**: a download of the report's main table under the same filters — `Content-Disposition:
+attachment`, UTF-8 with a BOM (Excel reads Devanagari), money as rupees with two decimals (`1234.56`, exact),
+dates in Kathmandu, a text a spreadsheet would run as a formula prefixed with `'`, at most **10,000 rows**
+(`X-Export-Truncated: true` when cut). Each download is audited as `export.csv` (model `Report` —
+`Customer` for a statement — with `meta { report, from, to, groupBy, rows, truncated }`). The CORS config
+exposes `Content-Disposition` and `X-Export-Truncated`.
 
 ```
-/admin/warranties                   GET, GET /expiring ?days, GET /:id, PUT /:id
-/admin/warranty-claims              GET, PATCH /:id { status: accepted|rejected|resolved,
-                                                      rejectReason?, scheduledStart? }
-                                    accepting creates the free WARRANTY job, linked to the original;
-                                    rejecting needs a reason
-/admin/amc-contracts                GET, GET /renewals-due ?days, POST, GET /:id, PUT /:id, DELETE /:id
-                                    POST lays down the visit schedule; visits come back inside GET /:id,
-                                    and a cron turns each into a scheduled job a week before it is due
-/admin/service-reminders            GET, POST, PUT /:id (pending only — 422 once sent), DELETE /:id
+GET  /admin/reports/aging           reports:finance · as of now (the period does not apply) →
+                                    { asOf, buckets { current, d0_30, d31_60, d61_90, d90_plus }, labels,
+                                      total, byCustomer [{ customer, total, current, d0_30, …, invoices }],
+                                      invoices [{ id, number, customer { id, name }, issuedAt, dueDate, total,
+                                        paid, outstanding, daysOverdue, bucket, bucketLabel }] most overdue first }
+                                    Days past due are Kathmandu calendar days: due today is current, due
+                                    yesterday is 1 (d0_30 = 1–30 days). SENT, PARTIAL and OVERDUE invoices with
+                                    money owed. CSV: the invoices.
+GET  /admin/reports/revenue         reports:finance · ?groupBy=month|day|service|technician (default month) →
+                                    { groupBy, rows [{ key, label, count, taxable, vat, invoiced, collected,
+                                      outstanding }], totals { same } } — invoices issued in the period, DRAFT
+                                    and VOID left out. taxable = subtotal − discount; taxable + vat = invoiced
+                                    on every row, to the paisa. month/day are Kathmandu; service is the job's
+                                    lead's (or its quotation's lead's) service, else the job type, else "No
+                                    job"; technician the job's lead technician. CSV: the rows.
+GET  /admin/reports/collections     reports:finance → { total, count, byMethod, payments (newest 500),
+                                    truncated } — payments received in the period, voided excluded; the totals
+                                    cover them all. CSV: the payments (up to 10,000).
+GET  /admin/customers/:id/statement reports:finance → { customer { id, name, phone, email, panVatNo },
+                                    ledger [{ at, kind: invoice|payment, ref, invoiceId, method?, debit, credit,
+                                      balance }], totals { invoiced, paid, outstanding } } — sent invoices
+                                    (DRAFT and VOID excluded) and payments standing, oldest first. 404 for an
+                                    unknown customer. CSV: the ledger.
 ```
+
+## Admin — Aftercare
+
+Capabilities (Phase I; the route file used role lists): **warranties:read / amc:read / reminders:read** — SALES,
+MANAGER, DISPATCHER; **warranties:write / amc:write / reminders:write** — DISPATCHER; ADMIN holds all through
+`*`; ACCOUNTANT none. The effective access is the same as before.
+
+```
+GET    /admin/warranties            warranties:read · ?status (ACTIVE|CLAIMED|EXPIRED|VOID)&customerId
+                                    &activeOnly=true&expiringDays=N (active, ending within N days)&q (customer
+                                    name or phone, job number)&page&limit&sort → rows + publicUrl (the
+                                    customer's /warranty/:token certificate)
+GET    /admin/warranties/expiring   warranties:read · ?days (30)
+GET    /admin/warranties/:id        warranties:read → + publicUrl, claims [… + resolvedJob { id, number,
+                                    status } | null]
+PUT    /admin/warranties/:id        warranties:write · { scope?, endsAt? } — strict: status or voidReason is
+                                    400 (the status is the server's). 422 on a VOID warranty
+POST   /admin/warranties/:id/void   warranties:write · { reason 3–500 } → VOID with the reason; audited
+                                    warranty.voided. 422 when already void. A void certificate takes no claim.
+GET    /admin/warranties/:id/history      warranties:read · see "Record history"
+GET    /admin/warranty-claims       warranties:read · ?status (open|accepted|rejected|resolved)&q (customer,
+                                    phone, job number)&page&limit → open first, then accepted, then rejected
+                                    and resolved; newest first within each. Rows { id, description, status,
+                                    rejectReason, createdAt, resolvedAt, resolvedJob { id, number, status } |
+                                    null, warranty { id, status, endsAt, job { id, number, title, type,
+                                    service (the name the warranty-claims report groups by, or null) },
+                                    customer { id, name, phone } } }
+GET    /admin/warranty-claims/:id   warranties:read — the row above (the claim notification links here)
+PATCH  /admin/warranty-claims/:id   warranties:write · { status: accepted|rejected|resolved, rejectReason?
+                                    (required to reject), scheduledStart? } → the claim, as GET /:id
+                                    accept / reject an OPEN claim; resolve an open or accepted one — otherwise
+                                    422 CLAIM_DECIDED. Claimed with a guarded update: two accepts at once make
+                                    one job. Accept creates the free WARRANTY job through createJob (numbered,
+                                    job.created audited) — linked to the original, not billable, unassigned,
+                                    SCHEDULED with a start else DRAFT — tells the customer (SMS in their
+                                    language, the time in Kathmandu) and every DISPATCHER (in-app). Every
+                                    decision is audited as warranty.claim_decided (meta: status, reason, job).
+GET    /admin/amc-contracts         amc:read · ?status (active|expired|cancelled)&customerId&renewalsDays=N
+                                    (active, ending within N days)&q (number, plan, customer)&page&limit&sort
+GET    /admin/amc-contracts/renewals-due   amc:read · ?days (60)
+POST   /admin/amc-contracts/preview amc:write · { startDate, endDate, visitsPerYear (1–52) } → { totalVisits,
+                                    intervalDays, visits [{ dueDate }] } — exactly the schedule create lays
+                                    down: visitsPerYear pro rata over the span, evenly spaced, the first one
+                                    interval after the start. End after start; at most five years (400).
+POST   /admin/amc-contracts         amc:write · { customerId, siteId? (the customer's, else 422), planName,
+                                    coveredServices? string[], startDate, endDate, visitsPerYear, amount
+                                    (rupees), billingCycle annual|quarterly|monthly, notes? }
+GET    /admin/amc-contracts/:id     amc:read → + visits [{ id, dueDate, status (pending|scheduled|completed|
+                                    missed), note, job { id, number, status, scheduledStart } | null }]
+                                    A cron turns each visit into a scheduled job a week before it is due.
+PUT    /admin/amc-contracts/:id     amc:write · { siteId?, planName?, coveredServices?, amount?, billingCycle?,
+                                    notes?, status? (active|cancelled) } — strict: the schedule (startDate,
+                                    endDate, visitsPerYear) is 400; a new schedule is a renewal (a new contract)
+GET    /admin/amc-contracts/:id/history   amc:read · see "Record history"
+DELETE /admin/amc-contracts/:id     amc:write — removes it (soft: status cancelled and deletedAt, gone from
+                                    every list). To cancel and keep it visible, PUT { status: 'cancelled' }
+GET    /admin/service-reminders     reminders:read · ?status (pending|sent|failed|skipped)&customerId&from&to
+                                    (Kathmandu days on dueAt)&q (message, customer, phone)&page&limit&sort
+POST   /admin/service-reminders     reminders:write · { customerId, jobId?, serviceId?, dueAt, channel sms|email,
+                                    message 5–1000 }
+PUT    /admin/service-reminders/:id reminders:write — pending only (422 once sent, failed or skipped)
+DELETE /admin/service-reminders/:id reminders:write — pending only (422: one that went out stays on record)
+```
+
+The `reminders:dispatch` task sends each due reminder's own text (`{{message}}` — a `service_reminder`
+template can wrap it) in the customer's language: `sent` when the provider took it, **`failed`** when it refused
+(Phase I; it used to say sent), `skipped` when the customer has no address on that channel.
 
 ## Admin — Platform
 
@@ -1200,12 +1311,19 @@ GET   /admin/dashboard              every role · role-aware widget payload
                                           fullest first
                                       ADMIN, ACCOUNTANT — revenue (revenueReport, groupBy day, 30 days)
                                     Other roles get { role, cards } only.
+All the reports below take `?from&to` and `?format=csv` as described under Finance → Reports (Phase I);
+their CSV tables: lead-sources — the sources; funnel — the stages and Lost; sla — byStaff; lost — rows;
+technicians — the technicians; warranty-claims — byService; job-margin — rows.
+
 GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
 GET   /admin/reports/lost?from&to                                    reports:sales · LOST leads closed in
                                     the range (Kathmandu YYYY-MM-DD, on closedAt; bad format 400) →
                                     { total, byCategory [{ category, count }],
                                       rows [{ category, stage, serviceId, serviceName, count }] } most first
-GET   /admin/reports/technicians | /warranty-claims                 reports:ops
+GET   /admin/reports/technicians | /warranty-claims                 reports:ops · warranty-claims →
+                                    { totalWarranties, totalClaims, claimRate, byType [{ type, warranties,
+                                      claims, claimRate }], byService [{ service, … }] (Phase I: the job's
+                                      lead's or quotation's lead's service, else "Other") }
 GET   /admin/reports/job-margin                                      costs:read (Phase L2) — cost and margin
 ```
 
@@ -1294,6 +1412,8 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `survey.submitted` | the surveyor submits (model `SiteSurvey`) | DRAFT/RETURNED → SUBMITTED · jobId, lines |
 | `survey.returned` | `PATCH /admin/surveys/:id/review` with RETURNED | status → RETURNED · note |
 | `survey.quoted` | `POST /admin/surveys/:id/quotation` | status → QUOTED · quotationId, quotationNumber |
+| `warranty.voided` | `POST /admin/warranties/:id/void` (Phase I) | status → VOID · reason |
+| `warranty.claim_decided` | `PATCH /admin/warranty-claims/:id` (model `WarrantyClaim`) | status → accepted / rejected / resolved · jobId, jobNumber, rejectReason |
 | `site.pinned` | a survey save's `sitePin` moves a site's pin (model `CustomerSite`) | lat, lng → lat, lng · surveyId, accuracy, userId |
 | `visit.confirmed` | the customer confirms on `/visit/:token` (`public`, model `Job`) | visitAnswer → CONFIRMED · note, ip |
 | `visit.reschedule_requested` | the customer asks for another time on `/visit/:token` | visitAnswer → RESCHEDULE_REQUESTED · note, ip |
@@ -1306,7 +1426,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `auth.unlocked` | `POST /admin/users/:id/unlock` | failedLogins, lockedUntil → 0, null |
 | `auth.sessions_revoked` | `DELETE /admin/users/:id/sessions` | · count |
 | `settings.changed` | `PATCH /admin/settings`, once per save, only the keys whose value moved | { key: old } → { key: new } · keys |
-| `export.csv` | `GET /admin/leads/export.csv` | · the filters used |
+| `export.csv` | `GET /admin/leads/export.csv` (model `Lead`), a report with `?format=csv` (model `Report`; a statement on its `Customer`) | · the filters used — a report's also report, rows, truncated |
 | `cms.deleted` | a soft delete through the CRUD factory (any resource it mounts — content, materials, job templates), a technician profile, or `DELETE /admin/media/:id` | |
 | `cms.restored` | `PATCH …/:id/restore` | deletedAt → null |
 | `cms.purged` | `?hard=true` (needs `cms:purge`), or a delete on a resource with no soft delete | the removed row's scalars → |

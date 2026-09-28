@@ -32,10 +32,10 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 |---|---|---|
 | `admin@gharjatan.com.np` | ADMIN | everything |
 | `editor@gharjatan.com.np` | EDITOR | CMS + media only |
-| `sales@gharjatan.com.np` | SALES | leads, customers, quotations (prepares and submits them) |
-| `manager@gharjatan.com.np` | MANAGER | everything SALES sees, plus approving quotations |
-| `dispatch@gharjatan.com.np` | DISPATCHER | jobs, the dispatch board, technicians, materials and stock; reads the service catalogue |
-| `accounts@gharjatan.com.np` | ACCOUNTANT | invoices, payments, reports |
+| `sales@gharjatan.com.np` | SALES | leads, customers, quotations (prepares and submits them); reads warranties, AMC contracts and service reminders |
+| `manager@gharjatan.com.np` | MANAGER | everything SALES sees, plus approving quotations, the rate library's cost and margin |
+| `dispatch@gharjatan.com.np` | DISPATCHER | jobs, the dispatch board, technicians, materials and stock; decides warranty claims, runs AMC contracts and service reminders; reads the service catalogue |
+| `accounts@gharjatan.com.np` | ACCOUNTANT | invoices, payments, expenses, the finance reports and customer statements — no aftercare, no cost |
 | `hari@gharjatan.com.np` | TECHNICIAN | only jobs assigned to them |
 | `suresh@gharjatan.com.np` | TECHNICIAN | a second technician, for crews and the dispatch board |
 | `survey@gharjatan.com.np` | SURVEYOR | site visits and surveys assigned to them (the field app's survey stepper) |
@@ -88,6 +88,13 @@ reading — two rooms measured with the door and window deducted, photos by room
 photos are generated placeholder images stored through the media service. The **`visits:remind`** task
 (every 15 min) sends tomorrow's visit reminders from `visits.reminderHour` (17:00 Kathmandu, a setting in the
 SLA group), once per visit and window.
+
+Phase I adds a **finance & aftercare** demo (customer Bishnu Prasad Koirala, Maharajgunj): receivables in every
+aging bucket (not yet due, 12, 45 and 100 days overdue — one part-paid by Khalti), a draft and a void invoice, a paid
+one whose first eSewa payment was entered twice and voided (struck through), four expenses on a job, a warranty
+with an open claim for the claims queue, an AMC contract due for renewal within 60 days and a service reminder the
+SMS provider refused. Aftercare routes now check capabilities (`warranties:*`, `amc:*`, `reminders:*`) instead of
+role lists — the same access as before (see the table above). Every report downloads as CSV with `?format=csv`.
 
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.

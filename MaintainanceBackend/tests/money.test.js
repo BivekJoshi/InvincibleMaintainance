@@ -221,3 +221,23 @@ describe('money — the amount in words (Phase L4, lakh and crore)', () => {
     expect(amountInWords(0, 'ne')).toBe('रुपैयाँ शून्य मात्र');
   });
 });
+
+describe('outstanding and rupeesText (Phase I)', () => {
+  it('what is owed never goes below zero', async () => {
+    const { outstanding } = await import('../src/utils/money.js');
+    expect(outstanding(1_000_000, 250_050)).toBe(749_950);
+    expect(outstanding(1_000_000, 1_000_000)).toBe(0);
+    expect(outstanding(1_000_000, 1_000_001)).toBe(0);
+    expect(outstanding(null, undefined)).toBe(0);
+  });
+
+  it('paisa as plain rupees for a CSV cell — exact, signed, two decimals', async () => {
+    const { rupeesText } = await import('../src/utils/money.js');
+    expect(rupeesText(123456)).toBe('1234.56');
+    expect(rupeesText(5)).toBe('0.05');
+    expect(rupeesText(-5)).toBe('-0.05');
+    expect(rupeesText(0)).toBe('0.00');
+    expect(rupeesText(1_234_567_890)).toBe('12345678.90');
+    expect(rupeesText(null)).toBe('0.00');
+  });
+});

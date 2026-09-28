@@ -15,8 +15,12 @@ import { historyRoute } from './historyRoute.js';
  * The history route needs `<capability>:read` unless `historyCapability` says otherwise; a role
  * that reads a resource through `readAlso` reads its records, not their trail.
  *
- * `list` and `get` receive `{ role }` as a second argument, for a service that shapes a row by
- * who asks (a technician's labour rate).
+ * `list`, `get`, `create`, `update`, `toggle` and `restore` receive `{ role, userId }` as their last
+ * argument, for a service that shapes a row by who asks (a technician's labour rate) or stamps who did it
+ * (an expense's approver).
+ *
+ * `toggle: false` / `reorder: false` leave those routes out for a model with no `isActive` or order column
+ * (expenses, Phase I).
  *
  * @param {import('express').Router} router
  * @param {string} path  URL segment, e.g. 'faqs'
@@ -28,15 +32,17 @@ import { historyRoute } from './historyRoute.js';
  * @param {string} [opts.historyCapability]
  * @param {import('zod').ZodTypeAny} [opts.query]  the list query (default: `listQuery`, passthrough)
  * @param {import('zod').ZodTypeAny} [opts.updateSchema]  default `toPartial(schema)`
+ * @param {boolean} [opts.toggle]   mount PATCH /:id/toggle (default true)
+ * @param {boolean} [opts.reorder]  mount PATCH /reorder (default true)
  * @param {(router: import('express').Router, guards: { read: Function, write: Function }) => void} [opts.extra]
  *   extra routes, mounted before `/:id` so a static segment wins
  */
 export function mountResource(router, path, service, schema, {
-  capability = 'cms', readAlso = [], historyCapability, query, updateSchema, extra,
+  capability = 'cms', readAlso = [], historyCapability, query, updateSchema, extra, toggle = true, reorder = true,
 } = {}) {
   const read = requires(`${capability}:read`, ...readAlso);
   const write = requires(`${capability}:write`);
-  const ctx = (req) => ({ role: req.user.role });
+  const ctx = (req) => ({ role: req.user.role, userId: req.user.id });
 
   router.get(`/${path}`, read, validate({ query: query ?? listQuery.passthrough() }),
     asyncHandler(async (req, res) => {
@@ -44,8 +50,10 @@ export function mountResource(router, path, service, schema, {
       ok(res, items, meta);
     }));
 
-  router.patch(`/${path}/reorder`, write, validate({ body: reorderBody }),
-    asyncHandler(async (req, res) => { await service.reorder(req.body.items); noContent(res); }));
+  if (reorder) {
+    router.patch(`/${path}/reorder`, write, validate({ body: reorderBody }),
+      asyncHandler(async (req, res) => { await service.reorder(req.body.items); noContent(res); }));
+  }
 
   extra?.(router, { read, write });
 
@@ -61,8 +69,10 @@ export function mountResource(router, path, service, schema, {
   router.put(`/${path}/:id`, write, validate({ params: idParam, body: updateSchema ?? toPartial(schema) }),
     asyncHandler(async (req, res) => ok(res, await service.update(req.params.id, req.body, ctx(req)))));
 
-  router.patch(`/${path}/:id/toggle`, write, validate({ params: idParam }),
-    asyncHandler(async (req, res) => ok(res, await service.toggle(req.params.id, ctx(req)))));
+  if (toggle) {
+    router.patch(`/${path}/:id/toggle`, write, validate({ params: idParam }),
+      asyncHandler(async (req, res) => ok(res, await service.toggle(req.params.id, ctx(req)))));
+  }
 
   router.patch(`/${path}/:id/restore`, write, validate({ params: idParam }),
     asyncHandler(async (req, res) => ok(res, await service.restore(req.params.id, ctx(req)))));

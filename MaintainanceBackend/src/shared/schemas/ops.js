@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { isActive, listQuery, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
 import {
-  INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES, MESSAGE_CHANNELS, MESSAGE_STATUSES, PAYMENT_METHODS,
-  PRIORITIES, ROLES, STOCK_MOVEMENT_TYPES,
+  AMC_BILLING_CYCLES, AMC_STATUSES, CLAIM_STATUSES, INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES,
+  MESSAGE_CHANNELS, MESSAGE_STATUSES, PAYMENT_METHODS, PRIORITIES, REMINDER_STATUSES, REVENUE_GROUPS, ROLES,
+  STOCK_MOVEMENT_TYPES, WARRANTY_STATUSES,
 } from '../enums.js';
 
 export const technicianSchema = z.object({
@@ -338,47 +339,82 @@ export const invoiceVoidSchema = z.object({ reason: z.string().trim().min(3).max
 export const paymentVoidSchema = z.object({ reason: z.string().trim().min(3).max(500) });
 export const paymentParams = z.object({ id: z.string().min(1), paymentId: z.string().min(1) });
 
+/** An expense (a registry resource since Phase I). approvedBy is the server's: the user who records it. */
 export const expenseSchema = z.object({
   category: z.string().trim().min(2).max(80),
   amount: rupees,
   jobId: z.string().optional().nullable(),
-  vendor: z.string().trim().max(160).optional(),
-  billMediaId: z.string().optional(),
+  vendor: z.string().trim().max(160).optional().nullable(),
+  billMediaId: z.string().optional().nullable(),
   spentAt: z.coerce.date().optional(),
   note: optionalText,
 });
 
+/** GET /admin/expenses — Kathmandu days on spentAt. */
+export const expenseListQuery = listQuery.extend({
+  category: z.string().trim().max(80).optional(),
+  jobId: z.string().optional(),
+  from: day.optional(),
+  to: day.optional(),
+}).passthrough();
+
+/** GET /admin/invoices — `from`/`to` are Kathmandu days on issuedAt. */
 export const invoiceListQuery = z.object({
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  sort: z.string().optional(),
+  sort: z.enum(['number', '-number', 'issuedAt', '-issuedAt', 'dueDate', '-dueDate', 'total', '-total', 'createdAt', '-createdAt']).optional(),
   q: z.string().trim().max(200).optional(),
   status: z.enum(INVOICE_STATUSES).optional(),
   customerId: z.string().optional(),
-  overdueOnly: z.coerce.boolean().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  overdueOnly: flag.optional(),
+  from: day.optional(),
+  to: day.optional(),
 });
 
+/** GET /admin/payments — `from`/`to` are Kathmandu days on receivedAt. */
 export const paymentListQuery = z.object({
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  sort: z.string().optional(),
+  sort: z.enum(['receivedAt', '-receivedAt', 'amount', '-amount']).optional(),
   q: z.string().trim().max(200).optional(),
   method: z.enum(PAYMENT_METHODS).optional(),
   customerId: z.string().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  from: day.optional(),
+  to: day.optional(),
+});
+
+/**
+ * Every report (Phase I): Kathmandu days (the last 30 by default), a grouping where the report has one, and
+ * `format=csv` for the download.
+ */
+export const reportQuery = z.object({
+  from: day.optional(),
+  to: day.optional(),
+  groupBy: z.enum(REVENUE_GROUPS).optional(),
+  format: z.enum(['csv']).optional(),
 });
 
 // ── aftercare
 
+/** PUT /admin/warranties/:id — the scope and the end date. The status is the server's; voiding has its own route. */
 export const warrantyUpdateSchema = z.object({
   scope: z.string().trim().max(2000).optional(),
   endsAt: z.coerce.date().optional(),
-  status: z.enum(['ACTIVE', 'EXPIRED', 'VOID', 'CLAIMED']).optional(),
-  voidReason: z.string().trim().max(500).optional(),
-});
+}).strict();
+
+export const warrantyVoidSchema = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
+
+export const warrantyListQuery = listQuery.extend({
+  status: z.enum(WARRANTY_STATUSES).optional(),
+  customerId: z.string().optional(),
+  activeOnly: flag.optional(),
+  /** Active warranties ending within this many days. */
+  expiringDays: z.coerce.number().int().min(1).max(365).optional(),
+}).passthrough();
+
+export const warrantyClaimListQuery = listQuery.extend({
+  status: z.enum(CLAIM_STATUSES).optional(),
+}).passthrough();
 
 export const warrantyClaimSchema = z.object({
   description: z.string().trim().min(10, 'Describe the problem in at least 10 characters').max(4000),
@@ -392,20 +428,51 @@ export const warrantyClaimDecisionSchema = z.object({
   message: 'A reason is required when rejecting a claim', path: ['rejectReason'],
 });
 
-export const amcContractSchema = z.object({
-  customerId: z.string().min(1),
-  siteId: z.string().optional().nullable(),
-  planName: z.string().trim().min(2).max(160),
-  coveredServices: z.array(z.string()).max(50).optional(),
+/** The visit schedule's inputs — on create, and on its preview (Phase I). At most 5 years, 260 visits. */
+const amcScheduleFields = {
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   visitsPerYear: z.coerce.number().int().min(1).max(52).default(4),
+};
+const endAfterStart = [(v) => v.endDate > v.startDate, { message: 'End date must be after the start date', path: ['endDate'] }];
+const atMostFiveYears = [(v) => v.endDate - v.startDate <= 5 * 366 * 86_400_000, { message: 'A contract runs five years at most', path: ['endDate'] }];
+
+const amcContractFields = {
+  customerId: z.string().min(1),
+  siteId: z.string().optional().nullable(),
+  planName: z.string().trim().min(2).max(160),
+  coveredServices: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
   amount: rupees,
-  billingCycle: z.enum(['annual', 'quarterly', 'monthly']).default('annual'),
+  billingCycle: z.enum(AMC_BILLING_CYCLES).default('annual'),
   notes: optionalText,
-}).refine((v) => v.endDate > v.startDate, {
-  message: 'End date must be after the start date', path: ['endDate'],
-});
+};
+
+export const amcContractSchema = z.object({ ...amcContractFields, ...amcScheduleFields })
+  .refine(...endAfterStart).refine(...atMostFiveYears);
+
+export const amcSchedulePreviewSchema = z.object(amcScheduleFields).strict()
+  .refine(...endAfterStart).refine(...atMostFiveYears);
+
+/**
+ * PUT /admin/amc-contracts/:id — everything but the schedule, which was laid down on create: a new schedule is
+ * a renewal (a new contract). The status moves by hand only between active and cancelled.
+ */
+export const amcContractUpdateSchema = z.object({
+  siteId: amcContractFields.siteId,
+  planName: amcContractFields.planName.optional(),
+  coveredServices: amcContractFields.coveredServices,
+  amount: rupees.optional(),
+  billingCycle: z.enum(AMC_BILLING_CYCLES).optional(),
+  notes: optionalText,
+  status: z.enum(['active', 'cancelled']).optional(),
+}).strict();
+
+export const amcContractListQuery = listQuery.extend({
+  status: z.enum(AMC_STATUSES).optional(),
+  customerId: z.string().optional(),
+  /** Active contracts ending within this many days — the renewals-due preset. */
+  renewalsDays: z.coerce.number().int().min(1).max(365).optional(),
+}).passthrough();
 
 export const serviceReminderSchema = z.object({
   customerId: z.string().min(1),
@@ -415,6 +482,13 @@ export const serviceReminderSchema = z.object({
   channel: z.enum(['sms', 'email']).default('sms'),
   message: z.string().trim().min(5).max(1000),
 });
+
+export const serviceReminderListQuery = listQuery.extend({
+  status: z.enum(REMINDER_STATUSES).optional(),
+  customerId: z.string().optional(),
+  from: day.optional(),
+  to: day.optional(),
+}).passthrough();
 
 export const messageTemplateSchema = z.object({
   // The key the code sends by (`quotation_sent`): lower-case words joined by underscores.

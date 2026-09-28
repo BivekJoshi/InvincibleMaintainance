@@ -106,8 +106,8 @@ describe('DashboardPage', () => {
 
     // This week (2 × 7) against last (1 × 7).
     expect(screen.getByRole('link', { name: 'Leads today: 2' })).toHaveTextContent('+100%this week vs last');
-    // An outstanding balance is a dimmed, unlinked tile until invoices exist.
-    expect(screen.queryByRole('link', { name: /^Outstanding/ })).not.toBeInTheDocument();
+    // Phase I: the outstanding balance opens the aging report (it was a dimmed "Soon" tile until finance was built).
+    expect(screen.getByRole('link', { name: 'Outstanding: Rs. 1,23,456' })).toHaveAttribute('href', '/admin/finance/reports?report=aging');
 
     const week = screen.getByRole('region', { name: 'The week ahead' });
     const busiest = dayParts(jobsWeek[2].day);
@@ -157,6 +157,19 @@ describe('DashboardPage', () => {
 
     const status = screen.getByRole('region', { name: 'Open jobs by stage' });
     expect(within(status).getByRole('link', { name: /On hold\s*1/ })).toHaveAttribute('href', '/admin/jobs?status=ON_HOLD');
+  });
+
+  it('links every card that used to say Soon, and the charts to their reports (Phase I)', async () => {
+    serve({ ...ADMIN, cards: { outstandingAmount: 12_345_600, outstandingInvoices: 4, warrantiesActive: 12, amcRenewals: 2 } });
+    renderWithProviders(<DashboardPage />, { path: '/admin', preloadedState: as('ADMIN') });
+
+    const money = await screen.findByRole('region', { name: 'Money and aftercare' });
+    expect(within(money).queryByText('Soon')).not.toBeInTheDocument();
+    expect(within(money).getByRole('link', { name: 'Unpaid invoices: 4' })).toHaveAttribute('href', '/admin/invoices');
+    expect(within(money).getByRole('link', { name: 'Active warranties: 12' })).toHaveAttribute('href', '/admin/warranties?view=active');
+    expect(within(money).getByRole('link', { name: 'AMC renewals due: 2' })).toHaveAttribute('href', '/admin/amc-contracts?view=renewals');
+    expect(screen.getByRole('link', { name: 'Open the report: Invoiced and collected' })).toHaveAttribute('href', '/admin/finance/reports?report=revenue');
+    expect(screen.getByRole('link', { name: 'Open the report: Where enquiries come from' })).toHaveAttribute('href', '/admin/reports/sales?report=lead-sources');
   });
 
   it('opens a day of the week ahead from its column', async () => {

@@ -5,6 +5,8 @@ import { cn } from '@/helpers/utils';
  * Characters and SMS parts for a text, and why it is Unicode when it is: one Devanagari
  * letter or curly quote makes the whole message 70 characters a part instead of 160.
  *
+ * Phase G's (the message template editor's preview); since Phase I also under a service reminder's message.
+ *
  * @param {{ text: string, label?: string, className?: string }} props
  */
 export function SmsCounter({ text, label = 'This SMS', className }) {

@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-27 (Phase L5). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-28 (Phase I). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -37,6 +37,7 @@ Updated 2026-09-27 (Phase L5). **Current build order: [`docs/ADMIN-PLAN.md`](doc
 | **v2 · L4 Terms & the customer document** | **The contract around the BOQ:** lump sum or item rate (with the sentence the customer reads), a **payment schedule** (50·40·10 by default; stages must total 100 %, one advance at most; the server's amounts sum to the total exactly), duration, exclusions, and a **terms library** (English + Nepali, one default, the manager's). **The margin gate:** approving below `quotation.minMarginPct` (15 %) — or with any cost unknown — needs an explicit acknowledgement, recorded on the event; auto-approval never fires on a low margin; managers see a Margin column. **The customer's document:** letterhead, AD + BS dates, numbered sections with subtotals (or a section summary), notes, specs, optional rows, a measurements annex, the total in words (lakh/crore, en/ne), the schedule, the terms — on the link page (360 px, en/ne), a print route, and an **Excel workbook** whose formulas recalculate to the same totals (Cost sheet for managers only). Decline reasons feed the lost categories; "Opened N×" and WhatsApp/Viber share in the send panel. | ✅ 2026-09-27 |
 | **v2 · H2 Field app** | **A job finished on a phone, partly offline:** camera photos by kind (compressed to 1600 px, queued, retried, shown "Waiting to upload"), materials used from a searchable sheet (no rates), a finger signature and the completion — blocked while checklist items are open —, and job status, checklist, timers, materials and completion through an IndexedDB queue that replays in the order the technician acted, with the pending count and "Sync now" in the header. Survey photos use the same queue; a history of past jobs by Kathmandu day. API: offline timers keep the tapped time, a second completion is refused, malformed mutations are terminal (`INVALID_MUTATION`), field photos carry their images, and `tech.routes.js` moved its sync into `techSync.service.js` — **no route file calls Prisma** (#15). Verified: API 719, unit 224, web 769, e2e 4/4 including the new field flow at 360 px. | ✅ 2026-09-27 |
 | **v2 · L5 Site-visit kit** | **A visit the customer confirms:** booking takes the window, a site contact (the caretaker while the owner is abroad — stored on the site, normalised Nepali number) and a landmark; `visit_booked` (en/ne) goes to the customer and the contact with the surveyor and a `/visit/:token` link, where they Confirm or ask for another time with no login (IP and time kept; "another time" tells the salesperson and dispatchers; a new window clears the answer); `visits:remind` at 17:00 the evening before, once per window; the dispatch card flags "Not confirmed" / "Wants another time". **The surveyor's stepper** (`pages/tech/SurveyFormPage/`): Before you go (the customer's photos and message, no budget) · Arrived (GPS → site pin) · Checklist from an **inspection template** (registry resource; yes/no, number with thresholds, choice, text; the server flags answers and refuses submit with `SURVEY_INCOMPLETE` naming each missing answer or photo) · Measurements by room in feet-inches with deductions, the server deriving the quantity · Photos with room and a SKETCH kind · Findings · Lines — every write a `survey_draft` through the offline queue, checklist photos held until uploaded. **Office review** shows it all, flagged first; Build quotation sections by room and carries the measurement rows into the BOQ. Verified: API 739, unit 231, web 905, e2e 5/5 including a 360 px offline survey and a Nepali confirmation. | ✅ 2026-09-27 |
+| **v2 · I Finance & aftercare** | **The accountant's and the aftercare desk's screens:** invoices with status tabs (server counts), AD + BS dates and the server's balance; invoice from a completed job (its quotation, or its actuals — never both), manual invoices, a DRAFT-only edit (`INVOICE_LOCKED` once sent), send with the public link, payments recorded and voided (struck through), print; payments search with totals by method; expenses as a registry resource with the bill photo uploaded by the accountant (`/admin/expenses/bill`); finance reports — aging by Kathmandu days with drill-down, revenue by month / service / technician where taxable + VAT = invoiced to the paisa, collections, customer statements — and the sales, operations and job-margin reports, **every one downloadable as CSV** (`?format=csv`, audited, capped). **Aftercare** on capabilities (same access): warranties with void-with-reason and their certificate link, the claims queue (open first; one accept makes one free job, even pressed twice), AMC contracts with the visit schedule previewed before saving and renewals due, service reminders (pending-only edits; `failed` when the provider refuses). Verified: API 762, unit 238, web 1,052, e2e 7/7 including the finance and aftercare walk-throughs. | ✅ 2026-09-28 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, the whole lead pipeline (list, board, detail, convert) and customers with their sites, the
@@ -122,12 +123,18 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A–H (C1 + C2, D1 + D2, F1 + F2, H1 + H2), G and **L0–L5** are done — the business flow runs end to end
+Phases A–I (C1 + C2, D1 + D2, F1 + F2, H1 + H2), G and **L0–L5** are done — the business flow runs end to end
 from the UI, an ADMIN can trace any record, a dispatcher runs the day from the board, and every open lead carries a next
 action, every rate can be built from a recipe, and a quotation is a bill of quantities the customer reads as a proper
 document, and a technician can finish a job on a phone, partly offline; the customer confirms the site visit from an
-SMS link and the surveyor's checklist, measurements and photos arrive in the BOQ. Next is **Phase I — finance &
-aftercare screens** (`docs/prompts/`), then L6 (won → hand-off, which needs I's payment screen), L7 and L8.
+SMS link and the surveyor's checklist, measurements and photos arrive in the BOQ; the accountant invoices, takes and
+voids payments and reads aging, revenue and collections with CSV, and the aftercare desk runs claims, AMC contracts
+and reminders. Next is **Phase L6 — won → hand-off** (`docs/prompts/PHASE-L6-won-handoff.md`: the
+accepted quotation becomes a job with its BOQ lines, material and labour requirements and an advance invoice the
+job waits for), then L7, L8, J and K.
+
+Left from I for later phases: overdue-invoice reminders go out once (the sweep only looks at SENT/PARTIAL — J2);
+recharts is not installed, so only revenue-by-month has a chart; the aftercare notifications are in-app only.
 
 Left from L5 for later phases: the Nepali checklist labels and the `visit_booked` / `visit_reminder` Nepali texts
 need a native speaker's review (J1); the site contact is sent the SMS in the customer's language (a contact language

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, approveAndSend, expectStatus, createCustomer, createAssignedJob, createCompletedJob, daysFromNow, prisma, technicianIdFor,
+  anon, as, approveAndSend, expectStatus, createCustomer, createAssignedJob, createCompletedJob, daysFromNow, pngBuffer, prisma, technicianIdFor,
 } from './helpers.js';
 
 let accountant;
@@ -282,5 +282,222 @@ describe('finance reports', () => {
 
   it('SALES cannot read finance reports', async () => {
     expectStatus(await (await as('SALES')).get('/admin/reports/aging'), 403);
+  });
+});
+
+// ── Phase I: the finance screens' API — status tabs, the DRAFT-only edit, balances, totals and the reports
+
+/** The README fixture: 3 lines × 210.5 sq.ft at Rs 220 / 95 / 45, Rs 1,500 off, 13 % VAT. */
+const README_LINES = [
+  { description: 'Crystalline treatment', unit: 'sq.ft', qty: 210.5, rate: 220 },
+  { description: 'Waterproof plaster', unit: 'sq.ft', qty: 210.5, rate: 95 },
+  { description: 'Anti-fungal paint', unit: 'sq.ft', qty: 210.5, rate: 45 },
+];
+const csvLines = (res) => res.text.replace(/^\uFEFF/, '').split('\r\n');
+
+describe('invoices, as the finance screens use them (Phase I)', () => {
+  let customer;
+  let draft;
+
+  beforeAll(async () => {
+    customer = await createCustomer(await as('SALES'));
+    draft = expectStatus(await accountant.post('/admin/invoices').send({ customerId: customer.id, items: README_LINES, discount: 1500 }), 201).data;
+  });
+
+  it('the README fixture reconciles to the paisa, and the balance is the server\'s', async () => {
+    expect(draft).toMatchObject({ subtotal: 7_578_000, discount: 150_000, vatAmount: 965_640, total: 8_393_640 });
+    const body = expectStatus(await accountant.get(`/admin/invoices/${draft.id}`), 200).data;
+    expect(body).toMatchObject({ balance: 8_393_640, publicUrl: null, jobs: [] });
+  });
+
+  it('a draft re-prices when only the discount or VAT changes; a sent invoice is locked', async () => {
+    const noVat = expectStatus(await accountant.put(`/admin/invoices/${draft.id}`).send({ vatApplied: false }), 200).data;
+    expect(noVat).toMatchObject({ subtotal: 7_578_000, discount: 150_000, vatAmount: 0, total: 7_428_000, balance: 7_428_000 });
+    expect(noVat.items).toHaveLength(3);
+    const back = expectStatus(await accountant.put(`/admin/invoices/${draft.id}`).send({ vatApplied: true, note: 'Monsoon job' }), 200).data;
+    expect(back).toMatchObject({ total: 8_393_640, note: 'Monsoon job' });
+
+    const sent = expectStatus(await accountant.post(`/admin/invoices/${draft.id}/send`), 200).data;
+    expect(sent.publicUrl).toMatch(new RegExp(`/invoice/${sent.publicToken}$`));
+    const locked = expectStatus(await accountant.put(`/admin/invoices/${draft.id}`).send({ note: 'changed after sending' }), 422);
+    expect(locked.error.code).toBe('INVOICE_LOCKED');
+  });
+
+  it('partial ESEWA, void it, then two payments settle it — the balance follows and never goes below zero', async () => {
+    const pay = (amount, method = 'ESEWA', reference) => accountant.post(`/admin/invoices/${draft.id}/payments`).send({ amount, method, reference });
+    const first = expectStatus(await pay(30_000, 'ESEWA', `ES-${Date.now()}`), 201).data;
+    expect(expectStatus(await accountant.get(`/admin/invoices/${draft.id}`), 200).data).toMatchObject({ status: 'PARTIAL', balance: 5_393_640 });
+    expectStatus(await accountant.post(`/admin/invoices/${draft.id}/payments/${first.id}/void`).send({ reason: 'Wrong invoice' }), 200);
+    expect(expectStatus(await accountant.get(`/admin/invoices/${draft.id}`), 200).data).toMatchObject({ status: 'SENT', balance: 8_393_640 });
+    expectStatus(await pay(50_000, 'BANK'), 201);
+    expectStatus(await pay(33_936.41, 'CASH'), 400);
+    expectStatus(await pay(33_936.40, 'CASH'), 201);
+    expect(expectStatus(await accountant.get(`/admin/invoices/${draft.id}`), 200).data).toMatchObject({ status: 'PAID', paidAmount: 8_393_640, balance: 0 });
+  });
+
+  it('the list carries the balance and counts per status for the tabs', async () => {
+    const all = expectStatus(await accountant.get(`/admin/invoices?customerId=${customer.id}`), 200);
+    expect(all.data.every((i) => i.balance === Math.max(0, i.total - i.paidAmount))).toBe(true);
+    expect(all.meta.counts).toMatchObject({ PAID: 1, all: 1, DRAFT: 0 });
+    // The tab narrows the rows, never the counts.
+    const drafts = expectStatus(await accountant.get(`/admin/invoices?customerId=${customer.id}&status=DRAFT`), 200);
+    expect(drafts.data).toHaveLength(0);
+    expect(drafts.meta.counts.PAID).toBe(1);
+    // 'false' is false, not a truthy string.
+    expect(expectStatus(await accountant.get(`/admin/invoices?customerId=${customer.id}&overdueOnly=false`), 200).data).toHaveLength(1);
+    expectStatus(await accountant.get('/admin/invoices?from=18-09-2026'), 400);
+    expectStatus(await accountant.get('/admin/invoices?sort=password'), 400);
+  });
+
+  it('payments: searchable, with the footer\'s totals by method — voided money not counted', async () => {
+    const body = expectStatus(await accountant.get(`/admin/payments?customerId=${customer.id}`), 200);
+    expect(body.data).toHaveLength(3);
+    expect(body.meta.totals).toEqual({ total: 8_393_640, count: 2, byMethod: { BANK: 5_000_000, CASH: 3_393_640 } });
+    const esewa = expectStatus(await accountant.get(`/admin/payments?customerId=${customer.id}&method=ESEWA`), 200);
+    expect(esewa.data[0].voidedAt).toBeTruthy();
+    expect(esewa.meta.totals).toEqual({ total: 0, count: 0, byMethod: {} });
+  });
+});
+
+describe('expenses, a registry resource (Phase I)', () => {
+  it('approver from the session, bill photo, totals, categories, trash and restore — no toggle', async () => {
+    const category = `Fuel ${Date.now()}`;
+    const bill = await prisma.media.findFirst({ where: { mime: { startsWith: 'image/' } } });
+    const made = expectStatus(await accountant.post('/admin/expenses').send({
+      category, amount: 1250.75, vendor: 'Nepal Oil Corporation', billMediaId: bill?.id ?? null, approvedBy: 'someone-else',
+    }), 201).data;
+    const me = await prisma.user.findUnique({ where: { email: 'accounts@gharjatan.com.np' } });
+    expect(made).toMatchObject({ amount: 125_075, approvedBy: me.id, approver: { id: me.id, name: me.name } });
+    if (bill) expect(made.bill).toMatchObject({ id: bill.id, url: expect.any(String) });
+    expectStatus(await accountant.post('/admin/expenses').send({ category, amount: 99.25 }), 201);
+
+    const list = expectStatus(await accountant.get(`/admin/expenses?category=${encodeURIComponent(category)}`), 200);
+    expect(list.data).toHaveLength(2);
+    expect(list.meta.totals.total).toBe(125_075 + 9_925);
+    expect(expectStatus(await accountant.get('/admin/expenses/categories'), 200).data).toContain(category);
+
+    // A search narrows the footer's total too.
+    expect(expectStatus(await accountant.get(`/admin/expenses?category=${encodeURIComponent(category)}&q=Nepal Oil`), 200).meta.totals.total).toBe(125_075);
+    expect((await accountant.patch(`/admin/expenses/${made.id}/toggle`)).status).toBe(404);
+    expectStatus(await accountant.delete(`/admin/expenses/${made.id}`), 204);
+    expect(expectStatus(await accountant.get(`/admin/expenses?category=${encodeURIComponent(category)}`), 200).meta.totals.total).toBe(9_925);
+    expect(expectStatus(await accountant.get('/admin/expenses?deleted=true'), 200).data.map((e) => e.id)).toContain(made.id);
+    expectStatus(await accountant.patch(`/admin/expenses/${made.id}/restore`), 200);
+    expectStatus(await accountant.get(`/admin/expenses/${made.id}/history`), 200);
+    expectStatus(await (await as('SALES')).get('/admin/expenses'), 403);
+  });
+});
+
+describe('finance reports and their CSV (Phase I)', () => {
+  let customer;
+  let overdue;
+  let dueToday;
+
+  beforeAll(async () => {
+    customer = await createCustomer(await as('SALES'));
+    const invoice = async (dueDate) => {
+      const inv = expectStatus(await accountant.post('/admin/invoices').send({ customerId: customer.id, items: README_LINES, discount: 1500, dueDate }), 201).data;
+      return expectStatus(await accountant.post(`/admin/invoices/${inv.id}/send`), 200).data;
+    };
+    // Due yesterday (Kathmandu) → 1 day overdue; due later today → not yet due.
+    overdue = await invoice(new Date(Date.now() - 86_400_000).toISOString());
+    dueToday = await invoice(new Date(Date.now() + 60_000).toISOString());
+    expectStatus(await accountant.post(`/admin/invoices/${overdue.id}/payments`).send({ amount: 10_000, method: 'KHALTI' }), 201);
+  });
+
+  it('aging buckets by Kathmandu calendar days, with the drill-down', async () => {
+    const body = expectStatus(await accountant.get('/admin/reports/aging'), 200).data;
+    const row = (id) => body.invoices.find((i) => i.id === id);
+    expect(row(overdue.id)).toMatchObject({ bucket: 'd0_30', daysOverdue: 1, outstanding: 7_393_640, paid: 1_000_000, customer: { id: customer.id } });
+    expect(row(dueToday.id)).toMatchObject({ bucket: 'current', daysOverdue: 0, outstanding: 8_393_640 });
+    expect(body.total).toBe(Object.values(body.buckets).reduce((a, b) => a + b, 0));
+    expect(body.labels.d0_30).toBe('1–30 days');
+  });
+
+  it('revenue reconciles: taxable + VAT = invoiced, by month, service and technician; drafts are not revenue', async () => {
+    for (const groupBy of ['month', 'day', 'service', 'technician']) {
+      const body = expectStatus(await accountant.get(`/admin/reports/revenue?groupBy=${groupBy}`), 200).data;
+      expect(body.totals.taxable + body.totals.vat).toBe(body.totals.invoiced);
+      for (const r of body.rows) expect(r.taxable + r.vat, `${groupBy} ${r.label}`).toBe(r.invoiced);
+      expect(body.totals.invoiced).toBe(body.rows.reduce((a, r) => a + r.invoiced, 0));
+    }
+    expectStatus(await accountant.get('/admin/reports/revenue?groupBy=planet'), 400);
+  });
+
+  it('collections by method over the period, voided money left out', async () => {
+    const body = expectStatus(await accountant.get('/admin/reports/collections'), 200).data;
+    expect(body.byMethod.KHALTI).toBeGreaterThanOrEqual(1_000_000);
+    expect(body.total).toBe(Object.values(body.byMethod).reduce((a, b) => a + b, 0));
+    expect(body.payments.length).toBeLessThanOrEqual(500);
+    expect(body.payments.every((p) => !p.voidedAt)).toBe(true);
+  });
+
+  it('a CSV is the report\'s table under the same filters — rupees, a BOM, audited', async () => {
+    const res = await accountant.get('/admin/reports/aging?format=csv');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="aging-/);
+    expect(res.text.startsWith('\uFEFF')).toBe(true);
+    const lines = csvLines(res);
+    expect(lines[0]).toBe('Invoice,Customer,Issued,Due,Days overdue,Bucket,Total (Rs),Paid (Rs),Outstanding (Rs)');
+    expect(lines.find((l) => l.startsWith(`${overdue.number},`))).toMatch(/,1,1–30 days,83936\.40,10000\.00,73936\.40$/);
+
+    // The filter reaches the file: a period with no invoices is a header only.
+    const empty = csvLines(await accountant.get('/admin/reports/revenue?format=csv&from=2020-01-01&to=2020-01-31'));
+    expect(empty).toEqual(['Group,Invoices,Taxable (Rs),VAT (Rs),Invoiced (Rs),Collected (Rs),Outstanding (Rs)']);
+    const audit = await prisma.auditLog.findFirst({ where: { event: 'export.csv', model: 'Report' }, orderBy: { createdAt: 'desc' } });
+    expect(audit.changes).toMatchObject({ report: 'revenue', from: '2020-01-01', to: '2020-01-31', rows: 0, truncated: false });
+  });
+
+  it('the customer statement — its ledger, as JSON and CSV; 404 for nobody', async () => {
+    const body = expectStatus(await accountant.get(`/admin/customers/${customer.id}/statement`), 200).data;
+    expect(body.totals).toEqual({ invoiced: 2 * 8_393_640, paid: 1_000_000, outstanding: 2 * 8_393_640 - 1_000_000 });
+    expect(body.ledger.at(-1).balance).toBe(body.totals.outstanding);
+    const lines = csvLines(await accountant.get(`/admin/customers/${customer.id}/statement?format=csv`));
+    expect(lines[0]).toBe('Date,Entry,Invoice,Debit (Rs),Credit (Rs),Balance (Rs)');
+    expect(lines.find((l) => l.includes('Payment (KHALTI)'))).toMatch(new RegExp(`,Payment \\(KHALTI\\),${overdue.number},0\\.00,10000\\.00,\\d+\\.\\d{2}$`));
+    expect(lines.at(-1).split(',').at(-1)).toBe('157872.80');
+    expectStatus(await accountant.get('/admin/customers/cmdoesnotexist000000000000/statement'), 404);
+  });
+
+  it('who reads what: finance reports are ACCOUNTANT\'s, job margin costs:read, ops and sales reports theirs — CSV too', async () => {
+    const [sales, dispatcher, manager] = await Promise.all([as('SALES'), as('DISPATCHER'), as('MANAGER')]);
+    expectStatus(await sales.get('/admin/reports/aging?format=csv'), 403);
+    expectStatus(await dispatcher.get('/admin/reports/job-margin?format=csv'), 403);
+    expectStatus(await accountant.get('/admin/reports/lead-sources'), 403);
+    for (const path of ['lead-sources', 'funnel', 'sla', 'lost']) {
+      const res = await sales.get(`/admin/reports/${path}?format=csv`);
+      expect(res.status, path).toBe(200);
+      expect(res.headers['content-type'], path).toMatch(/text\/csv/);
+    }
+    for (const path of ['technicians', 'warranty-claims']) expect((await dispatcher.get(`/admin/reports/${path}?format=csv`)).status, path).toBe(200);
+    expect(csvLines(await manager.get('/admin/reports/job-margin?format=csv'))[0]).toMatch(/^Job,Title,Type,Invoiced \(Rs\)/);
+  });
+});
+
+describe('the accountant attaches a bill without the media library (Phase I)', () => {
+  it('POST /admin/expenses/bill stores the photo in "Expense bills" — expenses:write, not media:write', async () => {
+    expectStatus(await accountant.post('/admin/media').attach('files', await pngBuffer(), 'x.png'), 403);
+    const bill = expectStatus(await accountant.post('/admin/expenses/bill').attach('files', await pngBuffer('#dddddd'), 'bill.png'), 201).data;
+    expect(bill).toMatchObject({ id: expect.any(String), url: expect.any(String) });
+    const folder = await prisma.mediaFolder.findFirst({ where: { name: 'Expense bills' } });
+    expect((await prisma.media.findUnique({ where: { id: bill.id } })).folderId).toBe(folder.id);
+    const expense = expectStatus(await accountant.post('/admin/expenses').send({ category: 'Hardware', amount: 450, billMediaId: bill.id }), 201).data;
+    expect(expense.bill).toMatchObject({ id: bill.id, thumb: expect.any(String) });
+    expectStatus(await (await as('SALES')).post('/admin/expenses/bill').attach('files', await pngBuffer(), 'bill.png'), 403);
+  });
+});
+
+describe('balances everywhere they are shown (Phase I)', () => {
+  it('a void invoice owes nothing; the customer\'s page gets the office\'s balance', async () => {
+    const customer = await createCustomer(await as('SALES'));
+    const inv = expectStatus(await accountant.post('/admin/invoices').send({ customerId: customer.id, items: README_LINES, discount: 1500 }), 201).data;
+    const sent = expectStatus(await accountant.post(`/admin/invoices/${inv.id}/send`), 200).data;
+    expectStatus(await accountant.post(`/admin/invoices/${inv.id}/payments`).send({ amount: 3_936.40, method: 'FONEPAY' }), 201);
+    expect(expectStatus(await anon().get(`/public/invoices/${sent.publicToken}`), 200).data.balance).toBe(8_000_000);
+
+    const other = expectStatus(await accountant.post('/admin/invoices').send({ customerId: customer.id, items: README_LINES }), 201).data;
+    expect(expectStatus(await accountant.post(`/admin/invoices/${other.id}/void`).send({ reason: 'Duplicate' }), 200).data).toBeTruthy();
+    expect(expectStatus(await accountant.get(`/admin/invoices/${other.id}`), 200).data).toMatchObject({ status: 'VOID', balance: 0 });
   });
 });

@@ -20,11 +20,13 @@ src/
 ├── helpers/        Pure functions.
 └── styles/         Tailwind entry + CSS variables.
 
-e2e/                The Playwright suite: the quotation loop (Phase F2), the dispatch walk-through (Phase H1), the BOQ (Phases L3–L5) and the field app (Phase H2).
+e2e/                The Playwright suite: the quotation loop (Phase F2), the dispatch walk-through (Phase H1), the BOQ (Phases L3–L5), the field app (Phase H2), aftercare and finance (Phase I).
 ├── quotation-flow.spec.js
 ├── operations-flow.spec.js   (on the first day from tomorrow with no closed job left by an earlier run on Hari) schedule by drag and by dialog, double-book warning, materials, time, costing, complete, verify, case study
 ├── field-flow.spec.js  Hari at 360 px: today → on my way → start → tick, timer → `context.setOffline(true)` → a photo, a material, a tick wait on the phone ("Offline — 3 waiting") → back online, the queue drains by itself → last tick, sign, complete; the dispatcher finds the photos (DURING + SIGNATURE = `signatureId`), the material, the time, the checklist and the warranty
 ├── boq-flow.spec.js    SALES builds a 3-section BOQ by keyboard, pastes 15 rows, adds a `/` library row, a measured and an optional row, saves (server totals = what the builder showed), submits; MANAGER sees the margin, approves (L4: the unknown cost needs the acknowledgement, recorded in the event), sends; the customer opens the link at 360 px (sections, the 50 · 40 · 10 schedule with the server's amounts, the words, the annex, no sideways scroll), SALES sees "Opened 1×", the customer accepts; the public view has no cost key. **L5** (a second test): SALES books the visit from a lead (window, a Devanagari caretaker with a `+977` number, a landmark, the SMS preview in Nepali), the customer opens `/visit/:token` at 360 px, switches to नेपाली and confirms (`visitAnswer` / `customerConfirmedAt` on the job); the surveyor opens it from the survey list and drives the stepper at 360 px **offline** (`setOffline(true)`, the GPS granted) — the pin, the seepage checklist (a flagged reading, a photo on each photo-required question), two rooms in feet-inches with a door deducted (210.5 sq.ft), a SKETCH filed under its room, the line's work item — and submits on the phone ("Offline — n waiting", the office still has a DRAFT); back online the queue drains by itself (photos, then the save carrying their media ids, then the submit); the office's survey has the flagged reading with its photo, the rows, the pin and the sketch; SALES builds the quotation from it and the BOQ row's measurements and quantity equal the survey's. L6–L8 extend it
+├── aftercare-flow.spec.js  (Phase I) a job completed over the API with a 30-day warranty; the customer raises a claim from `/warranty/:token` at 360 px, no account (the warranty is CLAIMED); the dispatcher finds it in the claims queue by job number, sees the claim rate, accepts → the free WARRANTY job (DRAFT, not billable, `parentJobId` the original, nobody on it) is in `GET /admin/dispatch/unassigned` and its page says "Nobody is on this job yet"; then New contract — customer by phone, the 1st of next month to the 1st a year on through the calendar, `24,000.50` — and the saved visits' due dates equal the last `/preview` the sheet showed, all pending
+├── finance-flow.spec.js  (Phase I) as the accountant: a job completed over the API with 10 × Rs. 2,500 of billable material is invoiced from Invoices › Create from job ("Bills what it used", Rs. 28,250.00 with 13 % VAT — the server's figures), sent (the link dialog), paid Rs. 10,000 by eSewa, that payment voided (struck through, the balance back to Rs. 28,250.00), then settled by cash and a bank transfer → PAID; aging lists it while owed and drops it once paid; collections show the two payments, not the voided one; the collections CSV has its header and the bank payment's row
 ├── fixtures/           boq-paste.tsv — the 15 rows pasted from "Excel" (a header, two text-only section rows, Indian grouping, `Rs.`); site-photo.jpg — the field flow's camera shot (320 × 240)
 ├── global-setup.js     migrates and seeds the *_test database
 └── support/            e2eEnv.js (ports, database, the API's environment, the seeded logins — `TECHNICIAN` is Hari), api.js (HTTP + signIn; `upload(path, { file, fields })` for multipart), quotation.js (`approveInDialog` — ticks the low-margin acknowledgement when the dialog or the API asks — and `rupeesText`), survey.js (Phase L5: `checklistReadings(surveyor, surveyId)` — uploads one photo and answers a survey's required and photo-required questions, so an API submit passes the checklist; the quotation loop uses it for the seeded seepage checklist)
@@ -65,7 +67,8 @@ call `approveTestimonial({ id, isApproved })` (the testimonial list and record, 
 only (it also invalidates `Public`, so the header shows a new phone at once). `publicApi.js` has the blog's
 `getPublicPosts`, `getPublicPost` and the generic page's `getPublicPage`.
 `mediaApi.js` has the picker's reads and upload plus the library's `updateMedia`, `deleteMedia`,
-`createMediaFolder` and `deleteMediaFolder`.
+`createMediaFolder` and `deleteMediaFolder`, and (Phase I) **`uploadPhotoTo({ path, file })`** — one photo to an endpoint of
+the caller's own, for the `photoUpload` field.
 
 The CRM files (Phase E):
 
@@ -112,17 +115,21 @@ The CRM files (Phase E):
   `RateCard` list, `Public` and `History`). A write to `materials` or `trades` (a purchase rate, a day wage) refreshes the
   library's "Out of date" flags and the cost card through `cmsApi`'s `ALSO_READ_AS`. Phase L3 added **`searchRateLibrary({ q })`**
   (`GET /admin/rate-card?q=&limit=20&onlyActive=true`, tag `{ type: 'RateCard', id: 'LIST' }`) — the BOQ grid's `/` search.
+- `financeApi.js` (Phase I) — invoices, payments, the finance reports, the sales and operations reports of `/admin/reports`
+  and **`downloadReportCsv({ path, params })`** — every report's `?format=csv` as `{ csv, truncated, disposition }` (the
+  same pattern as the leads export). See "Finance screens (Phase I)". `lookupApi.js` gained **`getSuggestions({ path, tag })`**
+  (an endpoint answering `string[]` — the expense categories) for a text field's `suggestionsFrom`.
 
 ## components/
 
 | Folder | Holds |
 |---|---|
 | `ui/` | shadcn primitives. Generated by `npx shadcn@latest add <name>`, then edited freely — they are our source, not a dependency. |
-| `common/` | Cross-cutting app furniture: `PageHeader` (a list page's top; its `<h1>` is screen-reader only — the breadcrumb names the page), `RecordHeader` (a record page's top: avatar, the name as the `<h1>`, contact links, actions, and a foot strip), `EmptyState`, `ErrorState`, `ErrorBoundary/`, `SlaChip`, `Toaster`, `LocaleSwitch`, `StateBadge` (a record's state on the semantic surfaces — Live, Draft, Waiting) — and the **admin kit**: `CustomTable/`, `ResourceForm/`, `EditableGrid/` (Phase L3 — reached only through ResourceForm field types), `MediaPicker/`, `LocaleTabs`, `ConfirmDialog`, `RecordCombobox`, `FormDialog`, `RecordHistory`. See "The admin kit" below. |
+| `common/` | Cross-cutting app furniture: `PageHeader` (a list page's top; its `<h1>` is screen-reader only — the breadcrumb names the page), `RecordHeader` (a record page's top: avatar, the name as the `<h1>`, contact links, actions, and a foot strip), `EmptyState`, `ErrorState`, `ErrorBoundary/`, `SlaChip`, `Toaster`, `LocaleSwitch`, `StateBadge` (a record's state on the semantic surfaces — Live, Draft, Waiting) — and the **admin kit**: `CustomTable/`, `ResourceForm/`, `EditableGrid/` (Phase L3 — reached only through ResourceForm field types), `MediaPicker/`, `LocaleTabs`, `ConfirmDialog`, `RecordCombobox`, `FormDialog`, `RecordHistory`. See "The admin kit" below. `SmsCounter` (Phase G's; shared since Phase I) — characters and SMS parts for a text, and why it is Unicode. `AdBsDate` (Phase I) — a date in AD (Kathmandu) with its BS twin under it. |
 | `theme/` | The colour-mode controls: `ThemeToggle` (one button) and `ThemeModeSwitch` (all three modes). Both read the theme context; neither takes state as a prop. |
 | `layout/` | The three shells — `SiteLayout`, `AdminLayout/`, `TechLayout` (lazy since Phase H2: it carries the field sync engine) — plus what the public one is made of: `SiteHeader/`, `SiteFooter`, `MobileCallBar`. |
 | `site/` | Marketing presentation, **one component per file**: `ServiceCard`, `ProjectCard`, `CategoryTile`, `PageHero`, `SectionShell`, `SectionHeading`, `Media`, `Breadcrumb`, `PromiseList`, `FaqList`, `FilterChip`, `PriceTag`, `Cta`, `Eyebrow`, `Stars`, `DataIcon`, `ProseBody` (long CMS copy — shared with the admin's prose preview). |
-| `documents/` | The customer-facing sheet a token link opens: `DocumentShell` (tighter edges on a phone since L4), `DocumentHeader`, `LineItemsTable` (since L3 a BOQ: SECTION rows as numbered headings with their subtotal, NOTE rows as text, a row's `spec` under it, optional rows "not included in the total", provisional ones marked — an invoice's lines read as before; since L4 money never wraps and, on a phone, a line says to swipe the table for the rates and amounts), `TotalsList`, `DocumentNotice`, and Phase L3's **`QuotationDocument`** with its words (en **and** ne) in **`quotationDocumentCopy.js`** — the public quotation page, the builder's Customer view and (L4) the print route all render it. Phase L4 added **`DocumentLetterhead`** (logo, name, address, call-link phones, email, PAN/VAT — the API's `letterhead`), **`PaymentScheduleTable`** (stage · share · the server's amount with its VAT; the footer is the quotation's own total), **`SectionSummaryTable`** (`summaryOnly`: section subtotals only) and **`MeasurementsAnnex`** (collapsible on the page, open in print). See "Quotations — terms and the customer document (Phase L4)". Shared by the quotation, invoice and warranty pages. |
+| `documents/` | The customer-facing sheet a token link opens: `DocumentShell` (tighter edges on a phone since L4), `DocumentHeader`, `LineItemsTable` (since L3 a BOQ: SECTION rows as numbered headings with their subtotal, NOTE rows as text, a row's `spec` under it, optional rows "not included in the total", provisional ones marked — an invoice's lines read as before; since L4 money never wraps and, on a phone, a line says to swipe the table for the rates and amounts), `TotalsList`, `DocumentNotice`, and Phase L3's **`QuotationDocument`** with its words (en **and** ne) in **`quotationDocumentCopy.js`** — the public quotation page, the builder's Customer view and (L4) the print route all render it. Phase L4 added **`DocumentLetterhead`** (logo, name, address, call-link phones, email, PAN/VAT — the API's `letterhead`), **`PaymentScheduleTable`** (stage · share · the server's amount with its VAT; the footer is the quotation's own total), **`SectionSummaryTable`** (`summaryOnly`: section subtotals only) and **`MeasurementsAnnex`** (collapsible on the page, open in print). See "Quotations — terms and the customer document (Phase L4)". Phase I's **`InvoiceDocument`** + `InvoicePayments` — the invoice on the public page, the office's invoice page and its print (dates in AD and BS, the server's figures). Shared by the quotation, invoice and warranty pages. |
 | `media/` | The media library screen's own parts: `MediaFolderTree` (folders as an indented tree) and `MediaDetailsSheet` (one file's facts, URL and alt/caption/folder form — a `ResourceForm` sheet) — and `MediaCell`, a list column's thumbnail of one media id (the gallery, features). |
 | `projects/` | `ProjectGalleryTab` — the Gallery tab of a project's edit page (add from the library or upload, drag or Move earlier/later, remove; each change saves at once through the project image endpoints) — and `ProjectName`, a project's title from its id for a list column. |
 | `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
@@ -135,6 +142,9 @@ The CRM files (Phase E):
 | `tech/` | The field app's parts (Phase H2) — see "The field app (Phase H2)": `FieldSyncStatus` (`SyncButton` — the header's Offline / Syncing… / Sync now (n) / All sent — and `SyncBanner` — no signal, and each change the office refused), `PhotoCapture` (camera input, kind picker, caption, the queued thumbnails "Waiting to upload" and the sent ones — job and survey; since Phase L5 a survey's kinds too — ISSUE or SKETCH — and, with `areas`, the room the photo was taken in, suggesting the rooms measured), `MaterialsSheet` (pick from `/tech/materials`, quantity in its unit, − and +; no rate) and `SignaturePad` (pointer events, Undo, Clear, the minimum-ink check). |
 | `charts/` | Hand-drawn SVG charts, no chart library: `ChartCard` (the frame — title, Chart/Table switch, link; with `ChartTable`, `ChartTooltip`, `LegendKey`), `LineChart` (running lines, crosshair, arrow-key stepping), `ColumnChart` (a few columns, one emphasised, each a button), `RingMeter`, `Sparkline`. Width comes from `hooks/useElementWidth`. Series colours are `hsl(var(--chart-1))` (teal) and `--chart-2` (brass) from `globals.css`, validated as a colour-blind-safe pair — marks only, never text. Every chart has a table twin. |
 | `dashboard/` | The admin dashboard's widgets, one per file: `DashboardHero` (greeting and the "to do" chips), `MetricGroup` (a titled strip of numbers — groups and names in `config/admin/dashboardCards.js`), `LatestCard` (your notifications), `LeadTrendCard`, `SlaCard`, `SlaQueueCard`, `PipelineCard`, `FunnelCard`, `HeatmapCard`, `LeadSourcesCard`, `TodayJobsCard`, `TechLoadCard`, `JobsWeekCard`, `JobStatusCard`, `RevenueCard`. `pages/admin/DashboardPage.jsx` lays them out on a 12-column grid by section and drops whatever the API did not send for the role; the arithmetic is in `helpers/dashboard.js`. |
+| `aftercare/` | Phase I's aftercare parts — see "Aftercare screens (Phase I)": `AftercareStatus` (a warranty's, claim's, contract's, visit's or reminder's state in words, on the semantic surfaces), `ViewTabs` (a list's status tabs, kept in the URL), `ClaimDecisionSheet` (one claim and its decision) with `ClaimRatePanel`, `AmcContractSheet` (create and renew) with `AmcSchedulePreview` (the server's visit schedule, live), `ReminderFormSheet` with `ReminderMessageCounter`. |
+| `finance/` | Phase I's finance parts — see "Finance screens (Phase I)": `InvoiceFromJobSheet` (a billable job, and how it bills), `NewInvoiceSheet` + `invoiceFields.js` (the manual invoice; the lines a draft edits), `RecordPaymentSheet` (rupees ≤ the server's balance), `InvoiceLinkCard` (the sent link: Copy, Open, WhatsApp), `PaymentTotals` (the server's totals by method), `CustomerStatement` (the ledger — on the customer page and in Finance reports). |
+| `reports/` | The report pieces built once for Finance reports and `/admin/reports` (Phase I): `ReportToolbar` (date range, quick ranges incl. this fiscal year, the range in BS, CSV), `ReportCsvButton` (the API's `?format=csv` with the filters on screen), `ReportTable`, `ReportFigures`. |
 | `platform/` | The admin platform screens' parts (Phase G): `AuditDiff` (a before/after, nested fields by path, each line marked added / removed / changed on the semantic surfaces and in words), `AuditRowDetails` (an audit row opened: the diff, request id, ip, browser, "Show everything from this request", "Open the record"), `UserFormSheet` (new / edit — no password field), `SessionsDialog` (where someone is signed in, "Sign out everywhere"). |
 | `public/`, `booking/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. `public/SitePhotoUpload` is shared by the booking wizard's details step and the enquiry form: each photo uploads as it is chosen (`POST /public/lead-photos`) and the enquiry carries only the ids. `surveys/SurveyFindings` is the office review's evidence (Phase L5: the customer's photos, readings flagged first, a measurement table per measured line, photos by area, the pin with a Maps link). |
 
@@ -312,6 +322,7 @@ so a cleared input would otherwise show the saved number again.
 | `stringList` | `string[]`; blank lines dropped | `addLabel`, `maxItems` |
 | `keyValue` | `{ [key]: string }` | `keyLabel`, `valueLabel`; or `keys` (fixed rows, e.g. `['label', 'url']`) with `keyLabels`, `placeholders` — the value then always has every key |
 | `media` | media id | — |
+| `photoUpload` | media id — **one photo uploaded to the form's own endpoint** (Phase I: an expense's bill, `POST /admin/expenses/bill`), for a role with no `media:read`; no MediaPicker. Choose or take a photo (`helpers/compressImage` shrinks it first), the answer's media object shows as the thumbnail, Replace / Remove; a saved record's picture is read from its `savedFrom` key; a failed upload says why under the field. Give it `nullable: true` so Remove clears the column | `upload` (the endpoint: multipart `files`, answered with `{ id, url, thumb }` — `mediaApi#uploadPhotoTo`), `savedFrom`, `addLabel` |
 | `mediaList` | ordered media ids; drag or move buttons | `maxItems`, `addLabel` |
 | `weekdays` | sorted day numbers, 0 = Sunday … 6 = Saturday | — |
 | `checklist` | `string[]` — several values ticked from `options: [{ value, label, description?, disabled? }]`, kept in the options' order; a ticked value no longer listed stays, named by `unknownLabel(value)` (the technicians on a job) | `options`, `emptyText`, `unknownLabel` |
@@ -699,7 +710,7 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
 | `/admin/platform/audit` | `AuditLogPage` | CustomTable over `GET /admin/audit-logs`: event (grouped by prefix, with "Every … event" = `prefix.*`), record type (`/audit-logs/models`), staff member, done by, record id, request id, date. A row expands into `AuditRowDetails`; "Show everything from this request" sets `requestId` and sorts oldest first. The record column links through `helpers/recordLinks.js` |
 | `/admin/platform/messages` | `MessageLogsPage` | every SMS and email: masked address, template, status chip with the error, what it was about (linked), the body when expanded; **Send again** for a failure — disabled for a message whose one-time link was redacted |
 | `/admin/platform/message-templates` | `MessageTemplatesPage` | one row per key (`/groups`): who gets it and when (`config/admin/messageKeys.js`), and a chip per version — in use, switched off, not written |
-| `/admin/platform/message-templates/:key` | `MessageTemplateEditPage/` | tabs SMS · English, SMS · नेपाली, Email · English, Email · नेपाली; the open tab only is mounted (one leave-guard). `sections/VariantEditor` is a `ResourceForm` (subject for email, message, in use; a version not written is created on save; Delete) beside `sections/PreviewPanel`: placeholder chips (a press copies `{{name}}`; a Nepali version also shows the English one's), an input per placeholder prefilled from `SAMPLE_VARS`, the API's rendering of the **unsaved** text (debounced), the empty ones, and for SMS `sections/SmsCounter`. `new` is a form for any key |
+| `/admin/platform/message-templates/:key` | `MessageTemplateEditPage/` | tabs SMS · English, SMS · नेपाली, Email · English, Email · नेपाली; the open tab only is mounted (one leave-guard). `sections/VariantEditor` is a `ResourceForm` (subject for email, message, in use; a version not written is created on save; Delete) beside `sections/PreviewPanel`: placeholder chips (a press copies `{{name}}`; a Nepali version also shows the English one's), an input per placeholder prefilled from `SAMPLE_VARS`, the API's rendering of the **unsaved** text (debounced), the empty ones, and for SMS `components/common/SmsCounter` (moved there in Phase I, when the service reminders took it too). `new` is a form for any key |
 | `/reset-password` | `pages/public/ResetPasswordPage/` | where a reset or invite link lands: choose a password twice (the API's rule, mirrored in `auth.schema.js`), then sign in. No token → "open the link from your email". It never sends links itself, and neither does the login screen |
 
 - **`helpers/auditDiff.js`** — `diffEntries(before, after)`: one line per changed field, walking nested objects to
@@ -711,7 +722,7 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
   (70 / 67, astral characters twice); Devanagari is always Unicode. `nonGsm` says why.
 - **`helpers/recordLinks.js`** — `recordHref(row)`: an audit or message row's page (lead, customer, quotation, survey,
   job, user, settings, any registry entry by its Prisma model); a child row (note, site, quotation line, project picture,
-  a job's assignment, task, photo, material or time log, Nepali copy) links to its parent; invoices have no page yet → null.
+  a job's assignment, task, photo, material or time log, Nepali copy) links to its parent; since Phase I an invoice opens its page, and a payment or invoice line its invoice.
 - **`config/admin/messageKeys.js`** — `MESSAGE_KEYS` (every key the API sends — a test scans its services),
   `SAMPLE_VARS`, `placeholdersIn` (the API's pattern — a test checks the source), `nestVars`, `TEMPLATE_VARIANTS`,
   `templateHref`.
@@ -1002,9 +1013,9 @@ of `SurveyReviewPage.test.jsx`, `LeadScreens.test.jsx`, `LeadFollowUp.test.jsx`,
 | `/admin/leads` | `LeadsPage` | CustomTable opening on **My leads** (D6) with a one-click **All leads**; filters next action, status, priority, source, service, owner (with Unassigned), response state, requested visit, date; URL-saved views (the follow-up ones first: **Due today · Overdue · No next action**); a **Next action** column (sortable, `?sort=nextActionAt`) and an **"Nd in stage"** chip; New lead sheet; bulk Assign (one `bulk-assign` request) and Export selected; Export (filtered) |
 | `/admin/leads/board` | `LeadBoardPage/` | the pipeline: a column per status (the list endpoint, 20 per column, "+N more" to the table); drag by the handle or use a card's "Move to" menu; only `LEAD_TRANSITIONS` drops are open (others dim); a move with work behind it opens that work (**Visit booked** → the visit booking, **Quoted** without a quotation → the new-quotation sheet, **Lost** → why) and the card moves only when it completes; a refused move goes back with a toast; cards show "Nd in stage"; pointer collision; no layout animation under reduced motion |
 | `/admin/leads/:id` | `LeadDetailPage` | Edit, Change status (the board's rules: the visit and quotation dialogs), Assign, Convert (book the visit / without a visit), Delete; the **NextActionCard** above the tabs; Overview (request, the outcome composer and the timeline with each outcome, qualification, where it got to), Duplicates (merge), History (`leads:history`). `?markLost=1` opens Mark lost on load, then leaves the address |
-| `/admin/reports/lost` | `LostReportPage` | `reports:sales` (nav: Sales › Lost leads). Why leads are lost: the count per category, then a CustomTable of category × the stage it was lost at × service with its share; a "Lost between" range in the URL (the last 90 Kathmandu days to start); Export. Phase I10 folds it into `/admin/reports` |
+| `/admin/reports/sales?report=lost` | `ReportsPage/sections/LostReport` | `reports:sales` (nav: Reports › Sales reports, tab Lost leads — Phase I10 folded Phase L1's `LostReportPage` in; `/admin/reports/lost` redirects there). Why leads are lost: the count per category, then category × the stage it was lost at × service with its share; the reports' shared range and the API's CSV |
 | `/admin/customers` | `CustomersPage` | CustomTable: sites, open jobs, language, balance due for `invoices:read`; type filter, a tag chip filters by tag; New customer sheet |
-| `/admin/customers/:id` | `CustomerDetailPage/` | Profile form (read-only without `customers:write`), Sites (one primary; "use map pin"), Timeline, the record tabs a role may read (quotations link to their page; the rest say Soon), Statement (`reports:finance`), History (`customers:history`) |
+| `/admin/customers/:id` | `CustomerDetailPage/` | Profile form (read-only without `customers:write`), Sites (one primary; "use map pin"), Timeline, the record tabs a role may read (quotations and jobs link to their pages; since Phase I warranties and AMC contracts too, by `warranties:read` / `amc:read`), Statement (`reports:finance`), History (`customers:history`) |
 
 Both converts ask **"same person / different person"** whenever an existing customer has the lead's phone
 (`CustomerMatchChoice`); Book / Convert waits for the answer, and the lead's email reaches an existing customer only when
@@ -1107,6 +1118,207 @@ confirm, apply, decline, nothing to do — the form for MANAGER and for SALES, a
 rules, trades' wage, materials' pack), `helpers/recipe.test.js`, the L2 block in `ResourceForm.test.jsx` (`adapt`,
 `nullable`, `preview`), the Costing tab per role in `OperationsScreens.test.jsx`, and `crmMirror.test.js` (units, rate
 modes, recipe kinds, the permission map and who holds each new capability).
+
+## Finance screens (Phase I)
+
+Invoices, payments, expenses and the reports — the **Finance** group (Invoices · Payments · Expenses · Finance
+reports) and the **Reports** group (Sales reports · Operations reports · Job margin), both on the Home tab, each item
+behind its own capability. ACCOUNTANT holds the finance ones (`invoices:*`, `payments:*`, `expenses:*`,
+`reports:finance`); ADMIN everything; nobody else sees Finance. **Money is where this breaks**, so the rule is simple:
+every total, VAT, paid amount and balance on these screens is the **server's** (paisa → `helpers/format.js`); the UI never
+adds, multiplies or works out VAT. The one check against a figure is the payment sheet's amount ≤ the server's `balance`.
+Money typed in a form is rupees and goes to the API as rupees.
+
+| Route | Page | Does |
+|---|---|---|
+| `/admin/invoices` | `InvoicesPage` | `invoices:read`. Status tabs All · Draft · Sent · Part paid · Overdue · Paid · Void with the server's counts (`meta.counts`, under the other filters — `config/admin/financeViews#INVOICE_TABS`); filters customer, issued between (Kathmandu days → `from`/`to`), **Overdue only** (`?overdueOnly=true` — the overdue notification's link); columns number + status, customer (tap to call), issued and due **in AD and BS** (`AdBsDate`), total, paid, balance (`formatBalance` — never negative; a void invoice reads "Void"). `invoices:write` (ADMIN, ACCOUNTANT): **Create from job** (`components/finance/InvoiceFromJobSheet`) and **New invoice** (`NewInvoiceSheet`, the manual one for AMC fees and one-off work). A row: Open, Print, and what its state allows (`useInvoiceActions`) |
+| `/admin/invoices/:id` | `InvoiceDetailPage/` | The header (number, status in words, customer, the jobs and quotation it bills, Print, Customer link, the state's actions, the server's Total · Paid · Balance) and tabs: **Edit** (a DRAFT to `invoices:write` only — `sections/InvoiceEditForm`: the lines through the kit's `lineItems` field, invoice variant, then discount, VAT, due date, note, terms; `PUT` re-prices on the server; a 422 **INVOICE_LOCKED** is told in words, `INVOICE_LOCKED_MESSAGE`), **Invoice** (`components/documents/InvoiceDocument` — the public page's own component — and the customer link card; a sent one says it can no longer be edited), **Payments** (`sections/InvoicePaymentsTab`: received in AD + BS, method, reference, amount; a voided one struck through (`<del>`) with why; "Void payment…" for `payments:write`), **History** (`invoices:history`). Actions: **Send** (confirm → the link dialog: Copy, Open, WhatsApp in the customer's language), **Record payment** (sheet), **Void** (a reason; off while payments still count) |
+| `/admin/invoices/:id/print` | `InvoicePrintPage` | outside the shell, like the quotation print: `InvoiceDocument` without the status badge on an A4 `print-sheet` (light palette), Back and Print |
+| `/admin/finance/payments` | `PaymentsPage` | `payments:read`. Every payment: search by reference / invoice number / customer (Enter), filters method, received between, customer; voided rows struck through; the footer is `components/finance/PaymentTotals` — the server's `meta.totals` (total, count, each method) over **every page** under the filters, never the rows on screen, never a voided payment |
+| `/admin/expenses`, `/new`, `/:id` | registry entry `expenses` | see below |
+| `/admin/finance/reports` | `FinanceReportsPage/` | `reports:finance`. Tabs (`?report=`): **Aging** (as of now — the dates do not apply; the five buckets as `ReportFigures` buttons with a proportion bar, each drilling down to its invoices below (`?bucket=`), then by customer), **Revenue** (`?groupBy=month|service|technician`: taxable, VAT, invoiced, collected, outstanding and the totals; by month also a `ColumnChart` of invoiced with its table twin), **Collections** (the total and each method, then the newest 500 payments — it says so when there are more), **Customer statement** (pick a customer, `?customerId=`; `components/finance/CustomerStatement`) |
+| `/admin/reports/:group` | `ReportsPage/` | Phase I10. `sales` (`reports:sales`: Lead sources, Funnel, SLA compliance, Lost leads — Phase L1's report folded in; `LostReportPage` is gone), `operations` (`reports:ops`: Technicians, Warranty claims by service and by type), `job-margin` (**`costs:read` only** — the money wall). The group checks its own capability and a role without it is sent to its first group (or `/admin`); `/admin/reports` opens the first; `/admin/reports/lost` (the old address) redirects to `sales?report=lost`, keeping its query. Groups and tabs are data: `financeViews#REPORT_GROUPS` |
+
+**Expenses** are a registry entry (`config/admin/resources/expenses.jsx`, own `basePath`, `expenses:read` /
+`expenses:write`, History `expenses:read`): category (a text field that **suggests** the categories in use —
+`suggestionsFrom: { path: '/admin/expenses/categories', tag }`), amount (`money`), spent on (`date`), paid to, the job
+(`relation` to `/admin/jobs` — a job's expenses are its cost), the bill photo (the kit's **`photoUpload`** field: choose or
+take a photo, shrunk on the device and uploaded at once to `POST /admin/expenses/bill` — `expenses:write`, so the accountant,
+who holds no `media:*`, never needs MediaPicker — its id saved as `billMediaId`; Replace, Remove sends null) and a note. `approvedBy` is the server's (who records it); the list
+shows `approver.name`, the job's number and the bill's thumbnail from the row's `bill`. **No switch and no reorder**
+(`toggle: false`, `sortable: false` — the model has neither); delete is soft with Trash and Restore; filters category
+(text), job, spent between; the footer is the server's `meta.totals.total` (`footer(meta)`).
+
+The kit grew, for these screens only:
+
+- `lineItems` **`variant: 'invoice'`** — description, unit, qty, rate (rupees) and the server's amount (`figures` by the
+  saved line's id; a changed line shows "—" until saved); items only — no sections, notes, waste, library or drawers; a
+  line's `jobId` rides along (`helpers/boq#toBoqRows` keeps it). `form/schemas/finance.schema#invoiceLinesSchema` sends
+  `{ description, unit?, qty, rate, jobId? }`.
+- `text` fields take `suggestions` (`string[]`) or `suggestionsFrom` (`{ path, tag? }` → `lookupApi#getSuggestions`, an
+  endpoint answering `string[]`) as a datalist.
+- a **`photoUpload`** field type (`fields/PhotoUploadField.jsx`, registered in `FieldRenderer`) — one photo uploaded to the
+  form's own endpoint; the expense's bill.
+- `ResourceForm` `sheetClassName` (the manual invoice's sheet is `sm:max-w-3xl`); `ColumnChart` `formatValue` (money on a
+  cap: `formatNprShort`).
+- Registry entries may say `toggle: false` and `footer(meta, { inTrash })`; `resourceRegistry.test.js` reads
+  `finance.routes.js` too and allows `text` filters.
+
+Shared pieces:
+
+- **`components/reports/`** — built once, used by both report pages: `ReportToolbar` (the kit's `DateRangeFilter` on
+  `from`/`to`, quick ranges — last 30 · last 90 · **this fiscal year** from Shrawan 1 — the range again in BS, a slot for
+  a grouping, and the CSV), `ReportCsvButton` (the API's `?format=csv` with the page's filters through
+  `financeApi#downloadReportCsv` — Bearer token, refresh-on-401 — saved with the BOM put back, named by the API's
+  `Content-Disposition`; a toast says when `X-Export-Truncated` capped it at 10,000 rows), `ReportTable` (a whole answer
+  in `CustomTable`: one page, no search), `ReportFigures` (headline figures; a tile may be a button with a proportion bar).
+  `hooks/useReportParams` keeps a report's range (the last 30 Kathmandu days to start — what the API assumes), tab and
+  grouping in the URL; `reportQueryParams` is what the query and its CSV both send.
+- **`components/finance/`** — `InvoiceFromJobSheet` (the billable, not-invoiced jobs — `GET /admin/jobs?invoiced=false` —
+  each with **how it bills**, `helpers/finance#billingRuleOf`: its quotation as accepted, or what it used; a quoted job is
+  asked only a due date and is never sent `includeMaterials`/`includeLabour`), `NewInvoiceSheet` + `invoiceFields.js`
+  (`INVOICE_LINE_FIELDS`, shared with the draft's edit form), `RecordPaymentSheet` (`paymentFormSchema(balance)`),
+  `InvoiceLinkCard`, `PaymentTotals`, `CustomerStatement` (the customer page's Statement tab renders it too).
+- **`components/documents/InvoiceDocument`** + **`InvoicePayments`** — the invoice as the customer reads it: dates in AD and
+  BS, the lines (`LineItemsTable`), subtotal, discount, VAT, total, paid and the balance (**Amount due** / **Settled**,
+  never negative); a void invoice says so and owes nothing; payments with voided ones struck through (`detailed` adds the
+  reference and why). `pages/public/InvoicePublicPage` renders it (its `PaymentHistory` section moved here) with the
+  token endpoint's own `balance` — the page works nothing out.
+- **`hooks/useInvoiceActions.jsx`** — `const [runAction, dialogs] = useInvoiceActions()`, then
+  `runAction('send' | 'recordPayment' | 'void' | 'voidPayment' | 'link', invoice, payment?)`: the one way a screen sends,
+  voids or takes money. `helpers/finance#invoiceActions(invoice, { can })` says what a state allows and why a button is
+  off; `canEditInvoice` is the DRAFT rule.
+- **`components/common/AdBsDate`** — a date as the finance screens state it: AD (Kathmandu) with its BS twin under it.
+
+**Money and BS helpers** (both tested against hand-computed values):
+
+- `helpers/format.js` — `formatNpr` (Nepali grouping, `Rs. 1,23,45,678.90`, en-IN), `formatBalance` (the server's
+  balance, never below zero), `kathmanduDay`, **`formatDateBs(iso, { long, locale })`** (the BS date of the day it was in
+  **Kathmandu** — a due date stored as 18:15 UTC is the next day's), `formatDateAdBs` ("17 Jul 2026 (2083-04-01 BS)"),
+  `fiscalYearOf` ("2083/84").
+- `helpers/nepaliDate.js` — **a byte-for-byte copy** of the API's `utils/nepaliDate.js` (the conversion table, `adToBs`,
+  `bsToAd`, `formatBs`, `fiscalYear`, `fiscalYearLabel`, the month names in en and ne). Never edit it here:
+  `nepaliDate.test.js` fails unless the two files are identical, and checks the functions agree on every day of
+  2025–2027 and every 5th day 2000–2034, and the Shrawan 1 boundary (2083 Shrawan 1 = 17 July 2026: the day before is Ashadh 32 and FY 2082/83).
+- `helpers/finance.js` — `invoiceActions`, `canEditInvoice`, `standingPayments`, `billingRuleOf`, `defaultReportRange`,
+  `reportRangePresets` (this fiscal year from Shrawan 1), `csvFileName`.
+
+Also:
+
+- `api/financeApi.js` — invoices (list with `meta.counts`, one with `balance`/`publicUrl`/`jobs`, create, from-job, update,
+  send, void, payments and their void), payments (with `meta.totals`), the finance reports, the sales and operations
+  reports and `downloadReportCsv` (lazy, `keepUnusedDataFor: 0`, `{ csv, truncated, disposition }`). Every write that
+  moves money invalidates the invoice, `Invoice`/`Payment` LISTs, `Report`, `Customer`, `History` and `Dashboard`; from-job
+  also the job. `reportsApi.js` keeps the lost-lead report. An expense save (through `cmsApi`) refreshes `Job` (costing)
+  and `Report`.
+- `form/schemas/finance.schema.js` mirrors the API's invoice, from-job, payment, void and expense bodies (an optional date
+  cleared is left out, never sent as null — `z.coerce.date()` would read 1970). `config/constants.js` has
+  `INVOICE_STATUS_LABELS` and `PAYMENT_METHOD_LABELS`; `config/admin/financeViews.js` the invoice tabs, the aging buckets,
+  the revenue groupings, the payment method options and the report groups.
+- The customer page's **Invoices** tab links each invoice and shows the server's balance; its **Statement** tab is
+  `CustomerStatement` (with its CSV).
+- Tests: `pages/admin/FinanceScreens.test.jsx` (the README fixture — 3 lines × 210.5 sq.ft, a discount, 13 % VAT — shown to
+  the paisa and a doctored server figure shown as sent; a partial eSewa payment then its void, the balance back up and
+  the row struck through; a negative balance shown as Rs. 0.00; DRAFT-only editing and `INVOICE_LOCKED`; the payment sheet
+  refusing more than the balance; the invoice tabs, counts and the overdue link; Create from job's billing rule; the
+  payments footer from `meta.totals`; the expenses entry — no switch, the total, category suggestions, rupees, the bill
+  photo uploaded to `/admin/expenses/bill` (a mocked POST; its id sent as `billMediaId`), a saved bill shown, Remove sent
+  as null, a refused upload told; the public page showing the server's `balance`, and a void one owing nothing; the CSVs with the filters on screen; aging drill-down; collections; the statement; job
+  margin for `costs:read` only), `helpers/finance.test.js` (grouping, balance, BS by Kathmandu day, the actions, the
+  fiscal-year preset, the enum mirror, each report group's nav item), `helpers/nepaliDate.test.js`,
+  `form/schemas/finance.schema.test.js` (the same bodies through the form's schema and the API's — lines in rupees with
+  Indian grouping, a payment to the paisa of the balance, Devanagari), the Finance and Reports blocks in `adminNav.test.js`,
+  and `recordLinks.test.js` (an invoice, its payments and lines, an expense).
+- End to end: `e2e/finance-flow.spec.js` — see the e2e list at the top.
+
+## Aftercare screens (Phase I)
+
+Warranties, their claims, AMC contracts and service reminders — the **Aftercare** nav group (Home tab). The API guards
+them with capabilities that replaced `aftercare.routes.js`'s role lists with the same effective access, mirrored in
+`helpers/permissions.js` (`config/aftercareMirror.test.js` holds both the map and who holds what):
+
+| Capability | Held by |
+|---|---|
+| `warranties:read`, `amc:read`, `reminders:read` | SALES, MANAGER, DISPATCHER (+ ADMIN via `*`) |
+| `warranties:write`, `amc:write`, `reminders:write` | DISPATCHER (+ ADMIN) — dispatch decides claims (an accepted one is a job to schedule) and runs contracts and reminders |
+| — | ACCOUNTANT holds none: no Aftercare group, no Warranties or AMC tab on a customer |
+
+Each route sits under `RequireAuth capability="…:read"`; every write button checks its `…:write` (a reader gets the
+page read-only). The nav only hides — the API refuses.
+
+| Route | Page | Does |
+|---|---|---|
+| `/admin/warranties` | `WarrantiesPage` | CustomTable under status tabs (`?view=` — All · Active · Claim open · Expiring soon · Expired · Void). **Expiring soon** is active cover ending within N days (`expiringDays`; an "Ending within" filter of 7 · 14 · 30 · 60 · 90 in `?days=`, 30 to start, soonest first). Search: customer, phone or job number. Columns: the job, the customer (tap to call), what it covers, status with the claim count, "Covered until" with the days left (amber within 30). A row's menu copies or opens the certificate |
+| `/admin/warranties/:id` | `WarrantyDetailPage` | cover (scope, from, until, the void reason), the **certificate link** (`publicUrl`, else built from the token — Copy / Open), the job, the customer, and every claim (status, what the customer wrote, the reject reason or the free job with its status, "Decide…" into the queue). `warranties:write`: **Edit** (a `ResourceForm` sheet — scope and "Covered until", a `date` field at 23:59 Kathmandu; the schema strips anything else, so no status is ever sent) and **Void…** (a `FormDialog`: a reason of 3–500 characters, required — `POST /void`). A void warranty is read-only. Tabs **Details** · **History** (`?tab=history` — `RecordHistory` on `/admin/warranties/:id/history`, `warranties:read`, loaded only when opened) |
+| `/admin/warranty-claims`, `/admin/warranty-claims/:id` | `WarrantyClaimsPage` | the claims queue in the API's order — **open first**, then accepted, then the rest, newest first within (tabs `?view=`: All — open first · Open · Accepted · Rejected · Resolved). A row opens `ClaimDecisionSheet` at the claim's own address, which is where the claim notification links; closing it keeps the list's filters |
+| `/admin/amc-contracts` | `AmcContractsPage` | tabs Active · **Renewals due (60 days)** (`renewalsDays=60`, soonest end first; `?renewals=true` — the renewals notification's link — opens it too) · Expired · Cancelled · All; columns number, customer and site, plan and services, term ("Ends in 23 days"), visits done, amount (`formatNpr` of the server's paisa) with the billing cycle, status. `amc:write`: **New contract**, and a row's Renew… / Cancel contract… |
+| `/admin/amc-contracts/:id` | `AmcContractDetailPage` | customer and site, the plan (amount, billing, covered services, notes), the term, and **the visits** (a short CustomTable: due date, `pending` "Not booked yet" · `scheduled` "Job made" · `completed` · `missed`, the job made for it with its status and time). `amc:write`: **Renew…**, **Edit** (plan, services, amount, billing, notes, site — never the schedule, which the API refuses: a new schedule is a renewal), **Cancel…** (`PUT { status: 'cancelled' }`, so it stays under Cancelled) / **Reactivate…**, and **Remove** (`DELETE` — the API's soft delete hides it from every list; for a contract made by mistake). Tabs **Details** · **History** (`?tab=history` — `RecordHistory` on `/admin/amc-contracts/:id/history`, `amc:read`) |
+| `/admin/service-reminders` | `ServiceRemindersPage` | tabs Pending (the start, soonest first) · Sent · Failed · Skipped · All; customer and "Goes out" (`from`/`to`, Kathmandu days) filters; search message, customer or phone. A Nepali message is `lang="ne"`. `reminders:write`: **New reminder**, and — **while pending only** — Edit (a row click or the menu) and Delete (confirmed); for any other state both stay in the menu, disabled, and the row says why (`helpers/aftercare#reminderLock`) |
+
+**The decision sheet** (`components/aftercare/ClaimDecisionSheet`) — a `ui/sheet` with the claim (what the customer
+wrote, the original job, the warranty and its end, the customer with tap-to-call), `ClaimRatePanel`, and for
+`warranties:write` the decisions the claim's state allows (`helpers/aftercare#claimDecisions`, the API's rule), each a
+`ResourceForm`:
+
+- **Accept** (an open claim) — an optional "Visit on" `datetime`; `PATCH { status: 'accepted', scheduledStart? }`. The
+  answer's `resolvedJob` shows as "Free warranty job JOB-… created", with **Open JOB-…** and the dispatch board: the job
+  is unassigned, so it waits in the dispatch queue.
+- **Reject** (an open claim) — a required reason (`claimRejectSchema`); the customer is sent it.
+- **Resolve** (an open or accepted claim).
+- **422 `CLAIM_DECIDED`** (someone else decided first): an alert with the API's message, a toast, and the claim
+  refetched — the sheet then shows where it stands and offers only what is left.
+- `ClaimRatePanel` — `GET /admin/reports/warranty-claims` over the last 365 Kathmandu days, only for `reports:ops`
+  (DISPATCHER; ADMIN): the rate for the claim's service — a claim row's `warranty.job.service` is the service name the report groups
+  by (its lead's, else its quotation's lead's), or null; `claimService` reads it and `claimRateFor` picks that `byService`
+  row — else, when it is null or unlisted, its job type (`byType`), else all work — beside the overall rate. A 403 or
+  failure shows no panel.
+
+**The AMC create sheet** (`components/aftercare/AmcContractSheet`) — customer, site (the customer's, as the job form
+does it), plan, covered services (a `checklist` of the catalogue's names from `/admin/services` — `hooks/useServiceNames`,
+`services:read` — matched ignoring case, so the seed's `plumbing` is the catalogue's Plumbing; a `stringList` when the
+catalogue cannot be read), start / end (`date`), visits a year, then **the visit schedule** — `AmcSchedulePreview`, a
+`preview` field that sends the three schedule inputs (debounced, once `amcSchedulePreviewSchema` passes) to
+`POST /admin/amc-contracts/preview` and lists exactly the visits create will lay down; the client never spaces visits
+itself — then amount (`money`, typed in rupees with grouping), billing cycle, notes. **Renew** opens the same sheet from
+`helpers/aftercare#renewalDefaults(contract)`: the day after it ends (Kathmandu), the same number of days, plan,
+services, visits, amount (the paisa it came with — the form shows rupees), billing cycle and site, and "Renewal of AMC-…".
+
+**The reminder sheet** (`components/aftercare/ReminderFormSheet`) — customer (fixed once saved), "Send at" (`datetime`,
+Kathmandu), SMS or email, an optional job (the customer's) and service, the message (5–1000), and under it
+`ReminderMessageCounter`: Phase G's `components/common/SmsCounter` for SMS — one Devanagari letter makes the whole
+message Unicode, 70 characters a part (67 once split) — or the length for email.
+
+Also:
+
+- `api/aftercareApi.js` — every endpoint above. Lists are tagged `{ type, id: 'LIST' }` (`Warranty`, `WarrantyClaim`,
+  `AmcContract`, `Reminder`) — the tags the customer page's record tabs read. A claim decision also invalidates the
+  warranties, `Job` LIST, `Dispatch`, `Dashboard`, `Notification` and `History`. `previewAmcSchedule` is a **query**
+  although it is a POST (it reads). `getWarrantyClaimRates` is the claims report.
+- `form/schemas/aftercare.schema.js` — mirrors the API's `warrantyUpdateSchema`, `warrantyVoidSchema`,
+  `warrantyClaimDecisionSchema`, `amcContractSchema`, `amcSchedulePreviewSchema`, `amcContractUpdateSchema` and
+  `serviceReminderSchema`; `aftercare.schema.test.js` runs the same bodies (Devanagari, the 5-year limit, `-1` rupees)
+  through both. The forms strip what they do not name, where the API's bodies are `.strict()`.
+- `config/admin/aftercareViews.js` — the four lists' tabs as data (`viewQuery(views, params, fallback)` → the API's
+  query; `selectView` → page 1 and no leftover `days` / `renewals`), `RENEWALS_DAYS`, the "Ending within" options, the
+  status → tone maps, `SERVICE_LOOKUP`. `config/admin/aftercareForms.js` — `amcPlanFields`, shared by create and Edit.
+- `config/constants.js` — `WARRANTY_STATUSES`, `CLAIM_STATUSES`, `AMC_STATUSES`, `AMC_BILLING_CYCLES`,
+  `AMC_VISIT_STATUSES`, `REMINDER_STATUSES` with their `*_LABELS`, and `REMINDER_CHANNEL_LABELS` (mirror-tested).
+- `helpers/aftercare.js` — `coverLeft` ("12 days left", by Kathmandu day), `kathmanduDaysBetween`, `contractEndsIn`,
+  `certificateUrl`, `claimDecisions`, `claimService`, `claimRateFor`, `renewalDefaults`, `matchServices`, `reminderLock`.
+- Links in: the customer page's **Warranties** and **AMC** tabs (were "Soon") list the customer's records and open them
+  (`warranties:read` / `amc:read`, not a role list); a job's Overview links its warranty; audit rows open a warranty,
+  claim, contract (and a visit's contract) or the reminders (`helpers/recordLinks.js`); `config/auditEvents.js` words
+  `warranty.voided` and `warranty.claim_decided` (group Warranties). The dashboard's cards that said "Soon" now link:
+  Outstanding → the aging report, Unpaid invoices → `/admin/invoices`, Active warranties → `?view=active`, AMC renewals
+  → `?view=renewals`; the revenue and lead-source charts open their reports.
+- Tests: `pages/admin/AftercareScreens.test.jsx` (the claims queue — open first, accept makes and links the free job,
+  reject needs a reason, `CLAIM_DECIDED`; the warranty's certificate and void-with-a-reason; the expiring preset; the
+  AMC create sheet's live schedule from a mocked `/preview` and rupees sent; Renew's prefill; the renewals preset;
+  reminders — pending-only edit and delete, the SMS counter with Nepali; each screen read-only for SALES; the claim rate by
+  service and its type fallback; each detail page's History tab; the customer
+  tabs), `helpers/aftercare.test.js`, `config/aftercareMirror.test.js`, `form/schemas/aftercare.schema.test.js`, the
+  Aftercare block in `adminNav.test.js`, and the Phase I link test in `DashboardPage.test.jsx`.
+- End to end: `e2e/aftercare-flow.spec.js` — see the e2e list at the top.
 
 ## The admin shell
 
@@ -1362,7 +1574,7 @@ section shows, where its content is edited, which ones take a `limit`, and `toSe
 the survey stepper's since L5). `auditEvents.js` names Phase L5's `visit.confirmed`, `visit.reschedule_requested` and
 `site.pinned` (their groups Site visits and Sites); `admin/messageKeys.js` describes `visit_booked` and `visit_reminder`.
 
-`helpers/` is behaviour with no state (Phase L5 added `inspection.js` — see "The site-visit kit (Phase L5)"; Phase L4 added `paymentSchedule.js` and `download.js` — see "Quotations — terms and
+`helpers/` is behaviour with no state (Phase I added `finance.js`, `nepaliDate.js` — a byte-for-byte copy of the API's — and the BS and balance display in `format.js`: see "Finance screens (Phase I)"; Phase L5 added `inspection.js` — see "The site-visit kit (Phase L5)"; Phase L4 added `paymentSchedule.js` and `download.js` — see "Quotations — terms and
 the customer document (Phase L4)"; Phase L3 added `boq.js` and `measurements.js` — see "Quotations — the BOQ builder
 (Phase L3)"; Phase L2 added `recipe.js` — see "The rate library and the money wall"; Phase H1 added `jobActions.js` and `dispatchBoard.js` — see "Operations
 (Phase H1)" — and `formatMinutes` in `format.js`; Phase G added `auditDiff.js`, `sms.js`, `recordLinks.js` and
@@ -1435,7 +1647,9 @@ every new form.
    column's or tab's capability), even though the API already strips it for everyone else. See "The rate library and the
    money wall (Phase L2)". Since Phase L3 the same holds for every amount on a quotation: totals, section subtotals,
    discounts from % or a target, and margins come from the server's preview; since Phase L4 also each payment stage's
-   amount and the total in words. A customer-facing screen and the print never show a cost key, even to a manager.
+   amount and the total in words. A customer-facing screen and the print never show a cost key, even to a manager. Since
+   Phase I the same holds for invoices, payments and reports: every total, VAT, paid amount and balance is the server's
+   (a balance is shown never below zero); the one check the UI makes against a figure is a payment ≤ the server's balance.
 9. **EditableGrid is reached only through ResourceForm field types** (`lineItems`, `grid`, `measurements`, `recipe`,
    `paymentSchedule`) —
    never imported by a page or a registry entry. Every drag has a keyboard equivalent.

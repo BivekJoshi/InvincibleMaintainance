@@ -2,7 +2,7 @@ import { RESOURCES, screenPathOf } from '@/config/admin/resourceRegistry';
 
 /**
  * Where an audit row's record can be opened in the back office, or null when it has no
- * screen (yet — invoices get theirs in Phase I).
+ * screen (an exported report, say).
  *
  * A child row (a lead's note, a project's picture, a record's Nepali copy) links to its
  * parent, found in the row's own snapshot.
@@ -14,6 +14,13 @@ const byModel = {
   Quotation: (id) => `/admin/quotations/${id}`,
   SiteSurvey: (id) => `/admin/surveys/${id}`,
   Job: (id) => `/admin/jobs/${id}`,
+  // Aftercare (Phase I).
+  Warranty: (id) => `/admin/warranties/${id}`,
+  WarrantyClaim: (id) => `/admin/warranty-claims/${id}`,
+  AmcContract: (id) => `/admin/amc-contracts/${id}`,
+  ServiceReminder: () => '/admin/service-reminders?view=all',
+  // Finance (Phase I). An expense is a registry entry, found by its model like any other.
+  Invoice: (id) => `/admin/invoices/${id}`,
   User: (id) => `/admin/platform/users?open=${id}`,
   Setting: () => '/admin/platform/settings',
   HomeSection: () => '/admin/content/home',
@@ -33,6 +40,9 @@ const PARENTS = {
   JobPhoto: ['jobId', 'Job'],
   JobMaterial: ['jobId', 'Job'],
   TimeLog: ['jobId', 'Job'],
+  AmcVisit: ['contractId', 'AmcContract'],
+  InvoiceItem: ['invoiceId', 'Invoice'],
+  Payment: ['invoiceId', 'Invoice'],
   RateCardComponent: ['rateCardItemId', 'RateCardItem'],
 };
 

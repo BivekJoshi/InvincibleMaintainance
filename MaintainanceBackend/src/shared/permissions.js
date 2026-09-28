@@ -21,6 +21,7 @@ export const PERMISSIONS = {
     'leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history',
     'quotations:read', 'quotations:write', 'quotations:history', 'jobs:read', 'services:read',
     'surveys:read', 'surveys:write', 'technicians:read', 'rates:read',
+    'warranties:read', 'amc:read', 'reminders:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
   // Sales plus the internal approval of quotations (Phase F). quotations:approve is
@@ -32,6 +33,7 @@ export const PERMISSIONS = {
     'quotations:read', 'quotations:write', 'quotations:history', 'quotations:approve', 'jobs:read', 'services:read',
     'surveys:read', 'surveys:write', 'technicians:read', 'rates:read', 'rates:write', 'costs:read',
     'jobs:advance-override',
+    'warranties:read', 'amc:read', 'reminders:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
   DISPATCHER: [
@@ -39,6 +41,9 @@ export const PERMISSIONS = {
     'materials:read', 'materials:write', 'customers:read', 'leads:read',
     // services:read: a job template belongs to a service (Phase H1).
     'surveys:read', 'services:read',
+    // Aftercare (Phase I, replacing aftercare.routes.js's role lists): dispatch decides claims — an accepted
+    // one is a job to schedule — and runs AMC contracts and service reminders. Sales reads them.
+    'warranties:read', 'warranties:write', 'amc:read', 'amc:write', 'reminders:read', 'reminders:write',
     'media:read', 'media:write', 'dashboard:read', 'reports:ops',
   ],
   TECHNICIAN: ['jobs:own', 'media:write', 'dashboard:read'],

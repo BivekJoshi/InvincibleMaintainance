@@ -1,4 +1,5 @@
 import { TIMEZONE_OFFSET_MINUTES } from '@/config/locale';
+import { fiscalYearLabel, formatBs } from '@/helpers/nepaliDate';
 
 /**
  * Display helpers. The API sends money as integer paisa and dates as UTC ISO strings;
@@ -106,6 +107,51 @@ export function formatDate(iso, opts = {}) {
     day: '2-digit', month: 'short', year: 'numeric', timeZone: KTM, ...opts,
   });
 }
+
+/** The Kathmandu calendar day an instant falls on, `YYYY-MM-DD` (`''` for none). */
+export const kathmanduDay = (iso) => toKathmanduParts(iso).date;
+
+/**
+ * An instant's Bikram Sambat date: the day it was **in Kathmandu** (a due date of 14 Sept is stored as 18:15 UTC on
+ * the 13th), converted by `helpers/nepaliDate.js` — the API's own table, copied byte for byte (Phase I). `''` when
+ * there is no date or it lies outside the table. `long` gives "1 Shrawan 2083" (`locale: 'ne'` → "1 साउन 2083").
+ *
+ * @param {string|Date|null|undefined} iso
+ * @param {{ long?: boolean, locale?: 'en'|'ne' }} [opts]
+ */
+export function formatDateBs(iso, { long = false, locale = 'en' } = {}) {
+  const day = kathmanduDay(iso);
+  if (!day) return '';
+  try {
+    return formatBs(new Date(`${day}T00:00:00.000Z`), { long, locale });
+  } catch {
+    return '';
+  }
+}
+
+/** AD with its BS twin, as a financial document states a date: "17 Jul 2026 (2083-04-01 BS)". */
+export function formatDateAdBs(iso) {
+  if (!iso) return '—';
+  const bs = formatDateBs(iso);
+  return bs ? `${formatDate(iso)} (${bs} BS)` : formatDate(iso);
+}
+
+/** The Nepali fiscal year (Shrawan 1 – Ashadh end) an instant's Kathmandu day falls in: `'2083/84'`. */
+export function fiscalYearOf(iso) {
+  const day = kathmanduDay(iso);
+  if (!day) return '';
+  try {
+    return fiscalYearLabel(new Date(`${day}T00:00:00.000Z`));
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * What is still owed, as shown: the server's `balance`, never below zero. The API already floors it (an
+ * overpayment is refused); a negative figure from an older row still reads as settled, not as a debt of −Rs.
+ */
+export const formatBalance = (paisa, opts) => formatNpr(Math.max(0, Number(paisa) || 0), opts);
 
 export function formatDateTime(iso) {
   if (!iso) return '—';

@@ -1,8 +1,8 @@
 import { apiSlice } from '@/api/apiSlice';
 
 /**
- * The sales reports (`reports:sales`). Phase L1 has one, the lost-lead report; Phase I10 folds it
- * into `/admin/reports`.
+ * The lost-lead report (`reports:sales`, Phase L1) — since Phase I10 the Lost leads tab of Reports › Sales reports
+ * (`pages/admin/ReportsPage/sections/LostReport`). The other reports and every CSV are in `financeApi.js`.
  */
 export const reportsApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({

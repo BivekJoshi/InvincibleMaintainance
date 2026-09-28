@@ -30,6 +30,7 @@ export const E2E = {
     DISPATCHER: 'dispatch@gharjatan.com.np',
     SURVEYOR: 'survey@gharjatan.com.np',
     TECHNICIAN: 'hari@gharjatan.com.np',
+    ACCOUNTANT: 'accounts@gharjatan.com.np',
   },
   /** The API's environment. Values already set (a developer's .env, CI) are kept for the secrets only. */
   apiEnv: {

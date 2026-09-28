@@ -96,7 +96,32 @@ function boqColumns(openSheet) {
 }
 
 /**
- * `{ type: 'lineItems', figures?, stale?, costCapability?, search?, maxItems?, gridLabel? }` — a quotation's bill of
+ * An invoice's lines (Phase I, `variant: 'invoice'`): description, unit, quantity, rate in rupees and the server's
+ * amount. No sections, notes, wastage or measurement sheets — an invoice line is a plain priced row.
+ */
+const INVOICE_COLUMNS = [
+  {
+    key: 'description', header: 'Description', grow: 3, minWidth: 240, editor: 'text', maxLength: 500, wrap: true,
+    placeholder: 'What the customer is paying for', label: (_r, i) => `Description, line ${i + 1}`,
+  },
+  { key: 'unit', header: 'Unit', width: 84, editor: 'text', suggestions: UNITS, maxLength: 20, label: (_r, i) => `Unit, line ${i + 1}` },
+  { key: 'qty', header: 'Qty', width: 104, editor: 'number', align: 'right', label: (_r, i) => `Quantity, line ${i + 1}`, format: qtyCell },
+  { key: 'rate', header: 'Rate (Rs)', width: 118, editor: 'money', align: 'right', label: (_r, i) => `Rate, line ${i + 1}`, format: moneyCell },
+  {
+    key: 'amount', header: 'Amount', width: 132, align: 'right', get: () => null,
+    format: (_v, _row, { meta }) => (meta?.amount == null
+      ? <span className="text-muted-foreground" title="Worked out by the server when you save">—</span>
+      : <span data-amount>{formatNpr(meta.amount)}</span>),
+  },
+];
+const makeInvoiceRow = () => blankBoqRow('ITEM');
+/** Pasted rows as invoice lines: a text-only row (a heading in the spreadsheet) is not a line. */
+const pasteInvoiceRows = (text) => pastedBoqRows(text)
+  .filter((r) => (r.rowType ?? 'ITEM') === 'ITEM')
+  .map((r) => ({ ...blankBoqRow('ITEM'), ...r, _key: newRowKey() }));
+
+/**
+ * `{ type: 'lineItems', figures?, stale?, costCapability?, search?, maxItems?, gridLabel?, variant? }` — a quotation's bill of
  * quantities (Phase L3), on the kit's EditableGrid: ITEM, SECTION and NOTE rows, rates in **rupees**, a quantity
  * typed or measured, wastage %, optional. The value is the builder's rows (`helpers/boq.js#toBoqRows`); the schema
  * turns them into the request's.
@@ -108,6 +133,10 @@ function boqColumns(openSheet) {
  * Rows: `/` searches the rate library (`RateLibrarySearch`), a paste from Excel adds rows, and each row's
  * actions open its **measurement sheet** (Ctrl+M), its frozen **recipe** (cost only for `costCapability`) and
  * its **details** (specification, kind, optional, provisional).
+ *
+ * `variant: 'invoice'` (Phase I) is an invoice's lines instead: description, unit, qty, rate and the server's amount
+ * (`figures` by row key — the saved lines'; a changed line shows "—" until it is saved), items only, no library, no
+ * drawers. A row's `jobId` rides along untouched.
  */
 export function LineItemsField({ field, id }) {
   const { field: input, fieldState } = useController({ name: field.name });
@@ -124,7 +153,11 @@ export function LineItemsField({ field, id }) {
   };
   const patchRow = (key, patch) => update(rows.map((r) => (r._key === key ? { ...r, ...patch } : r)));
 
-  const columns = useMemo(() => boqColumns((row) => setDrawer({ kind: 'measure', key: row._key })), []);
+  const invoice = field.variant === 'invoice';
+  const columns = useMemo(
+    () => (invoice ? INVOICE_COLUMNS : boqColumns((row) => setDrawer({ kind: 'measure', key: row._key }))),
+    [invoice],
+  );
   const error = fieldState.error;
   const listError = error?.message ?? error?.root?.message;
   const rowErrors = useCallback((i) => cellMessages(error?.[i], { measurements: 'qty' }), [error]);
@@ -157,11 +190,11 @@ export function LineItemsField({ field, id }) {
     },
   }], [input.value]);
 
-  const search = useMemo(() => (field.search === false ? undefined : {
+  const search = useMemo(() => (field.search === false || invoice ? undefined : {
     label: 'From the library',
     focusKey: 'qty',
     render: (p) => <RateLibrarySearch {...p} />,
-  }), [field.search]);
+  }), [field.search, invoice]);
 
   const openRow = drawer ? rows.find((r) => r._key === drawer.key) : null;
   const openIndex = openRow ? rows.indexOf(openRow) : -1;
@@ -179,14 +212,14 @@ export function LineItemsField({ field, id }) {
             getRowKey={getRowKey}
             numbers={numbers}
             rowKind={rowKind}
-            makeRow={makeRow}
-            kinds={['item', 'section', 'note']}
+            makeRow={invoice ? makeInvoiceRow : makeRow}
+            kinds={invoice ? ['item'] : ['item', 'section', 'note']}
             duplicateRow={duplicateBoqRow}
             isBlankRow={isBlankBoqRow}
-            paste={pasteRows}
+            paste={invoice ? pasteInvoiceRows : pasteRows}
             search={search}
-            rowActions={rowActions}
-            shortcuts={shortcuts}
+            rowActions={invoice ? undefined : rowActions}
+            shortcuts={invoice ? [] : shortcuts}
             rowMeta={rowMeta}
             rowErrors={rowErrors}
             rowHeight={rowHeight}
@@ -195,11 +228,15 @@ export function LineItemsField({ field, id }) {
             focusRef={input.ref}
             maxHeight="36rem"
             className={field.stale ? '[&_[data-amount]]:opacity-50' : undefined}
-            emptyText="No rows yet. Type to start, press / for the rate library, Ctrl+Shift+Enter for a section, or paste rows from Excel."
-            addLabels={{ item: 'Add row', section: 'Add section', note: 'Add note' }}
+            emptyText={invoice
+              ? 'No lines yet. Type to start, or paste rows from Excel.'
+              : 'No rows yet. Type to start, press / for the rate library, Ctrl+Shift+Enter for a section, or paste rows from Excel.'}
+            addLabels={invoice ? { item: 'Add line' } : { item: 'Add row', section: 'Add section', note: 'Add note' }}
             footer={(
               <p className="text-xs text-muted-foreground">
-                Amounts are the server’s{field.stale ? ' — updating…' : '.'} An optional row shows its amount in brackets and is not in the total.
+                {invoice
+                  ? 'Amounts are the server’s: a changed line shows its amount once saved.'
+                  : `Amounts are the server’s${field.stale ? ' — updating…' : '.'} An optional row shows its amount in brackets and is not in the total.`}
               </p>
             )}
           />

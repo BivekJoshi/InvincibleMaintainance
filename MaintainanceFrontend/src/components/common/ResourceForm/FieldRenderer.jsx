@@ -26,6 +26,7 @@ import { GridField } from './fields/GridField';
 import { MeasurementsField } from './fields/MeasurementsField';
 import { PaymentScheduleField } from './fields/PaymentScheduleField';
 import { CheckboxField } from './fields/CheckboxField';
+import { PhotoUploadField } from './fields/PhotoUploadField';
 
 /**
  * Field type → component. `markdown` is an alias of `prose`: the public site renders
@@ -60,6 +61,8 @@ const FIELD_TYPES = {
   measurements: MeasurementsField,
   paymentSchedule: PaymentScheduleField,
   checkbox: CheckboxField,
+  // Phase I: one photo uploaded to the form's own endpoint (an expense's bill), with no media library.
+  photoUpload: PhotoUploadField,
 };
 
 /** A safe DOM id for a field, from the form's `useId()` prefix and the field name. */

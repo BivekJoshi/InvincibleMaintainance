@@ -6,6 +6,10 @@
  * costing — is MANAGER's (and ADMIN's through `*`). `rates:read` reads the rate library;
  * `rates:write` changes it and its trades, and reprices. SALES reads the library but never
  * writes it, because a recipe carries cost.
+ *
+ * Aftercare (Phase I) — `warranties:*`, `amc:*` and `reminders:*` replaced the API's role lists on
+ * aftercare.routes.js with the same effective access: SALES, MANAGER and DISPATCHER read; DISPATCHER
+ * (and ADMIN) writes.
  */
 export const PERMISSIONS = {
   ADMIN: ['*'],
@@ -14,6 +18,7 @@ export const PERMISSIONS = {
     'leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history',
     'quotations:read', 'quotations:write', 'quotations:history', 'jobs:read', 'services:read',
     'surveys:read', 'surveys:write', 'technicians:read', 'rates:read',
+    'warranties:read', 'amc:read', 'reminders:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
   MANAGER: [
@@ -21,12 +26,16 @@ export const PERMISSIONS = {
     'quotations:read', 'quotations:write', 'quotations:history', 'quotations:approve', 'jobs:read', 'services:read',
     'surveys:read', 'surveys:write', 'technicians:read', 'rates:read', 'rates:write', 'costs:read',
     'jobs:advance-override',
+    'warranties:read', 'amc:read', 'reminders:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
+  // Aftercare (Phase I): dispatch decides warranty claims (an accepted one is a job to schedule) and runs AMC
+  // contracts and service reminders; SALES and MANAGER read them. ACCOUNTANT holds none of the three.
   DISPATCHER: [
     'jobs:read', 'jobs:write', 'jobs:dispatch', 'jobs:history', 'technicians:read', 'technicians:write',
     'materials:read', 'materials:write', 'customers:read', 'leads:read',
     'surveys:read', 'services:read',
+    'warranties:read', 'warranties:write', 'amc:read', 'amc:write', 'reminders:read', 'reminders:write',
     'media:read', 'media:write', 'dashboard:read', 'reports:ops',
   ],
   TECHNICIAN: ['jobs:own', 'media:write', 'dashboard:read'],

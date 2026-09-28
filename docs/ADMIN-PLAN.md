@@ -1047,13 +1047,48 @@ job bills contract ± variations − stage bills; advance + running + final equa
 negative-stock blocking; unit conversion between recipe and purchase units; actual labour per trade; a drawing
 canvas in the field app.
 
-### Phase I — Finance & aftercare screens · ~6 days
+### Phase I — Finance & aftercare screens · ~6 days · ✅ done 2026-09-28
 
 - Invoices (from job, send, void, payments), payment search, expenses, and reports (aging, revenue, collections, customer statement).
 - Warranties, the claims decision queue, AMC contracts and visits, renewals due, service reminders.
 - A reports page for the sales and ops reports the API already serves (lead sources, funnel, SLA, job margin, technicians, warranty claims).
 
 **Acceptance:** job → invoice by the job's billing rule — a quoted job bills its quoted scope, an unquoted job its real materials and labour (never both; defect #16, Phase L0). A partial payment is recorded and can be voided. Aging is correct and VAT reconciles to the paisa. A warranty claim creates a free job, and an AMC contract schedules its visits.
+
+**Deviations (Phase I, 2026-09-28)**
+- **New invoice is `invoices:write`** (ACCOUNTANT and ADMIN), not ADMIN only: an AMC contract or a one-off job needs
+  a hand invoice, and the accountant is who issues it.
+- **An invoice is edited as a DRAFT only** — 422 `INVOICE_LOCKED` once sent (the API used to allow edits until the
+  first payment, so a customer could be shown different numbers from the ones sent). A changed discount or VAT
+  choice alone re-prices the stored lines through `documentTotals`. Every invoice response carries the server's
+  `balance` (0 on a VOID one), the public page included, and `publicUrl`; the list's `meta.counts` feeds the tabs.
+- **Dates are Kathmandu days** on invoices, payments, expenses, reminders and every report (they were the server's
+  day). Aging counts Kathmandu calendar days past due; revenue leaves DRAFT out (not yet revenue) and returns
+  taxable + VAT = invoiced per row; collections lists the newest 500 with totals over all; the statement is 404 for
+  an unknown customer and leaves drafts out. `?overdueOnly=false` used to read as true (fixed).
+- **CSV** is `?format=csv` on every report through one route helper (`routes/admin/reportRoute.js`) and one table
+  definition per report (`services/reportExport.service.js`): money as exact rupees, a BOM, formula-looking text
+  defused, capped at 10,000 rows with `X-Export-Truncated` rather than refused, audited as `export.csv`.
+- **Expenses** are a registry resource: `mountResource` gained `toggle: false` / `reorder: false` for a model with
+  neither column (a ledger has no on/off or order — the "sortOrder and isActive" rule does not fit it), and passes
+  the user id, so `approvedBy` is the recording user. The accountant attaches a bill photo through
+  `POST /admin/expenses/bill` (expenses:write, an "Expense bills" folder) — not the media library, which stays
+  closed to ACCOUNTANT (media:write can delete site images).
+- **Aftercare**: capabilities (`warranties:*`, `amc:*`, `reminders:*`) with the same effective access. A warranty's
+  status is no longer set by PUT; `POST …/void` takes the reason (audited). Claims: open first, `GET …/:id` (where the
+  notification links), decisions claimed with a guarded update (`CLAIM_DECIDED`; two accepts make one job), the free
+  job made through `createJob` (audited), dispatchers told, `warranty.claim_decided` audited, rows carry the job's
+  service for the claim-rate panel. AMC: `POST …/preview` returns the exact schedule create lays down; the schedule
+  is fixed after create (a renewal is a new contract); the site must be the customer's. Reminders: `failed` when the
+  provider refuses (it said sent), and only a pending one can be deleted. History routes for warranties and AMC.
+- **Screens:** Reports is a nav group of three screens — `/admin/reports/sales`, `/operations`, `/job-margin`, each
+  behind one capability; the Lost report became a tab of Sales reports (`/admin/reports/lost` redirects). BS dates are
+  a byte-for-byte mirror of `utils/nepaliDate.js` in the SPA, held equal by a test. The claims queue lives at
+  `/admin/warranty-claims` (`/:id` opens the decision sheet); AMC "Cancel" is `PUT status: cancelled` (it stays
+  listed), DELETE is "Remove". Phase G's SMS counter moved to `components/common/SmsCounter.jsx`. recharts is not
+  installed, so the one chart (revenue by month) uses the existing `ColumnChart`.
+- **Left for J2:** overdue-invoice reminders go out once — the sweep only looks at SENT/PARTIAL invoices, so the
+  7-, 15- and 30-day reminders never run.
 
 ### Phase J — Launch hardening · ~6 days (v1 Phase 10, plus the following)
 
@@ -1105,7 +1140,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | L4 Terms & customer document ✅ 2026-09-27 | 4 | 49 | Payment schedule, contract type, print, Excel |
 | H2 Operations — field app ✅ 2026-09-27 | 3 | 52 | Photos, materials and job mutations offline |
 | L5 Site-visit kit ✅ 2026-09-27 | 4 | 56 | Confirmed visits, checklists, measurement sheet |
-| I Finance & aftercare | 6 | 62 | Billing and retention |
+| I Finance & aftercare ✅ 2026-09-28 | 6 | 62 | Billing and retention |
 | L6 Won → hand-off | 4 | 66 | Job with its BOQ, material list and advance gate |
 | L7 Execution | 5 | 71 | Site diary, planned vs actual, purchases, variations |
 | L8 Close-out & final bill | 3 | 74 | Lump-sum and item-rate final bills |

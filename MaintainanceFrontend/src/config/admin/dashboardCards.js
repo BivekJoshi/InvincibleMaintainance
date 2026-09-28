@@ -22,10 +22,12 @@ export const DASHBOARD_CARDS = {
   jobsToday: { label: 'Jobs today', icon: CalendarClock, to: () => `/admin/jobs?${todayQuery()}`, hint: 'On the calendar for today' },
   jobsOpen: { label: 'Open jobs', icon: Briefcase, to: '/admin/jobs', hint: 'Not finished or cancelled' },
   jobsUnassigned: { label: 'Unassigned jobs', short: 'jobs with nobody going', icon: AlertTriangle, to: '/admin/dispatch', tone: 'warn', hint: 'Nobody is going yet' },
-  outstandingAmount: { label: 'Outstanding', icon: Receipt, to: '/admin/invoices', money: true, soon: true, hint: 'Invoiced, not yet paid' },
-  outstandingInvoices: { label: 'Unpaid invoices', icon: Receipt, to: '/admin/invoices', soon: true, hint: 'Sent, partial or overdue' },
-  warrantiesActive: { label: 'Active warranties', icon: ShieldCheck, to: '/admin/warranties', soon: true, hint: 'Still in cover' },
-  amcRenewals: { label: 'AMC renewals due', icon: RefreshCw, to: '/admin/warranties', soon: true, hint: 'Ending within 60 days' },
+  // Phase I: the money cards open the finance screens (the balance, by age, in the aging report), the aftercare
+  // cards their lists — active warranties, and the contracts' renewals preset (the notification's own link).
+  outstandingAmount: { label: 'Outstanding', icon: Receipt, to: '/admin/finance/reports?report=aging', money: true, hint: 'Invoiced, not yet paid' },
+  outstandingInvoices: { label: 'Unpaid invoices', icon: Receipt, to: '/admin/invoices', hint: 'Sent, partial or overdue' },
+  warrantiesActive: { label: 'Active warranties', icon: ShieldCheck, to: '/admin/warranties?view=active', hint: 'Still in cover' },
+  amcRenewals: { label: 'AMC renewals due', icon: RefreshCw, to: '/admin/amc-contracts?view=renewals', hint: 'Ending within 60 days' },
   // Phase F: each opens its quotation queue.
   quotationsPendingApproval: { label: 'Quotations to approve', cell: 'To approve', short: 'quotations to approve', icon: FileCheck2, to: '/admin/quotations?stage=approval', tone: 'warn', hint: 'Waiting on a manager' },
   quotationsChangesRequested: { label: 'Customers asked for changes', cell: 'Changes asked', short: 'change requests', icon: MessageSquareWarning, to: '/admin/quotations?stage=changes_requested', tone: 'warn', hint: 'Revise and send again' },

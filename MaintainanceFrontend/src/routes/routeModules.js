@@ -46,7 +46,6 @@ export const ResetPasswordPage = route(() => import('@/pages/public/ResetPasswor
 export const DashboardPage = route(() => import('@/pages/admin/DashboardPage'));
 export const LeadsPage = route(() => import('@/pages/admin/LeadsPage'));
 export const SlaBoardPage = route(() => import('@/pages/admin/SlaBoardPage'));
-export const LostReportPage = route(() => import('@/pages/admin/LostReportPage'));
 export const LeadDetailPage = route(() => import('@/pages/admin/LeadDetailPage'));
 export const LeadBoardPage = route(() => import('@/pages/admin/LeadBoardPage/LeadBoardPage'));
 export const CustomersPage = route(() => import('@/pages/admin/CustomersPage'));
@@ -72,6 +71,20 @@ export const JobDetailPage = route(() => import('@/pages/admin/JobDetailPage/Job
 export const DispatchBoardPage = route(() => import('@/pages/admin/DispatchBoardPage/DispatchBoardPage'));
 export const StockPage = route(() => import('@/pages/admin/StockPage'));
 export const MessageTemplateEditPage = route(() => import('@/pages/admin/MessageTemplateEditPage/MessageTemplateEditPage'));
+// Finance and reports (Phase I)
+export const InvoicesPage = route(() => import('@/pages/admin/InvoicesPage'));
+export const InvoiceDetailPage = route(() => import('@/pages/admin/InvoiceDetailPage/InvoiceDetailPage'));
+export const InvoicePrintPage = route(() => import('@/pages/admin/InvoicePrintPage'));
+export const PaymentsPage = route(() => import('@/pages/admin/PaymentsPage'));
+export const FinanceReportsPage = route(() => import('@/pages/admin/FinanceReportsPage/FinanceReportsPage'));
+export const ReportsPage = route(() => import('@/pages/admin/ReportsPage/ReportsPage'));
+// Aftercare (Phase I)
+export const WarrantiesPage = route(() => import('@/pages/admin/WarrantiesPage'));
+export const WarrantyDetailPage = route(() => import('@/pages/admin/WarrantyDetailPage'));
+export const WarrantyClaimsPage = route(() => import('@/pages/admin/WarrantyClaimsPage'));
+export const AmcContractsPage = route(() => import('@/pages/admin/AmcContractsPage'));
+export const AmcContractDetailPage = route(() => import('@/pages/admin/AmcContractDetailPage'));
+export const ServiceRemindersPage = route(() => import('@/pages/admin/ServiceRemindersPage'));
 
 // Field app
 export const TechTodayPage = route(() => import('@/pages/tech/TechTodayPage'));
@@ -90,9 +103,11 @@ export const NotFoundPage = route(() => import('@/pages/NotFoundPage'));
 const GROUPS = {
   public: [ServicesPage, ProjectsPage, PricingPage, ContactPage, BookingPage, ServiceDetailPage, ProjectDetailPage, BlogPage],
   admin: [
-    LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, LostReportPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
+    LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
     HomeComposerPage, MediaLibraryPage, SettingsPage, UsersPage, AuditLogPage, MessageLogsPage,
     JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
+    InvoicesPage, InvoiceDetailPage, PaymentsPage, ReportsPage,
+    WarrantiesPage, WarrantyClaimsPage, AmcContractsPage,
   ],
   tech: [TechJobPage, TechHistoryPage, SurveyListPage, SurveyFormPage],
 };

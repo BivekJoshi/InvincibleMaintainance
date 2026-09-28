@@ -49,7 +49,7 @@ const LEAVE = {
  * select/enum, relation, date, datetime, slug, stringList, keyValue, media,
  * mediaList, weekdays, objectList, checklist, preview (a panel with no value), `group` for
  * sections, and the EditableGrid types (Phase L3): lineItems (a BOQ), grid, measurements and
- * recipe — and paymentSchedule (Phase L4). See `FieldRenderer.jsx`. A spec's `adapt(values)` makes it follow the values;
+ * recipe — and paymentSchedule (Phase L4), and photoUpload (Phase I: one photo to the form's own endpoint). See `FieldRenderer.jsx`. A spec's `adapt(values)` makes it follow the values;
  * `nullable: true` sends an emptied value as null; `hidden: true` keeps a field (and its value)
  * without showing it.
  *
@@ -75,6 +75,8 @@ const LEAVE = {
  *   change — a live preview beside the form. Pass a stable function (a state setter, or `useCallback`).
  * @param {(errors: object, helpers: { form: object }) => void} [props.onInvalid]  told the field errors when a
  *   save is refused before it is sent — a form split into panels shows the panel holding the first one.
+ * @param {string} [props.sheetClassName]               sheet mode: the panel's width (default `sm:max-w-xl`; a
+ *   form with a grid of lines — the manual invoice, Phase I — asks for more)
  */
 export function ResourceForm({
   schema,
@@ -98,6 +100,7 @@ export function ResourceForm({
   onDirtyChange,
   onValuesChange,
   onInvalid,
+  sheetClassName = 'sm:max-w-xl',
 }) {
   const formId = `form-${useId().replace(/[^\w-]/g, '')}`;
   const initial = useMemo(() => toFormValues(fields, defaultValues), [fields, defaultValues]);
@@ -212,7 +215,7 @@ export function ResourceForm({
       <>
         <Sheet open={open} onOpenChange={(next) => (next ? onOpenChange?.(true) : closeSheet())}>
           <SheetContent
-            className="flex w-full flex-col gap-0 p-0 sm:max-w-xl"
+            className={cn('flex w-full flex-col gap-0 p-0', sheetClassName)}
             {...(description ? {} : { 'aria-describedby': undefined })}
           >
             <SheetHeader className="border-b px-6 py-4 text-left">

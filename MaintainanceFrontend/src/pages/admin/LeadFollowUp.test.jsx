@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LeadsPage from '@/pages/admin/LeadsPage';
 import LeadDetailPage from '@/pages/admin/LeadDetailPage';
-import LostReportPage from '@/pages/admin/LostReportPage';
+import ReportsPage from '@/pages/admin/ReportsPage/ReportsPage';
 import { ActivityComposer } from '@/components/leads/ActivityComposer';
 import { NextActionCard } from '@/components/leads/NextActionCard';
 import { LostReasonDialog } from '@/components/leads/LostReasonDialog';
@@ -431,9 +431,12 @@ describe('the lost-lead report', () => {
     ],
   };
 
+  // Phase I10 folded the page into Reports › Sales reports (`?report=lost`); the old address still leads there.
   it('asks for a date range and shows categories, then category × stage × service', async () => {
     const calls = mockApi(({ path }) => (path === '/admin/reports/lost' ? json({ data: REPORT }) : undefined));
-    renderWithProviders(<LostReportPage />, { path: '/admin/reports/lost', preloadedState: signedInAs('SALES') });
+    renderWithProviders(<ReportsPage />, {
+      path: '/admin/reports/:group', initialPath: '/admin/reports/lost', preloadedState: signedInAs('SALES'),
+    });
 
     const summary = await screen.findByRole('list', { name: 'Lost leads by category' });
     expect(within(summary).getByText('Went with a competitor')).toBeInTheDocument();

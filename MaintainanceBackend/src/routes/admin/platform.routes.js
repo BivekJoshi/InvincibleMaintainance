@@ -21,8 +21,8 @@ import {
   messageTemplateListQuery, messageTemplateSchema,
 } from '../../shared/schemas/ops.js';
 import { auditLogQuery, loginActivityQuery, loginSummaryQuery } from '../../shared/schemas/audit.js';
-import { lostReportQuery } from '../../shared/schemas/crm.js';
 import { historyRoute } from './historyRoute.js';
+import { reportRoute } from './reportRoute.js';
 
 const router = Router();
 const adminOnly = authorize('ADMIN');
@@ -165,15 +165,14 @@ router.get('/message-logs', adminOnly, validate({ query: messageLogQuery }), asy
 router.post('/message-logs/:id/retry', adminOnly, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await messages.retryMessage(req.params.id))));
 
-// ── operational reports
-router.get('/reports/lead-sources', requires('reports:sales'), asyncHandler(async (req, res) => ok(res, await reports.leadSourceReport(req.query))));
-router.get('/reports/funnel', requires('reports:sales'), asyncHandler(async (req, res) => ok(res, await reports.conversionFunnel(req.query))));
-router.get('/reports/lost', requires('reports:sales'), validate({ query: lostReportQuery }),
-  asyncHandler(async (req, res) => ok(res, await reports.lostReport(req.validatedQuery))));
-router.get('/reports/sla', requires('reports:sales'), asyncHandler(async (req, res) => ok(res, await reports.slaComplianceReport(req.query))));
+// ── operational reports: JSON, or ?format=csv (routes/admin/reportRoute.js)
+router.get('/reports/lead-sources', ...reportRoute('lead-sources', 'reports:sales', (q) => reports.leadSourceReport(q)));
+router.get('/reports/funnel', ...reportRoute('funnel', 'reports:sales', (q) => reports.conversionFunnel(q)));
+router.get('/reports/lost', ...reportRoute('lost', 'reports:sales', (q) => reports.lostReport(q)));
+router.get('/reports/sla', ...reportRoute('sla', 'reports:sales', (q) => reports.slaComplianceReport(q)));
 // Cost and margin per job: costs:read (L-D4), not reports:ops.
-router.get('/reports/job-margin', requires('costs:read'), asyncHandler(async (req, res) => ok(res, await reports.jobMarginReport(req.query))));
-router.get('/reports/technicians', requires('reports:ops'), asyncHandler(async (req, res) => ok(res, await reports.technicianProductivity(req.query))));
-router.get('/reports/warranty-claims', requires('reports:ops'), asyncHandler(async (req, res) => ok(res, await reports.warrantyClaimReport(req.query))));
+router.get('/reports/job-margin', ...reportRoute('job-margin', 'costs:read', (q) => reports.jobMarginReport(q)));
+router.get('/reports/technicians', ...reportRoute('technicians', 'reports:ops', (q) => reports.technicianProductivity(q)));
+router.get('/reports/warranty-claims', ...reportRoute('warranty-claims', 'reports:ops', (q) => reports.warrantyClaimReport(q)));
 
 export default router;

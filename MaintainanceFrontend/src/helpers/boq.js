@@ -104,6 +104,8 @@ export function toBoqRows(items) {
       isProvisional: Boolean(item.isProvisional),
       ...(item.recipe ? { recipe: item.recipe } : {}),
       ...(item.code ? { code: item.code } : {}),
+      // An invoice line that bills a job keeps it (Phase I's `lineItems` invoice variant); a quotation row has none.
+      ...(item.jobId ? { jobId: item.jobId } : {}),
     };
   });
 }

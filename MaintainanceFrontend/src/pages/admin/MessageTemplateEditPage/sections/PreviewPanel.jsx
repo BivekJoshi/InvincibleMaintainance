@@ -10,7 +10,7 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { nestVars, placeholdersIn, sampleVarsFor } from '@/config/admin/messageKeys';
 import { toastSuccess } from '@/redux/slices/uiSlice';
 import { cn } from '@/helpers/utils';
-import { SmsCounter } from './SmsCounter';
+import { SmsCounter } from '@/components/common/SmsCounter';
 
 /**
  * What the message will look like, rendered by the API from the text being typed (not the
