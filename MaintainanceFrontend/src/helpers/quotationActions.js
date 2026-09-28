@@ -24,6 +24,9 @@ export const ACTION_LABELS = {
   convert: 'Convert to job',
 };
 
+/** A variation's convert (Phase L7): no new job — its rows join the job it changes. */
+export const VARIATION_CONVERT_LABEL = 'Add to the job';
+
 /** Statuses a revision starts from. */
 export const REVISABLE = ['SENT', 'CHANGES_REQUESTED', 'REJECTED', 'EXPIRED'];
 
@@ -78,8 +81,11 @@ export function quotationActions(quotation, { can, userId }) {
     case 'EXPIRED':
       return write ? [action('revise', { primary: true })] : [];
     case 'APPROVED':
-      // Only a quotation the customer approved before acceptance started creating the job.
-      return can('jobs:write') ? [action('convert', { primary: true })] : [];
+      // Only a quotation the customer approved before acceptance started creating the job. A variation's is adding its
+      // rows to the job (Phase L7).
+      return can('jobs:write')
+        ? [action('convert', { primary: true, ...(quotation.kind === 'VARIATION' ? { label: VARIATION_CONVERT_LABEL } : {}) })]
+        : [];
     default:
       return [];
   }
@@ -90,6 +96,13 @@ export function quotationActions(quotation, { can, userId }) {
  * @returns {string|null}
  */
 export function waitingFor(quotation, { can, userId }) {
+  // A variation order (Phase L7) ends on its job, not on a new one.
+  if (quotation?.kind === 'VARIATION') {
+    const job = quotation.job?.number ?? 'the job';
+    if (quotation.status === 'DRAFT') return `Variation to ${job} — add its rows (an omission is a negative quantity), then submit it for approval.`;
+    if (quotation.status === 'APPROVED') return `Accepted by the customer — add its rows to ${job}.`;
+    if (quotation.status === 'CONVERTED') return `Accepted — its rows are on ${job}.`;
+  }
   switch (quotation?.status) {
     case 'DRAFT':
       return 'Draft — edit the lines, then submit it for approval.';

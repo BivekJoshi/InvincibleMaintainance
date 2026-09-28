@@ -26,6 +26,10 @@ import { JobMaterialsTab } from './sections/JobMaterialsTab';
 import { JobTimeTab } from './sections/JobTimeTab';
 import { JobCostingTab } from './sections/JobCostingTab';
 import { JobEventsTab } from './sections/JobEventsTab';
+import { JobProgressTab } from './sections/JobProgressTab';
+import { JobPlannedActualTab } from './sections/JobPlannedActualTab';
+import { JobDiaryTab } from './sections/JobDiaryTab';
+import { JobVariationsTab } from './sections/JobVariationsTab';
 
 /**
  * One job: the actions its state allows, and the tabs — Overview · Plan · Checklist · Photos · Materials ·
@@ -36,6 +40,10 @@ import { JobEventsTab } from './sections/JobEventsTab';
  * Phase L6: the **Plan** tab is there only on a BOQ job (one with job lines from its accepted quotation); the
  * advance card sits above the tabs and the "Awaiting advance" chip in the header while the advance gate holds —
  * Schedule, Assign and the moves on stay on the bar, disabled with the reason (`helpers/jobActions`).
+ *
+ * Phase L7 — the weeks on site: **BOQ & progress** and **Materials / Labour** on a BOQ job, **Site diary** on any job
+ * but an inspection, and **Variations** on a quoted job (one from a quotation, or with lines). Each tab loads its own
+ * data only while it is open.
  */
 export default function JobDetailPage() {
   const { id } = useParams();
@@ -49,9 +57,14 @@ export default function JobDetailPage() {
   const canWrite = can('jobs:write');
   // A BOQ job: its accepted quotation's rows became job lines (Phase L6). Only such a job has a plan.
   const lineCount = job?.lines?.length ?? 0;
+  const onSite = job && job.type !== 'INSPECTION';
+  const quoted = lineCount > 0 || Boolean(job?.quotation);
   const tabs = [
     { value: 'overview', label: 'Overview' },
     ...(lineCount > 0 ? [{ value: 'plan', label: 'Plan' }] : []),
+    ...(lineCount > 0 ? [{ value: 'progress', label: 'BOQ & progress' }, { value: 'planned', label: 'Materials / Labour' }] : []),
+    ...(onSite ? [{ value: 'diary', label: 'Site diary' }] : []),
+    ...(quoted && onSite ? [{ value: 'variations', label: 'Variations' }] : []),
     { value: 'checklist', label: 'Checklist' },
     { value: 'photos', label: 'Photos' },
     { value: 'materials', label: 'Materials' },
@@ -118,6 +131,16 @@ export default function JobDetailPage() {
         <TabsContent value="overview"><JobOverviewTab job={job} can={can} /></TabsContent>
         {lineCount > 0 ? (
           <TabsContent value="plan">{tab === 'plan' ? <JobPlanTab job={job} /> : null}</TabsContent>
+        ) : null}
+        {lineCount > 0 ? (
+          <>
+            <TabsContent value="progress">{tab === 'progress' ? <JobProgressTab job={job} /> : null}</TabsContent>
+            <TabsContent value="planned">{tab === 'planned' ? <JobPlannedActualTab job={job} /> : null}</TabsContent>
+          </>
+        ) : null}
+        {onSite ? <TabsContent value="diary">{tab === 'diary' ? <JobDiaryTab job={job} /> : null}</TabsContent> : null}
+        {quoted && onSite ? (
+          <TabsContent value="variations">{tab === 'variations' ? <JobVariationsTab job={job} /> : null}</TabsContent>
         ) : null}
         <TabsContent value="checklist"><JobChecklistTab job={job} canWrite={canWrite} /></TabsContent>
         <TabsContent value="photos"><JobPhotosTab job={job} canWrite={canWrite} /></TabsContent>

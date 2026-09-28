@@ -30,6 +30,8 @@ export const E2E = {
     DISPATCHER: 'dispatch@gharjatan.com.np',
     SURVEYOR: 'survey@gharjatan.com.np',
     TECHNICIAN: 'hari@gharjatan.com.np',
+    // The second technician (Phase L7): the BOQ job is scheduled on him, so he files its site diary.
+    SURESH: 'suresh@gharjatan.com.np',
     ACCOUNTANT: 'accounts@gharjatan.com.np',
   },
   /** The API's environment. Values already set (a developer's .env, CI) are kept for the secrets only. */

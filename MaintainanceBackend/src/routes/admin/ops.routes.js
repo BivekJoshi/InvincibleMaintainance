@@ -7,6 +7,9 @@ import { ok, created, noContent } from '../../utils/response.js';
 import { idParam, toPartial } from '../../shared/schemas/common.js';
 import * as jobs from '../../services/job.service.js';
 import { convertQuotationToJob, jobPlan } from '../../services/handoff.service.js';
+import { jobProgress, overPlanWarnings, plannedVsActual } from '../../services/execution.service.js';
+import { officeDiary } from '../../services/diary.service.js';
+import * as purchases from '../../services/purchase.service.js';
 import * as materials from '../../services/material.service.js';
 import * as technicians from '../../services/technician.service.js';
 import * as s from '../../shared/schemas/ops.js';
@@ -45,6 +48,18 @@ router.get('/jobs/:id', readJobs, validate({ params: idParam }),
 // The Plan tab (Phase L6): the hand-off checklist — quantities only.
 router.get('/jobs/:id/plan', readJobs, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await jobPlan(req.params.id))));
+
+// ── execution (Phase L7): the diary, progress with earned value, planned vs actual, variations
+router.get('/jobs/:id/diary', readJobs, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await officeDiary(req.params.id))));
+router.get('/jobs/:id/progress', readJobs, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await jobProgress(req.params.id, { role: req.user.role }))));
+router.get('/jobs/:id/planned-vs-actual', readJobs, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await plannedVsActual(req.params.id))));
+router.get('/jobs/:id/variations', readJobs, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await jobs.jobVariations(req.params.id, { role: req.user.role }))));
+router.post('/jobs/:id/purchase-lists/from-shortfall', requires('materials:write'), validate({ params: idParam }),
+  asyncHandler(async (req, res) => created(res, await purchases.listFromShortfall(req.params.id, req.user.id))));
 
 // L-D3: go ahead before the advance is paid — a manager's call, with the reason, audited.
 router.post('/jobs/:id/advance-override', requires('jobs:advance-override'), validate({ params: idParam, body: s.advanceOverrideSchema }),
@@ -95,7 +110,12 @@ router.delete('/jobs/:id/photos/:photoId', writeJobs, validate({ params: s.jobPh
   asyncHandler(async (req, res) => { await jobs.deletePhoto(req.params.id, req.params.photoId); noContent(res); }));
 
 router.post('/jobs/:id/materials', writeJobs, validate({ params: idParam, body: s.jobMaterialSchema }),
-  asyncHandler(async (req, res) => created(res, await jobs.addMaterial(req.params.id, req.body, req.user.id))));
+  asyncHandler(async (req, res) => {
+    const line = await jobs.addMaterial(req.params.id, req.body, req.user.id);
+    // More than planned is a warning in meta, never a refusal (Phase L7).
+    const warnings = await overPlanWarnings(req.params.id, line.materialId);
+    created(res, line, warnings.length ? { warnings } : undefined);
+  }));
 router.delete('/jobs/:id/materials/:jobMaterialId', writeJobs, validate({ params: s.jobMaterialParams }),
   asyncHandler(async (req, res) => { await jobs.removeMaterial(req.params.id, req.params.jobMaterialId, req.user.id); noContent(res); }));
 
@@ -135,6 +155,19 @@ mountResource(router, 'material-categories', materials.materialCategories, s.mat
 // material trail stays materials:read — what a reader of the list sees is not its history.
 mountResource(router, 'materials', materials.materials, s.materialSchema, {
   capability: 'materials', readAlso: ['rates:write'], historyCapability: 'materials:read',
+});
+
+// ── purchase lists (Phase L7): a registry resource with its own moves — DRAFT → ORDERED → RECEIVED | CANCELLED
+mountResource(router, 'purchase-lists', purchases.purchaseLists, s.purchaseListSchema, {
+  capability: 'materials', query: s.purchaseListListQuery, toggle: false, reorder: false,
+  extra: (r, { write }) => {
+    r.post('/purchase-lists/:id/order', write, validate({ params: idParam }),
+      asyncHandler(async (req, res) => ok(res, await purchases.orderList(req.params.id))));
+    r.post('/purchase-lists/:id/receive', write, validate({ params: idParam, body: s.purchaseReceiveSchema }),
+      asyncHandler(async (req, res) => ok(res, await purchases.receiveList(req.params.id, req.body, req.user.id))));
+    r.post('/purchase-lists/:id/cancel', write, validate({ params: idParam, body: s.purchaseCancelSchema }),
+      asyncHandler(async (req, res) => ok(res, await purchases.cancelList(req.params.id, req.body))));
+  },
 });
 
 const readMat = requires('materials:read');

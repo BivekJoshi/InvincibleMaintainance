@@ -6,9 +6,9 @@ import { pastedBoqRows } from '@/components/common/EditableGrid/gridPaste';
 import { RateLibrarySearch } from '@/components/rateLibrary/RateLibrarySearch';
 import { UNITS } from '@/config/constants';
 import {
-  blankBoqRow, boqNumbers, duplicateBoqRow, isBlankBoqRow, newRowKey,
+  blankBoqRow, boqNumbers, duplicateBoqRow, isBlankBoqRow, newRowKey, signedQtyOf,
 } from '@/helpers/boq';
-import { formatNpr, formatRupees } from '@/helpers/format';
+import { formatRupees, formatSignedNpr as formatNpr } from '@/helpers/format';
 import { formatQty, isBlankMeasurement, measurementTotal } from '@/helpers/measurements';
 import { cn } from '@/helpers/utils';
 import { FormField } from '../FormField';
@@ -26,7 +26,15 @@ const makeRow = (kind) => blankBoqRow(kind === 'section' ? 'SECTION' : kind === 
 const pasteRows = (text) => pastedBoqRows(text).map((r) => ({ ...blankBoqRow(r.rowType), ...r, _key: newRowKey() }));
 const moneyCell = (v) => (typeof v === 'number' ? formatRupees(v) : v ?? '');
 const qtyCell = (v) => (typeof v === 'number' ? formatQty(v) : v ?? '');
-
+/** A variation's quantity (Phase L7): an omission is below zero, written "−12" on the destructive tone. */
+const signedQtyCell = (v) => (typeof v === 'number' && v < 0
+  ? <span className="text-destructive" title="Omission — taken off the job">−{formatQty(-v)}</span>
+  : qtyCell(v));
+/** Typed into a variation's Qty: "-12", "−12" or "- 12" is an omission; anything unreadable stays as typed, for the schema. */
+const parseSignedQty = (text) => {
+  const n = signedQtyOf(text);
+  return n === undefined ? '' : Number.isFinite(n) ? n : String(text ?? '').trim();
+};
 function Badge({ children, tone = 'muted' }) {
   return (
     <span className={cn(
@@ -39,8 +47,11 @@ function Badge({ children, tone = 'muted' }) {
   );
 }
 
-/** The BOQ's columns. Kept static: what varies per row comes through the row and its server figures (`meta`). */
-function boqColumns(openSheet) {
+/**
+ * The BOQ's columns. Kept static: what varies per row comes through the row and its server figures (`meta`). `signed`
+ * (a VARIATION, Phase L7): the Qty cell takes a quantity below zero — an omission.
+ */
+function boqColumns(openSheet, { signed = false } = {}) {
   return [
     {
       key: 'description', header: 'Description', grow: 3, minWidth: 240, editor: 'text', maxLength: 500, wrap: true,
@@ -62,6 +73,7 @@ function boqColumns(openSheet) {
     { key: 'unit', header: 'Unit', width: 84, editor: 'text', suggestions: UNITS, maxLength: 20, label: (_r, i) => `Unit, row ${i + 1}` },
     {
       key: 'qty', header: 'Qty', width: 104, editor: 'number', align: 'right', label: (_r, i) => `Quantity, row ${i + 1}`,
+      ...(signed ? { parse: parseSignedQty } : {}),
       editable: (row) => !hasSheet(row),
       onActivate: (row) => { if (hasSheet(row)) openSheet(row); },
       format: (value, row, { meta }) => (hasSheet(row) ? (
@@ -71,7 +83,7 @@ function boqColumns(openSheet) {
             {formatQty(meta?.netQty ?? measurementTotal(row.measurements))}
           </span>
         </span>
-      ) : qtyCell(value)),
+      ) : signed ? signedQtyCell(value) : qtyCell(value)),
     },
     { key: 'wastagePct', header: 'Waste %', width: 76, editor: 'number', align: 'right', label: (_r, i) => `Wastage %, row ${i + 1}`, format: qtyCell },
     { key: 'rate', header: 'Rate (Rs)', width: 118, editor: 'money', align: 'right', label: (_r, i) => `Rate, row ${i + 1}`, format: moneyCell },
@@ -137,6 +149,9 @@ const pasteInvoiceRows = (text) => pastedBoqRows(text)
  * `variant: 'invoice'` (Phase I) is an invoice's lines instead: description, unit, qty, rate and the server's amount
  * (`figures` by row key — the saved lines'; a changed line shows "—" until it is saved), items only, no library, no
  * drawers. A row's `jobId` rides along untouched.
+ *
+ * `signedQty: true` (Phase L7) is a variation's BOQ: its Qty cell takes a quantity below zero — an omission, written
+ * "−12" — and nothing else changes. Only a VARIATION may carry one (the schema and the API both refuse it elsewhere).
  */
 export function LineItemsField({ field, id }) {
   const { field: input, fieldState } = useController({ name: field.name });
@@ -154,9 +169,10 @@ export function LineItemsField({ field, id }) {
   const patchRow = (key, patch) => update(rows.map((r) => (r._key === key ? { ...r, ...patch } : r)));
 
   const invoice = field.variant === 'invoice';
+  const signed = Boolean(field.signedQty);
   const columns = useMemo(
-    () => (invoice ? INVOICE_COLUMNS : boqColumns((row) => setDrawer({ kind: 'measure', key: row._key }))),
-    [invoice],
+    () => (invoice ? INVOICE_COLUMNS : boqColumns((row) => setDrawer({ kind: 'measure', key: row._key }), { signed })),
+    [invoice, signed],
   );
   const error = fieldState.error;
   const listError = error?.message ?? error?.root?.message;

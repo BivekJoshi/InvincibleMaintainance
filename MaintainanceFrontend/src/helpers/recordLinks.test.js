@@ -43,4 +43,12 @@ describe('recordHref', () => {
     expect(recordHref({ model: 'InvoiceItem', recordId: 'it1', before: { invoiceId: 'i2' } })).toBe('/admin/invoices/i2');
     expect(recordHref({ model: 'Expense', recordId: 'ex1' })).toBe('/admin/expenses/ex1');
   });
+
+  it('links a purchase list and its items, and a site diary day to its job’s diary (Phase L7)', () => {
+    expect(recordHref({ model: 'PurchaseList', recordId: 'pl1' })).toBe('/admin/purchase-lists/pl1');
+    expect(recordHref({ model: 'PurchaseListItem', recordId: 'it1', after: { listId: 'pl1' } })).toBe('/admin/purchase-lists/pl1');
+    expect(recordHref({ model: 'SiteDiary', recordId: 'd1', meta: { jobId: 'j9', day: '2026-09-28' } })).toBe('/admin/jobs/j9?tab=diary');
+    expect(recordHref({ model: 'SiteDiary', recordId: 'd1', after: { jobId: 'j9' } })).toBe('/admin/jobs/j9?tab=diary');
+    expect(recordHref({ model: 'SiteDiary', recordId: 'd1' })).toBeNull();
+  });
 });

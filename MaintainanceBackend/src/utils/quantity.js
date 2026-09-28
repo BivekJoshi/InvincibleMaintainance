@@ -51,5 +51,8 @@ export function takeOff(recipe, qty) {
 /** A sum of quantities, rounded to 3 dp once (a take-off adding up the same material across rows). */
 export const sumQty = (values) => q3(values.reduce((a, v) => a + Number(v || 0), 0));
 
+/** `a − b`, rounded to 3 dp once — issued against planned (Phase L7). */
+export const diffQty = (a, b) => q3(Number(a || 0) - Number(b || 0));
+
 /** What is still to buy: the need less what is in stock, never below zero. */
 export const shortfall = (need, onHand) => q3(Math.max(0, Number(need || 0) - Number(onHand || 0)));

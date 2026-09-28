@@ -79,3 +79,5 @@ export const selectNotesOpen = (s) => s.ui.notesOpen;
 
 export const toastSuccess = (title, description) => pushToast({ title, description, variant: 'success' });
 export const toastError = (title, description) => pushToast({ title, description, variant: 'destructive' });
+/** Something done that someone should look at — a warning never undoes anything (Phase L7: a material over the plan). */
+export const toastWarning = (title, description) => pushToast({ title, description, variant: 'warning' });

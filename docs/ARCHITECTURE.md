@@ -92,6 +92,7 @@ Quotation DRAFT → PENDING_APPROVAL → OFFICE_APPROVED → SENT → APPROVED �
 Job       DRAFT → SCHEDULED → ASSIGNED → EN_ROUTE → IN_PROGRESS ⇄ ON_HOLD
                 → COMPLETED → VERIFIED ;  any → CANCELLED
 Invoice   DRAFT → SENT → PARTIAL → PAID ;  SENT|PARTIAL → OVERDUE ;  any → VOID
+Purchase  DRAFT → ORDERED → RECEIVED ;  DRAFT|ORDERED → CANCELLED   (list; Phase L7 — RECEIVED writes PURCHASE stock)
           voiding a payment walks it back:  PAID → PARTIAL | SENT | OVERDUE ;  PARTIAL → SENT
 ```
 
@@ -137,6 +138,14 @@ customer is asked for the advance (`advance_due`, SMS in their language and emai
 `changeStatus` (every move but CANCELLED and ON_HOLD) and `completeJob`: while the job's advance invoice is neither
 PAID nor VOID, there is no override and `job.advanceGate` is on, it answers 422 `ADVANCE_UNPAID`. A MANAGER or
 ADMIN may override with a reason (`job.advance_overridden`). Paying the advance in full tells the dispatchers.
+
+**Variations (Phase L7).** A variation order is a quotation of kind VARIATION against a job, so it travels the
+quotation machine unchanged — DRAFT → PENDING_APPROVAL → OFFICE_APPROVED → SENT → APPROVED → CONVERTED, with the
+maker-checker, the margin gate and the customer's link. Only it may carry negative rows (omissions; `lineAmount`
+and `documentTotals` round negatives away from zero, and a net-negative total takes no discount and never
+auto-approves). Accepting it runs `handoff.service.js#applyVariation` in the accept transaction instead of the
+hand-off: its rows join the job as VARIATION lines and its take-off as VARIATION requirements, APPROVED →
+CONVERTED guarded — no new job, no lead, no advance.
 
 **Billing a job billed in stages.** `invoice.service.js#createFromJob` on a quoted job that has stage bills (the
 advance; running bills from L8) makes a FINAL invoice: the quotation's lines less one line per stage bill, with the
@@ -211,6 +220,15 @@ As built in Phase H2 (2026-09-27):
   pending count with "Sync now". The queue belongs to the device, not the user — a follow-up is to scope it per
   signed-in user.
 - Conflicts on scalar fields resolve last-write-wins, with every attempt recorded in `JobStatusEvent`.
+
+The site diary, as built in Phase L7 (2026-09-28): one entry per job per Kathmandu day, saved through the queue as
+`diary_save` — `{ jobId, payload: { day, …the whole entry } }`, a full replace keyed on job + day, so a replay or a
+second save of the same day lands on one row (`SiteDiary @@unique([jobId, day])`); the phone supersedes a waiting
+save for the same day. Its photos are the job's DURING uploads, named in the queue entry's `meta.photoUploadIds` (never sent); the
+engine holds the day until each is up, then sends it with `photoMediaIds` (a refused photo is left out). A diary day
+is its own record in the queue (`diary:<jobId>:<day>`), so a held day never holds the job's status changes, ticks or
+materials. Each line's progress is the latest day's that mentions it, so a
+late entry for an older day never rolls progress back.
 
 The survey stepper, as built in Phase L5 (2026-09-27):
 - **Every write is a `survey_draft`**, online or not — a full replace of the survey's fields, its readings

@@ -116,6 +116,16 @@ const numberOf = (v) => {
   const cleaned = String(v).replace(/,/g, '').trim();
   return /^(\d+\.?\d*|\.\d+)$/.test(cleaned) ? Number(cleaned) : Number.NaN;
 };
+/**
+ * A quantity that may be below zero (Phase L7: a variation's omission, `-12` or `−12`) → a number; blank → undefined;
+ * unreadable → NaN. Whether a negative is allowed is the schema's to say — only a VARIATION may carry one.
+ */
+export function signedQtyOf(v) {
+  if (typeof v === 'number') return v;
+  if (blank(v)) return undefined;
+  const cleaned = String(v).trim().replace(/,/g, '').replace(/^[-−–]\s*/, '-');
+  return /^-?(\d+\.?\d*|\.\d+)$/.test(cleaned) ? Number(cleaned) : Number.NaN;
+}
 /** A rate as typed (`1,250.50`, `Rs. 95`) → rupees; blank → undefined; unreadable → NaN. */
 export const rateOf = (v) => (typeof v === 'number' ? v : blank(v) ? undefined : (parseRupees(v) ?? Number.NaN));
 export const qtyOf = numberOf;
@@ -140,7 +150,7 @@ export function boqRowBody(row) {
     ...(row.rateCardItemId ? { rateCardItemId: row.rateCardItemId } : {}),
     ...(row.materialId ? { materialId: row.materialId } : {}),
     ...(unit ? { unit } : {}),
-    ...(measurements.length ? { measurements } : { qty: numberOf(row.qty) }),
+    ...(measurements.length ? { measurements } : { qty: signedQtyOf(row.qty) }),
     ...(wastagePct !== undefined ? { wastagePct } : {}),
     rate: rateOf(row.rate),
     isOptional: Boolean(row.isOptional),
@@ -152,15 +162,16 @@ const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 
 /**
  * Whether a row can be priced as it stands — the rows a live preview sends. A section or note needs its text;
- * an item its description, a readable rate and a quantity (typed, or a sheet with a value).
+ * an item its description, a readable rate and a quantity (typed, or a sheet with a value). `signed` (a VARIATION,
+ * Phase L7): a quantity below zero — an omission — can be priced too; zero never.
  */
-export function isPreviewable(body) {
+export function isPreviewable(body, { signed = false } = {}) {
   if (!body.description) return false;
   if (body.rowType !== 'ITEM') return true;
   if (!finite(body.rate) || body.rate < 0) return false;
   if (body.wastagePct !== undefined && !(finite(body.wastagePct) && body.wastagePct >= 0 && body.wastagePct <= 100)) return false;
   if (body.measurements) return body.measurements.every((m) => ['nos', 'l', 'b', 'h'].every((k) => m[k] === undefined || finite(m[k])));
-  return finite(body.qty) && body.qty > 0;
+  return finite(body.qty) && (signed ? body.qty !== 0 : body.qty > 0);
 }
 
 /**
@@ -169,18 +180,20 @@ export function isPreviewable(body) {
  * counts them. Rupees in, the server's paisa out.
  *
  * @param {{ items?: object[], discount?: number, vatApplied?: boolean }} values
- * @param {{ quotationId?: string }} [opts]
+ * @param {{ quotationId?: string, kind?: 'QUOTATION'|'VARIATION' }} [opts]  a VARIATION's rows may be negative (its
+ *   omissions, Phase L7) and it has no payment schedule; the body says its kind
  * @returns {{ body: object, keys: string[], skipped: number, stagesSent: boolean }}  `stagesSent`: the body carries
  *   the payment schedule (only a whole one is sent), so the answer's `paymentStages` are the ones on screen
  */
-export function previewRequest(values = {}, { quotationId } = {}) {
+export function previewRequest(values = {}, { quotationId, kind } = {}) {
+  const variation = kind === 'VARIATION';
   const keys = [];
   const items = [];
   let skipped = 0;
   for (const row of values.items ?? []) {
     if (isBlankBoqRow(row)) continue;
     const body = boqRowBody(row);
-    if (!isPreviewable(body)) {
+    if (!isPreviewable(body, { signed: variation })) {
       skipped += 1;
       continue;
     }
@@ -189,10 +202,11 @@ export function previewRequest(values = {}, { quotationId } = {}) {
   }
   const discount = rateOf(values.discount);
   // Phase L4: a whole payment schedule rides along, so the server answers each stage's amount for these totals.
-  const paymentStages = Array.isArray(values.paymentStages) ? validScheduleBody(values.paymentStages) : null;
+  const paymentStages = !variation && Array.isArray(values.paymentStages) ? validScheduleBody(values.paymentStages) : null;
   return {
     body: {
       ...(quotationId ? { quotationId } : {}),
+      ...(variation ? { kind: 'VARIATION' } : {}),
       items,
       ...(finite(discount) ? { discount } : {}),
       vatApplied: values.vatApplied !== false,

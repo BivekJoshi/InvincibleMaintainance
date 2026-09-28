@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ExternalLink, Trash2 } from 'lucide-react';
+import { ExternalLink, Lock, Trash2 } from 'lucide-react';
 import {
   useCreateResourceMutation, useDeleteResourceMutation, useGetResourceQuery, useUpdateResourceMutation,
 } from '@/api/cmsApi';
@@ -23,6 +23,9 @@ import { PageTransition } from '@/three/motion/motionKit';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import NotFoundPage from '@/pages/NotFoundPage';
 
+/** An entry without moves of its own: no actions, no dialogs. */
+const noRecordActions = () => [() => [], null];
+
 /** Field specs with `lockedOnEdit` fields disabled, groups included. */
 const lockFields = (fields) => fields.map((f) => (f.type === 'group'
   ? { ...f, fields: lockFields(f.fields) }
@@ -43,6 +46,10 @@ const visibleFields = (fields, can) => fields
  * `intro(record)` shows read-only facts above the form. Every
  * saved record has a History tab (its audit trail) for a role holding the entry's history capability.
  *
+ * Phase L7: an entry's `useRecordActions` puts the moves the record's state allows in the header (a purchase list's
+ * Mark ordered · Receive · Cancel — a disabled one says why), `readOnlyReason(record)` makes the form read only with
+ * the reason above it (a list past its draft), and `deletable(record)` keeps Delete off a record that cannot go.
+ *
  * @param {{ resource?: string }} props  set by a fixed route (see `useResourceEntry`)
  */
 export default function ResourceEditPage({ resource }) {
@@ -60,6 +67,9 @@ function ResourceEditor({ entry, canWrite }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [confirm, confirmDialog] = useConfirm();
+  // The entry is fixed for this component (the page keys it by resource), so the hook is always the same one.
+  const useRecordActions = entry.useRecordActions ?? noRecordActions;
+  const [recordActionsFor, recordDialogs] = useRecordActions();
   // While a delete is on its way the record is shown from a snapshot and its query is stopped: the delete
   // invalidates the record's tag, and a still-subscribed query would refetch a row that now answers 404.
   const [deletedSnapshot, setDeletedSnapshot] = useState(null);
@@ -116,6 +126,9 @@ function ResourceEditor({ entry, canWrite }) {
 
   const publicHref = record ? entry.publicHref?.(record) : null;
   const title = isNew ? `New ${label}` : record ? entry.titleOf(record) : label;
+  const lockReason = !isNew && record ? entry.readOnlyReason?.(record) ?? null : null;
+  const moves = !isNew && record && !deletedSnapshot ? recordActionsFor(record) : [];
+  const deletable = !record || !entry.deletable || entry.deletable(record);
 
   let body;
   if (readOnlyNew) {
@@ -134,7 +147,7 @@ function ResourceEditor({ entry, canWrite }) {
         defaultValues={isNew ? entry.defaultValues : record}
         onSubmit={onSubmit}
         submitLabel={isNew ? `Create ${label}` : 'Save changes'}
-        readOnly={!canWrite}
+        readOnly={!canWrite || Boolean(lockReason)}
         onCancel={() => navigate(listHref)}
         className={translatableFields.length || entry.tabs?.length ? 'pt-4' : undefined}
       />
@@ -172,7 +185,23 @@ function ResourceEditor({ entry, canWrite }) {
                 <a href={publicHref} target="_blank" rel="noopener noreferrer"><ExternalLink aria-hidden /> View on site</a>
               </Button>
             ) : null}
-            {canWrite ? (
+            {moves.map((a) => {
+              const Icon = a.icon;
+              return (
+                <Button
+                  key={a.key}
+                  type="button"
+                  variant={a.primary ? 'default' : 'outline'}
+                  disabled={Boolean(a.disabledReason)}
+                  title={a.disabledReason}
+                  onClick={a.onSelect}
+                  className={a.destructive ? 'text-destructive hover:text-destructive' : undefined}
+                >
+                  {Icon ? <Icon aria-hidden /> : null} {a.label}
+                </Button>
+              );
+            })}
+            {canWrite && deletable ? (
               <Button type="button" variant="outline" onClick={onDelete} loading={deleting} className="text-destructive hover:text-destructive">
                 <Trash2 aria-hidden /> Delete
               </Button>
@@ -180,7 +209,18 @@ function ResourceEditor({ entry, canWrite }) {
           </>
         ) : null}
       />
+      {moves.some((a) => a.disabledReason) ? (
+        <p className="mb-3 max-w-3xl text-sm text-muted-foreground">
+          {moves.filter((a) => a.disabledReason).map((a) => `${a.label}: ${a.disabledReason}`).join(' ')}
+        </p>
+      ) : null}
+      {lockReason ? (
+        <p className="mb-3 flex max-w-3xl items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground" data-testid="record-lock">
+          <Lock className="h-4 w-4 shrink-0" aria-hidden /> {lockReason}
+        </p>
+      ) : null}
       <div className="max-w-3xl rounded-xl border bg-background p-4 sm:p-6">{body}</div>
+      {recordDialogs}
       {confirmDialog}
     </PageTransition>
   );

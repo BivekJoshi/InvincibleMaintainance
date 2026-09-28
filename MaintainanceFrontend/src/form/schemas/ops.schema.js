@@ -86,3 +86,71 @@ export const stockMovementSchema = z.object({
 }).refine((v) => v.type === 'ADJUSTMENT' || v.qty > 0, {
   message: 'Enter how much — only an adjustment can be negative', path: ['qty'],
 });
+
+// ── purchase lists (Phase L7) — mirrors `purchaseListSchema`, `purchaseReceiveSchema` and `purchaseCancelSchema`
+
+const blankText = (v) => v === undefined || v === null || String(v).trim() === '';
+/** A number as a grid cell holds it (a number, or the text typed) → a number; blank → undefined; unreadable → NaN. */
+const gridNumber = (v) => {
+  if (typeof v === 'number') return v;
+  if (blankText(v)) return undefined;
+  const cleaned = String(v).replace(/,/g, '').trim();
+  return /^-?(\d+\.?\d*|\.\d+)$/.test(cleaned) ? Number(cleaned) : Number.NaN;
+};
+/** An item row the list's grid added and left empty. */
+export const isBlankPurchaseItem = (row) => !row?.materialId && blankText(row?.qty) && blankText(row?.packs) && blankText(row?.note);
+
+/**
+ * One item as the grid edits it (the API's row: `material`, `receivedQty`, `id` ride along) → the request's
+ * `{ materialId, qty, packs?, note? }`. The quantity is in the material's own unit; packs are the whole packs it is
+ * bought in, when it has a pack.
+ */
+export const purchaseListItemSchema = z.object({
+  materialId: z.string({ required_error: 'Choose the material', invalid_type_error: 'Choose the material' }).min(1, 'Choose the material'),
+  qty: z.preprocess(gridNumber, z.number({ required_error: 'Enter how much', invalid_type_error: 'Enter a number' })
+    .positive('More than 0').max(1_000_000, 'Too large')),
+  packs: z.preprocess(gridNumber, z.number({ invalid_type_error: 'Enter a whole number' })
+    .int('Whole packs').min(0, 'Cannot be negative').max(1_000_000).nullable().optional()),
+  note: z.string().trim().max(300, 'At most 300 characters').nullable().optional(),
+}).passthrough().transform(({ materialId, qty, packs, note }) => ({
+  materialId, qty, ...(packs != null ? { packs } : {}), ...(note ? { note } : {}),
+}));
+
+export const purchaseListSchema = z.object({
+  jobId: optionalId,
+  supplierId: optionalId,
+  note: optionalText,
+  items: z.preprocess(
+    (rows) => (Array.isArray(rows) ? rows.filter((r) => !isBlankPurchaseItem(r)) : rows),
+    z.array(purchaseListItemSchema).min(1, 'Add at least one material').max(200, 'At most 200 items'),
+  ),
+});
+
+/** Receiving (`POST …/receive`): each item's quantity received — as ordered unless changed; 0 for one that never came. */
+export const purchaseReceiveSchema = z.object({
+  items: z.array(z.object({
+    itemId: z.string().min(1),
+    receivedQty: z.preprocess(gridNumber, z.number({ required_error: 'How much came?', invalid_type_error: 'Enter a number' })
+      .min(0, 'Cannot be negative').max(1_000_000, 'Too large')),
+  }).passthrough().transform(({ itemId, receivedQty }) => ({ itemId, receivedQty }))).max(200),
+});
+
+/** The Receive dialog's field for one item — `received_<itemId>`. */
+export const receivedFieldName = (itemId) => `received_${itemId}`;
+
+/**
+ * The Receive dialog's form: one quantity per item (as ordered to start with; 0 for one that never came) →
+ * `{ items: [{ itemId, receivedQty }] }`, `purchaseReceiveSchema`'s body.
+ * @param {{ id: string }[]} items  the list's items
+ */
+export function purchaseReceiveFormSchema(items = []) {
+  const quantity = z.preprocess(gridNumber, z.number({ required_error: 'How much came? 0 if none', invalid_type_error: 'Enter a number' })
+    .min(0, 'Cannot be negative').max(1_000_000, 'Too large'));
+  return z.object(Object.fromEntries(items.map((i) => [receivedFieldName(i.id), quantity])))
+    .transform((values) => ({ items: items.map((i) => ({ itemId: i.id, receivedQty: values[receivedFieldName(i.id)] })) }));
+}
+
+/** Cancelling a list: why (3–500 characters). */
+export const purchaseCancelSchema = z.object({
+  reason: z.string().trim().min(3, 'Say why it is cancelled').max(500, 'At most 500 characters'),
+});

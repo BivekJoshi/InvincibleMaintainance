@@ -97,6 +97,8 @@ export const SETTINGS = [
   { group: 'finance', key: 'finance.bankAccount', label: 'Bank account for advances (shown to the customer)', type: 'string', sortOrder: 17,
     value: 'Nabil Bank, Baneshwor · A/C 0101017500123 · Ghar Jatan Pvt. Ltd.',
     hint: 'Bank, branch, account number and account name, as the customer should type them. Leave empty to leave it out.' },
+  { group: 'finance', key: 'job.workdayHours', label: 'Working hours in a site day', type: 'number', value: 8, sortOrder: 19,
+    hint: 'Turns the site diary\'s headcount into labour days: a day that lost 4 of 8 hours counts half (Phase L7).' },
   { group: 'finance', key: 'finance.fonepayNumber', label: 'Fonepay number for advances', type: 'string', sortOrder: 18, value: '9801234567',
     hint: 'The number or merchant ID a customer pays by Fonepay QR. Leave empty to leave it out.' },
   { group: 'finance', key: 'finance.invoiceTerms', label: 'Default invoice terms', type: 'richtext', sortOrder: 4,

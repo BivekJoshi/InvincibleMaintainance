@@ -1040,6 +1040,80 @@ async function main() {
       + `${ready.job.number}'s advance is paid — ready to schedule`);
   }
 
+  // ═══ execution demo (Phase L7): the hand-off demo's paid job, on site — three diary days (one lost to rain),
+  //     progress on its lines, an over-plan issue, a purchase list ORDERED and an accepted variation with an
+  //     omission. Guarded on the job having a diary.
+
+  const running = await prisma.job.findFirst({
+    where: { customer: { phone: '9841910002' }, deletedAt: null },
+    include: { lines: { orderBy: { sortOrder: 'asc' } }, requirements: true, diaries: { select: { id: true } } },
+  });
+  if (running && !running.diaries.length) {
+    const jobs = await import('../src/services/job.service.js');
+    const { saveDiary } = await import('../src/services/diary.service.js');
+    const { purchaseLists, orderList } = await import('../src/services/purchase.service.js');
+    const { createQuotation, acceptQuotation } = await import('../src/services/quotation.service.js');
+    const { local: ktm } = await import('../src/utils/dates.js');
+    const hari = await prisma.technician.findFirst({ where: { user: { email: 'hari@gharjatan.com.np' } } });
+    await jobs.scheduleJob(running.id, { scheduledStart: days(-2), technicianIds: [hari.id], notifyCustomer: false }, users.DISPATCHER.id);
+    await jobs.changeStatus(running.id, { status: 'EN_ROUTE' }, hari.userId);
+    await jobs.changeStatus(running.id, { status: 'IN_PROGRESS' }, hari.userId);
+
+    const trades = await prisma.trade.findMany({ where: { deletedAt: null }, orderBy: { sortOrder: 'asc' }, take: 2 });
+    const cement = await prisma.material.findUnique({ where: { code: 'CEM-OPC' } });
+    const day = (n) => ktm(days(-n), 'YYYY-MM-DD');
+    const [l1, l2, l3] = running.lines;
+    const crew = (a, b) => trades.map((t, i) => ({ tradeId: t.id, count: i ? b : a }));
+    await saveDiary(running.id, day(2), {
+      weather: 'SUNNY', headcount: crew(2, 3), progress: [{ jobLineId: l1.id, progressPct: 30 }], photoMediaIds: [],
+      received: [{ materialId: cement.id, description: cement.name, qty: 20, unit: cement.unit, challanNo: 'CH-2083-118' }],
+      issues: 'Chipped the north wall to 1 m; salt deeper than the survey said.', lostHours: 0,
+    }, hari.userId);
+    await saveDiary(running.id, day(1), {
+      weather: 'HEAVY_RAIN', headcount: crew(2, 1), progress: [{ jobLineId: l1.id, progressPct: 45 }], photoMediaIds: [], received: [],
+      issues: 'Heavy rain from 11 am; plaster could not cure outside.', lostHours: 5, lostReason: 'RAIN',
+    }, hari.userId);
+    await saveDiary(running.id, day(0), {
+      weather: 'CLOUDY', headcount: crew(3, 3),
+      progress: [{ jobLineId: l1.id, progressPct: 80 }, ...(l2 ? [{ jobLineId: l2.id, progressPct: 25 }] : []), ...(l3 ? [{ jobLineId: l3.id, progressPct: 10 }] : [])],
+      photoMediaIds: [], received: [], lostHours: 0,
+    }, hari.userId);
+
+    // More cement than the plan: the office sees OVER_PLAN.
+    const cementPlan = running.requirements.filter((r) => r.materialId === cement.id).reduce((a, r) => a + r.qty, 0);
+    await jobs.addMaterial(running.id, { materialId: cement.id, qty: Math.ceil(cementPlan) + 3, isBillable: false }, users.DISPATCHER.id);
+
+    // A purchase list for what is still short, ordered from the first supplier.
+    const supplier = await prisma.supplier.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } });
+    const shortItems = running.requirements.filter((r) => r.kind === 'MATERIAL' && r.materialId !== cement.id).slice(0, 2)
+      .map((r) => ({ materialId: r.materialId, qty: Math.ceil(r.qty), packs: r.packs ?? null }));
+    if (shortItems.length) {
+      const list = await purchaseLists.create({ jobId: running.id, supplierId: supplier?.id ?? null, note: 'For the second week', items: shortItems }, { userId: users.DISPATCHER.id });
+      await orderList(list.id);
+    }
+
+    // The customer asked for the store room too and dropped the plaster on one wall: a variation, accepted.
+    const [plaster, damp] = await Promise.all(['PLASTER-INT', 'SEEP-CHEM'].map((code) => prisma.rateCardItem.findUnique({ where: { code } })));
+    const rupees = (paisa) => paisa / 100;
+    const vo = await createQuotation({
+      jobId: running.id,
+      items: [
+        { rowType: 'SECTION', description: 'Store room' },
+        { rateCardItemId: damp.id, kind: 'SERVICE', description: 'Damp treatment, store room wall', unit: damp.unit, rate: rupees(damp.rate), qty: 40 },
+        { rateCardItemId: plaster.id, kind: 'SERVICE', description: 'Omit: plaster on the east wall (kept as is)', unit: plaster.unit, rate: rupees(plaster.rate), qty: -60 },
+      ],
+    }, users.SALES.id);
+    await prisma.quotation.update({
+      where: { id: vo.id },
+      data: {
+        status: 'SENT', submittedAt: days(-1), submittedById: users.SALES.id, approvedById: users.MANAGER.id, approvedAt: days(-1),
+        sentAt: days(-1), publicToken: token(), validUntil: days(10),
+      },
+    });
+    await acceptQuotation(vo.id, { ip: '127.0.0.1', userAgent: 'seed' });
+    console.log(`  execution demo: ${running.number} on site — 3 diary days (1 rain), over-plan cement, a purchase list ordered, variation ${vo.number} accepted`);
+  }
+
   // ═══ finance & aftercare demo (Phase I): receivables in every aging bucket, a paid invoice with a voided
   //     payment struck through, a draft and a void one, expenses on a job, an open warranty claim for the queue,
   //     an AMC contract due for renewal and a reminder the provider refused. Guarded on its own marker customer.

@@ -9,9 +9,13 @@ export const toRupees = (paisa) => Number(paisa || 0) / 100;
 /** Round half-up to the nearest paisa. */
 const r = (n) => Math.round(n + Number.EPSILON);
 
-/** qty may be fractional (e.g. 12.5 sq.ft); rate is paisa per unit. */
+/**
+ * qty may be fractional (e.g. 12.5 sq.ft); rate is paisa per unit. A variation's omission has a negative qty
+ * (Phase L7): rounded half away from zero, so −12.5 paisa is −13 as 12.5 is 13.
+ */
 export function lineAmount(qty, ratePaisa) {
-  return r(Number(qty || 0) * Number(ratePaisa || 0));
+  const n = Number(qty || 0) * Number(ratePaisa || 0);
+  return (Math.sign(n) * r(Math.abs(n))) || 0;
 }
 
 /**
@@ -23,9 +27,12 @@ export function lineAmount(qty, ratePaisa) {
 export function documentTotals(items, { discount = 0, vatApplied = true, vatRate = 13 } = {}) {
   const lines = items.map((i) => ({ ...i, amount: lineAmount(i.qty, i.rate) }));
   const subtotal = lines.reduce((sum, l) => sum + l.amount, 0);
-  const safeDiscount = Math.min(Math.max(0, r(discount)), subtotal);
+  // A net-negative document (a variation that omits more than it adds, Phase L7) takes no discount, and its
+  // VAT is a negative figure rounded like a positive one.
+  const safeDiscount = subtotal > 0 ? Math.min(Math.max(0, r(discount)), subtotal) : 0;
   const taxable = subtotal - safeDiscount;
-  const vatAmount = vatApplied ? r((taxable * vatRate) / 100) : 0;
+  const raw = (taxable * vatRate) / 100;
+  const vatAmount = vatApplied ? ((Math.sign(raw) * r(Math.abs(raw))) || 0) : 0;
   return { lines, subtotal, discount: safeDiscount, vatApplied, vatRate, vatAmount, total: taxable + vatAmount };
 }
 
@@ -37,6 +44,9 @@ export function formatNpr(paisa, { withSymbol = true } = {}) {
 
 /** Sums a list of paisa amounts safely. */
 export const sum = (nums) => nums.reduce((a, b) => a + Number(b || 0), 0);
+
+/** `part` as a percentage of `whole`, to one decimal — earned value against the job's value (Phase L7). */
+export const pctOf = (part, whole) => (whole ? Math.round((Number(part) * 1000) / Number(whole)) / 10 : 0);
 
 /** What is still owed on a document: total less paid, never below zero (an overpayment is refused upstream). */
 export const outstanding = (total, paid) => Math.max(0, Number(total || 0) - Number(paid || 0));

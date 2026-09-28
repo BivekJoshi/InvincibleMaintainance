@@ -24,6 +24,7 @@ import { materialCategories } from './resources/materialCategories';
 import { suppliers } from './resources/suppliers';
 import { inspectionTemplates } from './resources/inspectionTemplates';
 import { expenses } from './resources/expenses';
+import { purchaseLists } from './resources/purchaseLists';
 
 /**
  * Every registry resource — the CMS, the rate library and its trades (Phase L2), the terms library (Phase L4), the inspection
@@ -82,6 +83,14 @@ import { expenses } from './resources/expenses';
  *                                    API mounts no toggle (expenses, Phase I)
  * @property {(meta: object, ctx: { inTrash: boolean }) => import('react').ReactNode} [footer]  under the list: the
  *                                    server's figures for it (the expenses' `meta.totals.total`)
+ * @property {() => [(record: object) => RecordAction[], import('react').ReactNode]} [useRecordActions]  a hook: the
+ *                                    moves a record's state allows (a purchase list's Mark ordered · Receive · Cancel,
+ *                                    Phase L7) and the dialogs they open. The list offers them in a row's menu, the edit
+ *                                    page as buttons in its header (a disabled one says why)
+ * @property {(record: object) => string|null} [readOnlyReason]  why a saved record's form is read only in its state
+ *                                    (a purchase list past DRAFT) — the page says so; null when it can be edited
+ * @property {(record: object) => boolean} [deletable]  whether Delete is offered for a record (only a draft purchase
+ *                                    list); default every record
  *
  * Field specs may also say `lockedOnEdit: true`: editable on a new record, read-only once saved
  * (a content block's key, which the site looks blocks up by), and `capability`: shown only to a user
@@ -96,6 +105,15 @@ import { expenses } from './resources/expenses';
  * @property {string} endpoint       a `cmsApi` mutation, e.g. 'approveTestimonial'
  * @property {object} arg            its argument
  * @property {string} done           the success toast
+ *
+ * @typedef {object} RecordAction
+ * @property {string} key
+ * @property {string} label
+ * @property {import('react').ElementType} [icon]
+ * @property {boolean} [primary]     the move the record waits for — a solid button on its page
+ * @property {boolean} [destructive]
+ * @property {string} [disabledReason]  shown instead of running
+ * @property {() => void} onSelect
  *
  * @typedef {object} BulkAction
  * @property {string} label
@@ -134,7 +152,7 @@ export const RESOURCES = Object.fromEntries(
   [
     serviceCategories, services, heroSlides, projects, offers, pricingPlans, testimonials, faqs, galleryImages,
     features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard, trades, quotationTerms,
-    technicians, jobTemplates, materials, materialCategories, suppliers, inspectionTemplates, expenses,
+    technicians, jobTemplates, materials, materialCategories, suppliers, inspectionTemplates, expenses, purchaseLists,
   ].map((entry) => [entry.resource, entry]),
 );
 

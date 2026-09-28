@@ -11,6 +11,11 @@
 export const QUOTATION_DOCUMENT_COPY = {
   en: {
     kind: 'Quotation',
+    /** A variation order (Phase L7): a change to a running job. */
+    variation: {
+      kind: 'Variation order',
+      ofJob: (number) => `Change to your job ${number}`,
+    },
     forCustomer: (name, address) => `For ${name}${address ? ` · ${address}` : ''}`,
     version: (v) => `Version ${v}`,
     validUntil: (date) => `Valid until ${date}`,
@@ -95,6 +100,10 @@ export const QUOTATION_DOCUMENT_COPY = {
   },
   ne: {
     kind: 'दरभाउपत्र',
+    variation: {
+      kind: 'परिवर्तन आदेश',
+      ofJob: (number) => `तपाईंको काम ${number} मा परिवर्तन`,
+    },
     forCustomer: (name, address) => `${name}${address ? ` · ${address}` : ''} का लागि`,
     version: (v) => `संस्करण ${v}`,
     validUntil: (date) => `${date} सम्म मान्य`,

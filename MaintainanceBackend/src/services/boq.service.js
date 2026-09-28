@@ -55,10 +55,10 @@ const refuseNegative = (index, description) => new AppError(422, 'NEGATIVE_LINE'
  * Request rows (rupees, as the quotation endpoints take them) → rows ready to store (paisa), with their
  * quantities worked out and their recipe and cost frozen.
  * @param {object[]} items
- * @param {{ existing?: object[] }} [opts]  the draft's stored rows: a row sent with one of their ids and the
+ * @param {{ existing?: object[], allowNegative?: boolean }} [opts]  `allowNegative`: a variation's omissions (Phase L7). The draft's stored rows: a row sent with one of their ids and the
  *   same rate-card item and material keeps its frozen recipe and cost
  */
-export async function buildLines(items = [], { existing = [] } = {}) {
+export async function buildLines(items = [], { existing = [], allowNegative = false } = {}) {
   const stored = new Map(existing.map((row) => [row.id, row]));
   const keeps = (input) => {
     const old = input.id ? stored.get(input.id) : null;
@@ -86,7 +86,8 @@ export async function buildLines(items = [], { existing = [] } = {}) {
     const measurements = input.measurements?.length ? input.measurements : null;
     const netQty = measurements ? measurementQty(measurements) : effectiveQty(input.qty, 0);
     const qty = effectiveQty(netQty, input.wastagePct);
-    if (!(qty > 0)) throw refuseNegative(index, input.description);
+    // Only a variation may omit work (Phase L7): a negative quantity there, never zero.
+    if (!(qty > 0) && !(allowNegative && qty < 0)) throw refuseNegative(index, input.description);
 
     const kept = keeps(input);
     const snap = input.rateCardItemId ? snapshots.get(input.rateCardItemId) : null;

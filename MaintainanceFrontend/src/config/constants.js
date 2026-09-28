@@ -218,6 +218,35 @@ export const STOCK_MOVEMENT_LABELS = {
 };
 /** What "Record movement" offers. */
 export const MANUAL_STOCK_MOVEMENTS = ['PURCHASE', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
+
+/**
+ * A purchase list (Phase L7): what to buy for a job, raised from its shortfall. DRAFT → ORDERED | CANCELLED;
+ * ORDERED → RECEIVED | CANCELLED; RECEIVED is final — receiving writes a PURCHASE stock movement per item. Mirrors the
+ * API's `PURCHASE_LIST_TRANSITIONS` (`crmMirror.test.js`); the API asserts every move.
+ */
+export const PURCHASE_LIST_STATUSES = ['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED'];
+export const PURCHASE_LIST_TRANSITIONS = {
+  DRAFT: ['ORDERED', 'CANCELLED'],
+  ORDERED: ['RECEIVED', 'CANCELLED'],
+  RECEIVED: [],
+  CANCELLED: [],
+};
+export const PURCHASE_LIST_STATUS_LABELS = {
+  DRAFT: 'Draft', ORDERED: 'Ordered', RECEIVED: 'Received', CANCELLED: 'Cancelled',
+};
+
+/**
+ * The site diary (Phase L7): the day's weather, and why site hours were lost — the reasons a Kathmandu site stops.
+ * The office's words; the field app's (en and ne) are `config/tech/fieldCopy.js#diary`.
+ */
+export const WEATHER = ['SUNNY', 'CLOUDY', 'RAIN', 'HEAVY_RAIN', 'COLD'];
+export const WEATHER_LABELS = {
+  SUNNY: 'Sunny', CLOUDY: 'Cloudy', RAIN: 'Rain', HEAVY_RAIN: 'Heavy rain', COLD: 'Cold',
+};
+export const LOST_TIME_REASONS = ['RAIN', 'LATE_MATERIAL', 'CUSTOMER', 'BANDH', 'FESTIVAL', 'OTHER'];
+export const LOST_TIME_REASON_LABELS = {
+  RAIN: 'Rain', LATE_MATERIAL: 'Material late', CUSTOMER: 'Customer', BANDH: 'Bandh / strike', FESTIVAL: 'Festival', OTHER: 'Other',
+};
 export const SURVEY_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'RETURNED', 'QUOTED', 'CANCELLED'];
 /**
  * The survey list's work queues (`?stage=`), sent to the API as a comma-separated `status`.
@@ -250,6 +279,13 @@ export const INSPECTION_QUESTION_TYPE_LABELS = {
 
 /** A visit's answer from the customer's `/visit/:token` page (Phase L5), on the inspection job. */
 export const VISIT_ANSWERS = ['CONFIRMED', 'RESCHEDULE_REQUESTED'];
+
+/**
+ * What a quotation is (Phase L7): new work (QUOTATION), or a variation order against a running job (VARIATION —
+ * numbered VO-, may have negative rows, no payment schedule; accepting it adds its rows to the job).
+ */
+export const QUOTATION_KINDS = ['QUOTATION', 'VARIATION'];
+export const QUOTATION_KIND_LABELS = { QUOTATION: 'Quotation', VARIATION: 'Variation' };
 
 /** APPROVED means the customer accepted; OFFICE_APPROVED is the internal approval. */
 export const QUOTATION_STATUSES = [

@@ -1064,11 +1064,43 @@ is 422 until paid or overridden (audited; dispatcher 403 on override).
   accepted job (06-tech, 07-finance); the 03-crm convert test's quotation is paid on completion (no advance), since
   the gate is 19-handoff's to test; 07-finance's defect #16 test now expects advance + FINAL = the quotation.
 
-**L7 · Execution (≈5 days)** — offline site diary (weather, headcount by trade, progress per BOQ line, materials
+**L7 · Execution (≈5 days) · ✅ done 2026-09-28** — offline site diary (weather, headcount by trade, progress per BOQ line, materials
 received with challan no., issues and lost hours, photos), BOQ & progress, planned vs issued vs logged, purchase
 list from the shortfall, variation orders. *Acceptance:* three diary days filed offline sync once each; progress and
 planned-vs-actual update; a variation is approved, accepted by the customer and appears in the job BOQ; receiving
 a purchase list raises stock.
+
+**Deviations (Phase L7, 2026-09-28)**
+- **The diary is one row with JSON parts** (headcount, progress, deliveries, photo ids), not child tables: it is saved
+  whole (`diary_save` is a full replace), read whole, and never queried by its parts except for planned vs actual,
+  which sums them. The day is a Kathmandu `YYYY-MM-DD` string (unique with the job), not in the future and at most 60
+  days back. **Progress is the latest day's** that mentions a line, worked out afresh on every save — so a late entry
+  for an older day never rolls a line back. **A diary delivery does not move stock**: stock moves through the purchase
+  list (received) and issue-to-job, so a challan is recorded, not counted twice.
+- **Earned value** (quoted qty × rate × progress, money.js) is shown to quotations:read or invoices:read holders; a
+  dispatcher reads progress and quantities. **A MILESTONE stage is due** once earned value reaches its cumulative
+  share of the schedule and no bill has taken it — so the office never bills ahead of the work; the running bill
+  itself is L8's.
+- **Labour logged** is the diary's headcount × the hours worked out of `job.workdayHours` (8) — a day that lost 4 hours
+  counts half. Technicians' own timer hours are shown beside it, not mixed in (they carry no trade).
+- **OVER_PLAN** also fires for a material the plan never had, on a job that has a plan; a job without a plan never
+  warns. It is `meta.warnings` on the issue response (office and field), never a refusal.
+- **Purchase lists** have CANCELLED besides DRAFT → ORDERED → RECEIVED; receiving may say what actually came per item;
+  `StockMovement` gained a real `supplierId` link (not the reference). "From the shortfall" buys whole packs, and
+  counts what the job already had issued and what is on hand.
+- **Variations** are numbered VO-…; they have no payment schedule and no lead; their job lines are numbered
+  "VO-… · A.1" and sectioned "Variation VO-… — …" after the job's own. `lineAmount` and `documentTotals` round a
+  negative amount away from zero (the signed `rs`), a net-negative total takes no discount and a negative VAT, the
+  margin gate is skipped when the total is not positive, and a net-negative variation never auto-approves. A staff
+  convert-to-job of an APPROVED variation joins it to its job. The Job↔Quotation relations are named (JobQuotation,
+  JobVariations) — no database change.
+- **Frontend:** SiteDiaryPage is a folder page (the page-folder rule); purchase lists are a registry entry, for
+  which the registry gained three generic keys — `useRecordActions` (a record's moves in the row menu and the edit
+  header), `readOnlyReason` and `deletable` — rather than a hand-made page. The variation builder is the L3 builder in
+  variation mode (a job banner, signed quantities, no schedule). OVER_PLAN reaches the phone as `warnings` on the
+  `/tech/sync` material result. The e2e files the diary as Suresh (L6's steps put the job on him).
+- Tests: the API suite gained `runningBoqJob()` (a paid-on-completion BOQ job, accepted and scheduled); the purchase
+  list test plans more than the shared test database holds, so the job is short.
 
 **L8 · Close-out & final bill (≈3 days)** — running bills per stage, final measurement (ITEM_RATE), FINAL invoice
 by contract type with every earlier bill deducted, quoted-vs-actual costing, handover with warranty and an AMC offer.
@@ -1174,7 +1206,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | L5 Site-visit kit ✅ 2026-09-27 | 4 | 56 | Confirmed visits, checklists, measurement sheet |
 | I Finance & aftercare ✅ 2026-09-28 | 6 | 62 | Billing and retention |
 | L6 Won → hand-off ✅ 2026-09-28 | 4 | 66 | Job with its BOQ, material list and advance gate |
-| L7 Execution | 5 | 71 | Site diary, planned vs actual, purchases, variations |
+| L7 Execution ✅ 2026-09-28 | 5 | 71 | Site diary, planned vs actual, purchases, variations |
 | L8 Close-out & final bill | 3 | 74 | Lump-sum and item-rate final bills |
 | J1 Nepali UI | 2 | 76 | Field app, site, customer pages in Nepali |
 | J2 Reliability & PDFs | 2 | 78 | Queued notifications, cron locks, PDFs |

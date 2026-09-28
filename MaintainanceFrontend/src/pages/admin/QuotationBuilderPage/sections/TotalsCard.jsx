@@ -1,6 +1,6 @@
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatDate, formatNpr } from '@/helpers/format';
+import { formatDate, formatNpr, formatSignedNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
 function Row({ label, value, strong, testId, muted }) {
@@ -29,10 +29,11 @@ export function TotalsCard({ totals, live, stale, skipped = 0, error, dirty, val
       </CardHeader>
       <CardContent className="space-y-3 text-sm" aria-busy={dirty && stale ? true : undefined}>
         <div className={cn('space-y-3 transition-opacity', dirty && stale && 'opacity-60')} data-testid="totals" data-source={live ? 'preview' : 'saved'}>
-          <Row label="Subtotal" value={formatNpr(totals?.subtotal)} testId="quotation-subtotal" />
+          {/* A variation's figures may be below zero (Phase L7: omissions) — "− Rs. …", never "Rs. -…". */}
+          <Row label="Subtotal" value={formatSignedNpr(totals?.subtotal)} testId="quotation-subtotal" />
           <Row label="Discount" value={`− ${formatNpr(totals?.discount)}`} testId="quotation-discount" />
-          <Row label={`VAT ${totals?.vatApplied ? `(${totals?.vatRate}%)` : '(not applied)'}`} value={formatNpr(totals?.vatAmount)} />
-          <Row label="Total" value={formatNpr(totals?.total)} strong testId="quotation-total" />
+          <Row label={`VAT ${totals?.vatApplied ? `(${totals?.vatRate}%)` : '(not applied)'}`} value={formatSignedNpr(totals?.vatAmount)} />
+          <Row label="Total" value={formatSignedNpr(totals?.total)} strong testId="quotation-total" />
           {totals?.optionalTotal > 0 ? (
             <Row label="Optional rows (not in the total)" value={`(${formatNpr(totals.optionalTotal)})`} muted testId="quotation-optional" />
           ) : null}
@@ -41,7 +42,7 @@ export function TotalsCard({ totals, live, stale, skipped = 0, error, dirty, val
               {sections.map((s) => (
                 <li key={s.index} className="flex justify-between gap-3">
                   <span className="min-w-0 truncate"><span className="font-mono font-semibold">{s.number}</span> {s.title}</span>
-                  <span className="shrink-0 tabular-nums">{formatNpr(s.subtotal)}</span>
+                  <span className="shrink-0 tabular-nums">{formatSignedNpr(s.subtotal)}</span>
                 </li>
               ))}
             </ul>

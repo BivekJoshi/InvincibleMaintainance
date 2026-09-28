@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { useGetMyJobQuery, useGetTechMaterialsQuery, useStartJobSurveyMutation } from '@/api/techApi';
+import { skipToken } from '@reduxjs/toolkit/query';
+import {
+  useGetMyDiaryDayQuery, useGetMyJobQuery, useGetTechMaterialsQuery, useStartJobSurveyMutation,
+} from '@/api/techApi';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/common/ErrorState';
 import { PageTransition } from '@/three/motion/motionKit';
@@ -9,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useFieldCopy } from '@/hooks/useFieldCopy';
 import { useFieldQueue } from '@/hooks/useOfflineQueue';
 import { applyPending, completionUpload, isClosed } from '@/helpers/fieldJob';
+import { ktmDay } from '@/helpers/dispatchBoard';
 import { selectFieldSync } from '@/redux/slices/fieldSyncSlice';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { JobContactCard, JobHeader } from './sections/JobHeader';
@@ -18,6 +22,7 @@ import { PhotosSection } from './sections/PhotosSection';
 import { MaterialsSection } from './sections/MaterialsSection';
 import { CompletedSummary, FinishSection } from './sections/FinishSection';
 import { HoldSheet, NextStepBar } from './sections/NextStepBar';
+import { DiaryLinkCard } from './sections/DiaryLinkCard';
 
 const online = () => navigator.onLine !== false;
 
@@ -43,6 +48,9 @@ export default function TechJobPage({ readOnly: fromHistory = false }) {
   const { data: serverJob, isLoading, error, refetch } = useGetMyJobQuery(id);
   // Loaded while there is signal and kept for the shift, so "Log material" works in a basement.
   useGetTechMaterialsQuery(undefined, { skip: fromHistory });
+  // Today's site diary page — the job's lines and trades — loaded the same way, so the diary opens with no signal.
+  const diaryToday = !fromHistory && serverJob && serverJob.type !== 'INSPECTION' ? { jobId: id, day: ktmDay() } : null;
+  useGetMyDiaryDayQuery(diaryToday ?? skipToken);
   const [startSurvey, { isLoading: openingSurvey }] = useStartJobSurveyMutation();
   const [holding, setHolding] = useState(false);
 
@@ -125,6 +133,7 @@ export default function TechJobPage({ readOnly: fromHistory = false }) {
 
       <div className="space-y-4">
         <JobContactCard job={job} copy={copy} onOpenSurvey={openSurvey} openingSurvey={openingSurvey} readOnly={readOnly} />
+        {job.type !== 'INSPECTION' ? <DiaryLinkCard job={job} copy={copy} /> : null}
         <ChecklistSection job={job} copy={copy} readOnly={readOnly} onToggle={toggle} />
         <TimerSection
           job={job} copy={copy} userId={user?.id} readOnly={readOnly}

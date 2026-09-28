@@ -38,8 +38,8 @@ export function useBoqFigures({ quotation, values, dirty, enabled }) {
   const active = Boolean(enabled && dirty && values);
   const settled = useDebouncedValue(active ? values : null, 400);
   const request = useMemo(
-    () => (active && settled ? previewRequest(settled, { quotationId: quotation?.id }) : null),
-    [active, settled, quotation?.id],
+    () => (active && settled ? previewRequest(settled, { quotationId: quotation?.id, kind: quotation?.kind }) : null),
+    [active, settled, quotation?.id, quotation?.kind],
   );
   const bodyKey = request ? JSON.stringify(request.body) : null;
   const { currentData, error, isFetching } = usePreviewQuotationQuery(request ? request.body : skipToken);

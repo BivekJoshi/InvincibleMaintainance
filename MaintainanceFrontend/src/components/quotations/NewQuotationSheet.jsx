@@ -6,7 +6,7 @@ import { useGetCustomerSitesQuery } from '@/api/customersApi';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
 import { CustomerMatchChoice } from '@/components/leads/CustomerMatchChoice';
 import { newQuotationSchema } from '@/form/schemas/quotation.schema';
-import { formatNpr } from '@/helpers/format';
+import { formatSignedNpr } from '@/helpers/format';
 import { QUOTATION_STATUS_LABELS } from '@/config/constants';
 
 const SOURCES = {
@@ -17,7 +17,7 @@ const SOURCES = {
 
 const customerLabel = (r) => `${r.name}${r.phone ? ` · ${r.phone}` : ''}`;
 const surveyLabel = (r) => `${r.number} · ${r.customer?.name ?? 'Customer'} · ${r.service?.name ?? 'General'}`;
-const quotationLabel = (r) => `${r.number}${r.version > 1 ? ` v${r.version}` : ''} · ${r.customer?.name ?? ''} · ${formatNpr(r.total)} · ${QUOTATION_STATUS_LABELS[r.status] ?? r.status}`;
+const quotationLabel = (r) => `${r.number}${r.version > 1 ? ` v${r.version}` : ''} · ${r.customer?.name ?? ''} · ${formatSignedNpr(r.total)} · ${QUOTATION_STATUS_LABELS[r.status] ?? r.status}`;
 
 /**
  * **New quotation** (Phase L3) — the one way a quotation starts, from the quotations list, a lead or a customer:

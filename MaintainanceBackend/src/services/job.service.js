@@ -7,6 +7,7 @@ import { formatNpr, lineAmount, margin, outstanding, sum } from '../utils/money.
 import { addDays, dayjs, kathmanduDayRange, local, startOfDay, endOfDay } from '../utils/dates.js';
 import { JOB_TRANSITIONS, QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
+import { can } from '../shared/permissions.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { publicToken } from '../utils/tokens.js';
 import { markConverted } from './quotation.service.js';
@@ -168,6 +169,20 @@ export async function overrideAdvance(id, { reason }, userId) {
     }, tx);
   });
   return getJobDetail(id);
+}
+
+/**
+ * GET /admin/jobs/:id/variations (Phase L7) — the job's variation orders, newest first. The total is money a
+ * quotations reader sees; dispatch sees the number, status and dates.
+ */
+export async function jobVariations(id, { role } = {}) {
+  await getJob(id);
+  const rows = await prisma.quotation.findMany({
+    where: { jobId: id, kind: 'VARIATION', deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, number: true, version: true, status: true, kind: true, total: true, createdAt: true, sentAt: true, decidedAt: true },
+  });
+  return can(role, 'quotations:read') ? rows : rows.map(({ total: _total, ...row }) => row);
 }
 
 /** GET /admin/jobs/:id — the job with its hand-off: lines, requirements and the advance (Phase L6). */

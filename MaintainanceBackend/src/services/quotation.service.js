@@ -14,7 +14,9 @@ import { getSetting } from './settings.service.js';
 import { notify, notifyUsers, userIdsWithRoles } from './notify.service.js';
 import { bookNextAction, transitionLead } from './lead.service.js';
 import { recordEvent } from './audit.service.js';
-import { advanceFor, announceAdvance, handOff, handOffPlan } from './handoff.service.js';
+import {
+  advanceFor, announceAdvance, announceVariation, applyVariation, handOff, handOffPlan, variationPlan,
+} from './handoff.service.js';
 import { adminJobPath, adminLeadMarkLostPath, adminQuotationPath, webUrl } from '../utils/links.js';
 import { addDays } from '../utils/dates.js';
 import { buildLines, costSummary, decorateBoq, takeoffFor, totalsFor } from './boq.service.js';
@@ -22,6 +24,8 @@ import { recipeSnapshots } from './rateLibrary.service.js';
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true, preferredLocale: true } },
+  // A variation's job (Phase L7).
+  job: { select: { id: true, number: true, status: true, title: true } },
   site: { select: { id: true, label: true, address: true, area: true } },
   lead: { select: { id: true, name: true, status: true, assignedToId: true } },
   items: { orderBy: { sortOrder: 'asc' } },
@@ -222,6 +226,8 @@ export async function listQuotations(query) {
     ...(status ? { status } : {}),
     ...(query.customerId ? { customerId: query.customerId } : {}),
     ...(query.leadId ? { leadId: query.leadId } : {}),
+    ...(query.kind ? { kind: query.kind } : {}),
+    ...(query.jobId ? { jobId: query.jobId } : {}),
     ...(created ? { createdAt: created } : {}),
     ...(q ? { OR: [{ number: { contains: q, mode: 'insensitive' } }, { customer: { name: { contains: q, mode: 'insensitive' } } }] } : {}),
   };
@@ -272,9 +278,26 @@ const CUSTOMER_TEMPLATES = ['quotation_sent', 'quotation_accepted', 'quotation_c
  * @param {import('@prisma/client').Prisma.TransactionClient} [client]  the caller's transaction
  *   (lead convert); without one the quotation gets a transaction of its own
  */
+/**
+ * A variation's customer and site come from its job (Phase L7). The job must still be open; a customer sent
+ * that is not the job's is 400. The lead is left out: a variation never moves a lead.
+ */
+async function variationTarget(jobId, input, client) {
+  const job = await client.job.findFirst({ where: { id: jobId, deletedAt: null }, select: { id: true, number: true, status: true, customerId: true, siteId: true } });
+  if (!job) throw notFound('Job');
+  if (['CANCELLED', 'VERIFIED'].includes(job.status)) {
+    throw new AppError(422, 'VARIATION_JOB_CLOSED', `Job ${job.number} is ${job.status.toLowerCase()}: a variation cannot change it now.`);
+  }
+  if (input.customerId && input.customerId !== job.customerId) throw badRequest('That job belongs to another customer');
+  return { kind: 'VARIATION', jobId, customerId: job.customerId, siteId: input.siteId ?? job.siteId, leadId: null };
+}
+
 export async function createQuotation(input, userId, client = prisma) {
-  const { items = [], discount = 0, vatApplied = true, paymentStages, ...rest } = input;
-  const rows = await buildLines(items);
+  const { items = [], discount = 0, vatApplied = true, paymentStages, jobId, ...rest } = input;
+  // A variation order (Phase L7): kind VARIATION against a job, numbered VO-, omissions allowed, no schedule.
+  const variation = jobId ? await variationTarget(jobId, rest, client) : null;
+  if (variation) Object.assign(rest, variation);
+  const rows = await buildLines(items, { allowNegative: Boolean(variation) });
   const totals = await totalsFor(rows, { discount: toPaisa(discount), vatApplied });
   const defaults = await contractDefaults();
   if (!rest.contractType) rest.contractType = defaults.contractType;
@@ -283,7 +306,7 @@ export async function createQuotation(input, userId, client = prisma) {
   if (!rest.validUntil) rest.validUntil = await defaultValidUntil();
 
   const run = async (tx) => {
-    const number = await nextNumber(tx, 'QT');
+    const number = await nextNumber(tx, variation ? 'VO' : 'QT');
     const quotation = await tx.quotation.create({
       data: {
         ...rest,
@@ -292,7 +315,8 @@ export async function createQuotation(input, userId, client = prisma) {
         ...totalsData(totals),
         ...costData(rows, totals),
         items: { create: rows },
-        stages: { create: stageRows(paymentStages ?? defaults.stages) },
+        // A variation is billed with the job's running and final bills (L8), never on a schedule of its own.
+        stages: { create: variation ? [] : stageRows(paymentStages ?? defaults.stages) },
       },
       include: INCLUDE,
     });
@@ -323,7 +347,7 @@ export async function updateQuotation(id, input) {
   const data = { ...rest };
   let rows = null;
   if (items || discount !== undefined || vatApplied !== undefined) {
-    rows = items ? await buildLines(items, { existing: existing.items }) : existing.items.map(storedRow);
+    rows = items ? await buildLines(items, { existing: existing.items, allowNegative: existing.kind === 'VARIATION' }) : existing.items.map(storedRow);
     const totals = await totalsFor(rows, {
       discount: discount !== undefined ? toPaisa(discount) : existing.discount,
       vatApplied: vatApplied ?? existing.vatApplied,
@@ -335,7 +359,7 @@ export async function updateQuotation(id, input) {
       await tx.quotationItem.deleteMany({ where: { quotationId: id } });
       data.items = { create: rows };
     }
-    if (paymentStages) {
+    if (paymentStages && existing.kind !== 'VARIATION') {
       await tx.quotationPaymentStage.deleteMany({ where: { quotationId: id } });
       data.stages = { create: stageRows(paymentStages) };
     }
@@ -357,9 +381,10 @@ const storedRow = ({ id: _id, quotationId: _q, ...row }) => ({ ...row, measureme
  * `totalsFor`), nothing written. `quotationId` keeps that draft's frozen recipes for rows sent with ids.
  * Cost and margin are in the answer; the cost wall strips them for callers without costs:read.
  */
-export async function previewQuotation({ quotationId, items = [], paymentStages, discount = 0, discountPct, targetTotal, vatApplied = true }) {
-  const existing = quotationId ? (await findQuotation(quotationId)).items : [];
-  const rows = await buildLines(items, { existing });
+export async function previewQuotation({ quotationId, kind, items = [], paymentStages, discount = 0, discountPct, targetTotal, vatApplied = true }) {
+  const saved = quotationId ? await findQuotation(quotationId) : null;
+  const existing = saved?.items ?? [];
+  const rows = await buildLines(items, { existing, allowNegative: (saved?.kind ?? kind) === 'VARIATION' });
   const totals = await totalsFor(rows, {
     discount: toPaisa(discount), discountPct, targetTotal: targetTotal != null ? toPaisa(targetTotal) : undefined, vatApplied,
   });
@@ -481,7 +506,8 @@ export async function submitQuotation(id, userId) {
 
   const threshold = Math.max(0, Math.round(Number(await getSetting('quotation.autoApproveBelow', 0)) || 0));
   // A small quotation approves itself — never on a low or unknown margin (Phase L4): a person looks at those.
-  const auto = threshold > 0 && q.total < threshold && !(await marginCheck(q)).low;
+  // A variation that gives money back (a net omission, Phase L7) is a manager's decision too.
+  const auto = threshold > 0 && q.total > 0 && q.total < threshold && !(await marginCheck(q)).low;
 
   await prisma.$transaction(async (tx) => {
     await moveStatus(tx, q, 'PENDING_APPROVAL', {
@@ -523,6 +549,8 @@ export async function submitQuotation(id, userId) {
  */
 async function marginCheck(q) {
   const minMarginPct = Number(await getSetting('quotation.minMarginPct', 15));
+  // A variation that only omits work (Phase L7) earns nothing to guard: no margin gate.
+  if (q.subtotal - q.discount <= 0) return { low: false, marginPct: null, minMarginPct, costComplete: q.costComplete };
   const m = q.costComplete ? margin(q.subtotal - q.discount, q.costTotal) : null;
   const low = !q.costComplete || m?.pct == null || m.pct < minMarginPct;
   return { low, marginPct: m?.pct ?? null, minMarginPct, costComplete: q.costComplete };
@@ -687,12 +715,14 @@ export async function reviseQuotation(id, userId) {
   const source = await findQuotation(id);
   assertMove(source.status, 'SUPERSEDED');
   const created = await prisma.$transaction(async (tx) => {
-    const number = await nextNumber(tx, 'QT');
+    const number = await nextNumber(tx, source.kind === 'VARIATION' ? 'VO' : 'QT');
     const copy = await tx.quotation.create({
       data: {
         number,
         version: source.version + 1,
         parentId: source.id,
+        kind: source.kind,
+        jobId: source.jobId,
         customerId: source.customerId,
         siteId: source.siteId,
         leadId: source.leadId,
@@ -765,6 +795,9 @@ async function publicView(q) {
   return {
     number: q.number,
     version: q.version,
+    // A change to a running job (Phase L7): the page says so.
+    kind: q.kind,
+    job: q.kind === 'VARIATION' && q.job ? { number: q.job.number } : null,
     status: q.status,
     validUntil: q.validUntil,
     subtotal: q.subtotal,
@@ -796,12 +829,13 @@ async function publicView(q) {
     replaced: await replacementFor(q),
     actions: q.status === 'SENT' ? [...QUOTATION_DECISIONS] : [],
     // Once accepted (Phase L6): the advance to pay, and the link to its invoice.
-    advance: ['APPROVED', 'CONVERTED'].includes(q.status) ? await advanceFor(q.id) : null,
+    advance: q.kind !== 'VARIATION' && ['APPROVED', 'CONVERTED'].includes(q.status) ? await advanceFor(q.id) : null,
   };
 }
 
 const PUBLIC_INCLUDE = {
   customer: { select: { name: true } },
+  job: { select: { number: true } },
   site: { select: { label: true, address: true } },
   items: { orderBy: { sortOrder: 'asc' } },
   stages: { orderBy: { sortOrder: 'asc' } },
@@ -913,16 +947,19 @@ const salesRecipients = (q, email = true) => [
  */
 export async function acceptQuotation(id, answer = {}) {
   const q = await openForAnswer(id);
+  const variation = q.kind === 'VARIATION';
   // The library, the take-off and the service are read before the transaction opens.
-  const plan = await handOffPlan(q);
+  const plan = variation ? await variationPlan(q) : await handOffPlan(q);
   const summary = `Customer accepted ${label(q)} · ${npr(q.total)}`;
 
-  const { job, advance } = await prisma.$transaction(async (tx) => {
+  const { job, advance, added } = await prisma.$transaction(async (tx) => {
     await claimAnswer(tx, q, 'APPROVED', answer);
     await recordEvent('quotation.customer_approved', {
       model: 'Quotation', recordId: q.id, before: { status: 'SENT' }, after: { status: 'APPROVED' },
       ...(answer.note ? { meta: { note: answer.note } } : {}),
     }, tx);
+    // A variation joins its job (Phase L7): no new job, no lead, no advance.
+    if (variation) return applyVariation(tx, q, plan);
     if (q.leadId) await winLeadOnAcceptance(tx, q, summary);
     return handOff(tx, q, plan);
   }, { timeout: 20_000 });
@@ -947,6 +984,17 @@ export async function acceptQuotation(id, answer = {}) {
   }
 
   if (advance) await announceAdvance(advance, q);
+  if (variation) {
+    await announceVariation(q, job, added);
+    await notifyUsers([...salesRecipients(q), ...(q.autoApproved ? [] : [{ userId: q.approvedById }])], {
+      type: 'quotation_accepted',
+      title: `${q.customer.name} accepted variation ${label(q)}`,
+      body: `${npr(q.total)} · ${added} line(s) added to job ${job.number}`,
+      link: adminQuotationPath(q.id),
+    });
+    const row = await prisma.quotation.findUnique({ where: { id: q.id }, include: PUBLIC_INCLUDE });
+    return { ...(await publicView(row)), job: { id: job.id, number: job.number } };
+  }
 
   const dispatchers = await userIdsWithRoles(['DISPATCHER']);
   await notifyUsers([

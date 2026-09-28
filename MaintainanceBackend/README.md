@@ -102,6 +102,11 @@ schedule. Services carry a job type (renovation, installation…). New settings 
 `finance.fonepayNumber` (illustrative values — set your own) print in the new **`advance_due`** SMS (en/ne) and
 email the customer gets on accepting.
 
+Phase L7 puts that paid job **on site**: Hari's three diary days (one lost to heavy rain), progress on its
+lines, more cement issued than planned (the Materials tab's over-plan warning), a purchase list ORDERED for the
+second week, and an accepted **variation** (VO-…) that adds the store room and omits plaster on one wall. New
+setting `job.workdayHours` (8, finance group) turns the diary's headcount into labour days.
+
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
 Both links open `<PUBLIC_WEB_ORIGIN>/reset-password`. With no `SMTP_HOST`, the email — link included — is

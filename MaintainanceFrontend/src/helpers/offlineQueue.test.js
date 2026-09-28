@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetFieldDbForTests } from '@/helpers/fieldDb';
 import {
-  MAX_ATTEMPTS, dropPending, enqueue, failureKind, flush, pending, settle, toWire,
+  MAX_ATTEMPTS, TERMINAL_CODES, dropPending, enqueue, failureKind, flush, pending, scopeOf, settle, toWire,
 } from '@/helpers/offlineQueue';
 
 /** jsdom has no IndexedDB, so the queue runs on `fieldDb`'s in-memory stores — the same code above them. */
@@ -197,5 +197,31 @@ describe('offline queue — survey saves (Phase L5)', () => {
     const result = await flush(async () => answer([{ idempotencyKey: key, status: 'failed', code: 'SURVEY_INCOMPLETE', error: 'Not finished', details }]));
     expect(result.refused).toEqual([expect.objectContaining({ code: 'SURVEY_INCOMPLETE', details })]);
     expect(await pending()).toEqual([]);
+  });
+});
+
+describe('the site diary in the queue (Phase L7)', () => {
+  it('is a record of its own — a job + day — so a day waiting for its photos holds only that day', () => {
+    expect(scopeOf({ kind: 'diary_save', jobId: 'j1', payload: { day: '2026-09-28' } })).toBe('diary:j1:2026-09-28');
+    expect(scopeOf({ kind: 'status', jobId: 'j1' })).toBe('job:j1');
+    expect(scopeOf({ kind: 'survey_draft', surveyId: 's1' })).toBe('survey:s1');
+  });
+
+  it('keeps what the server warned about beside an applied change, and treats a refused day as final', () => {
+    const entry = { idempotencyKey: 'k-material-1', kind: 'material', jobId: 'j1', payload: {} };
+    const warnings = [{ code: 'OVER_PLAN', materialId: 'm1', planned: 120, issued: 130 }];
+    const { done } = settle([entry], answer([{ idempotencyKey: 'k-material-1', status: 'applied', warnings }]));
+    expect(done).toEqual([{ ...entry, warnings }]);
+    for (const code of ['JOB_NOT_ON_SITE', 'UNKNOWN_LINE', 'UNKNOWN_TRADE']) expect(TERMINAL_CODES.has(code), code).toBe(true);
+  });
+
+  it('holds a diary day and the later saves of that day together, not the job’s other changes', async () => {
+    await enqueue({ kind: 'diary_save', jobId: 'j1', payload: { day: '2026-09-28' }, meta: { photoUploadIds: ['up-1'] } });
+    await enqueue({ kind: 'status', jobId: 'j1', payload: { status: 'IN_PROGRESS' } });
+    await enqueue({ kind: 'diary_save', jobId: 'j1', payload: { day: '2026-09-28' } });
+    const send = vi.fn(async (batch) => answer(batch.map((m) => ({ idempotencyKey: m.idempotencyKey, status: 'applied' }))));
+    const result = await flush(send, { resolve: (wire, entry) => (entry.meta?.photoUploadIds ? null : wire) });
+    expect(send.mock.calls[0][0].map((m) => m.kind)).toEqual(['status']);
+    expect(result).toMatchObject({ held: 2, remaining: 2 });
   });
 });

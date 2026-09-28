@@ -72,6 +72,17 @@ export const INVOICE_TRANSITIONS = {
   VOID: [],
 };
 
+/**
+ * A purchase list (Phase L7): drafted (often from a job's shortfall), ordered from the supplier, received —
+ * which writes the PURCHASE stock movements — or cancelled before it arrives. RECEIVED is final.
+ */
+export const PURCHASE_LIST_TRANSITIONS = {
+  DRAFT: ['ORDERED', 'CANCELLED'],
+  ORDERED: ['RECEIVED', 'CANCELLED'],
+  RECEIVED: [],
+  CANCELLED: [],
+};
+
 export function canTransition(machine, from, to) {
   if (from === to) return true;
   return (machine[from] ?? []).includes(to);

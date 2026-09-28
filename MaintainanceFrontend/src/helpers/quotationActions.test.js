@@ -93,3 +93,25 @@ describe('validity and follow-up', () => {
     expect(sentAge({ status: 'CHANGES_REQUESTED', sentAt: at(-6) }, now)).toBeNull();
   });
 });
+
+describe('a variation order (Phase L7)', () => {
+  const variation = (status) => ({
+    status, kind: 'VARIATION', jobId: 'j9', job: { id: 'j9', number: 'JOB-2083-0090' }, createdById: 'someone', makerChecker: true,
+  });
+
+  it('moves through the same approval — maker-checker included — and its convert adds it to the job', () => {
+    expect(quotationActions(variation('DRAFT'), as('SALES')).map((a) => a.key)).toEqual(['submit']);
+    const [approve] = quotationActions({ ...variation('PENDING_APPROVAL'), createdById: 'me' }, as('MANAGER'));
+    expect(approve.disabledReason).toMatch(/another manager or admin must approve it/);
+    const [convert] = quotationActions(variation('APPROVED'), as('ADMIN'));
+    expect(convert).toMatchObject({ key: 'convert', label: 'Add to the job', primary: true });
+    expect(quotationActions({ status: 'APPROVED' }, as('ADMIN'))[0].label).toBe('Convert to job');
+  });
+
+  it('says what it waits for in terms of its job', () => {
+    expect(waitingFor(variation('DRAFT'), as('SALES'))).toBe('Variation to JOB-2083-0090 — add its rows (an omission is a negative quantity), then submit it for approval.');
+    expect(waitingFor(variation('APPROVED'), as('ADMIN'))).toBe('Accepted by the customer — add its rows to JOB-2083-0090.');
+    expect(waitingFor(variation('CONVERTED'), as('ADMIN'))).toBe('Accepted — its rows are on JOB-2083-0090.');
+    expect(waitingFor(variation('SENT'), as('SALES'))).toBe('With the customer — waiting for their answer on the link.');
+  });
+});

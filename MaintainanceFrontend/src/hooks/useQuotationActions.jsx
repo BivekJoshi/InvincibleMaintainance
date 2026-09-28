@@ -10,7 +10,7 @@ import {
 import { useConfirm } from '@/hooks/useConfirm';
 import { quotationNoteSchema } from '@/form/schemas/quotation.schema';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
-import { formatNpr } from '@/helpers/format';
+import { formatSignedNpr } from '@/helpers/format';
 
 /** The note dialog's words per action. Approve has its own dialog (the margin and its acknowledgement). */
 const NOTE_COPY = {
@@ -81,7 +81,7 @@ export function useQuotationActions() {
         case 'send': {
           const ok = await confirm({
             title: `Send ${name} to ${q.customer?.name ?? 'the customer'}?`,
-            description: `They get an SMS${q.customer?.email ? ' and an email' : ''} with a link to accept, ask for changes or decline ${formatNpr(q.total)}.`,
+            description: `They get an SMS${q.customer?.email ? ' and an email' : ''} with a link to accept, ask for changes or decline ${formatSignedNpr(q.total)}.`,
             confirmLabel: 'Send',
           });
           if (!ok) return false;
@@ -104,6 +104,19 @@ export function useQuotationActions() {
           return true;
         }
         case 'convert': {
+          if (q.kind === 'VARIATION') {
+            // Phase L7: a variation joins its job — no new job, no advance, the lead untouched.
+            const target = q.job?.number ?? 'its job';
+            const yes = await confirm({
+              title: `Add ${name} to ${target}?`,
+              description: `Its rows join the job’s bill of quantities as variation lines, with what they need. No new job is made and no advance is raised.`,
+              confirmLabel: 'Add to the job',
+            });
+            if (!yes) return false;
+            const job = await convert({ id: q.id }).unwrap();
+            dispatch(toastSuccess(`${name} added to ${job.number ?? target}`, 'Its rows are on the job’s BOQ & progress tab.'));
+            return true;
+          }
           const ok = await confirm({
             title: `Create the job for ${name}?`,
             description: 'An unscheduled job is created from it, with its lines and plan, and waits in the dispatch queue. When its payment schedule asks for an advance, the advance invoice is raised too and the job waits for it.',

@@ -425,3 +425,56 @@ describe('the customer quotation page — the advance (Phase L6)', () => {
     expect(screen.queryByTestId('advance-due')).not.toBeInTheDocument();
   });
 });
+
+describe('the customer quotation page — a variation order (Phase L7)', () => {
+  /** A change to a running job: an extra row and an omission, a total below zero, no payment schedule, no advance. */
+  const VARIATION = {
+    ...QUOTATION, number: 'VO-2083-0001', version: 1, kind: 'VARIATION', job: { number: 'JOB-2083-0090' }, requestedChanges: null,
+    subtotal: -1_200_000, vatAmount: -156_000, total: -1_356_000, paymentStages: [], advance: null,
+    items: [
+      { id: 'v1', rowType: 'ITEM', number: '1', description: 'Parapet coping (extra)', unit: 'rft', qty: 40, rate: 30_000, amount: 1_200_000, sortOrder: 0 },
+      { id: 'v2', rowType: 'ITEM', number: '2', description: 'Exterior weather coat (omitted)', unit: 'sq.ft', qty: -600, rate: 4_000, amount: -2_400_000, sortOrder: 1 },
+    ],
+  };
+  const openIn = (locale, quotation, decide) => {
+    const calls = mockApi((call) => {
+      if (call.method === 'GET') return json({ data: quotation });
+      if (call.method === 'POST' && decide) return decide(call);
+      return undefined;
+    });
+    renderWithProviders(<QuotationPublicPage />, {
+      path: '/quotation/:token', initialPath: '/quotation/tok-1',
+      preloadedState: { ui: { ...uiReducer(undefined, { type: '@@init' }), locale } },
+    });
+    return calls;
+  };
+
+  it('reads as a change to the job, and "Accept this change" repeats its total — below zero, written “− Rs.”', async () => {
+    const user = userEvent.setup();
+    const calls = openIn('en', VARIATION, () => json({ data: { ...VARIATION, status: 'CONVERTED', actions: [], job: { id: 'j9', number: 'JOB-2083-0090' } } }));
+    expect(await screen.findByText('Variation order')).toBeInTheDocument();
+    expect(screen.getByTestId('variation-notice')).toHaveTextContent('Change to your job JOB-2083-0090');
+    expect(screen.getByText(/Change to your job JOB-2083-0090 · For Anjali Karki/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Do you accept this change to your job?' })).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Rs\. -/);
+    expect(screen.queryByTestId('payment-schedule')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Accept this change' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Accept this change?' });
+    expect(within(dialog).getByTestId('accept-total')).toHaveTextContent('− Rs. 13,560.00');
+    expect(dialog).toHaveTextContent('This change to job JOB-2083-0090 comes to − Rs. 13,560.00.');
+    await user.click(within(dialog).getByRole('button', { name: 'Yes, accept the change' }));
+
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ decision: 'approve' }));
+    expect(await screen.findByText('Thank you — the change is accepted')).toBeInTheDocument();
+    expect(screen.getByText(/We have added it to your job JOB-2083-0090/)).toBeInTheDocument();
+    expect(screen.queryByTestId('advance-due')).not.toBeInTheDocument();
+  });
+
+  it('says it in Nepali: "यो परिवर्तन स्वीकार्नुहोस्"', async () => {
+    openIn('ne', VARIATION);
+    expect(await screen.findByText('परिवर्तन आदेश')).toBeInTheDocument();
+    expect(screen.getByTestId('variation-notice')).toHaveTextContent('तपाईंको काम JOB-2083-0090 मा परिवर्तन');
+    expect(screen.getByRole('button', { name: 'यो परिवर्तन स्वीकार्नुहोस्' })).toBeInTheDocument();
+  });
+});

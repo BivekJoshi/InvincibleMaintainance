@@ -7,10 +7,12 @@ import { dropPending, enqueue, failureKind, flush, pending } from '@/helpers/off
 import { addUpload, describeUpload, drainUploads, getUpload, pendingUploads } from '@/helpers/uploadQueue';
 import { applyPending } from '@/helpers/fieldJob';
 import { mediaIdForUpload, rememberSent } from '@/helpers/sentPhotos';
+import { fieldCopy } from '@/config/tech/fieldCopy';
 import {
   fieldNoteDismissed, fieldNotesAdded, fieldOnlineChanged, fieldQueueLoaded, fieldSyncFinished, fieldSyncStarted,
   selectFieldSync,
 } from '@/redux/slices/fieldSyncSlice';
+import { toastWarning } from '@/redux/slices/uiSlice';
 
 /**
  * The field app's sync engine — the one place the two on-device queues meet the API.
@@ -30,7 +32,11 @@ import {
  *
  * A survey reading may wait for its photo (Phase L5): it names the upload (`photoUploadId`) and is sent with
  * the picture's `mediaId` once step 2 has uploaded it (`resolveSurveyPhotos`); until then that survey's saves
- * and its submit wait together, in order, so step 3 sends them.
+ * and its submit wait together, in order, so step 3 sends them. A site diary day (Phase L7) waits for its photos
+ * the same way (`resolveDiaryPhotos`): the entry's `meta.photoUploadIds` become `payload.photoMediaIds`.
+ *
+ * A material logged over the job's plan comes back applied with an `OVER_PLAN` warning (Phase L7): it is said as a
+ * warning toast, in the technician's language — a warning never undoes anything.
  */
 
 export const SYNC_RETRY_MS = 30_000;
@@ -95,6 +101,55 @@ export async function resolveSurveyPhotos(wire) {
   return { ...wire, payload: { ...wire.payload, readings: out } };
 }
 
+/** The most photos a diary day carries (the API's limit). */
+export const DIARY_MAX_PHOTOS = 30;
+
+/**
+ * A site diary day on its way to the wire (Phase L7): each photo still named by its upload (`meta.photoUploadIds` —
+ * never sent) joins `payload.photoMediaIds` once the picture is on the server. Null — hold it — while one is still in
+ * the upload queue; a picture that will never arrive (refused) is left out. Anything else passes untouched.
+ *
+ * @param {object} wire the entry as `/tech/sync` takes it
+ * @param {object} [entry] the queue entry (its `meta` stays on the phone)
+ * @returns {Promise<object|null>}
+ */
+export async function resolveDiaryPhotos(wire, entry) {
+  const uploadIds = entry?.meta?.photoUploadIds;
+  if (wire.kind !== 'diary_save' || !Array.isArray(uploadIds) || !uploadIds.length) return wire;
+  const ids = [...(wire.payload?.photoMediaIds ?? [])];
+  for (const uploadId of uploadIds) {
+    const mediaId = mediaIdForUpload(uploadId);
+    if (mediaId) {
+      if (!ids.includes(mediaId)) ids.push(mediaId);
+    } else if (await getUpload(uploadId)) {
+      return null;
+    }
+  }
+  return { ...wire, payload: { ...wire.payload, photoMediaIds: ids.slice(0, DIARY_MAX_PHOTOS) } };
+}
+
+/** Every photo an entry may wait for: a survey reading's (Phase L5), a diary day's (Phase L7). */
+export async function resolveQueuedPhotos(wire, entry) {
+  const survey = await resolveSurveyPhotos(wire);
+  return survey ? resolveDiaryPhotos(survey, entry) : null;
+}
+
+/** Says what the server warned about beside an applied change: a material over the job's plan (`OVER_PLAN`). */
+function sayWarnings(dispatch, applied, getLocale) {
+  const warnings = applied.flatMap((entry) => (entry.warnings ?? []).map((w) => ({ w, entry })));
+  if (!warnings.length) return;
+  const words = fieldCopy(getLocale()).materials;
+  for (const { w, entry } of warnings) {
+    if (w.code !== 'OVER_PLAN') continue;
+    const name = w.name ?? entry.meta?.material?.name ?? '';
+    const unit = w.unit ?? entry.meta?.material?.unit ?? '';
+    dispatch(toastWarning(words.overPlanTitle, words.overPlan(name, formatQty(w.issued), w.planned ? formatQty(w.planned) : null, unit)));
+  }
+}
+
+/** A quantity without float noise: 22, 1.5, 0.333. */
+const formatQty = (n) => (Number.isFinite(Number(n)) ? String(Number(Number(n).toFixed(3))) : String(n ?? ''));
+
 /** Writes applied changes into the cached job and today's list, so nothing flickers back before the refetch. */
 function patchCaches(dispatch, applied) {
   const byJob = new Map();
@@ -125,13 +180,13 @@ async function sendUpload(dispatch, entry) {
 }
 
 /** Step 1 and 3: flush the mutation queue until it is empty or stops moving. Throws when offline. */
-async function flushMutations(dispatch, touched, notes) {
+async function flushMutations(dispatch, touched, notes, getLocale) {
   for (let round = 0; round < 20; round += 1) {
     let result;
     try {
       result = await flush(
         (batch) => dispatch(techApi.endpoints.syncOffline.initiate(batch)).unwrap(),
-        { resolve: resolveSurveyPhotos },
+        { resolve: resolveQueuedPhotos },
       );
     } catch (error) {
       if (failureKind(error) === 'offline') throw error;
@@ -139,6 +194,7 @@ async function flushMutations(dispatch, touched, notes) {
     }
     if (!result.sent) return;
     patchCaches(dispatch, result.applied);
+    sayWarnings(dispatch, result.applied, getLocale);
     for (const entry of result.applied) touched.add(entry);
     for (const refusal of result.refused) {
       touched.add(refusal.entry);
@@ -160,6 +216,11 @@ function invalidate(dispatch, touched) {
       add('Job', 'TECH_TODAY');
       add('Job', 'TECH_LIST');
     }
+    // A diary day (Phase L7): the job's list of days and that day.
+    if (entry.kind === 'diary_save' && jobId) {
+      add('Job', `diary:${jobId}`);
+      add('Job', `diary:${jobId}:${entry.payload?.day}`);
+    }
     if (surveyId) {
       add('Survey', surveyId);
       add('Survey', 'TECH_LIST');
@@ -168,20 +229,30 @@ function invalidate(dispatch, touched) {
   if (tags.size) dispatch(techApi.util.invalidateTags([...tags.values()]));
 }
 
+/** The language the technician chose (`uiSlice.locale`), read through the store the engine dispatches to. */
+const localeOf = (dispatch) => () => {
+  try {
+    return dispatch((_d, getState) => getState()?.ui?.locale) ?? 'en';
+  } catch {
+    return 'en';
+  }
+};
+
 async function syncOnce(dispatch) {
   if (!isOnline()) return;
+  const getLocale = localeOf(dispatch);
   dispatch(fieldSyncStarted());
   const touched = new Set();
   const notes = [];
   try {
-    await flushMutations(dispatch, touched, notes);
+    await flushMutations(dispatch, touched, notes, getLocale);
     const drained = await drainUploads((entry) => sendUpload(dispatch, entry), { followUp: (mutation) => enqueue(mutation) });
     for (const { entry } of drained.sent) touched.add(entry);
     for (const refusal of drained.refused) {
       touched.add(refusal.entry);
       notes.push(note('upload', refusal));
     }
-    await flushMutations(dispatch, touched, notes);
+    await flushMutations(dispatch, touched, notes, getLocale);
   } catch {
     // No signal part-way through: whatever did not go stays queued for the next try.
   } finally {

@@ -85,6 +85,12 @@ export const INSPECTION_QUESTION_TYPES = ['YES_NO', 'NUMBER', 'CHOICE', 'TEXT'];
 /** The customer's answer on the /visit/:token page (Phase L5). */
 export const VISIT_ANSWERS = ['CONFIRMED', 'RESCHEDULE_REQUESTED'];
 export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 'VOID'];
+/** A quotation for new work, or a variation order against a running job (Phase L7). */
+export const QUOTATION_KINDS = ['QUOTATION', 'VARIATION'];
+/** The site diary (Phase L7). */
+export const WEATHER = ['SUNNY', 'CLOUDY', 'RAIN', 'HEAVY_RAIN', 'COLD'];
+export const LOST_TIME_REASONS = ['RAIN', 'LATE_MATERIAL', 'CUSTOMER', 'BANDH', 'FESTIVAL', 'OTHER'];
+export const PURCHASE_LIST_STATUSES = ['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED'];
 /** What an invoice bills (Phase L6): ordinary work, the advance on acceptance, a running bill, the final bill. */
 export const INVOICE_KINDS = ['STANDARD', 'ADVANCE', 'RUNNING', 'FINAL'];
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
@@ -167,6 +173,13 @@ export const AUDIT_EVENTS = Object.freeze({
   JOB_SCHEDULED: 'job.scheduled',
   JOB_COMPLETED: 'job.completed',
   JOB_VERIFIED: 'job.verified',
+  /** The site diary for a day was filed or changed (Phase L7). */
+  SITE_DIARY_SAVED: 'site_diary.saved',
+  PURCHASE_LIST_ORDERED: 'purchase_list.ordered',
+  PURCHASE_LIST_RECEIVED: 'purchase_list.received',
+  PURCHASE_LIST_CANCELLED: 'purchase_list.cancelled',
+  /** A variation order accepted: its lines joined the job (Phase L7). */
+  JOB_VARIATION_ADDED: 'job.variation_added',
   /** A manager let the work go ahead before the advance was paid (L-D3, Phase L6). */
   JOB_ADVANCE_OVERRIDDEN: 'job.advance_overridden',
   /** The customer's answer on the /visit/:token page (Phase L5). */

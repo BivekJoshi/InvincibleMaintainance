@@ -1,7 +1,7 @@
 import {
   Bookmark, Boxes, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, Contact, FileText, Flag,
   FolderTree, HardHat, Heart, Home, Image, KanbanSquare, LayoutDashboard, Newspaper, Package, Receipt, Ruler,
-  ScrollText, Send, Settings, Star, Tag, Timer, Truck, UserCog, Users, Wrench, Zap,
+  ScrollText, Send, Settings, ShoppingCart, Star, Tag, Timer, Truck, UserCog, Users, Wrench, Zap,
 } from 'lucide-react';
 import { ADMIN_NAV, activeNavPath, breadcrumbsFor } from '@/config/admin/adminNav';
 import { NOTE_COLORS } from '@/form/schemas/me.schema';
@@ -14,7 +14,7 @@ export const SHORTCUT_ICONS = {
   Bookmark, Star, Zap, Flag, Heart,
   LayoutDashboard, Timer, Users, KanbanSquare, Contact, ClipboardCheck, FileText, Ruler,
   Briefcase, CalendarDays, HardHat, ClipboardList, Boxes, Package, FolderTree, Truck,
-  Receipt, Home, Wrench, Building2, Tag, Image, Newspaper, UserCog, ScrollText, Send, Settings,
+  Receipt, Home, Wrench, Building2, Tag, Image, Newspaper, UserCog, ScrollText, Send, Settings, ShoppingCart,
 };
 
 export const shortcutIcon = (name) => SHORTCUT_ICONS[name] ?? Bookmark;

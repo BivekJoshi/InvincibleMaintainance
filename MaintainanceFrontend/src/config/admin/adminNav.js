@@ -8,6 +8,8 @@ import {
 import { Banknote, BarChart3, Gauge, Landmark, Percent } from 'lucide-react';
 // Aftercare (Phase I).
 import { BellRing, RefreshCw, ShieldAlert } from 'lucide-react';
+// Execution (Phase L7).
+import { ShoppingCart } from 'lucide-react';
 import { can } from '@/helpers/permissions';
 
 /**
@@ -74,6 +76,8 @@ export const ADMIN_NAV = [
       { to: '/admin/dispatch', label: 'Dispatch board', icon: CalendarDays, capability: 'jobs:dispatch', editLabel: 'Board' },
       { to: '/admin/technicians', label: 'Technicians', icon: HardHat, capability: 'technicians:read', editLabel: 'Edit' },
       { to: '/admin/stock', label: 'Stock', icon: Boxes, capability: 'materials:read' },
+      // What to buy, for a job's shortfall or the store (Phase L7): read with materials:read, moved with materials:write.
+      { to: '/admin/purchase-lists', label: 'Purchase lists', icon: ShoppingCart, capability: 'materials:read', editLabel: 'Details' },
       // A service's site checklist (Phase L5): read with surveys:read, changed with surveys:write.
       { to: '/admin/inspection-templates', label: 'Inspection templates', icon: ClipboardPen, capability: 'surveys:read', editLabel: 'Edit' },
     ],

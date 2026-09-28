@@ -106,7 +106,8 @@ describe('admin nav', () => {
 
   it('gives the dispatcher the whole of Operations (Phase H1)', () => {
     const nav = navOf('DISPATCHER');
-    expect(nav.Operations).toEqual(['Jobs', 'Dispatch board', 'Technicians', 'Stock', 'Inspection templates']);
+    // Phase L7 added Purchase lists beside Stock (materials:read).
+    expect(nav.Operations).toEqual(['Jobs', 'Dispatch board', 'Technicians', 'Stock', 'Purchase lists', 'Inspection templates']);
     expect(nav.Catalog).toEqual(['Job templates', 'Materials', 'Material categories', 'Suppliers']);
     expect(navOf('ACCOUNTANT').Operations).toEqual(['Jobs']);
     expect(breadcrumbsFor('/admin/jobs/cl1')).toEqual([{ label: 'Operations' }, { label: 'Jobs', to: '/admin/jobs' }, { label: 'Details' }]);
@@ -114,6 +115,17 @@ describe('admin nav', () => {
     expect(breadcrumbsFor('/admin/material-categories/new').at(-2)).toEqual({ label: 'Material categories', to: '/admin/material-categories' });
     expect(breadcrumbsFor('/admin/materials/cl1').at(-1)).toEqual({ label: 'Edit' });
     expect(activeNavPath('/admin/dispatch')).toBe('/admin/dispatch');
+  });
+
+  it('lists purchase lists under Operations for whoever reads materials (Phase L7)', () => {
+    for (const role of ['ADMIN', 'DISPATCHER']) expect(navOf(role).Operations, role).toContain('Purchase lists');
+    for (const role of ['SALES', 'MANAGER', 'ACCOUNTANT', 'EDITOR', 'TECHNICIAN', 'SURVEYOR']) {
+      expect(navOf(role).Operations ?? [], role).not.toContain('Purchase lists');
+    }
+    expect(breadcrumbsFor('/admin/purchase-lists/cl1')).toEqual([
+      { label: 'Operations' }, { label: 'Purchase lists', to: '/admin/purchase-lists' }, { label: 'Details' },
+    ]);
+    expect(activeNavPath('/admin/purchase-lists/new')).toBe('/admin/purchase-lists');
   });
 
   it('lists the inspection templates under Operations for whoever reads surveys (Phase L5)', () => {

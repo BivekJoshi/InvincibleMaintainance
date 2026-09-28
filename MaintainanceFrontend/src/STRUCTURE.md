@@ -24,12 +24,12 @@ e2e/                The Playwright suite: the quotation loop (Phase F2), the dis
 ├── quotation-flow.spec.js
 ├── operations-flow.spec.js   (on the first day from tomorrow with no closed job left by an earlier run on Hari) schedule by drag and by dialog, double-book warning, materials, time, costing, complete, verify, case study — since Phase L6 the set-up pays the advance the Accept raised (`support/handoff.js#payAdvance`): the gate is boq-flow's subject
 ├── field-flow.spec.js  (the customer's phone is 96… — a 97… number whose tail began with 7 read as the +977 prefix) Hari at 360 px: today → on my way → start → tick, timer → `context.setOffline(true)` → a photo, a material, a tick wait on the phone ("Offline — 3 waiting") → back online, the queue drains by itself → last tick, sign, complete; the dispatcher finds the photos (DURING + SIGNATURE = `signatureId`), the material, the time, the checklist and the warranty
-├── boq-flow.spec.js    SALES builds a 3-section BOQ by keyboard, pastes 15 rows, adds a `/` library row, a measured and an optional row, saves (server totals = what the builder showed), submits; MANAGER sees the margin, approves (L4: the unknown cost needs the acknowledgement, recorded in the event), sends; the customer opens the link at 360 px (sections, the 50 · 40 · 10 schedule with the server's amounts, the words, the annex, no sideways scroll), SALES sees "Opened 1×", the customer accepts; the public view has no cost key. **L5** (a second test): SALES books the visit from a lead (window, a Devanagari caretaker with a `+977` number, a landmark, the SMS preview in Nepali), the customer opens `/visit/:token` at 360 px, switches to नेपाली and confirms (`visitAnswer` / `customerConfirmedAt` on the job); the surveyor opens it from the survey list and drives the stepper at 360 px **offline** (`setOffline(true)`, the GPS granted) — the pin, the seepage checklist (a flagged reading, a photo on each photo-required question), two rooms in feet-inches with a door deducted (210.5 sq.ft), a SKETCH filed under its room, the line's work item — and submits on the phone ("Offline — n waiting", the office still has a DRAFT); back online the queue drains by itself (photos, then the save carrying their media ids, then the submit); the office's survey has the flagged reading with its photo, the rows, the pin and the sketch; SALES builds the quotation from it and the BOQ row's measurements and quantity equal the survey's (the seeded seepage service is found by `?q=` its slug — the shared database holds more than 100 services). **L6** continues the first test past the Accept: the customer's page asks for the advance ("Pay the advance of Rs X by <date>", the server's stage-1 amount, a pay link to `/invoice/:token`) and again after a reload; the job carries the BOQ's priced, non-optional rows as lines and `awaitingAdvance`; the dispatcher sees "Awaiting advance" on the queue card (no drag handle) and the job page (advance card, Schedule… held with the reason, the Plan tab's readiness), and the API refuses the schedule (422 ADVANCE_UNPAID); `accounts@` records the whole advance through Phase I's Record payment sheet on the invoice ("Advance" badge, the job linked) → PAID; the dispatchers have "Advance paid — JOB-x is ready to schedule"; the dispatcher schedules it on Suresh (not Hari — the other specs plan Hari's days) and the end follows `plannedDays`. L7–L8 extend it
+├── boq-flow.spec.js    SALES builds a 3-section BOQ by keyboard, pastes 15 rows, adds a `/` library row, a measured and an optional row, saves (server totals = what the builder showed), submits; MANAGER sees the margin, approves (L4: the unknown cost needs the acknowledgement, recorded in the event), sends; the customer opens the link at 360 px (sections, the 50 · 40 · 10 schedule with the server's amounts, the words, the annex, no sideways scroll), SALES sees "Opened 1×", the customer accepts; the public view has no cost key. **L5** (a second test): SALES books the visit from a lead (window, a Devanagari caretaker with a `+977` number, a landmark, the SMS preview in Nepali), the customer opens `/visit/:token` at 360 px, switches to नेपाली and confirms (`visitAnswer` / `customerConfirmedAt` on the job); the surveyor opens it from the survey list and drives the stepper at 360 px **offline** (`setOffline(true)`, the GPS granted) — the pin, the seepage checklist (a flagged reading, a photo on each photo-required question), two rooms in feet-inches with a door deducted (210.5 sq.ft), a SKETCH filed under its room, the line's work item — and submits on the phone ("Offline — n waiting", the office still has a DRAFT); back online the queue drains by itself (photos, then the save carrying their media ids, then the submit); the office's survey has the flagged reading with its photo, the rows, the pin and the sketch; SALES builds the quotation from it and the BOQ row's measurements and quantity equal the survey's (the seeded seepage service is found by `?q=` its slug — the shared database holds more than 100 services). **L6** continues the first test past the Accept: the customer's page asks for the advance ("Pay the advance of Rs X by <date>", the server's stage-1 amount, a pay link to `/invoice/:token`) and again after a reload; the job carries the BOQ's priced, non-optional rows as lines and `awaitingAdvance`; the dispatcher sees "Awaiting advance" on the queue card (no drag handle) and the job page (advance card, Schedule… held with the reason, the Plan tab's readiness), and the API refuses the schedule (422 ADVANCE_UNPAID); `accounts@` records the whole advance through Phase I's Record payment sheet on the invoice ("Advance" badge, the job linked) → PAID; the dispatchers have "Advance paid — JOB-x is ready to schedule"; the dispatcher schedules it on Suresh (not Hari — the other specs plan Hari's days) and the end follows `plannedDays`. **L7**: Suresh (`E2E.users.SURESH`, on the job) opens the job at 360 px, taps **Site diary** → **Fill in today**, picks the weather, counts two people of a trade, moves the first BOQ line up three 5 % steps (15 %), writes a problem in Nepali and saves; it syncs at once ("All sent"), the API's job line has `progressPct` 15, the phone shows no `Rs.` and no sideways scroll; the dispatcher sees 15 % on the job's **BOQ & progress** tab (the work done by value, **no earned value** for dispatch) and the day on its **Site diary** tab. L8 extends it
 ├── aftercare-flow.spec.js  (Phase I) a job completed over the API with a 30-day warranty; the customer raises a claim from `/warranty/:token` at 360 px, no account (the warranty is CLAIMED); the dispatcher finds it in the claims queue by job number, sees the claim rate, accepts → the free WARRANTY job (DRAFT, not billable, `parentJobId` the original, nobody on it) is in `GET /admin/dispatch/unassigned` and its page says "Nobody is on this job yet"; then New contract — customer by phone, the 1st of next month to the 1st a year on through the calendar, `24,000.50` — and the saved visits' due dates equal the last `/preview` the sheet showed, all pending
 ├── finance-flow.spec.js  (Phase I) as the accountant: a job completed over the API with 10 × Rs. 2,500 of billable material is invoiced from Invoices › Create from job ("Bills what it used", Rs. 28,250.00 with 13 % VAT — the server's figures), sent (the link dialog), paid Rs. 10,000 by eSewa, that payment voided (struck through, the balance back to Rs. 28,250.00), then settled by cash and a bank transfer → PAID; aging lists it while owed and drops it once paid; collections show the two payments, not the voided one; the collections CSV has its header and the bank payment's row
 ├── fixtures/           boq-paste.tsv — the 15 rows pasted from "Excel" (a header, two text-only section rows, Indian grouping, `Rs.`); site-photo.jpg — the field flow's camera shot (320 × 240)
 ├── global-setup.js     migrates and seeds the *_test database
-└── support/            e2eEnv.js (ports, database, the API's environment, the seeded logins — `TECHNICIAN` is Hari), api.js (HTTP + signIn; `upload(path, { file, fields })` for multipart), quotation.js (`approveInDialog` — ticks the low-margin acknowledgement when the dialog or the API asks — and `rupeesText`), survey.js (Phase L5: `checklistReadings(surveyor, surveyId)` — uploads one photo and answers a survey's required and photo-required questions, so an API submit passes the checklist; the quotation loop uses it for the seeded seepage checklist), handoff.js (Phase L6: `payAdvance(accountant, jobId)` — pays a held job's advance invoice in full over the API, for a spec whose point is not the gate; the API suite's `payAdvance` does the same)
+└── support/            e2eEnv.js (ports, database, the API's environment, the seeded logins — `TECHNICIAN` is Hari, `SURESH` the second technician since L7), api.js (HTTP + signIn; `upload(path, { file, fields })` for multipart), quotation.js (`approveInDialog` — ticks the low-margin acknowledgement when the dialog or the API asks — and `rupeesText`), survey.js (Phase L5: `checklistReadings(surveyor, surveyId)` — uploads one photo and answers a survey's required and photo-required questions, so an API submit passes the checklist; the quotation loop uses it for the seeded seepage checklist), handoff.js (Phase L6: `payAdvance(accountant, jobId)` — pays a held job's advance invoice in full over the API, for a spec whose point is not the gate; the API suite's `payAdvance` does the same)
 ```
 
 ## api/
@@ -82,10 +82,17 @@ The CRM files (Phase E):
 - `historyApi.js` — **`getRecordHistory({ endpoint, page, limit })`**, one query for every record's History tab (tag `History`).
 - `usersApi.js`, `auditApi.js`, `messagesApi.js` (Phase G, ADMIN) — see "Platform (Phase G)". `previewTemplate` is a
   **query** although it is a POST: it reads, and caching by its arguments is what a live preview wants.
-- `jobsApi.js`, `stockApi.js` (Phase H1) — see "Operations (Phase H1)". Phase L6 added **`getJobPlan(id)`** (`GET /admin/jobs/:id/plan`,
+- `jobsApi.js`, `stockApi.js` (Phase H1) — see "Operations (Phase H1)". Phase L7 added the job-on-site reads — **`getJobProgress`**,
+  **`getJobPlannedVsActual`**, **`getJobDiary`**, **`getJobVariations`** (tags `progress:<id>`, `pva:<id>`, `diary:<id>`, `variations:<id>`,
+  each also tagged with the job) — and **`createShortfallPurchaseList({ id })`**; `issueJobMaterial` now answers **`{ line, warnings }`**
+  (`meta.warnings`, `OVER_PLAN`). `stockApi.js` gained the purchase list's moves **`orderPurchaseList`**, **`receivePurchaseList`**,
+  **`cancelPurchaseList`** (the list itself is the registry's `purchase-lists` through `cmsApi`). See "Execution (Phase L7)".
+  Phase L6 added **`getJobPlan(id)`** (`GET /admin/jobs/:id/plan`,
   tag `{ type: 'Job', id: 'plan:<id>' }`, refreshed by every move) and **`overrideJobAdvance({ id, reason })`**; `createJob` also
   invalidates the invoice list (a job from a quotation runs the hand-off). See "Won → hand-off (Phase L6)".
-- `techApi.js` — the field app. Phase H2 added **`uploadMyJobPhotos({ id, body })`** (multipart `files` + `kind` +
+- `techApi.js` — the field app. Phase L7 added the site diary's reads, **`getMyDiary(jobId)`** and **`getMyDiaryDay({ jobId, day })`**
+  (kept 12 h, tags `{ type: 'Job', id: 'diary:<jobId>' }` / `'diary:<jobId>:<day>'`) — its one write is the `diary_save` sync kind.
+  Phase H2 added **`uploadMyJobPhotos({ id, body })`** (multipart `files` + `kind` +
   `caption`, answered `{ photos, media }`) beside `uploadSurveyPhotos`; both are sent only by the upload queue's engine
   (`hooks/useOfflineQueue.js`), never straight from a screen. `getTechMaterials` is kept 12 h (reference data for the
   materials sheet offline); `getMyJobs({ from, to })` feeds History. See "The field app (Phase H2)". Since Phase L5 a survey
@@ -101,7 +108,8 @@ The CRM files (Phase E):
   (tag `{ type: 'Report', id: 'lost' }`, refreshed with the lead list).
 - `dashboardApi.js` also holds **`getBreachedLeadCount`** (the SLA nav badge): the shell loads that file, and a count must
   not pull `leadsApi` into the main bundle.
-- `quotationsApi.js` since Phase L3 also has **`previewQuotation`** (`POST /admin/quotations/preview` — a **query** although
+- `quotationsApi.js` — Phase L7: `getQuotations` takes `?kind=` and `?jobId=`, `createQuotation({ jobId, items })` starts a
+  VARIATION, and the staff convert of a variation refreshes the job it joined. Since Phase L3 it also has **`previewQuotation`** (`POST /admin/quotations/preview` — a **query** although
   it is a POST: the builder's live amounts, totals and margin, and the discount helpers through `useLazyPreviewQuotationQuery`),
   **`getQuotationTakeoff`** (tagged with the quotation, so a save refreshes it), **`repriceQuotation({ id, apply })`** (a preview
   invalidates nothing; `apply: true` the quotation, the list and History) and **`copyQuotation({ id, customerId?, siteId?, leadId? })`**.
@@ -129,7 +137,7 @@ The CRM files (Phase E):
 | Folder | Holds |
 |---|---|
 | `ui/` | shadcn primitives. Generated by `npx shadcn@latest add <name>`, then edited freely — they are our source, not a dependency. |
-| `common/` | Cross-cutting app furniture: `PageHeader` (a list page's top; its `<h1>` is screen-reader only — the breadcrumb names the page), `RecordHeader` (a record page's top: avatar, the name as the `<h1>`, contact links, actions, and a foot strip), `EmptyState`, `ErrorState`, `ErrorBoundary/`, `SlaChip`, `Toaster`, `LocaleSwitch`, `StateBadge` (a record's state on the semantic surfaces — Live, Draft, Waiting) — and the **admin kit**: `CustomTable/`, `ResourceForm/`, `EditableGrid/` (Phase L3 — reached only through ResourceForm field types), `MediaPicker/`, `LocaleTabs`, `ConfirmDialog`, `RecordCombobox`, `FormDialog`, `RecordHistory`. See "The admin kit" below. `SmsCounter` (Phase G's; shared since Phase I) — characters and SMS parts for a text, and why it is Unicode. `AdBsDate` (Phase I) — a date in AD (Kathmandu) with its BS twin under it. |
+| `common/` | Cross-cutting app furniture (Phase L7: `Toaster` has a **`warning`** variant — `uiSlice#toastWarning`, a thing done that someone should look at, e.g. `OVER_PLAN`): `PageHeader` (a list page's top; its `<h1>` is screen-reader only — the breadcrumb names the page), `RecordHeader` (a record page's top: avatar, the name as the `<h1>`, contact links, actions, and a foot strip), `EmptyState`, `ErrorState`, `ErrorBoundary/`, `SlaChip`, `Toaster`, `LocaleSwitch`, `StateBadge` (a record's state on the semantic surfaces — Live, Draft, Waiting) — and the **admin kit**: `CustomTable/`, `ResourceForm/`, `EditableGrid/` (Phase L3 — reached only through ResourceForm field types), `MediaPicker/`, `LocaleTabs`, `ConfirmDialog`, `RecordCombobox`, `FormDialog`, `RecordHistory`. See "The admin kit" below. `SmsCounter` (Phase G's; shared since Phase I) — characters and SMS parts for a text, and why it is Unicode. `AdBsDate` (Phase I) — a date in AD (Kathmandu) with its BS twin under it. |
 | `theme/` | The colour-mode controls: `ThemeToggle` (one button) and `ThemeModeSwitch` (all three modes). Both read the theme context; neither takes state as a prop. |
 | `layout/` | The three shells — `SiteLayout`, `AdminLayout/`, `TechLayout` (lazy since Phase H2: it carries the field sync engine) — plus what the public one is made of: `SiteHeader/`, `SiteFooter`, `MobileCallBar`. |
 | `site/` | Marketing presentation, **one component per file**: `ServiceCard`, `ProjectCard`, `CategoryTile`, `PageHero`, `SectionShell`, `SectionHeading`, `Media`, `Breadcrumb`, `PromiseList`, `FaqList`, `FilterChip`, `PriceTag`, `Cta`, `Eyebrow`, `Stars`, `DataIcon`, `ProseBody` (long CMS copy — shared with the admin's prose preview). |
@@ -330,7 +338,7 @@ so a cleared input would otherwise show the saved number again.
 | `mediaList` | ordered media ids; drag or move buttons | `maxItems`, `addLabel` |
 | `weekdays` | sorted day numbers, 0 = Sunday … 6 = Saturday | — |
 | `checklist` | `string[]` — several values ticked from `options: [{ value, label, description?, disabled? }]`, kept in the options' order; a ticked value no longer listed stays, named by `unknownLabel(value)` (the technicians on a job) | `options`, `emptyText`, `unknownLabel` |
-| `lineItems` | a quotation's **bill of quantities** (Phase L3, on EditableGrid): ITEM / SECTION / NOTE rows — description (a section's title, a note's text), unit, qty (typed, or measured: a ruler and the sheet's quantity), waste %, rate in **rupees**, amount, optional. The record's rows (paisa) come in through `helpers/boq.js#toBoqRows` with a client `_key`; the schema (`quotation.schema#boqRowsSchema`) sends `boqRowBody` rows and never a cost. **Every amount, section subtotal and measured quantity is the server's** — `figures`, a Map of row key → the saved rows' or the live preview's figures (`stale` dims them while a newer preview is on its way). `/` searches the rate library, Excel paste adds rows, and a row's actions open its **measurement sheet** (Ctrl+M — a `measurements` form in a sheet), its frozen **recipe** (read-only; quantities per the recipe and for this row; cost only for `costCapability`) and its **details** (specification, kind, optional, provisional). The drawers are their own forms, and their events are stopped before the builder's form | `figures`, `stale`, `costCapability`, `gridLabel`, `search` (false to switch the library off), `maxItems` (500) |
+| `lineItems` | a quotation's **bill of quantities** (Phase L3, on EditableGrid): ITEM / SECTION / NOTE rows — description (a section's title, a note's text), unit, qty (typed, or measured: a ruler and the sheet's quantity), waste %, rate in **rupees**, amount, optional. The record's rows (paisa) come in through `helpers/boq.js#toBoqRows` with a client `_key`; the schema (`quotation.schema#boqRowsSchema`) sends `boqRowBody` rows and never a cost. **Every amount, section subtotal and measured quantity is the server's** — `figures`, a Map of row key → the saved rows' or the live preview's figures (`stale` dims them while a newer preview is on its way). `/` searches the rate library, Excel paste adds rows, and a row's actions open its **measurement sheet** (Ctrl+M — a `measurements` form in a sheet), its frozen **recipe** (read-only; quantities per the recipe and for this row; cost only for `costCapability`) and its **details** (specification, kind, optional, provisional). The drawers are their own forms, and their events are stopped before the builder's form | `figures`, `stale`, `costCapability`, `gridLabel`, `search` (false to switch the library off), `maxItems` (500), `signedQty` (Phase L7 — a variation's BOQ: the Qty cell takes a negative quantity, an omission, written "−12"; amounts and subtotals below zero read "− Rs. …") |
 | `grid` | an array of small objects edited as a spreadsheet — the generic EditableGrid field; a completely blank row is dropped | `columns` (EditableGrid column specs, a module constant), `makeRow`, `maxItems`, `addLabel`, `emptyText`, `footer(rows)` |
 | `measurements` | a measurement sheet: rows of area, description, nos, L, B, H and deduct. Lengths take **feet-inches** (`12'6"` → 12.5, `12'` → 12, `6"` → 0.5 — `helpers/measurements#parseLength`) and show as the number they were read as; each row's value (nos × L × B × H over the dimensions it has, negative for a deduction) and the sheet's total are a **preview** — the saved quantity is the server's. Sent as numbers, blank rows dropped (`measurementSheetSchema`) | `unit` (named in the total) |
 | `recipe` | a rate-library recipe (Phase L2; on EditableGrid since L3): the API's `components` — one row per line: **What** (a material from `materials.path` or a trade from `trades.path` in a record picker that opens on Enter — or the words, for equipment and other), Kind, quantity (the material's own unit, man-days), unit, wastage % (materials), cost per unit in **rupees** (equipment and other; the column only for `costCapability`). "Add material / labour / equipment or other cost" put a line at the end of its section and select it; Ctrl+Enter adds one below. A line names its material or trade from the record it carries (`RecordCombobox selectedLabel`), so a reader who may not list materials sees names, and "Bought as bag = 50 kg" under a material with a pack. `helpers/recipe.js` converts both ways | `materials`, `trades` (`{ path, params }`), `costCapability`, `per: { qty, unit }` (the "Quantities below make 10 sq.m" line) |
@@ -407,6 +415,7 @@ Every CMS resource the API mounts has a screen. `cms` means `cms:read` to open a
 | Inspection templates | registry `inspection-templates` (Phase L5), own `basePath`; the questions as a `grid` field (rows in the API's shape, columns with `get`/`set`); Reorder matters — a survey uses its service's first active template, else the first general one | `/admin/inspection-templates` · surveys:read / surveys:write (SALES, MANAGER; DISPATCHER reads); History surveys:read | Operations | — (the field stepper's checklist; the review page names readings by it) |
 | Materials | registry `materials`, own `basePath`; pack size and name (`nullable`) since L2 | `/admin/materials` · materials:read / materials:write (the API also lets `rates:write` list and read them, for the recipe picker) | Operations | — (stock is the Stock page; a recipe's materials) |
 | Material categories, Suppliers | registry `material-categories`, `suppliers`, own `basePath` | `/admin/material-categories`, `/admin/suppliers` · materials | Operations | — |
+| Purchase lists | registry `purchase-lists` (Phase L7), own `basePath`; the items as a `grid` field (a material picked in a record picker, quantity, packs, note, received); no switch, no reorder; **`useRecordActions`** Mark ordered · Receive into stock… · Cancel list…, **`readOnlyReason`** past DRAFT, **`deletable`** a draft only | `/admin/purchase-lists` · materials:read / materials:write; History materials:read | Operations | — (receiving raises stock; a job's Materials / Labour tab drafts one from its shortfall) |
 | Site settings | **bespoke** `pages/admin/SettingsPage` | `/admin/platform/settings` · settings:read to open; saving is ADMIN's (`settings:write`) | Platform | header, footer, contact, hero badges and counters, booking calendar, SEO defaults |
 
 Why three are bespoke: the **home composer** edits a fixed set of 19 sections with no create or delete, saved
@@ -464,6 +473,9 @@ An entry holds:
 | `historyCapability` | who sees the edit page's **History** tab (default `capability`; the rate card's is `quotations:history`). Every saved record gets the tab — `RecordHistory` on `<path>/:id/history`, which the API's CRUD factory mounts. `historyCapabilityOf(entry)` answers |
 | `activeField` | the boolean the list's switch and Hide/Show act on (default `isActive`) — the API's `toggle` flips the same column. Technicians use `isAvailable` with their own `activeCopy`. `activeFieldOf(entry)` answers |
 | `bulkActions` | extra actions on the selected rows: `[{ label, icon?, capability?, run(rows, { dispatch, confirm }) }]`. `run` may ask first and resolves the toast (`{ title, description?, variant? }`), or null when the answer was no; a rejection toasts the API's message. Not offered in Trash. The rate library's "Update to derived rate" is one |
+| `useRecordActions` | (Phase L7) a **hook** — `() => [actionsFor(record), dialogs]` — for a record with moves of its own (a purchase list's Mark ordered · Receive · Cancel): `actionsFor` answers `[{ key, label, icon?, primary?, destructive?, disabledReason?, onSelect }]` for the record's state; the list offers them in a row's menu, the edit page as header buttons (a disabled one's reason under them); the pages render `dialogs`. The entry is fixed per mounted page, so the hook is always the same one |
+| `readOnlyReason(record)` | (Phase L7) why a saved record's form is read only in its state — the edit page shows it above a read-only form (a purchase list past DRAFT); null when it can be edited |
+| `deletable(record)` | (Phase L7) whether Delete is offered for a record, on the list's row menu and the edit page (a purchase list only as a draft); default every record |
 | `rowActions(row)` | extra list actions: `[{ label, icon?, capability?, endpoint, arg, done }]` — `endpoint` is a `cmsApi` mutation (`approveTestimonial`), dispatched with `arg`; `done` is the success toast. Hidden without `capability`. The registry test checks each endpoint exists |
 
 A role with `capability` but not `writeCapability` (SALES and ACCOUNTANT on the rate library) sees the list with disabled
@@ -743,7 +755,7 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
 | Route | Page | Does |
 |---|---|---|
 | `/admin/jobs` | `JobsPage` | CustomTable: number and title, customer (tap to call, area), status in the office's words (`JOB_STATUS_LABELS`) and priority, when, technicians. Filters status, type, priority, technician, customer, "Nobody on it", invoiced, scheduled dates; URL presets from `config/admin/jobViews.js` — Today, Unassigned, On hold, Completed not verified, Not invoiced; New job (`JobFormSheet`); a row's Schedule… / Assign… / Verify… |
-| `/admin/jobs/:id` | `JobDetailPage/` | the action bar (a disabled action says why — one line per reason), since Phase L6 the "Awaiting advance" chip and the **advance card** above the tabs, and eight tabs (`?tab=`) — nine on a BOQ job, whose **Plan** tab follows Overview (see "Won → hand-off (Phase L6)"): **Overview** (customer and site with tap-to-call and Maps, where it came from — lead, quotation, survey, rework, case study — when and who, the work, Edit details), **Checklist** (tick, skip, add, edit, remove), **Photos** (grouped by kind; add from the library or upload under a chosen kind), **Materials** (issue from stock with quantity, billed rate and billable; reverse), **Time** (logs; the office adds time for a technician on the job; delete), **Costing** (`GET …/costing`: labour, materials at cost, expenses, total, invoiced, margin, and the lines each total is the sum of — **only for `costs:read`** since Phase L2: the tab is not there for anyone else, and `?tab=costing` falls back to Overview), **Events** (JobStatusEvent, with a Maps link where the field app sent a location), **History** (`jobs:history`) |
+| `/admin/jobs/:id` | `JobDetailPage/` | the action bar (a disabled action says why — one line per reason), since Phase L6 the "Awaiting advance" chip and the **advance card** above the tabs, and eight tabs (`?tab=`) — nine on a BOQ job, whose **Plan** tab follows Overview (see "Won → hand-off (Phase L6)"): **Overview** (customer and site with tap-to-call and Maps, where it came from — lead, quotation, survey, rework, case study — when and who, the work, Edit details), **Checklist** (tick, skip, add, edit, remove), **Photos** (grouped by kind; add from the library or upload under a chosen kind), **Materials** (issue from stock with quantity, billed rate and billable; reverse), **Time** (logs; the office adds time for a technician on the job; delete), **Costing** (`GET …/costing`: labour, materials at cost, expenses, total, invoiced, margin, and the lines each total is the sum of — **only for `costs:read`** since Phase L2: the tab is not there for anyone else, and `?tab=costing` falls back to Overview), **Events** (JobStatusEvent, with a Maps link where the field app sent a location), **History** (`jobs:history`). Since Phase L7 also **BOQ & progress**, **Materials / Labour**, **Site diary** and **Variations** — see "Execution (Phase L7)" |
 | `/admin/dispatch` | `DispatchBoardPage/` | technicians × the day's hours (08–18) or × seven days; date, Day/Week, who, skill and area in the URL; the unassigned queue (`/dispatch/unassigned`, paged, searchable) and "Assigned, no time yet" beside it |
 | `/admin/stock` | `StockPage` | balances from movements, Low — reorder, value at cost; "Low stock only" filter and the header's low count; a row opens its movements (`StockMovementsSheet`, also `?open=<id>` — the low-stock notification's link); **Record movement** (purchase, return, adjustment with a sign, wastage) |
 | `/admin/technicians`, `/admin/job-templates`, `/admin/materials`, `/admin/material-categories`, `/admin/suppliers` | registry entries | see "Which screen is which" |
@@ -805,10 +817,12 @@ money field. Motion is the page transition only (it respects `prefers-reduced-mo
 | `/tech/history/:id` | `TechJobPage` with `readOnly` | the same sheet with no controls; Back returns to the same range |
 | `/tech/surveys` | `SurveyListPage` | the surveyor's surveys — to fill in first, then with the office — with the visit's day and window (en/ne since Phase L5) |
 | `/tech/surveys/:id` | `SurveyFormPage/` | **the survey stepper** (Phase L5) — see "The site-visit kit (Phase L5)" |
+| `/tech/jobs/:id/diary`, `/tech/jobs/:id/diary/:day` | `SiteDiaryPage/` | **the site diary** (Phase L7): the days filed and today; one Kathmandu day — see "Execution (Phase L7)" |
 
 `TechJobPage/` is a folder page: `TechJobPage.jsx` (fetch, the queue overlay, what each action queues) and `sections/`
-— `JobHeader` (with `JobContactCard`), `ChecklistSection`, `TimerSection`, `PhotosSection`, `MaterialsSection`,
-`FinishSection` (with `CompletedSummary`) and `NextStepBar` (with `HoldSheet`).
+— `JobHeader` (with `JobContactCard`), `DiaryLinkCard` (Phase L7 — the way into the site diary), `ChecklistSection`,
+`TimerSection`, `PhotosSection`, `MaterialsSection`, `FinishSection` (with `CompletedSummary`) and `NextStepBar` (with `HoldSheet`).
+`SiteDiaryPage/` (Phase L7) is the same shape: `SiteDiaryPage.jsx`, `siteDiary.js` and `sections/`.
 
 ### Offline: two queues, one engine
 
@@ -829,7 +843,8 @@ money field. Motion is the page transition only (it respects `prefers-reduced-mo
    overlay), not from a hand-patched cache. Kinds used — exactly the ones `/tech/sync` accepts: `status` (EN_ROUTE,
    IN_PROGRESS, ON_HOLD with its `note`), `task` (`{ isDone }`), `material` (`{ materialId, qty }` — never a rate),
    `time_start`, `time_stop`, `complete` (`{ note?, customerRating?, signatureMediaId? }`), and — since Phase L5 for
-   **every** survey write, online or not — `survey_draft` (the whole survey, a full replace) and `survey_submit`.
+   **every** survey write, online or not — `survey_draft` (the whole survey, a full replace) and `survey_submit`; since Phase L7
+   `diary_save` (a job's Kathmandu day, a full replace — `{ jobId, payload: { day, … } }`).
 2. **Order is the order the technician acted in.** `at` and `seq` are strictly increasing (two taps in a millisecond, or a
    clock set back, cannot swap), the queue sends oldest first, and the server sorts a batch by `at`.
 3. **Dedupe by idempotency key**: enqueueing a key already waiting is a no-op; the server answers a key it applied before
@@ -858,11 +873,19 @@ money field. Motion is the page transition only (it respects `prefers-reduced-mo
    then names it), and one whose picture still waits **holds the entry — and every later entry for the same survey** — so
    a survey's submit never overtakes the save it follows. Step 2 uploads the picture and step 3 sends both. Other jobs and
    surveys are not held. `photoUploadId` never reaches the wire.
-9. **A newer save replaces an older one** — `queueMutation(mutation, { supersede })` drops waiting entries the new one
+9. **A newer save replaces an older one** (a diary day's too, keyed on job + day) — `queueMutation(mutation, { supersede })` drops waiting entries the new one
    replaces (`offlineQueue#dropPending`): a survey's older `survey_draft` is worth nothing once a newer full save waits.
 10. **What the office refused, with its reasons** — a failed result's `details` travel into the note (the API lists a
    `SURVEY_INCOMPLETE` submit's missing answers and photos); `INVALID_MUTATION` and `SURVEY_INCOMPLETE` are terminal.
    A note about a survey links to it (`?step=checklist` for SURVEY_INCOMPLETE).
+11. **A diary day waits for its photos** (Phase L7) — the day's pictures are the job's DURING uploads; the save names them in
+   `meta.photoUploadIds` (never sent) and `useOfflineQueue#resolveDiaryPhotos` adds each one's media id to `payload.photoMediaIds`
+   once it is up, holds the day while one still waits, and leaves a refused one out. A diary day is a scope of its own
+   (`offlineQueue#scopeOf` → `diary:<jobId>:<day>`), so it holds that day's later saves, never the job's status changes or
+   ticks. `JOB_NOT_ON_SITE`, `UNKNOWN_LINE` and `UNKNOWN_TRADE` are terminal. An applied change may carry `warnings`
+   (`settle` keeps them on the entry): a material over the job's plan (`OVER_PLAN`) is said as a warning toast in the
+   technician's language (`fieldCopy.materials.overPlan`) — the API's `/tech/sync` answer for a `material` carries no `warnings`
+   yet, so the field toast shows once it does (the office's issue dialog has it now).
 
 The header (`TechLayout` → `SyncButton`) shows the pending count — changes plus photos — with Offline, Syncing… or
 "Sync now"; the strip under it says what is kept on the phone while there is no signal.
@@ -1079,6 +1102,102 @@ this before anyone tries; the server decides.
   `QuotationPublicPage.test.jsx` (the advance after Accept, on reload in Nepali, paid, none) and `helpers/finance.test.js`
   (`INVOICE_KINDS` mirror, `formatSignedNpr`, `invoiceLinesLocked`, the staged billing rule), and the L6 steps of
   `e2e/boq-flow.spec.js`.
+
+## Execution (Phase L7)
+
+The weeks on site: a daily **site diary** the foreman files from a phone, offline; **progress** per BOQ line with earned value;
+**materials and labour** planned vs issued vs logged; a **purchase list** raised from the shortfall; and **variation orders**
+through the same builder, approval and customer link as a quotation. **No money on the phone** (D1): the diary carries
+none, and the office's earned value is behind `quotations:read` / `invoices:read`.
+
+**The site diary** — `pages/tech/SiteDiaryPage/` (one route target for `/tech/jobs/:id/diary` and `/tech/jobs/:id/diary/:day`),
+linked from the job sheet (`TechJobPage/sections/DiaryLinkCard` — not on an inspection), which also loads today's page while
+there is signal so it opens in a basement (`getMyDiaryDay`, kept 12 h). Built for 360 px and gloves: every control ≥ 44 px,
+steppers 48 px, the save pinned at the bottom; en and ne (`fieldCopy.diary`).
+
+| Part | File | Does |
+|---|---|---|
+| The days | `sections/DiaryDays` | today on top (the server's Kathmandu day, the phone's with no signal) — filed · not filed · saved on this phone — with one big button; **Another day** (a date, up to 60 days back, never tomorrow — `siteDiary#isDiaryDay`); the days filed newest first, the server's with the ones still on the phone |
+| Weather | `sections/WeatherCard` | five chips (`WEATHER`), a second tap clears |
+| Who was on site | `sections/HeadcountCard` | each trade with − / count / + (0–200; a count can be typed for a big crew), the day's total in people |
+| Progress | `sections/ProgressCard` | the job's lines by section (`linesBySection`) — number, words, "of 240 sq.ft", a bar, −5 % / +5 % / Done; a line starts where the job stands (`progressPct`) and only a line marked this day is sent. No rate reaches the phone |
+| Materials received | `sections/ReceivedCard` | "Add a delivery" through the field app's `MaterialsSheet` (the material and its quantity), or "Something not on the list"; each with its challan number. **A delivery does not move stock** |
+| Time lost | `sections/LostTimeCard` | half hours 0–24; once any are lost, why (`LOST_TIME_REASONS` chips) — asked for before the day saves |
+| Photos | `sections/DiaryPhotos` | the rear camera → `compressImage` → the upload queue as the job's DURING photos, captioned with the day; "Waiting to upload" until sent |
+| Problems, note | `sections/NotesCard` | the foreman's words (`lang="ne"`) |
+
+- **Every write is a `diary_save`** (`useFieldQueue#queueMutation`), online or not: the whole day (`siteDiary#diaryPayload` — the
+  API's `diarySchema`, strict), keyed on job + day, a **full replace**; a newer save of the same day **supersedes** a waiting one
+  (`isDiarySave`). `meta.form` keeps the form as typed, so coming back before it is sent shows it; `meta.photoUploadIds` names
+  the pictures still uploading (see the offline rules, 11). Save checks the API's rules first (`diaryProblems`: a delivery needs
+  what and a quantity above 0, lost hours need a reason) and marks what is wrong; leaving the screen saves what can be saved.
+- A job whose diary is closed (DRAFT, CANCELLED, VERIFIED — the API's 422 `JOB_NOT_ON_SITE`) reads its days, read only.
+
+**The job page** gains four tabs (each loads only while open; `?tab=` falls back to Overview where it is not offered):
+
+| Tab | On | From | Shows |
+|---|---|---|---|
+| **BOQ & progress** (`sections/JobProgressTab`) | a BOQ job | `GET /admin/jobs/:id/progress` | work done by value (`earnedPct`), the lines by section — quoted quantity, a progress bar, VARIATION lines marked, an omission's quantity in red — and, **only for `quotations:read` / `invoices:read`** (`helpers/execution#seesEarnedValue`) and only when the server sent it, each line's rate, value and earned value and the totals ("− Rs." below zero). The payment stages (billed · due now · not yet) and, once earned value passes a MILESTONE, **"Earned value has passed <label> — raise the running bill"** (`nextBillPrompt`), linking the invoices for `invoices:read` (L8 raises it) |
+| **Materials / Labour** (`sections/JobPlannedActualTab`) | a BOQ job | `GET /admin/jobs/:id/planned-vs-actual` | per material planned · issued · received on site (the diary's challans) and "Over plan by 10.5 kg" / "Not in the plan" on the warning surface; per trade planned vs logged labour days (headcount × the hours worked of an 8-hour day) with Over plan / On plan / Within plan (`labourState`); the timers' hours. Quantities only. **Create purchase list from shortfall** |
+| **Site diary** (`sections/JobDiaryTab`) | any job but an inspection | `GET /admin/jobs/:id/diary` | a `CustomTable` of the days — day in AD and BS, weather, people on site, time lost and why, lines marked ("A.1 50%"), photos, who filed it; a row opens onto the day: headcount by trade, progress, deliveries with the challan, problems and note, the photos (the answer's `media`); CSV |
+| **Variations** (`sections/JobVariationsTab`) | a quoted job (lines or a quotation), not an inspection | `GET /admin/jobs/:id/variations` | the job's variation orders — number, status ("Accepted · on the job" once converted), total (only when sent, for `quotations:read`), raised / sent / answered; a row opens the builder for `quotations:read`. **New variation** (`quotations:write`, not on a cancelled or verified job) posts `{ jobId, items: [] }` and opens the draft |
+
+`sections/ShortfallPurchaseListButton` (`materials:write`, on Materials and Materials / Labour) posts
+`/admin/jobs/:id/purchase-lists/from-shortfall` and opens the DRAFT it answers; 422 `NO_SHORTFALL` is said in words ("Nothing
+is short"). **OVER_PLAN** — issuing material past the plan still issues it: the Materials tab's dialog toasts the success and a
+**warning** (`toastWarning`, `overPlanText`: "Crystalline slurry: 130.5 kg issued to this job against 120 kg planned.").
+
+**Purchase lists** — the registry entry `config/admin/resources/purchaseLists.jsx` (see "Which screen is which"; nav
+Operations › Purchase lists): number and date, state (`PURCHASE_LIST_TONES`), the job (linked) or "For the store", supplier,
+items, ordered and received in AD + BS; filters state, job, supplier; newest first. The form: job, supplier, the items grid
+(`ITEM_COLUMNS` — the material in a `RecordCombobox` that opens on Enter, quantity in its unit, packs of its pack label, note,
+received) and a note; `ops.schema#purchaseListSchema` drops blank rows and sends `{ materialId, qty, packs?, note? }`.
+The moves are **`hooks/usePurchaseListActions`** (the entry's `useRecordActions`): **Mark ordered** (confirmed), **Receive into
+stock…** (a `FormDialog` of one quantity per item, as ordered to start with — `purchaseReceiveFormSchema`; as ordered sends
+`{}`, less sends every item — `helpers/purchaseLists#receiveBody`), **Cancel list…** (a reason, 3–500). What a state allows is
+`helpers/purchaseLists#purchaseListActions`, held to `PURCHASE_LIST_TRANSITIONS` (the API's machine, mirrored in
+`config/constants.js`). Past DRAFT the form is read only (`purchaseListLock`) and Delete is not offered (`purchaseListDeletable`).
+
+**Variations in the quotation screens** — a variation is a quotation with `kind: 'VARIATION'` and a `jobId`, numbered VO-:
+
+- **The list** (`QuotationsPage`): a "Variation" badge and the job's number under the number, a **Kind** filter (`?kind=`), and
+  totals below zero as "− Rs. …".
+- **The builder** is the L3 `QuotationBuilderPage` itself, in variation mode (`quotation.kind === 'VARIATION'`): the "Variation"
+  badge, `sections/VariationBanner` (the job, linked to its Variations tab, and what accepting does), the `lineItems` field's
+  **`signedQty`** (the Qty cell takes "-12", "−12" or "- 12" — `helpers/boq#signedQtyOf`), `quotation.schema#quotationFormSchemaFor({
+  variation })` (a negative quantity allowed, never 0; on a QUOTATION a quantity ≤ 0 is "More than 0" — the API's 422
+  NEGATIVE_LINE), the preview asked with `kind: 'VARIATION'` (`helpers/boq#previewRequest`), **no Payment schedule** (the tab reads
+  **Terms**; nothing is sent), and totals below zero as "− Rs. …" (`TotalsCard`). Submit, approve (maker-checker, the margin gate),
+  send and the customer's link are unchanged; the APPROVED convert reads **Add to the job** (`VARIATION_CONVERT_LABEL`) and
+  confirms that its rows join the job with no new job and no advance; `waitingFor` speaks of the job.
+- **The customer's page**: `QuotationDocument` names it **Variation order** / परिवर्तन आदेश with "Change to your job JOB-…" in the
+  header (`quotationDocumentCopy.js#variation`); the page adds a notice (`data-testid="variation-notice"`) and answers with
+  `quotationPageCopy.js#variationPageCopy` — **"Accept this change" / "यो परिवर्तन स्वीकार्नुहोस्"**, the total (possibly "− Rs.") repeated
+  in the confirm, and "the change is accepted — we have added it to your job". No advance is asked for.
+
+Parts: `helpers/execution.js` (`seesEarnedValue`, `overPlanText`, `nextBillPrompt`, `pctText`, `labourState`, `qtyWithUnit`),
+`helpers/purchaseLists.js`, `pages/tech/SiteDiaryPage/siteDiary.js` (the form ⇄ the API's day, the payload, the checks, the day
+bounds, the steps), `config/constants.js` (`QUOTATION_KINDS`, `WEATHER`, `LOST_TIME_REASONS`, `PURCHASE_LIST_STATUSES` /
+`_TRANSITIONS`, each with its `*_LABELS`), `config/auditEvents.js` (`site_diary.saved`, `purchase_list.*`, `job.variation_added`,
+and the groups Site diary and Purchase lists), `helpers/recordLinks.js` (a purchase list and its items; a diary day opens its
+job's Site diary tab), `ui/progress.jsx` (the bar now tells a screen reader its value).
+
+Tests: `pages/tech/SiteDiaryPage/SiteDiaryPage.test.jsx` (at 360 px, offline: the whole day in one `diary_save` with no money
+key; the lost-hours reason asked for first; a newer save of the day supersedes the waiting one and another day's stays; the form
+starts from the waiting save; a photo held until uploaded, then the day sent with the media id and never the upload id; read
+only on a closed job; Nepali; the days list with the waiting day and "Another day"; the job sheet's link and today's prefetch, none
+on an inspection), `siteDiary.test.js` (round trip, the API's own `diarySchema`, bounds, steps), the L7 blocks of
+`hooks/useOfflineQueue.test.js` (a held day never holds the job's status change; a refused photo; JOB_NOT_ON_SITE dropped with a
+note; OVER_PLAN toasted in Nepali) and `helpers/offlineQueue.test.js` (`scopeOf`, warnings kept, terminal codes),
+`pages/admin/ExecutionScreens.test.jsx` (the four tabs and where they show; earned value for SALES, never for a dispatcher — even
+from a doctored answer; the next-bill prompt; over plan and labour; shortfall → the draft opens, NO_SHORTFALL in words, no button
+for SALES; the issue dialog's OVER_PLAN warning; the diary tab and a day's details; variations with totals for SALES and New
+variation, none for a dispatcher; the purchase lists' row moves by state, order, receive as ordered and short, cancel with a
+reason, the lock, the items grid saved in the API's shape), `helpers/purchaseLists.test.js` (held to the machine; the API's own
+schemas), `helpers/execution.test.js`, the L7 blocks of `QuotationBuilder.test.jsx` (variation mode; a negative quantity refused
+on a quotation), `QuotationPublicPage.test.jsx` (en and ne) and `quotationActions.test.js`, `crmMirror.test.js` (the purchase-list
+machine, the new enums with words in both field languages, the queue's kinds = `/tech/sync`'s), `adminNav.test.js`,
+`recordLinks.test.js`, and the L7 steps of `e2e/boq-flow.spec.js`.
 
 ## Leads and customers (Phase E)
 
@@ -1647,10 +1766,13 @@ section shows, where its content is edited, which ones take a `limit`, and `toSe
 (the settings screen as data — see "Which screen is which"). `tech/fieldCopy.js` is the field app's words in en and ne (Phase H2;
 the survey stepper's since L5). `auditEvents.js` names Phase L5's `visit.confirmed`, `visit.reschedule_requested` and
 `site.pinned` (their groups Site visits and Sites); `admin/messageKeys.js` describes `visit_booked` and `visit_reminder`.
-Phase L6: `constants.js` has `INVOICE_KINDS` / `INVOICE_KIND_LABELS`; `auditEvents.js` names `job.advance_overridden`;
+Phase L7: `constants.js` has `QUOTATION_KINDS`, `WEATHER`, `LOST_TIME_REASONS` and `PURCHASE_LIST_STATUSES` / `_TRANSITIONS`, each with
+its words; `auditEvents.js` names the diary, purchase-list and variation events; `tech/fieldCopy.js` has `diary.*` (see "Execution
+(Phase L7)"). Phase L6: `constants.js` has `INVOICE_KINDS` / `INVOICE_KIND_LABELS`; `auditEvents.js` names `job.advance_overridden`;
 `messageKeys.js` describes `advance_due`.
 
-`helpers/` is behaviour with no state (Phase L6 added `handoff.js` — the advance gate and the crew calculator, see "Won →
+`helpers/` is behaviour with no state (Phase L7 added `execution.js` and `purchaseLists.js`, and `signedQtyOf` to `boq.js` — see
+"Execution (Phase L7)"; Phase L6 added `handoff.js` — the advance gate and the crew calculator, see "Won →
 hand-off (Phase L6)" — `invoiceStageLine` and `invoiceLinesLocked` in `finance.js` and `formatSignedNpr` in `format.js`; Phase I added `finance.js`, `nepaliDate.js` — a byte-for-byte copy of the API's — and the BS and balance display in `format.js`: see "Finance screens (Phase I)"; Phase L5 added `inspection.js` — see "The site-visit kit (Phase L5)"; Phase L4 added `paymentSchedule.js` and `download.js` — see "Quotations — terms and
 the customer document (Phase L4)"; Phase L3 added `boq.js` and `measurements.js` — see "Quotations — the BOQ builder
 (Phase L3)"; Phase L2 added `recipe.js` — see "The rate library and the money wall"; Phase H1 added `jobActions.js` and `dispatchBoard.js` — see "Operations
@@ -1676,7 +1798,8 @@ and were removed in C2) — import the module itself.
 
 `hooks/useOfflineQueue.js` is the field app's sync engine and `useFieldCopy` its words (Phase H2); `usePendingPicture` (Phase L5)
 a queued picture as an object URL.
-`hooks/` also holds the admin kit's behaviour: `useJobActions` and `useScheduleCommit` (Phase H1), `useConfirm`, `useUnsavedChangesGuard`,
+`hooks/` also holds the admin kit's behaviour: `usePurchaseListActions` (Phase L7 — a purchase list's moves, the registry's
+`useRecordActions`), `useJobActions` and `useScheduleCommit` (Phase H1), `useConfirm`, `useUnsavedChangesGuard`,
 `useDebouncedValue`, `useListParams` (whose `defaults` are compared by value), `useLeadStatusChange` (the one way a
 screen moves a lead: `const [changeStatus, dialog] = useLeadStatusChange()`; LOST asks why first — a category and the
 words; resolves false when refused or cancelled, so the board can put a card back), `useLeadFollowUp` (Phase L1: opens the

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams } from 'react-router-dom';
-import { MessageSquareText } from 'lucide-react';
+import { FileDiff, MessageSquareText } from 'lucide-react';
 import { useDecideQuotationMutation, useGetQuotationByTokenQuery } from '@/api/publicApi';
 import { DocumentShell } from '@/components/documents/DocumentShell';
 import { DocumentNotice } from '@/components/documents/DocumentNotice';
@@ -10,9 +10,9 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { selectLocale } from '@/redux/slices/uiSlice';
-import { formatNpr } from '@/helpers/format';
+import { formatSignedNpr } from '@/helpers/format';
 import { QuotationDecision } from './sections/QuotationDecision';
-import { pageCopy } from './quotationPageCopy';
+import { pageCopy, variationPageCopy } from './quotationPageCopy';
 import { quotationPageState } from './quotationPageState';
 
 /**
@@ -25,6 +25,10 @@ import { quotationPageState } from './quotationPageState';
  * words, the contract wording, duration, exclusions, the payment schedule with each stage's amount, the terms and
  * the measurements annex — every figure the server's. Every word, the document's and the answer's, follows the
  * site's language (en / ne); it works at 360 px. Opening it is counted by the API (`firstViewedAt`, `viewCount`).
+ *
+ * A **variation order** (Phase L7, `kind: 'VARIATION'`, with `job { number }`) reads as a change to that job: "Change to
+ * your job JOB-…" above the document, and "Accept this change" / "यो परिवर्तन स्वीकार्नुहोस्" — accepting it adds it to
+ * the job, with no new job and no advance. Its total may be below zero (an omission), written "− Rs. …".
  */
 export default function QuotationPublicPage() {
   const { token } = useParams();
@@ -42,7 +46,10 @@ export default function QuotationPublicPage() {
   // A newer token (a replaced notice's link) is a new page: forget this visit's answer.
   const data = answered?.token === token ? answered.quotation : loaded;
   const state = quotationPageState(data);
-  const total = formatNpr(data.total);
+  const variation = data.kind === 'VARIATION';
+  const jobNumber = data.job?.number ?? '';
+  const shownCopy = variation ? variationPageCopy(copy, jobNumber) : copy;
+  const total = formatSignedNpr(data.total);
 
   /** @param {'approve'|'request_changes'|'reject'} decision  @param {{ note?: string, category?: string }} [extra] */
   const onAnswer = async (decision, { note, category } = {}) => {
@@ -70,12 +77,21 @@ export default function QuotationPublicPage() {
       <QuotationDocument
         quotation={data}
         locale={locale}
-        notice={data.requestedChanges && state.kind === 'open' ? (
-          <div className="mt-6">
-            <DocumentNotice tone="info" icon={MessageSquareText} animate={false} title={copy.requestedChanges.title}>
-              <span lang="ne" className="block whitespace-pre-wrap">{data.requestedChanges}</span>
-              {copy.requestedChanges.body}
-            </DocumentNotice>
+        notice={(variation || (data.requestedChanges && state.kind === 'open')) ? (
+          <div className="mt-6 space-y-3">
+            {variation ? (
+              <div data-testid="variation-notice">
+                <DocumentNotice tone="info" icon={FileDiff} animate={false} title={copy.variation.notice.title(jobNumber)}>
+                  {copy.variation.notice.body}
+                </DocumentNotice>
+              </div>
+            ) : null}
+            {data.requestedChanges && state.kind === 'open' ? (
+              <DocumentNotice tone="info" icon={MessageSquareText} animate={false} title={copy.requestedChanges.title}>
+                <span lang="ne" className="block whitespace-pre-wrap">{data.requestedChanges}</span>
+                {copy.requestedChanges.body}
+              </DocumentNotice>
+            ) : null}
           </div>
         ) : null}
       />
@@ -86,7 +102,7 @@ export default function QuotationPublicPage() {
           quotation={data}
           total={total}
           phone={phone}
-          copy={copy}
+          copy={shownCopy}
           onAnswer={onAnswer}
           answering={answering}
           error={answerError}

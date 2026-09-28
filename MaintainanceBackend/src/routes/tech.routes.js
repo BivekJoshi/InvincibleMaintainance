@@ -15,6 +15,8 @@ import * as materials from '../services/material.service.js';
 import * as technicians from '../services/technician.service.js';
 import * as rateLibrary from '../services/rateLibrary.service.js';
 import { applySync } from '../services/techSync.service.js';
+import { overPlanWarnings } from '../services/execution.service.js';
+import * as diary from '../services/diary.service.js';
 import { FIELD_ROLES } from '../shared/enums.js';
 import { can } from '../shared/permissions.js';
 import { fieldSafe } from '../utils/moneyWall.js';
@@ -123,7 +125,11 @@ router.post('/jobs/:id/photos', validate({ params: idParam }), own, uploadImages
   }));
 
 router.post('/jobs/:id/materials', validate({ params: idParam, body: s.jobMaterialSchema }), own,
-  asyncHandler(async (req, res) => created(res, await jobs.addMaterial(req.params.id, req.body, req.user.id))));
+  asyncHandler(async (req, res) => {
+    const line = await jobs.addMaterial(req.params.id, req.body, req.user.id);
+    const warnings = await overPlanWarnings(req.params.id, line.materialId);
+    created(res, line, warnings.length ? { warnings } : undefined);
+  }));
 
 router.post('/jobs/:id/time/start', requireTechnician, validate({ params: idParam, body: s.timeLogStartSchema }), own,
   asyncHandler(async (req, res) => created(res, await jobs.startTimer(req.params.id, req.technician.id, req.body.note))));
@@ -133,6 +139,17 @@ router.post('/jobs/:id/time/stop', requireTechnician, validate({ params: idParam
 
 router.post('/jobs/:id/complete', validate({ params: idParam, body: s.jobCompleteSchema }), own,
   asyncHandler(async (req, res) => ok(res, await jobs.completeJob(req.params.id, req.body, req.user.id))));
+
+// ── the site diary (Phase L7): one entry per job per Kathmandu day, a full replace, no money
+
+router.get('/jobs/:id/diary', validate({ params: idParam }), own,
+  asyncHandler(async (req, res) => ok(res, await diary.diaryDays(req.params.id))));
+
+router.get('/jobs/:id/diary/:day', validate({ params: s.diaryParams }), own,
+  asyncHandler(async (req, res) => ok(res, await diary.getDiaryDay(req.params.id, req.params.day))));
+
+router.put('/jobs/:id/diary/:day', validate({ params: s.diaryParams, body: s.diarySchema }), own,
+  asyncHandler(async (req, res) => ok(res, await diary.saveDiary(req.params.id, req.params.day, req.body, req.user.id))));
 
 // ── site surveys
 

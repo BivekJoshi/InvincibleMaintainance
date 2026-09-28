@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, approveAndSend, expectStatus, createAssignedJob, findKeys, payAdvance, pngBuffer, prisma, technicianIdFor, uid, daysFromNow,
+  anon, as, approveAndSend, expectStatus, createAssignedJob, findKeys, payAdvance, pngBuffer, prisma, runningBoqJob, technicianIdFor, uid, daysFromNow,
 } from './helpers.js';
+import { local } from '../../src/utils/dates.js';
 
 let tech;
 let job;
@@ -291,5 +292,92 @@ describe('the field app, as H2 uses it', () => {
     const read = expectStatus(await surveyor.get(`/tech/surveys/${survey.id}`), 200).data;
     expect(read.job.photos).toHaveLength(1);
     expect(read.media[read.job.photos[0].mediaId].url).toEqual(expect.any(String));
+  });
+});
+
+describe('the site diary (Phase L7)', () => {
+  const ktmDay = (daysAgo) => local(new Date(Date.now() - daysAgo * 86_400_000), 'YYYY-MM-DD');
+  const MONEY = ['rate', 'rates', 'amount', 'total', 'cost', 'price', 'paid', 'vat', 'balance', 'wage', 'margin', 'value', 'earned'];
+  const moneyNamed = (k) => !k.endsWith('Id') && k !== 'priceUnit' && k.split(/(?=[A-Z])/).some((w) => MONEY.includes(w.toLowerCase()));
+  let job;
+  let trade;
+
+  beforeAll(async () => {
+    ({ job } = await runningBoqJob());
+    trade = await prisma.trade.findFirst({ where: { deletedAt: null } });
+  });
+
+  const entry = (pct, extra = {}) => ({
+    weather: 'SUNNY', headcount: [{ tradeId: trade.id, count: 3 }],
+    progress: [{ jobLineId: job.lines[0].id, progressPct: pct }], received: [], photoMediaIds: [], ...extra,
+  });
+
+  it('three days filed offline apply once each; a replay reports duplicates; one entry per job per day', async () => {
+    const days = [ktmDay(2), ktmDay(1), ktmDay(0)];
+    const cryst = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+    const payloads = [
+      { day: days[0], ...entry(20) },
+      { day: days[1], ...entry(35, { weather: 'HEAVY_RAIN', lostHours: 4, lostReason: 'RAIN', issues: 'Rain stopped work after lunch' }) },
+      { day: days[2], ...entry(60, { received: [{ materialId: cryst.id, description: cryst.name, qty: 10, unit: cryst.unit, challanNo: 'CH-4471' }] }) },
+    ];
+    const mutations = payloads.map((payload, i) => ({
+      idempotencyKey: uid('diary-'), at: new Date(Date.now() - (3 - i) * 60_000).toISOString(), kind: 'diary_save', jobId: job.id, payload,
+    }));
+    const first = expectStatus(await tech.post('/tech/sync').send({ mutations }), 200).data;
+    expect(first.applied).toBe(3);
+    const replay = expectStatus(await tech.post('/tech/sync').send({ mutations }), 200).data;
+    expect(replay).toMatchObject({ applied: 0, duplicates: 3 });
+    // The same day saved again with a new key replaces it: still three entries.
+    expectStatus(await tech.post('/tech/sync').send({
+      mutations: [{ idempotencyKey: uid('diary-'), at: new Date().toISOString(), kind: 'diary_save', jobId: job.id, payload: payloads[2] }],
+    }), 200);
+    expect(await prisma.siteDiary.count({ where: { jobId: job.id } })).toBe(3);
+    const rain = await prisma.siteDiary.findUnique({ where: { jobId_day: { jobId: job.id, day: days[1] } } });
+    expect(rain).toMatchObject({ lostHours: 4, lostReason: 'RAIN', weather: 'HEAVY_RAIN' });
+  });
+
+  it('the latest day sets the line\'s progress — an older day filed later never rolls it back', async () => {
+    expect((await prisma.jobLine.findUnique({ where: { id: job.lines[0].id } })).progressPct).toBe(60);
+    expectStatus(await tech.put(`/tech/jobs/${job.id}/diary/${ktmDay(2)}`).send(entry(90)), 200);
+    expect((await prisma.jobLine.findUnique({ where: { id: job.lines[0].id } })).progressPct).toBe(60);
+    expectStatus(await tech.put(`/tech/jobs/${job.id}/diary/${ktmDay(0)}`).send(entry(70)), 200);
+    expect((await prisma.jobLine.findUnique({ where: { id: job.lines[0].id } })).progressPct).toBe(70);
+  });
+
+  it('a material over plan, logged through the offline queue, comes back with its warning', async () => {
+    const cryst = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+    const planned = job.requirements.find((r) => r.materialId === cryst.id).qty;
+    const body = expectStatus(await tech.post('/tech/sync').send({
+      mutations: [{ idempotencyKey: uid('mat-'), at: new Date().toISOString(), kind: 'material', jobId: job.id, payload: { materialId: cryst.id, qty: planned + 2 } }],
+    }), 200).data;
+    expect(body.results[0]).toMatchObject({ status: 'applied', warnings: [{ code: 'OVER_PLAN', materialId: cryst.id, planned }] });
+  });
+
+  it('only people on the job file it; a future day, a stranger line or lost hours without a reason are refused', async () => {
+    const other = await as('TECHNICIAN2');
+    expectStatus(await other.put(`/tech/jobs/${job.id}/diary/${ktmDay(0)}`).send(entry(10)), 403);
+    expectStatus(await tech.put(`/tech/jobs/${job.id}/diary/${local(new Date(Date.now() + 2 * 86_400_000), 'YYYY-MM-DD')}`).send(entry(10)), 400);
+    const stranger = expectStatus(await tech.put(`/tech/jobs/${job.id}/diary/${ktmDay(0)}`).send({ ...entry(10), progress: [{ jobLineId: 'not-a-line', progressPct: 10 }] }), 422);
+    expect(stranger.error.code).toBe('UNKNOWN_LINE');
+    expectStatus(await tech.put(`/tech/jobs/${job.id}/diary/${ktmDay(0)}`).send({ ...entry(10), lostHours: 2 }), 400);
+    expectStatus(await tech.put(`/tech/jobs/${job.id}/diary/${ktmDay(0)}`).send({ ...entry(10), rate: 5 }), 400);
+  });
+
+  it('no diary response carries money (D1)', async () => {
+    const responses = {
+      days: await tech.get(`/tech/jobs/${job.id}/diary`),
+      day: await tech.get(`/tech/jobs/${job.id}/diary/${ktmDay(0)}`),
+      saved: await tech.put(`/tech/jobs/${job.id}/diary/${ktmDay(0)}`).send(entry(70)),
+      job: await tech.get(`/tech/jobs/${job.id}`),
+    };
+    const leaks = Object.entries(responses).flatMap(([name, res]) => {
+      expect(res.status, `${name} → ${res.status}`).toBeLessThan(300);
+      return findKeys(res.body.data, moneyNamed).map((k) => `${name}: ${k}`);
+    });
+    expect(leaks).toEqual([]);
+    const day = responses.day.body.data;
+    expect(day.lines.map((l) => l.id)).toEqual(job.lines.map((l) => l.id));
+    expect(day.trades.length).toBeGreaterThan(0);
+    expect(responses.days.body.data.days.map((d) => d.day)).toEqual([ktmDay(0), ktmDay(1), ktmDay(2)]);
   });
 });

@@ -11,8 +11,10 @@ import { boqNumbers, takeoffFor } from './boq.service.js';
 import { createStageInvoice } from './invoice.service.js';
 import { advanceState, announceAssignment, createJob, getJob, getJobDetail } from './job.service.js';
 import { stockBalances } from './material.service.js';
-import { notify } from './notify.service.js';
-import { findQuotation, lineageIds, winLeadOnAcceptance } from './quotation.service.js';
+import { notify, notifyUsers, userIdsWithRoles } from './notify.service.js';
+import { recordEvent } from './audit.service.js';
+import { adminJobPath } from '../utils/links.js';
+import { findQuotation, lineageIds, markConverted, winLeadOnAcceptance } from './quotation.service.js';
 
 /**
  * Won → hand-off (Phase L6). An accepted quotation hands over everything the work needs, in the accept
@@ -34,6 +36,84 @@ import { findQuotation, lineageIds, winLeadOnAcceptance } from './quotation.serv
 const SERVICE = { select: { id: true, name: true, jobType: true } };
 
 /**
+ * A quotation's priced rows as job lines (the non-optional ITEM rows, with their BOQ number and section) and its
+ * take-off as requirements — material in its unit and packs, labour days by trade; quantities only.
+ * @param {'QUOTATION'|'VARIATION'} source
+ */
+async function linesAndRequirements(q, source) {
+  const rows = q.items ?? [];
+  const numbers = boqNumbers(rows);
+  const lines = [];
+  let section = null;
+  rows.forEach((row, i) => {
+    if (row.rowType === 'SECTION') { section = row.description; return; }
+    if (row.rowType !== 'ITEM' || row.isOptional) return;
+    lines.push({
+      source, quotationItemId: row.id, number: numbers[i], section, kind: row.kind ?? null,
+      description: row.description, unit: row.unit ?? null, quotedQty: row.qty, rate: row.rate,
+      measurements: row.measurements ?? undefined, isProvisional: row.isProvisional, sortOrder: lines.length,
+    });
+  });
+  const takeoff = lines.length ? await takeoffFor(rows) : { materials: [], labour: [] };
+  const requirements = [
+    ...takeoff.materials.map((m) => ({
+      kind: 'MATERIAL', materialId: m.materialId, description: m.name ?? 'Material', unit: m.unit ?? null, qty: m.qty, packs: m.packs ?? null, source,
+    })),
+    ...takeoff.labour.map((t) => ({ kind: 'LABOUR', tradeId: t.tradeId, description: t.name ?? 'Labour', unit: 'day', qty: t.days, source })),
+  ];
+  return { lines, requirements };
+}
+
+/**
+ * A variation order (Phase L7) — what it adds to its job: its rows as VARIATION job lines, numbered and
+ * sectioned under the variation ("VO-2083-0001 · A.1"), and its take-off as VARIATION requirements. An omission
+ * (a negative row) is a negative line and lowers the requirements. Read before the transaction.
+ */
+export async function variationPlan(q) {
+  const { lines, requirements } = await linesAndRequirements(q, 'VARIATION');
+  return {
+    lines: lines.map((l) => ({ ...l, number: `${q.number} · ${l.number}`, section: `Variation ${q.number}${l.section ? ` — ${l.section}` : ''}` })),
+    requirements,
+  };
+}
+
+/**
+ * Accepting a VARIATION, inside the caller's transaction (Phase L7): its lines and requirements join the job
+ * (after the job's own lines), and the quotation moves APPROVED → CONVERTED, guarded — a replay adds nothing
+ * (the claim fails, and `(jobId, quotationItemId)` is unique). No new job, no lead, no advance.
+ * @returns {Promise<{ job: object, advance: null, added: number }>}
+ */
+export async function applyVariation(tx, q, plan, { actorId } = {}) {
+  const job = await tx.job.findFirst({ where: { id: q.jobId ?? '', deletedAt: null }, select: { id: true, number: true, status: true, title: true } });
+  if (!job) throw new AppError(422, 'VARIATION_JOB_MISSING', 'The job this variation changes no longer exists');
+  if (['CANCELLED', 'VERIFIED'].includes(job.status)) {
+    throw new AppError(422, 'VARIATION_JOB_CLOSED', `Job ${job.number} is ${job.status.toLowerCase()}: a variation cannot change it now.`);
+  }
+  await markConverted(q.id, tx);
+  const { _max: max } = await tx.jobLine.aggregate({ where: { jobId: job.id }, _max: { sortOrder: true } });
+  const base = (max.sortOrder ?? -1) + 1;
+  if (plan.lines.length) await tx.jobLine.createMany({ data: plan.lines.map((l, i) => ({ ...l, jobId: job.id, sortOrder: base + i })) });
+  if (plan.requirements.length) await tx.jobRequirement.createMany({ data: plan.requirements.map((r) => ({ ...r, jobId: job.id })) });
+  await recordEvent('job.variation_added', {
+    model: 'Job', recordId: job.id, actorId,
+    meta: { quotationId: q.id, number: q.number, version: q.version, lines: plan.lines.length, total: q.total },
+  }, tx);
+  return { job, advance: null, added: plan.lines.length };
+}
+
+/** The job's dispatchers and its lead technician hear that a variation changed the work (Phase L7). */
+export async function announceVariation(q, job, added) {
+  const lead = await prisma.jobAssignment.findFirst({ where: { jobId: job.id, isLead: true }, select: { technician: { select: { userId: true } } } });
+  const dispatchers = await userIdsWithRoles(['DISPATCHER']);
+  await notifyUsers([...dispatchers.map((userId) => ({ userId })), { userId: lead?.technician?.userId, link: `/tech/jobs/${job.id}` }], {
+    type: 'variation_accepted',
+    title: `Variation ${q.number} accepted — job ${job.number} changes`,
+    body: `${added} line(s) added to the job's BOQ`,
+    link: adminJobPath(job.id),
+  });
+}
+
+/**
  * What the hand-off will write, read before the transaction: the job (type from the survey's or the lead's
  * service, REPAIR without one; its checklist template; priority from the survey), the lines, the take-off as
  * requirements, and the advance stage — the ON_ACCEPT stage of the payment schedule, if it has one.
@@ -50,26 +130,7 @@ export async function handOffPlan(q) {
     ? await prisma.jobTemplate.findFirst({ where: { serviceId: service.id, isActive: true, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true } })
     : null;
 
-  const rows = q.items ?? [];
-  const numbers = boqNumbers(rows);
-  const lines = [];
-  let section = null;
-  rows.forEach((row, i) => {
-    if (row.rowType === 'SECTION') { section = row.description; return; }
-    if (row.rowType !== 'ITEM' || row.isOptional) return;
-    lines.push({
-      source: 'QUOTATION', quotationItemId: row.id, number: numbers[i], section, kind: row.kind ?? null,
-      description: row.description, unit: row.unit ?? null, quotedQty: row.qty, rate: row.rate,
-      measurements: row.measurements ?? undefined, isProvisional: row.isProvisional, sortOrder: lines.length,
-    });
-  });
-  const takeoff = lines.length ? await takeoffFor(rows) : { materials: [], labour: [] };
-  const requirements = [
-    ...takeoff.materials.map((m) => ({
-      kind: 'MATERIAL', materialId: m.materialId, description: m.name ?? 'Material', unit: m.unit ?? null, qty: m.qty, packs: m.packs ?? null,
-    })),
-    ...takeoff.labour.map((t) => ({ kind: 'LABOUR', tradeId: t.tradeId, description: t.name ?? 'Labour', unit: 'day', qty: t.days })),
-  ];
+  const { lines, requirements } = await linesAndRequirements(q, 'QUOTATION');
 
   const schedule = paymentSchedule(q, q.stages ?? []);
   const advanceStage = schedule.find((st) => st.trigger === 'ON_ACCEPT' && st.total > 0) ?? null;
@@ -169,6 +230,14 @@ export async function convertQuotationToJob(quotationId, input, userId) {
   if (input.customerId && input.customerId !== q.customerId) throw badRequest('That quotation belongs to another customer');
   if (q.status === 'CONVERTED') throw new AppError(422, 'INVALID_TRANSITION', 'This quotation has already been converted to a job');
   assertTransition(QUOTATION_TRANSITIONS, q.status, 'CONVERTED', 'quotation');
+
+  // A variation accepted by phone joins its job (Phase L7) — no new job, no lead.
+  if (q.kind === 'VARIATION') {
+    const plan = await variationPlan(q);
+    const { job, added } = await prisma.$transaction((tx) => applyVariation(tx, q, plan, { actorId: userId }), { timeout: 20_000 });
+    await announceVariation(q, job, added);
+    return getJobDetail(job.id);
+  }
 
   const plan = await handOffPlan(q);
   const { customerId: _customer, quotationId: _quotation, title, type, templateId, ...rest } = input;

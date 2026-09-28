@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  ArrowLeft, ClipboardCheck, Contact, FileSpreadsheet, Phone, Printer, UserRoundSearch,
+  ArrowLeft, ClipboardCheck, Contact, FileDiff, FileSpreadsheet, Phone, Printer, UserRoundSearch,
 } from 'lucide-react';
 import { useGetQuotationQuery, useLazyExportQuotationXlsxQuery, useUpdateQuotationMutation } from '@/api/quotationsApi';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -17,8 +17,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageTransition } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useQuotationActions } from '@/hooks/useQuotationActions';
-import { quotationFormSchema } from '@/form/schemas/quotation.schema';
+import { quotationFormSchemaFor } from '@/form/schemas/quotation.schema';
 import { CONTRACT_TYPES, CONTRACT_TYPE_LABELS, QUOTATION_STATUS_LABELS } from '@/config/constants';
+import { VariationBanner } from './sections/VariationBanner';
 import { documentCopy } from '@/components/documents/quotationDocumentCopy';
 import { quotationActions, waitingFor } from '@/helpers/quotationActions';
 import { downloadBase64 } from '@/helpers/download';
@@ -66,12 +67,17 @@ const contractSentence = (type) => documentCopy('en').contract[type]?.body;
  * the library picker, validity and the internal note) and the Customer view panel's two options. One form, one
  * Save; the panels not on screen stay mounted and keep their values.
  */
-const quotationFields = ({ tab, frozen, figures, stale, stages, quotationId, customerLocale }) => [
+const quotationFields = ({ tab, frozen, figures, stale, stages, quotationId, customerLocale, variation }) => [
   {
-    type: 'group', variant: 'card', label: 'Bill of quantities', hidden: tab !== 'boq',
-    description: frozen ? undefined : 'Arrow keys move, Enter edits, typing overwrites; / searches the rate library; paste rows from Excel.',
+    type: 'group', variant: 'card', label: variation ? 'Bill of quantities — the change' : 'Bill of quantities', hidden: tab !== 'boq',
+    description: frozen ? undefined : variation
+      ? 'Extra work as usual rows; an omission as a negative quantity (−12). Arrow keys move, Enter edits; / searches the rate library.'
+      : 'Arrow keys move, Enter edits, typing overwrites; / searches the rate library; paste rows from Excel.',
     fields: [
-      { name: 'items', type: 'lineItems', label: 'Rows', gridLabel: 'Bill of quantities', figures, stale, costCapability: 'costs:read', disabled: frozen },
+      {
+        name: 'items', type: 'lineItems', label: 'Rows', gridLabel: 'Bill of quantities', figures, stale, costCapability: 'costs:read', disabled: frozen,
+        signedQty: variation,
+      },
       { name: 'discount', type: 'money', label: 'Discount', span: 'half', description: 'One amount, before VAT. The helpers below work it out on the server.' },
       { name: 'vatApplied', type: 'switch', label: 'Apply VAT', span: 'half' },
       ...(frozen ? [] : [{ name: 'discountHelper', type: 'preview', label: 'Discount helpers', component: DiscountHelper, quotationId }]),
@@ -95,13 +101,14 @@ const quotationFields = ({ tab, frozen, figures, stale, stages, quotationId, cus
       },
     ],
   },
-  {
+  // A variation has no schedule of its own (Phase L7): the job's running and final bills carry it.
+  ...(variation ? [] : [{
     type: 'group', variant: 'card', label: 'Payment schedule', hidden: tab !== 'terms',
     description: 'How the total is paid, stage by stage. A stage “On acceptance” is the advance. The amounts are the server’s, for the totals on screen.',
     fields: [
       { name: 'paymentStages', type: 'paymentSchedule', label: 'Payment stages', figures: stages ?? undefined, stale },
     ],
-  },
+  }]),
   {
     type: 'group', variant: 'card', label: 'Terms', hidden: tab !== 'terms',
     description: 'What the customer agrees to.',
@@ -136,6 +143,11 @@ const quotationFields = ({ tab, frozen, figures, stale, stages, quotationId, cus
  * The header: **Print** (`/admin/quotations/:id/print`, no cost even for a manager) and **Excel** (the .xlsx, through
  * RTK Query). The right rail: **Totals** (the server's live preview while editing, the saved figures otherwise),
  * **Margin** (`costs:read` only), **Send** (the link, "Opened N×", WhatsApp and Viber) and **Trail**.
+ *
+ * **A variation order** (Phase L7, `kind: 'VARIATION'`, numbered VO-) is this same builder: a banner names its job, the
+ * BOQ's Qty cell takes an omission as a negative quantity (only here — `quotationFormSchemaFor({ variation })`), and there
+ * is no payment schedule (the tab is **Terms**). Submit, approve (maker-checker, the margin gate), send and the customer's
+ * link are unchanged; accepting it adds its rows to the job.
  */
 export default function QuotationBuilderPage() {
   const { id } = useParams();
@@ -158,7 +170,10 @@ export default function QuotationBuilderPage() {
   const onValuesChange = useCallback((next) => setValues({ ...next }), []);
 
   const frozen = quotation?.status !== 'DRAFT' || !canWrite;
-  const tabs = TABS.filter((t) => !t.capability || can(t.capability));
+  const variation = quotation?.kind === 'VARIATION';
+  const schema = useMemo(() => quotationFormSchemaFor({ variation }), [variation]);
+  const tabs = TABS.filter((t) => !t.capability || can(t.capability))
+    .map((t) => (variation && t.value === 'terms' ? { ...t, label: 'Terms' } : t));
   const asked = search.get('tab') === 'quotation' ? 'boq' : search.get('tab');
   const tab = tabs.some((t) => t.value === asked) ? asked : 'boq';
   const setTab = (next) => setSearch(next === 'boq' ? {} : { tab: next }, { replace: true });
@@ -167,9 +182,9 @@ export default function QuotationBuilderPage() {
   const customerLocale = quotation?.customer?.preferredLocale;
   const fields = useMemo(
     () => quotationFields({
-      tab, frozen, figures: shown.figures, stale: shown.stale, stages: shown.stages, quotationId: quotation?.id, customerLocale,
+      tab, frozen, figures: shown.figures, stale: shown.stale, stages: shown.stages, quotationId: quotation?.id, customerLocale, variation,
     }),
-    [tab, frozen, shown.figures, shown.stale, shown.stages, quotation?.id, customerLocale],
+    [tab, frozen, shown.figures, shown.stale, shown.stages, quotation?.id, customerLocale, variation],
   );
   const [fetchXlsx, { isFetching: exporting }] = useLazyExportQuotationXlsxQuery();
 
@@ -220,6 +235,9 @@ export default function QuotationBuilderPage() {
         )}
       >
         <div className="mt-2 flex flex-wrap items-center gap-2">
+          {variation ? (
+            <StateBadge tone="info"><FileDiff className="mr-1 h-3 w-3" aria-hidden /><span data-testid="kind-badge">Variation</span></StateBadge>
+          ) : null}
           <StatusBadge status={q.status} label={QUOTATION_STATUS_LABELS[q.status]} />
           {q.autoApproved ? <StateBadge tone="info">Auto-approved</StateBadge> : null}
           <VersionSwitcher quotation={q} />
@@ -256,6 +274,7 @@ export default function QuotationBuilderPage() {
         />
       </div>
 
+      {variation ? <VariationBanner quotation={q} can={can} /> : null}
       <QuotationNotices quotation={q} can={can} userId={user?.id} />
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -284,7 +303,7 @@ export default function QuotationBuilderPage() {
               ) : null}
               <ResourceForm
                 key={`${q.id}:${frozen}`}
-                schema={quotationFormSchema}
+                schema={schema}
                 fields={fields}
                 defaultValues={q}
                 readOnly={frozen}

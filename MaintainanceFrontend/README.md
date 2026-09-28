@@ -76,6 +76,10 @@ uploads the Playwright trace when it fails.
   **offline** — the seepage checklist with a flagged reading and its photos, two rooms in feet-inches with a door
   deducted, a sketch — submitted on the phone, synced when the signal is back) and builds the quotation from the survey, whose BOQ row carries the same measurements and quantity. The quotation
   loop answers the seeded seepage checklist over the API (`e2e/support/survey.js`) before it submits its survey.
+  Phase L7 continues the first test on site: Suresh (`suresh@gharjatan.com.np`, the second seeded technician — the
+  job is scheduled on him) opens the job on a 360 px phone and files today's **site diary** — weather, headcount,
+  progress on a BOQ line in 5 % steps — which syncs at once; the dispatcher then sees that progress on the job's
+  **BOQ & progress** tab (no earned value for dispatch) and the day on its **Site diary** tab.
 - `e2e/field-flow.spec.js` — the field app (Phase H2), as Hari (`hari@gharjatan.com.np`) on a 360 px phone: on my
   way, start, a tick and the timer; then with the browser offline a photo (`e2e/fixtures/site-photo.jpg`), a material
   and a tick wait on the phone; back online the queue drains by itself; the last tick, a drawn signature, complete —

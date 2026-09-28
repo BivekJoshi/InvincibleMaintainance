@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '@/components/ui/badge';
 import { AftercareStatus } from '@/components/aftercare/AftercareStatus';
-import { formatBalance, formatDate, formatNpr, titleCase } from '@/helpers/format';
+import { formatBalance, formatDate, formatNpr, formatSignedNpr, titleCase } from '@/helpers/format';
 import { INVOICE_STATUS_LABELS, JOB_STATUS_LABELS, JOB_TYPE_LABELS } from '@/config/constants';
 
 /**
@@ -23,7 +23,8 @@ export const CUSTOMER_RECORD_TABS = [
     columns: [
       { key: 'number', header: 'Number', sortable: true, cell: (r) => <Link to={`/admin/quotations/${r.id}`} className="font-mono text-xs hover:underline">{r.number}</Link> },
       { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} /> },
-      { key: 'total', header: 'Total', sortable: true, className: 'text-right tabular-nums', cell: (r) => formatNpr(r.total) },
+      // A variation's total may be below zero (Phase L7): "− Rs. …".
+      { key: 'total', header: 'Total', sortable: true, className: 'text-right tabular-nums', cell: (r) => formatSignedNpr(r.total) },
       { key: 'createdAt', header: 'Created', sortable: true, cell: (r) => formatDate(r.createdAt) },
     ],
   },

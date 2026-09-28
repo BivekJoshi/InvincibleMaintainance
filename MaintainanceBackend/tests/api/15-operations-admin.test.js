@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  as, expectStatus, createCustomer, technicianIdFor, prisma, uid, phone, PASSWORD,
+  as, expectStatus, createAssignedJob, createCustomer, findKeys, runningBoqJob, technicianIdFor, prisma, uid, phone, PASSWORD,
 } from './helpers.js';
+import { local } from '../../src/utils/dates.js';
+import { stockBalances } from '../../src/services/material.service.js';
 
 /**
  * Phase H1 — what the operations screens need from the API: paginated technicians behind a
@@ -456,5 +458,112 @@ describe('stock', () => {
     const cards = expectStatus(await dispatcher.get('/admin/dashboard'), 200).data.cards;
     expect(cards.stockLow).toBeGreaterThanOrEqual(1);
     expect(expectStatus(await sales.get('/admin/dashboard'), 200).data.cards).not.toHaveProperty('stockLow');
+  });
+});
+
+// ── Phase L7: planned vs actual, OVER_PLAN, purchase lists
+
+describe('planned vs actual, and OVER_PLAN (Phase L7)', () => {
+  let job;
+  let cryst;
+
+  beforeAll(async () => {
+    ({ job } = await runningBoqJob());
+    cryst = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+  });
+
+  it('issuing more than planned warns in meta.warnings — and still issues', async () => {
+    const planned = job.requirements.find((r) => r.materialId === cryst.id).qty;
+    const within = expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/materials`).send({ materialId: cryst.id, qty: planned - 1 }), 201);
+    expect(within.meta).toBeUndefined();
+    const over = expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/materials`).send({ materialId: cryst.id, qty: 2 }), 201);
+    expect(over.data).toMatchObject({ materialId: cryst.id, qty: 2 });
+    expect(over.meta.warnings).toEqual([{ code: 'OVER_PLAN', materialId: cryst.id, name: cryst.name, unit: cryst.unit, planned, issued: planned + 1 }]);
+    // A material the plan never had is over plan too; a job with no plan never warns.
+    const other = await prisma.material.findFirst({ where: { deletedAt: null, isActive: true, id: { notIn: job.requirements.map((r) => r.materialId).filter(Boolean) } } });
+    expect(expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/materials`).send({ materialId: other.id, qty: 1 }), 201).meta.warnings[0]).toMatchObject({ code: 'OVER_PLAN', planned: 0, issued: 1 });
+    const { job: plain } = await createAssignedJob();
+    expect(expectStatus(await dispatcher.post(`/admin/jobs/${plain.id}/materials`).send({ materialId: cryst.id, qty: 50 }), 201).meta).toBeUndefined();
+  });
+
+  it('planned vs issued vs logged, per material and per trade — a rain half-day counts half', async () => {
+    const tech = await as('TECHNICIAN');
+    const labour = job.requirements.find((r) => r.kind === 'LABOUR');
+    const day = (n) => local(new Date(Date.now() - n * 86_400_000), 'YYYY-MM-DD');
+    const base = { progress: [], photoMediaIds: [], headcount: [{ tradeId: labour.tradeId, count: 4 }] };
+    expectStatus(await tech.put(`/tech/jobs/${job.id}/diary/${day(1)}`).send({ ...base, received: [{ materialId: cryst.id, description: cryst.name, qty: 5, challanNo: 'CH-1' }] }), 200);
+    expectStatus(await tech.put(`/tech/jobs/${job.id}/diary/${day(0)}`).send({ ...base, lostHours: 4, lostReason: 'RAIN', received: [] }), 200);
+
+    const body = expectStatus(await dispatcher.get(`/admin/jobs/${job.id}/planned-vs-actual`), 200).data;
+    const row = body.materials.find((m) => m.materialId === cryst.id);
+    const planned = job.requirements.find((r) => r.materialId === cryst.id).qty;
+    expect(row).toMatchObject({ planned, issued: planned + 1, received: 5, variance: 1, overPlan: true });
+    expect(body.labour.find((t) => t.tradeId === labour.tradeId)).toMatchObject({ plannedDays: labour.qty, loggedDays: 6 });
+    expect(body.workdayHours).toBe(8);
+    expect(findKeys(body, (k) => /rate|cost|amount|price/i.test(k))).toEqual([]);
+  });
+});
+
+describe('purchase lists (Phase L7)', () => {
+  let job;
+  let supplier;
+
+  beforeAll(async () => {
+    ({ job } = await runningBoqJob());
+    supplier = await prisma.supplier.create({ data: { name: `Supplier ${uid()}`, phone: '9841555000' } });
+    // The shared test database holds plenty of stock: plan more than it has, so the job is short.
+    const req = job.requirements.find((r) => r.kind === 'MATERIAL');
+    const onHand = (await stockBalances([req.materialId]))[req.materialId] ?? 0;
+    await prisma.jobRequirement.update({ where: { id: req.id }, data: { qty: Math.max(0, onHand) + 40 } });
+  });
+
+  it('from the shortfall, DRAFT → ORDERED → RECEIVED, and receiving raises stock with the supplier', async () => {
+    const list = expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/purchase-lists/from-shortfall`), 201).data;
+    expect(list).toMatchObject({ status: 'DRAFT', jobId: job.id });
+    expect(list.number).toMatch(/^PL-/);
+    expect(list.items.length).toBeGreaterThan(0);
+    expectStatus(await dispatcher.put(`/admin/purchase-lists/${list.id}`).send({ supplierId: supplier.id }), 200);
+    expect(expectStatus(await dispatcher.post(`/admin/purchase-lists/${list.id}/receive`).send({}), 422).error.code).toBe('INVALID_TRANSITION');
+
+    const ordered = expectStatus(await dispatcher.post(`/admin/purchase-lists/${list.id}/order`), 200).data;
+    expect(ordered.status).toBe('ORDERED');
+    expect(ordered.orderedAt).toBeTruthy();
+    expectStatus(await dispatcher.put(`/admin/purchase-lists/${list.id}`).send({ note: 'too late' }), 422);
+
+    const [first, ...rest] = ordered.items;
+    const before = await stockBalances(ordered.items.map((i) => i.materialId));
+    const received = expectStatus(await dispatcher.post(`/admin/purchase-lists/${list.id}/receive`).send({
+      items: [{ itemId: first.id, receivedQty: first.qty - 1 }],
+    }), 200).data;
+    expect(received.status).toBe('RECEIVED');
+    const after = await stockBalances(ordered.items.map((i) => i.materialId));
+    expect(after[first.materialId] - before[first.materialId]).toBeCloseTo(first.qty - 1, 3);
+    for (const item of rest) expect(after[item.materialId] - (before[item.materialId] ?? 0)).toBeCloseTo(item.qty, 3);
+    const movement = await prisma.stockMovement.findFirst({ where: { reference: list.number, materialId: first.materialId } });
+    expect(movement).toMatchObject({ type: 'PURCHASE', supplierId: supplier.id, jobId: job.id, qty: first.qty - 1 });
+    expect(await prisma.auditLog.findFirst({ where: { event: 'purchase_list.received', recordId: list.id } })).toBeTruthy();
+
+    // RECEIVED is final.
+    expect(expectStatus(await dispatcher.post(`/admin/purchase-lists/${list.id}/cancel`).send({ reason: 'Changed mind' }), 422).error.code).toBe('INVALID_TRANSITION');
+    expect(expectStatus(await dispatcher.post(`/admin/purchase-lists/${list.id}/receive`).send({}), 422).error.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('a hand-made list, cancelled; a draft deleted and restored; who may', async () => {
+    const cryst = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+    const list = expectStatus(await dispatcher.post('/admin/purchase-lists').send({ supplierId: supplier.id, items: [{ materialId: cryst.id, qty: 25, packs: 1 }] }), 201).data;
+    expect(expectStatus(await dispatcher.get(`/admin/purchase-lists?q=${list.number}`), 200).data.map((l) => l.id)).toEqual([list.id]);
+    expectStatus(await dispatcher.delete(`/admin/purchase-lists/${list.id}`), 204);
+    expectStatus(await dispatcher.patch(`/admin/purchase-lists/${list.id}/restore`), 200);
+    expectStatus(await dispatcher.post(`/admin/purchase-lists/${list.id}/order`), 200);
+    expectStatus(await dispatcher.delete(`/admin/purchase-lists/${list.id}`), 422);
+    const cancelled = expectStatus(await dispatcher.post(`/admin/purchase-lists/${list.id}/cancel`).send({ reason: 'Supplier out of stock' }), 200).data;
+    expect(cancelled).toMatchObject({ status: 'CANCELLED', cancelReason: 'Supplier out of stock' });
+    expectStatus(await (await as('SALES')).post('/admin/purchase-lists').send({ items: [{ materialId: cryst.id, qty: 1 }] }), 403);
+    expect((await dispatcher.patch(`/admin/purchase-lists/${list.id}/toggle`)).status).toBe(404);
+  });
+
+  it('a job short of nothing gets no list', async () => {
+    const { job: plain } = await createAssignedJob();
+    expect(expectStatus(await dispatcher.post(`/admin/jobs/${plain.id}/purchase-lists/from-shortfall`), 422).error.code).toBe('NO_SHORTFALL');
   });
 });

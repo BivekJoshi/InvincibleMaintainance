@@ -211,3 +211,81 @@ describe('the sync engine — the survey stepper (Phase L5)', () => {
     expect(store.getState().fieldSync.notes).toEqual([expect.objectContaining({ source: 'upload', surveyId: 's1', code: 'BAD_REQUEST' })]);
   });
 });
+
+describe('the site diary and the materials plan (Phase L7)', () => {
+  it('holds a diary day until its photo is up — without holding the job’s other changes — then sends the media id', async () => {
+    const photo = await addUpload({ target: 'job', targetId: 'j1', kind: 'DURING', caption: 'Site diary 2026-09-28', file: picture('day.jpg') });
+    await enqueue({
+      kind: 'diary_save', jobId: 'j1',
+      payload: { day: '2026-09-28', headcount: [{ tradeId: 'tr1', count: 3 }], progress: [], received: [], lostHours: 0, photoMediaIds: ['m-old'] },
+      meta: { form: {}, photoUploadIds: [photo.id] },
+    });
+    await enqueue({ kind: 'status', jobId: 'j1', payload: { status: 'IN_PROGRESS' } });
+    const calls = mockApi(({ path, body }) => {
+      if (path === '/tech/sync') return syncAnswer(body);
+      if (path === '/tech/jobs/j1/photos') return photoAnswer('m-day');
+      return undefined;
+    });
+    const store = makeStore(signedInAs('TECHNICIAN'));
+
+    await syncFieldQueue(store.dispatch);
+
+    const posts = calls.filter((c) => c.method === 'POST');
+    expect(posts.map((c) => c.path)).toEqual(['/tech/sync', '/tech/jobs/j1/photos', '/tech/sync']);
+    // The day waits for its picture; the job's status change made after it does not.
+    expect(posts[0].body.mutations.map((m) => m.kind)).toEqual(['status']);
+    expect(posts[2].body.mutations).toEqual([expect.objectContaining({
+      kind: 'diary_save', jobId: 'j1', payload: expect.objectContaining({ day: '2026-09-28', photoMediaIds: ['m-old', 'm-day'] }),
+    })]);
+    expect(JSON.stringify(posts[2].body)).not.toMatch(/photoUploadIds|meta/);
+    expect(await pending()).toEqual([]);
+  });
+
+  it('sends a diary day without a photo the office refused', async () => {
+    const photo = await addUpload({ target: 'job', targetId: 'j1', kind: 'DURING', file: picture('not-a-photo.jpg') });
+    await enqueue({
+      kind: 'diary_save', jobId: 'j1', payload: { day: '2026-09-28', photoMediaIds: [] }, meta: { photoUploadIds: [photo.id] },
+    });
+    const calls = mockApi(({ path, body }) => {
+      if (path === '/tech/sync') return syncAnswer(body);
+      if (path === '/tech/jobs/j1/photos') return json({ error: { code: 'BAD_REQUEST', message: 'Not an image' } }, 400);
+      return undefined;
+    });
+    const store = makeStore(signedInAs('TECHNICIAN'));
+
+    await syncFieldQueue(store.dispatch);
+
+    const syncs = calls.filter((c) => c.path === '/tech/sync');
+    expect(syncs).toHaveLength(1);
+    expect(syncs[0].body.mutations[0].payload.photoMediaIds).toEqual([]);
+  });
+
+  it('drops a diary day the office will never take (the job is not on site) and says so', async () => {
+    await enqueue({ kind: 'diary_save', jobId: 'j1', payload: { day: '2026-09-28' } });
+    mockApi(({ path, body }) => (path === '/tech/sync'
+      ? syncAnswer(body, { diary_save: { status: 'failed', code: 'JOB_NOT_ON_SITE', error: 'Job JOB-1 is verified: its diary is closed.' } })
+      : undefined));
+    const store = makeStore(signedInAs('TECHNICIAN'));
+
+    await syncFieldQueue(store.dispatch);
+
+    expect(await pending()).toEqual([]);
+    expect(store.getState().fieldSync.notes).toEqual([expect.objectContaining({ kind: 'diary_save', jobId: 'j1', code: 'JOB_NOT_ON_SITE' })]);
+  });
+
+  it('says a material over the job’s plan as a warning, in the technician’s language — the material stays logged', async () => {
+    await enqueue({ kind: 'material', jobId: 'j1', payload: { materialId: 'm1', qty: 30 }, meta: { material: { id: 'm1', name: 'Crystalline slurry', unit: 'kg' } } });
+    mockApi(({ path, body }) => (path === '/tech/sync'
+      ? syncAnswer(body, { material: { warnings: [{ code: 'OVER_PLAN', materialId: 'm1', name: 'Crystalline slurry', unit: 'kg', planned: 120, issued: 130.5 }] } })
+      : undefined));
+    const store = makeStore({ ...signedInAs('TECHNICIAN'), ui: { ...makeStore().getState().ui, locale: 'ne' } });
+
+    await syncFieldQueue(store.dispatch);
+
+    expect(await pending()).toEqual([]);
+    const [toast] = store.getState().ui.toasts;
+    expect(toast).toMatchObject({ variant: 'warning', title: 'योजनाभन्दा बढी' });
+    expect(toast.description).toContain('130.5 kg');
+    expect(toast.description).toContain('120 kg');
+  });
+});

@@ -12,14 +12,20 @@ import {
   UNITS, RATE_MODES, RATE_MODE_LABELS, RECIPE_COMPONENT_KINDS, RECIPE_COMPONENT_LABELS,
   CONTRACT_TYPES, CONTRACT_TYPE_LABELS, PAYMENT_TRIGGERS, PAYMENT_TRIGGER_LABELS, PAYMENT_SCHEDULE_PRESETS, DECLINE_CATEGORIES,
   SURVEY_PHOTO_KINDS, INSPECTION_QUESTION_TYPES, INSPECTION_QUESTION_TYPE_LABELS,
+  QUOTATION_KINDS, QUOTATION_KIND_LABELS, WEATHER, WEATHER_LABELS, LOST_TIME_REASONS, LOST_TIME_REASON_LABELS,
+  PURCHASE_LIST_STATUSES, PURCHASE_LIST_STATUS_LABELS, PURCHASE_LIST_TRANSITIONS, INVOICE_KINDS, INVOICE_KIND_LABELS,
 } from '@/config/constants';
+import { FIELD_COPY } from '@/config/tech/fieldCopy';
+import { MUTATION_KINDS } from '@/helpers/offlineQueue';
 import { AUDIT_EVENT_LABELS } from '@/config/auditEvents';
 import { PERMISSIONS, can } from '@/helpers/permissions';
 // The API's own rules. Outside `src/`, so `@/` cannot reach them.
 import {
   JOB_TRANSITIONS as API_JOB_TRANSITIONS,
   LEAD_TRANSITIONS as API_TRANSITIONS, QUOTATION_TRANSITIONS as API_QUOTATION_TRANSITIONS,
+  PURCHASE_LIST_TRANSITIONS as API_PURCHASE_LIST_TRANSITIONS,
 } from '../../../MaintainanceBackend/src/shared/stateMachines.js';
+import { techSyncSchema } from '../../../MaintainanceBackend/src/shared/schemas/ops.js';
 import * as API_ENUMS from '../../../MaintainanceBackend/src/shared/enums.js';
 import { PERMISSIONS as API_PERMISSIONS } from '../../../MaintainanceBackend/src/shared/permissions.js';
 
@@ -140,6 +146,41 @@ describe('the CRM rules mirror the API', () => {
       expect(preset.stages.filter((st) => st.trigger === 'ON_ACCEPT').length).toBeLessThanOrEqual(1);
       expect(preset.stages.every((st) => PAYMENT_TRIGGERS.includes(st.trigger))).toBe(true);
     }
+  });
+
+  it('the purchase-list machine is the API’s, and every state has words (Phase L7)', () => {
+    expect(PURCHASE_LIST_STATUSES).toEqual(API_ENUMS.PURCHASE_LIST_STATUSES);
+    expect(PURCHASE_LIST_TRANSITIONS).toEqual(API_PURCHASE_LIST_TRANSITIONS);
+    expect(Object.keys(PURCHASE_LIST_TRANSITIONS)).toEqual(PURCHASE_LIST_STATUSES);
+    expect(Object.keys(PURCHASE_LIST_STATUS_LABELS)).toEqual(PURCHASE_LIST_STATUSES);
+    // RECEIVED and CANCELLED are final.
+    expect(PURCHASE_LIST_TRANSITIONS.RECEIVED).toEqual([]);
+    expect(PURCHASE_LIST_TRANSITIONS.CANCELLED).toEqual([]);
+  });
+
+  it('quotation kinds, the diary’s weather and lost-time reasons, and invoice kinds are the API’s, with words (Phase L7)', () => {
+    const lists = [
+      [QUOTATION_KINDS, API_ENUMS.QUOTATION_KINDS, QUOTATION_KIND_LABELS],
+      [WEATHER, API_ENUMS.WEATHER, WEATHER_LABELS],
+      [LOST_TIME_REASONS, API_ENUMS.LOST_TIME_REASONS, LOST_TIME_REASON_LABELS],
+      [INVOICE_KINDS, API_ENUMS.INVOICE_KINDS, INVOICE_KIND_LABELS],
+    ];
+    for (const [mine, theirs, labels] of lists) {
+      expect(mine).toEqual(theirs);
+      expect(Object.keys(labels)).toEqual(mine);
+      expect(Object.values(labels).every((l) => typeof l === 'string' && l.length > 0)).toBe(true);
+    }
+    // The field app words each one in both languages.
+    for (const locale of ['en', 'ne']) {
+      for (const w of WEATHER) expect(FIELD_COPY[locale].diary.weather[w], `${locale} ${w}`).toBeTruthy();
+      for (const r of LOST_TIME_REASONS) expect(FIELD_COPY[locale].diary.lost.reasons[r], `${locale} ${r}`).toBeTruthy();
+    }
+  });
+
+  it('the field queue sends exactly the kinds /tech/sync takes — diary_save among them (Phase L7)', () => {
+    const apiKinds = techSyncSchema.shape.mutations.element.innerType().shape.kind.options;
+    expect([...MUTATION_KINDS].sort()).toEqual([...apiKinds].sort());
+    expect(MUTATION_KINDS).toContain('diary_save');
   });
 
   it('the Excel export is audited in words (Phase L4)', () => {

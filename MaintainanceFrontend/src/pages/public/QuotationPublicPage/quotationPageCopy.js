@@ -100,6 +100,25 @@ export const QUOTATION_PAGE_COPY = {
       paidBody: (number) => `We have recorded the payment on invoice ${number}. Our team will call you to schedule the work.`,
     },
     error: 'We could not record your answer. Please try again.',
+    /** A variation order (Phase L7): a change to a job already under way. */
+    variation: {
+      notice: {
+        title: (job) => `Change to your job ${job}`,
+        body: 'This adds work to — or takes work off — the job we agreed. Accepting it adds it to that job: there is no new job and no new advance.',
+      },
+      prompt: {
+        title: 'Do you accept this change to your job?',
+        body: 'Tap one answer. You do not need an account.',
+      },
+      accept: 'Accept this change',
+      acceptTitle: 'Accept this change?',
+      acceptBody: (total, job) => `This change to job ${job} comes to ${total}.`,
+      acceptConfirm: 'Yes, accept the change',
+      accepted: {
+        title: 'Thank you — the change is accepted',
+        body: (job) => `We have added it to your job ${job}. Our team will carry on with the work.`,
+      },
+    },
   },
   ne: {
     ...QUOTATION_DOCUMENT_COPY.ne,
@@ -190,8 +209,47 @@ export const QUOTATION_PAGE_COPY = {
       paidBody: (number) => `बिल ${number} मा भुक्तानी दर्ता भयो। काम मिलाउन हाम्रो टोलीले तपाईंलाई फोन गर्नेछ।`,
     },
     error: 'तपाईंको जवाफ रेकर्ड गर्न सकिएन। कृपया फेरि प्रयास गर्नुहोस्।',
+    variation: {
+      notice: {
+        title: (job) => `तपाईंको काम ${job} मा परिवर्तन`,
+        body: 'यसले सहमति भएको काममा थप्छ — वा घटाउँछ। स्वीकार गरेपछि यो त्यही काममा थपिन्छ: नयाँ काम र नयाँ अग्रिम भुक्तानी चाहिँदैन।',
+      },
+      prompt: {
+        title: 'तपाईंको काममा यो परिवर्तन ठीक छ?',
+        body: 'एउटा जवाफ थिच्नुहोस्। खाता चाहिँदैन।',
+      },
+      accept: 'यो परिवर्तन स्वीकार्नुहोस्',
+      acceptTitle: 'यो परिवर्तन स्वीकार्ने?',
+      acceptBody: (total, job) => `काम ${job} मा यो परिवर्तनको रकम ${total} हो।`,
+      acceptConfirm: 'हो, परिवर्तन स्वीकार्छु',
+      accepted: {
+        title: 'धन्यवाद — परिवर्तन स्वीकार भयो',
+        body: (job) => `हामीले यसलाई तपाईंको काम ${job} मा थप्यौं। हाम्रो टोलीले काम जारी राख्नेछ।`,
+      },
+    },
   },
 };
 
 /** The page's words for a language, English when there is none. */
 export const pageCopy = (locale) => QUOTATION_PAGE_COPY[locale] ?? QUOTATION_PAGE_COPY.en;
+
+/**
+ * The page's words for a variation order (Phase L7): the same page, answered the same way, but it is a change to the
+ * job `jobNumber` — "Accept this change" / "यो परिवर्तन स्वीकार्नुहोस्", and once accepted, that it joined the job.
+ *
+ * @param {object} copy  `pageCopy(locale)`
+ * @param {string} [jobNumber]
+ */
+export function variationPageCopy(copy, jobNumber = '') {
+  const v = copy.variation;
+  return {
+    ...copy,
+    prompt: v.prompt,
+    buttons: { ...copy.buttons, accept: v.accept },
+    accept: { ...copy.accept, title: v.acceptTitle, body: (total) => v.acceptBody(total, jobNumber), confirm: v.acceptConfirm },
+    outcome: {
+      ...copy.outcome,
+      accepted: { ...copy.outcome.accepted, title: v.accepted.title, body: v.accepted.body(jobNumber), bodyAdvance: v.accepted.body(jobNumber), job: () => '' },
+    },
+  };
+}

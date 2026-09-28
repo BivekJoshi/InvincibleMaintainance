@@ -44,6 +44,8 @@ const PARENTS = {
   InvoiceItem: ['invoiceId', 'Invoice'],
   Payment: ['invoiceId', 'Invoice'],
   RateCardComponent: ['rateCardItemId', 'RateCardItem'],
+  // Phase L7: a purchase list's item opens its list (a registry entry, found by its model).
+  PurchaseListItem: ['listId', 'PurchaseList'],
 };
 
 /** `faq` → the registry screen; the Prisma client name is what Translation rows carry. */
@@ -59,8 +61,10 @@ const clientNameOf = (model) => model.charAt(0).toLowerCase() + model.slice(1);
  * @param {{ model: string, recordId?: string|null, before?: object|null, after?: object|null }} row
  * @returns {string|null}
  */
-export function recordHref({ model, recordId, before, after }) {
-  const snapshot = { ...before, ...after };
+export function recordHref({ model, recordId, before, after, meta }) {
+  const snapshot = { ...meta, ...before, ...after };
+  // A site diary day (Phase L7) opens its job's Site diary tab; its event names the job in `meta`.
+  if (model === 'SiteDiary') return snapshot.jobId ? `/admin/jobs/${snapshot.jobId}?tab=diary` : null;
   if (PARENTS[model]) {
     const [field, parent] = PARENTS[model];
     const parentId = snapshot[field];

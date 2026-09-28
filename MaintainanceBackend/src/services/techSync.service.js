@@ -8,6 +8,8 @@ import * as s from '../shared/schemas/ops.js';
 import * as sv from '../shared/schemas/survey.js';
 import * as jobs from './job.service.js';
 import * as surveys from './survey.service.js';
+import { saveDiary } from './diary.service.js';
+import { overPlanWarnings } from './execution.service.js';
 
 /**
  * The field app's offline queue, replayed (POST /tech/sync). Mutations are applied in the order the
@@ -28,6 +30,7 @@ export async function applySync(mutations, { user, technician }) {
       results.push({ idempotencyKey: m.idempotencyKey, status: 'duplicate' });
       continue;
     }
+    let warnings = [];
     try {
       if (FIELD_ROLES.includes(user.role)) {
         if (m.surveyId) await surveys.assertOwnSurvey(m.surveyId, technician.id);
@@ -43,9 +46,12 @@ export async function applySync(mutations, { user, technician }) {
         case 'task':
           await jobs.updateTask(m.jobId, m.taskId, s.jobTaskUpdateSchema.parse(m.payload));
           break;
-        case 'material':
-          await jobs.addMaterial(m.jobId, s.jobMaterialSchema.parse(m.payload), user.id);
+        case 'material': {
+          const line = await jobs.addMaterial(m.jobId, s.jobMaterialSchema.parse(m.payload), user.id);
+          // More than planned (Phase L7): the phone shows it; it never refuses the material.
+          warnings = await overPlanWarnings(m.jobId, line.materialId);
           break;
+        }
         // A timer keeps the times the technician tapped (`at`), not the time the queue synced.
         case 'time_start':
           await jobs.startTimer(m.jobId, technician.id, m.payload.note, m.at);
@@ -56,6 +62,12 @@ export async function applySync(mutations, { user, technician }) {
         case 'complete':
           await jobs.completeJob(m.jobId, s.jobCompleteSchema.parse(m.payload), user.id);
           break;
+        // A diary day is a full replace keyed on job + day (Phase L7): a replay lands on the same state.
+        case 'diary_save': {
+          const { day, ...body } = s.diarySyncPayload.parse(m.payload);
+          await saveDiary(m.jobId, day, s.diarySchema.parse(body), user.id);
+          break;
+        }
         // saveDraft is a full replace, so replaying it lands on the same state.
         case 'survey_draft':
           await surveys.saveDraft(m.surveyId, sv.surveySaveSchema.parse(m.payload), { userId: user.id });
@@ -74,7 +86,7 @@ export async function applySync(mutations, { user, technician }) {
           changes: { kind: m.kind, jobId: m.jobId ?? null, surveyId: m.surveyId ?? null },
         },
       });
-      results.push({ idempotencyKey: m.idempotencyKey, status: 'applied' });
+      results.push({ idempotencyKey: m.idempotencyKey, status: 'applied', ...(warnings.length ? { warnings } : {}) });
     } catch (err) {
       logger.warn({ err: err.message, mutation: m.kind, jobId: m.jobId, surveyId: m.surveyId }, 'sync mutation rejected');
       // A payload that fails its schema will fail every time: INVALID_MUTATION tells the phone to stop retrying.

@@ -26,7 +26,10 @@ const move = (build, segment) => build.mutation({
 
 export const quotationsApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({
-    /** `{ stage?, status?, customerId?, q, page, limit, sort }` — `stage` is one of the API's queues. */
+    /**
+     * `{ stage?, status?, customerId?, kind?, jobId?, q, page, limit, sort }` — `stage` is one of the API's queues; `kind`
+     * QUOTATION or VARIATION and `jobId` a job's variations (Phase L7). A row carries `kind`, `jobId` and `job`.
+     */
     getQuotations: build.query({
       query: (params = {}) => ({ url: '/admin/quotations', params }),
       transformResponse: (r) => ({ items: r.data, meta: r.meta }),
@@ -43,7 +46,10 @@ export const quotationsApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: (result, error, id) => [{ type: 'Quotation', id }],
     }),
-    /** `{ customerId, siteId?, leadId?, items? }` — a draft; since Phase L3 it may start with no rows. */
+    /**
+     * `{ customerId, siteId?, leadId?, items? }` — a draft; since Phase L3 it may start with no rows. Phase L7: `{ jobId,
+     * items }` starts a VARIATION of that job instead (VO-, the job's customer and site, negative rows allowed).
+     */
     createQuotation: build.mutation({
       query: (body) => ({ url: '/admin/quotations', method: 'POST', body }),
       transformResponse: (r) => r.data,
@@ -79,8 +85,10 @@ export const quotationsApi = apiSlice.injectEndpoints({
     convertQuotationToJob: build.mutation({
       query: ({ id, ...body }) => ({ url: `/admin/quotations/${id}/convert-to-job`, method: 'POST', body }),
       transformResponse: (r) => r.data,
+      // A variation (Phase L7) answers the job it joined — its lines, plan and progress change.
       invalidatesTags: (result, error, arg) => [
         ...MOVE_TAGS(result, error, arg), { type: 'Job', id: 'LIST' }, 'Dispatch', { type: 'Invoice', id: 'LIST' },
+        ...(result?.id ? [{ type: 'Job', id: result.id }, { type: 'Job', id: `plan:${result.id}` }, { type: 'Job', id: `progress:${result.id}` }] : []),
       ],
     }),
     deleteQuotation: build.mutation({

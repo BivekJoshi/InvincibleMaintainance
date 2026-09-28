@@ -307,3 +307,35 @@ describe('finalBillDocument — the closing bill after stage bills (Phase L6)', 
     expect([a.subtotal, a.discount, a.vatAmount, a.total]).toEqual([b.subtotal, b.discount, b.vatAmount, b.total]);
   });
 });
+
+describe('a variation\'s omissions (Phase L7)', () => {
+  it('a negative line rounds away from zero, exactly like a positive one', async () => {
+    const { lineAmount } = await import('../src/utils/money.js');
+    expect(lineAmount(12.5, 1)).toBe(13);
+    expect(lineAmount(-12.5, 1)).toBe(-13);
+    expect(lineAmount(-20, 9500)).toBe(-190_000);
+    expect(lineAmount(-0.001, 1)).toBe(0);
+    expect(Object.is(lineAmount(-0.001, 1), -0)).toBe(false);
+  });
+
+  it('a net-negative document takes no discount and gets a negative VAT', async () => {
+    const { documentTotals } = await import('../src/utils/money.js');
+    const t = documentTotals([{ qty: 30, rate: 22_000 }, { qty: -50, rate: 9_500 }], { discount: 10_000, vatRate: 13 });
+    expect(t).toMatchObject({ subtotal: 660_000 - 475_000, discount: 10_000 });
+    const neg = documentTotals([{ qty: 10, rate: 22_000 }, { qty: -50, rate: 9_500 }], { discount: 10_000, vatRate: 13 });
+    expect(neg.subtotal).toBe(220_000 - 475_000);
+    expect(neg.discount).toBe(0);
+    expect(neg.vatAmount).toBe(-33_150);
+    expect(neg.total).toBe(-255_000 - 33_150);
+  });
+
+  it('pctOf is a percentage to one decimal; diffQty a 3-dp quantity', async () => {
+    const { pctOf } = await import('../src/utils/money.js');
+    const { diffQty } = await import('../src/utils/quantity.js');
+    expect(pctOf(3_333, 10_000)).toBe(33.3);
+    expect(pctOf(1, 3)).toBe(33.3);
+    expect(pctOf(5, 0)).toBe(0);
+    expect(diffQty(10.1, 10)).toBe(0.1);
+    expect(diffQty(3, 4.5)).toBe(-1.5);
+  });
+});

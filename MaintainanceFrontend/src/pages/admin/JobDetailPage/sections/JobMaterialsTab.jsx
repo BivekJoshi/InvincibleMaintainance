@@ -10,7 +10,9 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { jobMaterialSchema } from '@/form/schemas/job.schema';
 import { MATERIAL_RELATION } from '@/config/admin/jobViews';
 import { formatDateTime, formatNpr } from '@/helpers/format';
-import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { toastError, toastSuccess, toastWarning } from '@/redux/slices/uiSlice';
+import { overPlanText } from '@/helpers/execution';
+import { ShortfallPurchaseListButton } from './ShortfallPurchaseListButton';
 
 const CLOSED = ['COMPLETED', 'VERIFIED', 'CANCELLED'];
 
@@ -27,6 +29,9 @@ const qtyLabel = (qty, unit) => `${Number(qty.toFixed(3))} ${unit}`;
 /**
  * Material issued to the job. Issuing takes it out of stock in the same step; reversing puts it
  * back (a RETURN movement). Both change the job's costing. Stock reaches a job only from here.
+ *
+ * Phase L7: an issue that takes the job past its plan for that material is still made — the API answers it with an
+ * `OVER_PLAN` warning, shown as a warning toast — and a job with a plan offers "Create purchase list from shortfall".
  */
 export function JobMaterialsTab({ job, canWrite }) {
   const dispatch = useDispatch();
@@ -86,7 +91,12 @@ export function JobMaterialsTab({ job, canWrite }) {
         pageSizes={[]}
         rowActions={editable ? (r) => [{ label: 'Reverse — back to stock', icon: Undo2, destructive: true, onSelect: () => undo(r) }] : undefined}
         rowLabel={(r) => r.material.name}
-        toolbar={editable ? <Button size="sm" onClick={() => setIssuing(true)}><PackageMinus /> Issue from stock</Button> : null}
+        toolbar={editable || job.requirements?.length ? (
+          <div className="flex flex-wrap gap-2">
+            {editable ? <Button size="sm" onClick={() => setIssuing(true)}><PackageMinus /> Issue from stock</Button> : null}
+            {job.requirements?.length ? <ShortfallPurchaseListButton job={job} /> : null}
+          </div>
+        ) : null}
         emptyTitle="No material issued"
         emptyDescription={editable ? 'Issue what the team takes to site — stock falls as you do.' : undefined}
       />
@@ -99,8 +109,10 @@ export function JobMaterialsTab({ job, canWrite }) {
         defaultValues={{ materialId: null, isBillable: true }}
         submitLabel="Issue"
         onSubmit={async (body) => {
-          const line = await issue({ id: job.id, ...body }).unwrap();
+          const { line, warnings } = await issue({ id: job.id, ...body }).unwrap();
           dispatch(toastSuccess(`${qtyLabel(line.qty, line.material.unit)} of ${line.material.name} issued`, 'Stock and costing are updated.'));
+          // A warning never undoes the issue: it says the job is now past its plan for this material.
+          for (const w of warnings.filter((x) => x.code === 'OVER_PLAN')) dispatch(toastWarning('More than the plan', overPlanText(w)));
         }}
       />
       {confirmDialog}

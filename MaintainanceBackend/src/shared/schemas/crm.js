@@ -7,7 +7,7 @@ import {
   BOOKING_SLOT_KEYS, BUDGET_BANDS, CONTACT_ACTIVITY_TYPES, CONTRACT_TYPES, CUSTOMER_TYPES, DECISION_MAKERS, LEAD_OUTCOMES,
   LEAD_SOURCES, PAYMENT_TRIGGERS,
   LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, LOST_CATEGORIES, NEXT_ACTION_TYPES, PRIORITIES, PROPERTY_TYPES,
-  QUOTATION_DECISIONS, QUOTATION_ROW_TYPES, QUOTATION_STAGES, QUOTATION_STATUSES, RATE_MODES, RECIPE_COMPONENT_KINDS,
+  QUOTATION_DECISIONS, QUOTATION_KINDS, QUOTATION_ROW_TYPES, QUOTATION_STAGES, QUOTATION_STATUSES, RATE_MODES, RECIPE_COMPONENT_KINDS,
   SURVEY_ITEM_KINDS,
 } from '../enums.js';
 
@@ -417,7 +417,13 @@ const contractFields = {
  * the contract type, the payment schedule and the terms come from the settings and the terms library.
  */
 export const quotationSchema = z.object({
-  customerId: z.string().min(1),
+  /** Left out for a variation: the job's customer. */
+  customerId: z.string().min(1).optional(),
+  /**
+   * A variation order against this job (Phase L7): the quotation is kind VARIATION, numbered VO-, takes the
+   * job's customer, site and lead, may carry negative rows (omissions) and has no payment schedule.
+   */
+  jobId: z.string().min(1).optional(),
   siteId: z.string().optional().nullable(),
   leadId: z.string().optional().nullable(),
   validUntil: z.coerce.date().optional(),
@@ -427,10 +433,19 @@ export const quotationSchema = z.object({
   internalNote: optionalText,
   items: quotationRows.default([]),
   ...contractFields,
-});
+}).refine((v) => v.customerId || v.jobId, { message: 'Choose the customer', path: ['customerId'] });
 
-export const quotationUpdateSchema = quotationSchema.partial().extend({
+/** The kind, the job and the customer of a saved quotation do not change. */
+export const quotationUpdateSchema = z.object({
+  siteId: z.string().optional().nullable(),
+  leadId: z.string().optional().nullable(),
+  validUntil: z.coerce.date().optional(),
+  discount: optionalRupees,
+  vatApplied: z.coerce.boolean().optional(),
+  terms: optionalText,
+  internalNote: optionalText,
   items: quotationRows.optional(),
+  ...contractFields,
 });
 
 /**
@@ -439,6 +454,8 @@ export const quotationUpdateSchema = quotationSchema.partial().extend({
  */
 export const quotationPreviewSchema = z.object({
   quotationId: z.string().min(1).optional(),
+  /** VARIATION previews allow negative rows (Phase L7); a saved quotation's own kind wins. */
+  kind: z.enum(QUOTATION_KINDS).optional(),
   items: quotationRows.default([]),
   paymentStages: paymentStages.optional(),
   discount: optionalRupees,
@@ -469,6 +486,9 @@ export const quotationListQuery = z.object({
   status: z.enum(QUOTATION_STATUSES).optional(),
   customerId: z.string().optional(),
   leadId: z.string().optional(),
+  /** QUOTATION or VARIATION (Phase L7); `jobId` — a job's variations. */
+  kind: z.enum(QUOTATION_KINDS).optional(),
+  jobId: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
 });

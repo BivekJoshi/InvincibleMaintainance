@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { rupees } from './fields';
 import { parseRupees } from '@/helpers/format';
-import { boqRowBody, isBlankBoqRow, qtyOf, rateOf } from '@/helpers/boq';
+import { boqRowBody, isBlankBoqRow, rateOf, signedQtyOf } from '@/helpers/boq';
 import { isBlankMeasurement, measurementsBody, parseLength } from '@/helpers/measurements';
 import { CONTRACT_TYPES, LOST_CATEGORIES, PAYMENT_TRIGGERS, SURVEY_ITEM_KINDS } from '@/config/constants';
 import {
@@ -52,8 +52,12 @@ export const measurementSheetFormSchema = z.object({ measurements: measurementSh
  * One BOQ row as the builder edits it: `rowType` ITEM | SECTION | NOTE, a description (a section's title, a
  * note's text), a rate in rupees, a quantity typed or measured. A row left empty is allowed here — the list
  * drops it — so an error's index is the row the grid shows.
+ *
+ * `signed` (Phase L7): a VARIATION's row may have a quantity below zero — an omission — but never zero; on a
+ * QUOTATION a quantity is more than 0 (the API's 422 NEGATIVE_LINE).
+ * @param {{ signed?: boolean }} [opts]
  */
-export const boqRowSchema = z.object({
+export const boqRowSchemaFor = ({ signed = false } = {}) => z.object({
   _key: z.string().optional(),
   id: z.string().optional().nullable(),
   rowType: z.enum(['ITEM', 'SECTION', 'NOTE']).default('ITEM'),
@@ -84,20 +88,23 @@ export const boqRowSchema = z.object({
   if (measured.length) {
     if (measured.length > 200) issue(ctx, ['measurements'], 'At most 200 measurements');
   } else {
-    const qty = qtyOf(row.qty);
+    const qty = signedQtyOf(row.qty);
     if (qty === undefined) issue(ctx, ['qty'], 'Enter a quantity, or measure it');
     else if (!Number.isFinite(qty)) issue(ctx, ['qty'], 'Enter a number');
-    else if (qty <= 0) issue(ctx, ['qty'], 'More than 0');
-    else if (qty > 1_000_000) issue(ctx, ['qty'], 'Too large');
+    else if (signed && qty === 0) issue(ctx, ['qty'], 'Not 0 — an omission is a negative quantity');
+    else if (!signed && qty <= 0) issue(ctx, ['qty'], 'More than 0');
+    else if (Math.abs(qty) > 1_000_000) issue(ctx, ['qty'], 'Too large');
   }
-  const waste = qtyOf(row.wastagePct);
+  const waste = signedQtyOf(row.wastagePct);
   if (waste !== undefined && !(Number.isFinite(waste) && waste >= 0 && waste <= 100)) issue(ctx, ['wastagePct'], '0 to 100');
 });
+export const boqRowSchema = boqRowSchemaFor();
 
 /** The rows → the request's rows: blanks dropped, rupees kept, measurements as numbers, no client keys or cost. */
-export const boqRowsSchema = z.array(boqRowSchema)
+export const boqRowsSchemaFor = (opts) => z.array(boqRowSchemaFor(opts))
   .refine((rows) => rows.filter((r) => !isBlankBoqRow(r)).length <= 500, 'At most 500 rows')
   .transform((rows) => rows.filter((r) => !isBlankBoqRow(r)).map(boqRowBody));
+export const boqRowsSchema = boqRowsSchemaFor();
 
 /**
  * One payment stage as the builder edits it (Phase L4): its words, its share **in %** and when it falls due. A row
@@ -145,9 +152,13 @@ const estimatedDays = z.preprocess(
 /**
  * The builder's form: a draft's rows, the contract around them (Phase L4) and its terms. `PUT /admin/quotations/:id`.
  * A draft may have no rows yet. Mirrors `quotationUpdateSchema` (with the contract fields) in the API.
+ *
+ * `variation` (Phase L7): a VARIATION's rows may be negative (omissions), and it has no payment schedule of its own —
+ * the builder shows none and nothing is sent (the job's running and final bills carry it).
+ * @param {{ variation?: boolean }} [opts]
  */
-export const quotationFormSchema = z.object({
-  items: boqRowsSchema,
+export const quotationFormSchemaFor = ({ variation = false } = {}) => z.object({
+  items: boqRowsSchemaFor({ signed: variation }),
   discount: rupees.max(1_000_000_000).optional(),
   vatApplied: z.boolean(),
   validUntil: z.string().optional().nullable()
@@ -157,10 +168,11 @@ export const quotationFormSchema = z.object({
   contractType: z.enum(CONTRACT_TYPES).optional(),
   estimatedDays,
   exclusions: z.string().trim().max(4000, 'At most 4000 characters').optional().or(z.literal('')).transform((v) => v || undefined),
-  paymentStages: paymentScheduleSchema.optional(),
+  paymentStages: variation ? z.any().optional().transform(() => undefined) : paymentScheduleSchema.optional(),
   showMeasurements: z.boolean().optional(),
   summaryOnly: z.boolean().optional(),
 });
+export const quotationFormSchema = quotationFormSchemaFor();
 
 /** The row drawer's form: the row's words and flags. */
 export const boqRowDetailsSchema = z.object({

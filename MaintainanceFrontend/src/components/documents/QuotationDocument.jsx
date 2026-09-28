@@ -1,5 +1,5 @@
 import { FileText } from 'lucide-react';
-import { formatDate, formatNpr } from '@/helpers/format';
+import { formatDate, formatNpr, formatSignedNpr } from '@/helpers/format';
 import { DocumentHeader } from './DocumentHeader';
 import { DocumentLetterhead } from './DocumentLetterhead';
 import { LineItemsTable } from './LineItemsTable';
@@ -71,6 +71,8 @@ function ContractTerms({ q, copy }) {
 export function QuotationDocument({ quotation: q, locale = 'en', notice = null, showSymbol = false, print = false }) {
   const copy = documentCopy(locale);
   const items = q.items ?? [];
+  // A variation order (Phase L7): a change to a running job — named so, with the job's number.
+  const variation = q.kind === 'VARIATION';
   const summary = Boolean(q.summaryOnly);
   // The annex follows what the customer is shown: never in a summary, never when the office switched it off.
   const measured = summary || q.showMeasurements === false
@@ -82,10 +84,12 @@ export function QuotationDocument({ quotation: q, locale = 'en', notice = null, 
     <div lang={locale} data-testid="quotation-document">
       <DocumentLetterhead letterhead={q.letterhead} copy={copy.letterhead} />
       <DocumentHeader
-        kind={copy.kind}
+        kind={variation ? copy.variation.kind : copy.kind}
         icon={FileText}
         number={q.number}
-        subject={copy.forCustomer(q.customer?.name ?? '', q.site?.address)}
+        subject={variation && q.job?.number
+          ? `${copy.variation.ofJob(q.job.number)} · ${copy.forCustomer(q.customer?.name ?? '', q.site?.address)}`
+          : copy.forCustomer(q.customer?.name ?? '', q.site?.address)}
         status={print ? undefined : q.status}
         statusLabel={copy.statusLabels[q.status]}
         meta={<DocumentDates q={q} copy={copy} />}
@@ -96,10 +100,11 @@ export function QuotationDocument({ quotation: q, locale = 'en', notice = null, 
         : <LineItemsTable items={items} showSymbol={showSymbol} locale={locale} sections={q.boq?.sections} />}
       <TotalsList
         rows={[
-          { label: copy.totals.subtotal, value: formatNpr(q.subtotal) },
+          // A variation's totals may be below zero (Phase L7: an omission) — "− Rs. …".
+          { label: copy.totals.subtotal, value: formatSignedNpr(q.subtotal) },
           q.discount > 0 && { label: copy.totals.discount, value: `− ${formatNpr(q.discount)}`, tone: 'success' },
-          q.vatApplied && { label: copy.totals.vat(q.vatRate), value: formatNpr(q.vatAmount) },
-          { label: copy.totals.total, value: formatNpr(q.total), emphasis: true },
+          q.vatApplied && { label: copy.totals.vat(q.vatRate), value: formatSignedNpr(q.vatAmount) },
+          { label: copy.totals.total, value: formatSignedNpr(q.total), emphasis: true },
           !summary && q.boq?.optionalTotal > 0 && { label: copy.totals.optional, value: `(${formatNpr(q.boq.optionalTotal)})` },
         ]}
       />

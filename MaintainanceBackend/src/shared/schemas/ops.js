@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { isActive, listQuery, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
 import {
-  AMC_BILLING_CYCLES, AMC_STATUSES, CLAIM_STATUSES, INVOICE_KINDS, INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES,
+  AMC_BILLING_CYCLES, AMC_STATUSES, CLAIM_STATUSES, INVOICE_KINDS, INVOICE_STATUSES, LOST_TIME_REASONS,
+  PURCHASE_LIST_STATUSES, WEATHER, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES,
   MESSAGE_CHANNELS, MESSAGE_STATUSES, PAYMENT_METHODS, PRIORITIES, REMINDER_STATUSES, REVENUE_GROUPS, ROLES,
   STOCK_MOVEMENT_TYPES, WARRANTY_STATUSES,
 } from '../enums.js';
@@ -549,6 +550,67 @@ export const messageLogQuery = listQuery.pick({ page: true, limit: true, q: true
 
 const SURVEY_KINDS = ['survey_draft', 'survey_submit'];
 
+// ── site diary (Phase L7)
+
+/** A Kathmandu day in a path: `/tech/jobs/:id/diary/2026-09-28`. */
+export const diaryParams = z.object({ id: z.string().min(1), day });
+
+/**
+ * One day's diary — a FULL replace (PUT and the `diary_save` sync kind), so a replay lands on the same state.
+ * Headcount per trade (daily-wage labour are not users), progress per job line, deliveries with the challan,
+ * lost hours with a reason. No money anywhere (D1).
+ */
+export const diarySchema = z.object({
+  weather: z.enum(WEATHER).nullable().optional(),
+  headcount: z.array(z.object({ tradeId: z.string().min(1), count: z.coerce.number().int().min(0).max(200) }).strict()).max(40).default([]),
+  progress: z.array(z.object({ jobLineId: z.string().min(1), progressPct: z.coerce.number().min(0).max(100) }).strict()).max(500).default([]),
+  received: z.array(z.object({
+    materialId: z.string().min(1).nullable().optional(),
+    description: z.string().trim().min(1).max(200),
+    qty: z.coerce.number().positive().max(1_000_000),
+    unit: z.string().trim().max(20).nullable().optional(),
+    challanNo: z.string().trim().max(60).nullable().optional(),
+  }).strict()).max(50).default([]),
+  issues: z.string().trim().max(4000).nullable().optional(),
+  lostHours: z.coerce.number().min(0).max(24).default(0),
+  lostReason: z.enum(LOST_TIME_REASONS).nullable().optional(),
+  photoMediaIds: z.array(z.string().min(1)).max(30).default([]),
+  note: z.string().trim().max(2000).nullable().optional(),
+}).strict().refine((v) => !(v.lostHours > 0) || v.lostReason, { message: 'Say why the hours were lost', path: ['lostReason'] });
+
+/** `diary_save` carries the day in its payload. */
+export const diarySyncPayload = diarySchema.innerType().extend({ day }).strict();
+
+// ── purchase lists (Phase L7)
+
+const purchaseItem = z.object({
+  materialId: z.string().min(1),
+  qty: z.coerce.number().positive().max(1_000_000),
+  packs: z.coerce.number().int().min(0).max(1_000_000).nullable().optional(),
+  note: z.string().trim().max(300).nullable().optional(),
+}).strict();
+
+export const purchaseListSchema = z.object({
+  jobId: z.string().min(1).nullable().optional(),
+  supplierId: z.string().min(1).nullable().optional(),
+  note: optionalText,
+  items: z.array(purchaseItem).min(1, 'Add at least one material').max(200),
+});
+
+export const purchaseListListQuery = listQuery.extend({
+  status: z.enum(PURCHASE_LIST_STATUSES).optional(),
+  jobId: z.string().optional(),
+  supplierId: z.string().optional(),
+}).passthrough();
+
+/** Receiving: each item's quantity received (default: as ordered). */
+export const purchaseReceiveSchema = z.object({
+  items: z.array(z.object({ itemId: z.string().min(1), receivedQty: z.coerce.number().min(0).max(1_000_000) }).strict()).max(200).optional(),
+  note: optionalText,
+}).strict();
+
+export const purchaseCancelSchema = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
+
 /**
  * POST /tech/sync — the offline queue: 1–200 mutations, each with an idempotency key and the time it was made.
  * A survey mutation addresses a surveyId; every other kind a jobId.
@@ -557,7 +619,7 @@ export const techSyncSchema = z.object({
   mutations: z.array(z.object({
     idempotencyKey: z.string().min(8).max(80),
     at: z.coerce.date(),
-    kind: z.enum(['status', 'task', 'material', 'time_start', 'time_stop', 'complete', ...SURVEY_KINDS]),
+    kind: z.enum(['status', 'task', 'material', 'time_start', 'time_stop', 'complete', 'diary_save', ...SURVEY_KINDS]),
     jobId: z.string().min(1).optional(),
     surveyId: z.string().min(1).optional(),
     taskId: z.string().optional(),

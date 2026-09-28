@@ -13,7 +13,7 @@ import {
   InvoicesPage, InvoiceDetailPage, InvoicePrintPage, PaymentsPage, FinanceReportsPage, ReportsPage,
   WarrantiesPage, WarrantyDetailPage, WarrantyClaimsPage, AmcContractsPage, AmcContractDetailPage, ServiceRemindersPage,
   UsersPage, RolesPage, AuditLogPage, LoginActivityPage, MessageLogsPage, MessageTemplatesPage, MessageTemplateEditPage,
-  TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, TechHistoryPage, NotFoundPage,
+  TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, TechHistoryPage, SiteDiaryPage, NotFoundPage,
 } from './routeModules';
 import { AdminHome, ContentHome } from './AdminLanding';
 import { SiteLayout } from '@/components/layout/SiteLayout';
@@ -152,7 +152,8 @@ export function AppRoutes() {
             </Route>
             <Route element={<RequireAuth capability="materials:read" />}>
               <Route path="/admin/stock" element={<StockPage />} />
-              {['materials', 'material-categories', 'suppliers'].map((resource) => [
+              {/* Purchase lists (Phase L7) are a registry entry too, with their moves on the list and the list's page */}
+              {['materials', 'material-categories', 'suppliers', 'purchase-lists'].map((resource) => [
                 <Route key={resource} path={`/admin/${resource}`} element={<ResourceListPage resource={resource} />} />,
                 <Route key={`${resource}-new`} path={`/admin/${resource}/new`} element={<ResourceEditPage resource={resource} />} />,
                 <Route key={`${resource}-id`} path={`/admin/${resource}/:id`} element={<ResourceEditPage resource={resource} />} />,
@@ -204,6 +205,9 @@ export function AppRoutes() {
           <Route element={<TechLayout />}>
             <Route path="/tech" element={<TechTodayPage />} />
             <Route path="/tech/jobs/:id" element={<TechJobPage />} />
+            {/* The site diary (Phase L7): the days, and one Kathmandu day */}
+            <Route path="/tech/jobs/:id/diary" element={<SiteDiaryPage />} />
+            <Route path="/tech/jobs/:id/diary/:day" element={<SiteDiaryPage />} />
             <Route path="/tech/history" element={<TechHistoryPage />} />
             <Route path="/tech/history/:id" element={<TechJobPage readOnly />} />
             <Route path="/tech/surveys" element={<SurveyListPage />} />

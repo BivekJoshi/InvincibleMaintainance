@@ -19,7 +19,10 @@ import { SITE_PHOTO } from './support/survey.js';
  * test past the Accept: the customer is asked for the 50 % advance (amount, date, a pay button), the job carries the
  * BOQ as lines; the dispatcher sees "Awaiting advance" on the queue and the job, and scheduling is refused (the
  * button held, the API 422 ADVANCE_UNPAID); the accountant records the whole advance on its invoice through the
- * Record payment sheet; the dispatchers are told it is ready, and the dispatcher schedules it. L7–L8 extend it.
+ * Record payment sheet; the dispatchers are told it is ready, and the dispatcher schedules it. Phase L7: Suresh, on the
+ * job, files today's site diary on a 360 px phone — the weather, the crew, progress on a BOQ line in 5 % steps — and the
+ * dispatcher finds that progress on the job's BOQ & progress tab (no earned value for dispatch) and the day in its Site
+ * diary tab. L8 extends it.
  *
  * Set-up that is not under test runs over the API; everything is keyed to a unique name and phone.
  */
@@ -400,6 +403,50 @@ test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured li
     if (scheduled.plannedDays) {
       expect(new Date(scheduled.scheduledEnd) - new Date(scheduled.scheduledStart)).toBe(Math.round(scheduled.plannedDays * 86_400_000));
     }
+  });
+
+  // ── Phase L7: on site. Suresh (on the job) files today's diary from his phone; the office sees the progress.
+  let line;
+  await test.step('L7: the technician files a diary day at 360 px with progress on a line — no money on the phone', async () => {
+    [line] = (await dispatcher.get(`/admin/jobs/${job.id}`)).lines;
+    const lineName = `${line.number} ${line.description}`;
+    const techCtx = await browser.newContext({ viewport: { width: 360, height: 780 }, hasTouch: true });
+    const tpage = await techCtx.newPage();
+    await signIn(tpage, 'SURESH');
+    await tpage.goto(`/tech/jobs/${job.id}`);
+    await tpage.getByRole('link', { name: /Site diary/ }).click();
+    await tpage.waitForURL(`**/tech/jobs/${job.id}/diary`);
+    const sideways = () => tpage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    await expect(tpage.getByTestId('diary-today')).toBeVisible();
+    expect(await sideways()).toBeLessThanOrEqual(0);
+    await tpage.getByRole('link', { name: /Fill in today/ }).click();
+    await expect(tpage.getByRole('heading', { name: /Site diary/ })).toBeVisible();
+
+    await tpage.getByRole('radio', { name: /Sunny/ }).click();
+    await tpage.getByRole('button', { name: /^One more:/ }).first().click();
+    await tpage.getByRole('button', { name: /^One more:/ }).first().click();
+    for (let i = 0; i < 3; i += 1) await tpage.getByRole('button', { name: `5% more: ${lineName}` }).click();
+    await expect(tpage.getByTestId(`progress-pct-${line.id}`)).toHaveText('15%');
+    await tpage.getByLabel('Problems on site').fill('छानामा पानी जमेको छ');
+    await tpage.getByRole('button', { name: /Save the day/ }).click();
+
+    // Queued and sent at once while there is signal; the line's progress is the diary's.
+    await expect.poll(async () => (await dispatcher.get(`/admin/jobs/${job.id}`)).lines.find((l) => l.id === line.id).progressPct, { timeout: 20_000 })
+      .toBe(15);
+    await expect(tpage.locator('header').getByRole('button', { name: 'All sent' })).toBeVisible();
+    expect(await tpage.locator('main').innerText()).not.toMatch(/Rs\.|रु\./);
+    expect(await sideways()).toBeLessThanOrEqual(0);
+    await techCtx.close();
+  });
+
+  await test.step('L7: the dispatcher sees the progress on BOQ & progress (no earned value) and the day in the site diary', async () => {
+    await dpage.goto(`/admin/jobs/${job.id}?tab=progress`);
+    await expect(dpage.getByTestId(`line-progress-${line.id}`)).toHaveText('15%');
+    await expect(dpage.getByTestId('earned-pct')).toBeVisible();
+    await expect(dpage.getByTestId('earned-value')).toHaveCount(0);
+    await dpage.getByRole('tab', { name: 'Site diary' }).click();
+    await expect(dpage.getByText('Sunny')).toBeVisible();
+    await expect(dpage.getByText(`${line.number} 15%`)).toBeVisible();
   });
 
   await dispatchCtx.close();

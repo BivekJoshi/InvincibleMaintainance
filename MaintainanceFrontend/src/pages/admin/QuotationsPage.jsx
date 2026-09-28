@@ -13,9 +13,9 @@ import { Button } from '@/components/ui/button';
 import { NewQuotationSheet } from '@/components/quotations/NewQuotationSheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageTransition } from '@/three/motion/motionKit';
-import { QUOTATION_STAGE_TABS, QUOTATION_STATUS_LABELS } from '@/config/constants';
+import { QUOTATION_KINDS, QUOTATION_KIND_LABELS, QUOTATION_STAGE_TABS, QUOTATION_STATUS_LABELS } from '@/config/constants';
 import { marginOf, quotationActions, sentAge, validityWarning } from '@/helpers/quotationActions';
-import { formatDate, formatDateTime, formatNpr } from '@/helpers/format';
+import { formatDate, formatDateTime, formatNpr, formatSignedNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
 const ACTION_ICONS = {
@@ -29,8 +29,16 @@ const columns = [
       <div className="min-w-0">
         <p className="font-mono text-xs font-medium">{r.number}</p>
         {r.version > 1 ? <p className="text-[11px] text-muted-foreground">v{r.version}</p> : null}
+        {/* A variation order (Phase L7) says so, and which job it changes. */}
+        {r.kind === 'VARIATION' ? (
+          <p className="mt-0.5 flex flex-wrap items-center gap-1">
+            <StateBadge tone="info" className="text-[10px]"><span data-testid="row-kind">Variation</span></StateBadge>
+            {r.job?.number ? <span className="font-mono text-[11px] text-muted-foreground">{r.job.number}</span> : null}
+          </p>
+        ) : null}
       </div>
     ),
+    exportValue: (r) => `${r.number}${r.kind === 'VARIATION' ? ' (variation)' : ''}`,
   },
   {
     key: 'customer', header: 'Customer',
@@ -57,7 +65,8 @@ const columns = [
       </div>
     ),
   },
-  { key: 'total', header: 'Total', sortable: true, cell: (r) => <span className="whitespace-nowrap font-medium tabular-nums">{formatNpr(r.total)}</span> },
+  // A variation's total may be below zero (an omission): "− Rs. …".
+  { key: 'total', header: 'Total', sortable: true, cell: (r) => <span className="whitespace-nowrap font-medium tabular-nums">{formatSignedNpr(r.total)}</span> },
   {
     key: 'people', header: 'Prepared · approved',
     cell: (r) => (
@@ -114,6 +123,12 @@ const COST_COLUMNS = (() => {
   return [...columns.slice(0, at), marginColumn, ...columns.slice(at)];
 })();
 
+/** Quotations and variation orders (Phase L7) — `?kind=`, all of them to start with. */
+const FILTERS = [{
+  key: 'kind', label: 'Kind', type: 'enum', allLabel: 'Quotations and variations',
+  options: QUOTATION_KINDS.map((value) => ({ value, label: QUOTATION_KIND_LABELS[value] })),
+}];
+
 function TabCount({ stage }) {
   const { data } = useGetQuotationStageCountQuery(stage);
   if (!data) return null;
@@ -127,7 +142,8 @@ function TabCount({ stage }) {
 /**
  * The quotation queues (`?stage=`): drafts, waiting for approval, ready to send, with the
  * customer, changes asked, won, lost, all. A row's menu offers what its state allows.
- * A holder of `costs:read` also sees each row's margin (Phase L4).
+ * A holder of `costs:read` also sees each row's margin (Phase L4). Phase L7: a variation order wears a
+ * "Variation" badge with its job, and the Kind filter (`?kind=`) shows quotations or variations only.
  */
 export default function QuotationsPage() {
   const navigate = useNavigate();
@@ -190,6 +206,7 @@ export default function QuotationsPage() {
         onParamsChange={setParams}
         onRowClick={(row) => navigate(`/admin/quotations/${row.id}`)}
         rowActions={rowActions}
+        filters={FILTERS}
         rowLabel={(row) => `${row.number} for ${row.customer?.name ?? 'a customer'}`}
         searchPlaceholder="Search number or customer…"
         emptyTitle={stage === 'approval' ? 'Nothing is waiting for approval' : 'No quotations here'}

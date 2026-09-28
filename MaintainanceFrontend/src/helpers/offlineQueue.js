@@ -21,17 +21,21 @@ import { clearStore, newKey, nextStamp, readAll, readOne, remove, write } from '
  */
 
 export const MUTATION_KINDS = [
-  'status', 'task', 'material', 'time_start', 'time_stop', 'complete', 'survey_draft', 'survey_submit',
+  'status', 'task', 'material', 'time_start', 'time_stop', 'complete', 'survey_draft', 'survey_submit', 'diary_save',
 ];
 
 /**
  * A `failed` result with one of these codes will fail the same way every time. `INVALID_MUTATION` is the
  * server's word for a payload that fails its schema; `SURVEY_INCOMPLETE` (Phase L5) a submit with a required
- * answer or photo missing — the surveyor has to add it, sending it again will not help.
+ * answer or photo missing — the surveyor has to add it, sending it again will not help; `JOB_NOT_ON_SITE`,
+ * `UNKNOWN_LINE` and `UNKNOWN_TRADE` (Phase L7) a diary day the office will not take.
  */
 export const TERMINAL_CODES = new Set([
   'INVALID_TRANSITION', 'UNPROCESSABLE', 'NOT_FOUND', 'FORBIDDEN', 'BAD_REQUEST', 'CONFLICT', 'VALIDATION_ERROR',
   'INVALID_MUTATION', 'SURVEY_INCOMPLETE',
+  // A site diary day (Phase L7) the office will never take as it is: the job is not on site any more, or the day names
+  // a line or a trade the job does not have.
+  'JOB_NOT_ON_SITE', 'UNKNOWN_LINE', 'UNKNOWN_TRADE',
 ]);
 
 /** After this many refusals that were not terminal, an entry is dropped and reported anyway. */
@@ -116,11 +120,13 @@ export function toWire(entry) {
  * @param {object[]} batch the entries sent
  * @param {{ results?: Array<{ idempotencyKey: string, status: string, code?: string, error?: string }> }} answer
  * @returns {{ done: object[], refused: Array<{ entry: object, code: string, message: string|null, details?: any }>, retry: object[] }}
- *   `done` — applied, or applied before (`duplicate`); `refused` — to drop and report; `retry` — to keep,
- *   `attempts` already counted
+ *   `done` — applied, or applied before (`duplicate`), with the result's `warnings` when it has any (Phase L7: a material
+ *   over the job's plan); `refused` — to drop and report; `retry` — to keep, `attempts` already counted
  */
 /** What the server listed with a refusal — a submit's missing answers (`SURVEY_INCOMPLETE`, Phase L5). */
 const detailsOf = (result) => (result.details ? { details: result.details } : {});
+/** What the server said beside an applied change — a material over the job's plan (`OVER_PLAN`, Phase L7). */
+const warningsOf = (result) => (Array.isArray(result.warnings) && result.warnings.length ? { warnings: result.warnings } : {});
 
 export function settle(batch, answer) {
   const byKey = new Map((answer?.results ?? []).map((r) => [r.idempotencyKey, r]));
@@ -132,7 +138,7 @@ export function settle(batch, answer) {
     if (!result) {
       retry.push(entry); // not answered — keep it as it is
     } else if (result.status === 'applied' || result.status === 'duplicate') {
-      done.push(entry);
+      done.push({ ...entry, ...warningsOf(result) });
     } else if (TERMINAL_CODES.has(result.code)) {
       refused.push({ entry, code: result.code, message: result.error ?? null, ...detailsOf(result) });
     } else {
@@ -147,8 +153,16 @@ export function settle(batch, answer) {
   return { done, refused, retry };
 }
 
-/** The record an entry changes — entries for the same one keep their order when one of them has to wait. */
-const scopeOf = (entry) => (entry.surveyId ? `survey:${entry.surveyId}` : entry.jobId ? `job:${entry.jobId}` : null);
+/**
+ * The record an entry changes — entries for the same one keep their order when one of them has to wait. A site diary
+ * day (Phase L7) is a record of its own: a day waiting for its photos holds that day's later saves, not the job's
+ * status changes or ticks.
+ */
+export function scopeOf(entry) {
+  if (entry.surveyId) return `survey:${entry.surveyId}`;
+  if (entry.kind === 'diary_save' && entry.jobId) return `diary:${entry.jobId}:${entry.payload?.day ?? ''}`;
+  return entry.jobId ? `job:${entry.jobId}` : null;
+}
 
 /**
  * Sends the oldest `BATCH_SIZE` entries through `send` and settles the queue by the answer.

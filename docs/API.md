@@ -118,6 +118,13 @@ POST /public/quotations/:token/decide decisionLimiter (20 per IP per 15 min) · 
                                            finance.advanceDueDays (7), paymentStageId unique — and
                                            job.advanceInvoiceId (unique). No ON_ACCEPT stage: no invoice, no gate.
                                         Library, template and take-off reads happen before the transaction.
+                                        A VARIATION (Phase L7) instead: SENT → APPROVED, then in the same
+                                        transaction its non-optional rows join its job as VARIATION job lines
+                                        (numbered "VO-… · A.1", sectioned "Variation VO-… — <section>", after the
+                                        job's own) and its take-off as VARIATION requirements, and APPROVED →
+                                        CONVERTED (guarded; a double tap adds once). No job, no lead change, no
+                                        advance. The dispatchers and the job's lead technician are told
+                                        (variation_accepted); the response's job is the job it changed.
                                         Response adds job { id, number } and advance { number, total, balance,
                                         dueDate, status, url } | null (also on GET once accepted).
                                         Then, once each: the customer (SMS quotation_accepted, and email when on
@@ -539,10 +546,23 @@ POST   /admin/quotations            quotations:write · creates a DRAFT. Without
                                     { customerId, siteId?, leadId?, validUntil?, discount? (rupees),
                                       vatApplied (default true), terms?, internalNote?, items (0–500 BOQ rows —
                                       a DRAFT may start blank) }
+                                    A VARIATION ORDER (Phase L7): send `jobId` (customerId may be left out).
+                                    The quotation is kind VARIATION, numbered VO-…, takes the job's customer and
+                                    site (a different customerId is 400; a CANCELLED or VERIFIED job is 422
+                                    VARIATION_JOB_CLOSED), has no lead and NO payment schedule. Only a variation
+                                    may have negative rows (omissions: negative qty, amounts rounded away from
+                                    zero); on any other quotation a row that comes out ≤ 0 is 422 NEGATIVE_LINE.
+                                    Its total may be negative (then no discount, a negative VAT). Every
+                                    quotation row carries kind QUOTATION|VARIATION and jobId; GET /:id adds
+                                    job { id, number, status, title }; GET takes ?kind&jobId.
 PUT    /admin/quotations/:id        quotations:write · DRAFT only. Any other status is 422 UNPROCESSABLE
                                     ("…cannot be edited. …") and nothing changes. items replace the rows (a
                                     row sent with its id keeps its frozen recipe and cost); a discount or VAT
-                                    change without items re-totals the stored rows.
+                                    change without items re-totals the stored rows. The kind, job and customer
+                                    are fixed once created (Phase L7); a variation's schedule stays empty.
+                                    Submit, approve (maker-checker, LOW_MARGIN — skipped when the total is not
+                                    positive), send and the customer's link work unchanged for a variation; a
+                                    net-negative variation never auto-approves. Revise keeps kind and job.
 
 A quotation is a BILL OF QUANTITIES (Phase L3): one ordered list of rows, as an estimator's sheet reads.
   Request row (rupees): { id? (a stored row's), rowType ITEM|SECTION|NOTE (default ITEM), description
@@ -659,7 +679,8 @@ POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only —
                                     accepted by phone. The same hand-off as the customer's Accept (steps 2–6
                                     above; Phase L6): the lead is WON too, the lines, requirements and the
                                     advance are made. CONVERTED (a job exists) is 422 INVALID_TRANSITION, so
-                                    it never makes a second job.
+                                    it never makes a second job. An APPROVED VARIATION joins its job the same
+                                    way as on the customer's link (Phase L7) → 201 that job.
                                     { type? (default the service's jobType), title?, description?, priority?,
                                       scheduledStart?, scheduledEnd?, templateId?, technicianIds?,
                                       leadTechnicianId? }
@@ -790,6 +811,33 @@ GET    /admin/jobs/:id/plan         jobs:read · the Plan tab (Phase L6) — qua
                                     tradeId, code, name, days }], labourDays, crew { size, lead { technicianId,
                                     name } | null, technicians [{ technicianId, name, isLead }] }, readiness
                                     [{ key advance|boq|materials|crew|schedule|site, label, done, detail }] }
+GET    /admin/jobs/:id/diary        jobs:read · the site diary (Phase L7), newest first: { days: [{ id, day,
+                                    weather, headcount [{ tradeId, count, tradeName }], progress [{ jobLineId,
+                                    progressPct, number, description }], received [{ materialId?, description,
+                                    qty, unit?, challanNo? }], issues, lostHours, lostReason, photoMediaIds, note,
+                                    createdBy { id, name }, updatedAt }], media { [mediaId]: media } }
+GET    /admin/jobs/:id/progress     jobs:read · BOQ & progress (Phase L7): { sections [{ title, lines [{ id,
+                                    number, source, description, unit, quotedQty, progressPct, isProvisional,
+                                    rate?, value?, earned? }] }], totals { earnedPct, value?, earned? }, stages
+                                    [{ id, label, basisPoints, trigger, cumulativeBp, billed, due }], nextBill
+                                    { stageId, label, basisPoints } | null }. rate, value (qty × rate) and earned
+                                    (value × progress, money.js) only for quotations:read or invoices:read (SALES,
+                                    MANAGER, ACCOUNTANT, ADMIN) — not DISPATCHER. A MILESTONE stage is due once
+                                    earnedPct reaches its cumulative share and no bill has taken it; nextBill is
+                                    the first (the running bill itself is Phase L8's).
+GET    /admin/jobs/:id/planned-vs-actual   jobs:read · quantities only (Phase L7): { materials [{ materialId,
+                                    code, name, unit, planned (requirements), issued (job materials), received
+                                    (the diary's challans), variance (issued − planned), overPlan }], labour
+                                    [{ tradeId, code, name, plannedDays, loggedDays }], technicianHours,
+                                    workdayHours } — loggedDays: each diary day's headcount × (workday − lost
+                                    hours) / workday (job.workdayHours, 8), summed
+GET    /admin/jobs/:id/variations   jobs:read · the job's variation orders, newest first: [{ id, number,
+                                    version, status, kind, total?, createdAt, sentAt, decidedAt }] (total for
+                                    quotations:read only)
+POST   /admin/jobs/:id/purchase-lists/from-shortfall   materials:write · 201 a DRAFT purchase list for the
+                                    job: each planned material's shortfall (planned − issued − on hand), bought in
+                                    whole packs where the material has a pack size; the materials' supplier when
+                                    they share one. 422 NO_SHORTFALL when nothing is short.
 POST   /admin/jobs/:id/advance-override   jobs:advance-override (MANAGER, ADMIN; DISPATCHER 403) ·
                                     { reason 5–500 } → the job (as GET /:id). The work may go ahead before
                                     the advance is paid; the invoice stays owed. Audited job.advance_overridden
@@ -815,7 +863,11 @@ POST   /admin/jobs/:id/tasks        + PATCH /tasks/:taskId + DELETE /tasks/:task
 POST   /admin/jobs/:id/photos       { mediaId, kind: BEFORE|DURING|AFTER|ISSUE|SIGNATURE, caption? }
                                     + DELETE /photos/:photoId
 POST   /admin/jobs/:id/materials    { materialId, qty, rate? (rupees; default the sell rate), isBillable }
-                                    issues stock (ISSUE_TO_JOB) · 422 on a closed job
+                                    issues stock (ISSUE_TO_JOB) · 422 on a closed job · Phase L7: when the job's
+                                    issued total of that material passes its planned requirement — or the
+                                    material is not planned on a job that has a plan — the answer carries
+                                    meta.warnings [{ code: OVER_PLAN, materialId, name, unit, planned, issued }].
+                                    A warning never blocks: the material is issued. (Also POST /tech/jobs/:id/materials.)
 DELETE /admin/jobs/:id/materials/:jobMaterialId   reverses it (a RETURN movement)
 POST   /admin/jobs/:id/time-logs    { technicianId, startedAt, endedAt | minutes, note }
                                     labour the office records by hand — the timer was never started.
@@ -960,6 +1012,22 @@ four; the history needs the resource's read capability. `?hard=true` still needs
                                     recipe materials); the history stays materials:read
 /admin/material-categories          { name, sortOrder, isActive }
 /admin/suppliers                    { name, phone?, email?, address?, notes?, isActive } · no manual order
+/admin/purchase-lists               PURCHASE LISTS (Phase L7) — mountResource, materials:read / materials:write
+                                    (DISPATCHER, ADMIN); no toggle, no reorder · { jobId?, supplierId?, note?,
+                                    items [{ materialId, qty > 0, packs?, note? }] (1–200) } · numbered PL-… ·
+                                    ?q (number, note, job, supplier)&status&jobId&supplierId&deleted · rows + job,
+                                    supplier, items [+ material, receivedQty], itemCount · PUT and DELETE (soft,
+                                    restore) a DRAFT only (422 otherwise) · history
+                                    PURCHASE_LIST_TRANSITIONS: DRAFT → ORDERED | CANCELLED; ORDERED → RECEIVED |
+                                    CANCELLED; RECEIVED and CANCELLED are final — a wrong move is 422
+                                    INVALID_TRANSITION, each is guarded and audited (purchase_list.*):
+POST /admin/purchase-lists/:id/order      → ORDERED (orderedAt)
+POST /admin/purchase-lists/:id/receive    { items?: [{ itemId, receivedQty }], note? } → RECEIVED (receivedAt),
+                                    in one transaction with a PURCHASE stock movement per item received (as
+                                    ordered unless the body says what came) at the material's purchase rate,
+                                    with StockMovement.supplierId, the job and the list's number as reference —
+                                    stock rises. An item not on the list is 422
+POST /admin/purchase-lists/:id/cancel     { reason 3–500 } → CANCELLED (cancelReason)
 
 GET  /admin/stock                   ?page&limit&q (name, code)&categoryId&lowOnly=true&includeInactive=true
                                     &sort=sortOrder|name|code|balance ("-" for desc)
@@ -1003,6 +1071,22 @@ POST  /tech/jobs/:id/time/start  |  /time/stop
 POST  /tech/jobs/:id/complete       { note, signatureMediaId, customerRating? } · a COMPLETED or VERIFIED job
                                     is 422 INVALID_TRANSITION ("already completed") — never re-run
 POST  /tech/sync                    offline mutation queue replay (idempotency keys)
+GET   /tech/jobs/:id/diary          the site diary's days (Phase L7), newest first: { today (Kathmandu),
+                                    days [{ day, weather, headcountTotal, lostHours, updatedAt }] }
+GET   /tech/jobs/:id/diary/:day     { day, entry | null, lines [{ id, number, section, source, description, unit,
+                                    quotedQty, progressPct }] (no rate), trades [{ id, code, name }], materials
+                                    [{ id, code, name, unit }], media { [mediaId]: media } (the entry's photos) }
+PUT   /tech/jobs/:id/diary/:day     the day's entry, a FULL replace — { weather? SUNNY|CLOUDY|RAIN|HEAVY_RAIN|COLD,
+                                    headcount [{ tradeId, count 0–200 }], progress [{ jobLineId, progressPct
+                                    0–100 }], received [{ materialId?, description, qty > 0, unit?, challanNo? }],
+                                    issues?, lostHours 0–24, lostReason? RAIN|LATE_MATERIAL|CUSTOMER|BANDH|
+                                    FESTIVAL|OTHER (required with lost hours), photoMediaIds [≤ 30], note? } —
+                                    strict (a money key is 400). The day is a Kathmandu date, not in the future,
+                                    at most 60 days back (400). One entry per job per day (unique). People on the
+                                    job only (403); a job not on site (DRAFT, CANCELLED, VERIFIED) is 422
+                                    JOB_NOT_ON_SITE; 422 UNKNOWN_LINE / UNKNOWN_TRADE. Each line's progressPct
+                                    becomes what the latest day that mentions it says. A delivery does not move
+                                    stock (the purchase list and issue-to-job do).
 
 GET   /tech/surveys                 ?status              own surveys, each shaped as /tech/surveys/:id (the
                                     phone caches them for offline use)
@@ -1051,6 +1135,11 @@ not the sync's. A payload that fails its schema answers `failed` with code `INVA
 will fail every time); a state-machine refusal is `INVALID_TRANSITION` (terminal); anything else keeps its code
 or `SYNC_FAILED`. A failed result carries the error's `details` when it has them — `SURVEY_INCOMPLETE`'s
 missing answers and photos (Phase L5).
+
+`diary_save` (Phase L7) addresses a `jobId` with `payload { day, …the PUT body }`: a full replace keyed on job +
+day, so a replay — or the same day saved again — lands on one entry. `JOB_NOT_ON_SITE`, `UNKNOWN_LINE` and
+`UNKNOWN_TRADE` are as final for the phone as `INVALID_MUTATION`. An applied `material` mutation that takes the job
+over its plan carries `warnings: [{ code: 'OVER_PLAN', materialId, name, unit, planned, issued }]` in its result.
 
 `sync` gains the mutation kinds `survey_draft` and `survey_submit`, which address a
 `surveyId` instead of a `jobId`. A replayed `survey_submit` on a survey that is still
@@ -1473,6 +1562,9 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `job.scheduled` | `POST /admin/jobs/:id/schedule` (the dispatch board) | status, scheduledStart, scheduledEnd, technicianIds → the same |
 | `job.completed` | a job is completed (admin, field app, survey submit) | status → COMPLETED · customerRating |
 | `job.verified` | `POST /admin/jobs/:id/verify` | COMPLETED → VERIFIED |
+| `job.variation_added` | a VARIATION accepted (the customer's link or a staff convert, Phase L7) | · quotationId, number, version, lines, total |
+| `site_diary.saved` | PUT /tech/jobs/:id/diary/:day or `diary_save` (model `SiteDiary`) | · jobId, day, lines |
+| `purchase_list.ordered` · `.received` · `.cancelled` | the purchase list's moves (model `PurchaseList`) | status → status · items / reason |
 | `job.advance_overridden` | `POST /admin/jobs/:id/advance-override` (Phase L6) | advanceOverriddenAt null → set · reason, invoiceId, invoiceNumber |
 | `invoice.created` | an invoice is created (admin or from a job) | → number, status, total, customerId, quotationId |
 | `invoice.sent` | `POST /admin/invoices/:id/send` | status → SENT |

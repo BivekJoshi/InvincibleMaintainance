@@ -9,6 +9,8 @@
 //   { sed -n '1,/^\/\/ ═══/p' docs/DATA-MODEL.prisma; cat MaintainanceBackend/prisma/schema.prisma; } \
 //     > /tmp/dm && mv /tmp/dm docs/DATA-MODEL.prisma
 //
+// Phase L7 (2026-09-28): SiteDiary (+ DiaryWeather, LostTimeReason), PurchaseList(+Item, status), StockMovement.supplierId,
+// QuotationKind and Quotation.kind/jobId (variations); the Job↔Quotation relations are named — edited in by hand.
 // Phase L6 (2026-09-28): Service.jobType, Job plan/advance fields, JobLine, JobRequirement, InvoiceKind and
 // Invoice.kind/jobId/paymentStageId — edited in by hand.
 // Phase L5 (2026-09-27): VisitAnswer, the Job visit fields, CustomerSite contact/landmark, InspectionTemplate,
@@ -74,6 +76,7 @@ model User {
   approvedQuotes   Quotation[]      @relation("QuotationApprover")
   createdJobs      Job[]            @relation("JobCreator")
   advanceOverrides Job[]            @relation("JobAdvanceOverride")
+  diaries          SiteDiary[]      @relation("DiaryAuthor")
   jobEvents        JobStatusEvent[]
   submittedSurveys SiteSurvey[]     @relation("SurveySubmitter")
   reviewedSurveys  SiteSurvey[]     @relation("SurveyReviewer")
@@ -859,11 +862,20 @@ enum QuotationStatus {
   CONVERTED
 }
 
+/// A quotation for new work, or a variation order against a running job (Phase L7).
+enum QuotationKind {
+  QUOTATION
+  VARIATION
+}
+
 model Quotation {
   id               String          @id @default(cuid())
   number           String          @unique
   version          Int             @default(1)
   parentId         String?
+  /// VARIATION: a change to job `jobId` — its lines may be negative (omissions); accepting it adds job lines.
+  kind             QuotationKind   @default(QUOTATION)
+  jobId            String?
   customerId       String
   siteId           String?
   leadId           String?
@@ -932,7 +944,8 @@ model Quotation {
   supersedes   Quotation[]     @relation("QuotationSupersession")
   items        QuotationItem[]
   stages       QuotationPaymentStage[]
-  jobs         Job[]
+  jobs         Job[]                   @relation("JobQuotation")
+  job          Job?                    @relation("JobVariations", fields: [jobId], references: [id], onDelete: SetNull)
   invoices     Invoice[]
   survey       SiteSurvey?
 
@@ -940,6 +953,7 @@ model Quotation {
   @@index([customerId])
   @@index([parentId])
   @@index([leadId])
+  @@index([jobId])
 }
 
 /// How the final bill is worked out (L-D2).
@@ -1150,13 +1164,17 @@ model Job {
   customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
   site         CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
   lead         Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  quotation    Quotation?       @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  quotation         Quotation?       @relation("JobQuotation", fields: [quotationId], references: [id], onDelete: SetNull)
   createdBy    User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
   advanceInvoice    Invoice?     @relation("JobAdvanceInvoice", fields: [advanceInvoiceId], references: [id], onDelete: SetNull)
   advanceOverrideBy User?        @relation("JobAdvanceOverride", fields: [advanceOverrideById], references: [id], onDelete: SetNull)
   invoices          Invoice[]    @relation("JobInvoices")
   lines             JobLine[]
   requirements      JobRequirement[]
+  /// Variation orders against this job (Phase L7): quotations of kind VARIATION.
+  variations        Quotation[]      @relation("JobVariations")
+  diaries           SiteDiary[]
+  purchaseLists     PurchaseList[]
   parentJob    Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
   childJobs    Job[]            @relation("JobRework")
   tasks        JobTask[]
@@ -1253,6 +1271,55 @@ model JobRequirement {
   trade    Trade?    @relation(fields: [tradeId], references: [id], onDelete: SetNull)
 
   @@index([jobId, kind])
+}
+
+enum DiaryWeather {
+  SUNNY
+  CLOUDY
+  RAIN
+  HEAVY_RAIN
+  COLD
+}
+
+/// Why site hours were lost (Phase L7) — the reasons a Kathmandu site stops.
+enum LostTimeReason {
+  RAIN
+  LATE_MATERIAL
+  CUSTOMER
+  BANDH
+  FESTIVAL
+  OTHER
+}
+
+/// The foreman's day on site (Phase L7): one entry per job per Kathmandu day, filed from a phone, offline.
+/// Daily-wage labour are not app users, so headcount is per trade. No money anywhere (D1).
+model SiteDiary {
+  id            String          @id @default(cuid())
+  jobId         String
+  /// The Kathmandu calendar day, YYYY-MM-DD.
+  day           String
+  weather       DiaryWeather?
+  /// [{ tradeId, count }]
+  headcount     Json
+  /// [{ jobLineId, progressPct }] — the latest day sets each JobLine.progressPct.
+  progress      Json
+  /// [{ materialId?, description, qty, unit?, challanNo? }] — deliveries; they do not move stock.
+  received      Json
+  issues        String?
+  lostHours     Float           @default(0)
+  lostReason    LostTimeReason?
+  /// Media ids of the day's photos (JobPhoto rows through the upload queue).
+  photoMediaIds Json
+  note          String?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  job       Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("DiaryAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([jobId, day])
 }
 
 model JobAssignment {
@@ -1467,6 +1534,54 @@ model InspectionTemplate {
 
 // ═══════════════════════════ Materials
 
+/// DRAFT → ORDERED → RECEIVED (Phase L7), or CANCELLED before it arrives.
+enum PurchaseListStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+/// What to buy for a job (Phase L7) — raised from its shortfall; receiving it writes PURCHASE stock movements.
+model PurchaseList {
+  id           String             @id @default(cuid())
+  number       String             @unique
+  jobId        String?
+  supplierId   String?
+  status       PurchaseListStatus @default(DRAFT)
+  orderedAt    DateTime?
+  receivedAt   DateTime?
+  cancelReason String?
+  note         String?
+  createdById  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  deletedAt    DateTime?
+
+  job      Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  supplier Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  items    PurchaseListItem[]
+
+  @@index([status, createdAt])
+  @@index([jobId])
+}
+
+model PurchaseListItem {
+  id          String  @id @default(cuid())
+  listId      String
+  materialId  String
+  qty         Float
+  packs       Int?
+  receivedQty Float?
+  note        String?
+  sortOrder   Int     @default(0)
+
+  list     PurchaseList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  material Material     @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([listId])
+}
+
 model Supplier {
   id        String    @id @default(cuid())
   name      String
@@ -1480,6 +1595,8 @@ model Supplier {
   deletedAt DateTime?
 
   materials Material[]
+  movements     StockMovement[]
+  purchaseLists PurchaseList[]
 }
 
 model MaterialCategory {
@@ -1522,6 +1639,7 @@ model Material {
   recipeLines     RateCardComponent[]
   quotationItems  QuotationItem[]
   jobRequirements JobRequirement[]
+  purchaseItems   PurchaseListItem[]
 
   @@index([isActive, sortOrder])
 }
@@ -1534,11 +1652,14 @@ model StockMovement {
   rate       Int?
   jobId      String?
   reference  String?
+  /// Who the stock was bought from — a purchase list received (Phase L7).
+  supplierId String?
   note       String?
   actorId    String?
   createdAt  DateTime @default(now())
 
-  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  material Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   @@index([materialId, createdAt])
   @@index([jobId])

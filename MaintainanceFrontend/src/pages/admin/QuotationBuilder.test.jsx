@@ -536,3 +536,47 @@ describe('the BOQ builder — contract, schedule, terms and the customer’s doc
     await waitFor(() => expect(store.getState().ui.toasts.map((t) => t.description)).toContain('You cannot export this quotation.'));
   });
 });
+
+describe('the BOQ builder — a variation order (Phase L7)', () => {
+  const JOB = { id: 'j9', number: 'JOB-2083-0090', status: 'IN_PROGRESS', title: 'Terrace waterproofing' };
+  const VARIATION = {
+    ...BOQ, id: 'v1', number: 'VO-2083-0001', kind: 'VARIATION', jobId: 'j9', job: JOB, paymentStages: [], versions: [{ id: 'v1', number: 'VO-2083-0001', version: 1, status: 'DRAFT' }],
+  };
+
+  it('is the same builder, with the job named, no payment schedule, and an omission typed as a negative quantity', async () => {
+    const user = userEvent.setup();
+    const { calls } = open('SALES', undefined, VARIATION);
+    await screen.findByRole('grid', { name: 'Bill of quantities' });
+    expect(screen.getByTestId('kind-badge')).toHaveTextContent('Variation');
+    const banner = screen.getByTestId('variation-banner');
+    expect(within(banner).getByRole('link', { name: 'JOB-2083-0090' })).toHaveAttribute('href', '/admin/jobs/j9?tab=variations');
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['BOQ', 'Take-off', 'Labour', 'Terms', 'Customer view', 'History']);
+
+    await user.click(cell(1, 'qty'));
+    await user.keyboard('-12{Enter}');
+    expect(cell(1, 'qty')).toHaveTextContent('−12');
+    // The live preview says it is a variation, and prices the omission.
+    await waitFor(() => expect(calls.some((c) => c.path === '/admin/quotations/preview' && c.body.kind === 'VARIATION'
+      && c.body.items.some((i) => i.qty === -12))).toBe(true));
+
+    await user.click(screen.getByRole('tab', { name: 'Terms' }));
+    expect(screen.queryByText('Payment schedule')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(putBody(calls)?.items[1]).toMatchObject({ description: 'Terrace membrane', qty: -12 }));
+    expect(putBody(calls)).not.toHaveProperty('paymentStages');
+  }, 15_000);
+
+  it('refuses a negative quantity on a quotation — only a variation may omit', async () => {
+    const user = userEvent.setup();
+    const { calls } = open('SALES');
+    await screen.findByRole('grid', { name: 'Bill of quantities' });
+    await user.click(cell(1, 'qty'));
+    await user.keyboard('-12{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(cell(1, 'qty')).toHaveAttribute('aria-invalid', 'true'));
+    expect(screen.getAllByText('More than 0').length).toBeGreaterThan(0);
+    expect(putBody(calls)).toBeUndefined();
+    // The preview is not asked to price it either.
+    expect(calls.filter((c) => c.path === '/admin/quotations/preview').every((c) => c.body.items.every((i) => !(i.qty < 0)))).toBe(true);
+  }, 15_000);
+});
