@@ -23,6 +23,7 @@ import { MaterialsSection } from './sections/MaterialsSection';
 import { CompletedSummary, FinishSection } from './sections/FinishSection';
 import { HoldSheet, NextStepBar } from './sections/NextStepBar';
 import { DiaryLinkCard } from './sections/DiaryLinkCard';
+import { MeasureLinkCard } from './sections/MeasureLinkCard';
 
 const online = () => navigator.onLine !== false;
 
@@ -134,6 +135,8 @@ export default function TechJobPage({ readOnly: fromHistory = false }) {
       <div className="space-y-4">
         <JobContactCard job={job} copy={copy} onOpenSurvey={openSurvey} openingSurvey={openingSurvey} readOnly={readOnly} />
         {job.type !== 'INSPECTION' ? <DiaryLinkCard job={job} copy={copy} /> : null}
+        {/* Phase L8: a BOQ job's final measurement — its lines, measured from site. */}
+        {job.type !== 'INSPECTION' && job.lines?.length > 0 && !fromHistory ? <MeasureLinkCard job={job} copy={copy} /> : null}
         <ChecklistSection job={job} copy={copy} readOnly={readOnly} onToggle={toggle} />
         <TimerSection
           job={job} copy={copy} userId={user?.id} readOnly={readOnly}

@@ -147,10 +147,39 @@ auto-approves). Accepting it runs `handoff.service.js#applyVariation` in the acc
 hand-off: its rows join the job as VARIATION lines and its take-off as VARIATION requirements, APPROVED →
 CONVERTED guarded — no new job, no lead, no advance.
 
-**Billing a job billed in stages.** `invoice.service.js#createFromJob` on a quoted job that has stage bills (the
-advance; running bills from L8) makes a FINAL invoice: the quotation's lines less one line per stage bill, with the
-VAT left over (`money.js#finalBillDocument` on `finalBillTotals`), so the stage bills and the final add up to the
-quotation to the paisa, VAT included.
+## Billing
+
+Four kinds of invoice (`Invoice.kind`), each line an ITEM or a DEDUCTION (`InvoiceItem.kind`, negative):
+
+| Kind | Raised by | What it bills |
+|---|---|---|
+| STANDARD | the accountant (a hand invoice), or `createFromJob` on a job with no quotation | its lines; an unquoted job bills its billable materials and its logged time at the rate card's labour rate — never a technician's own pay (L0) |
+| ADVANCE | the hand-off, on acceptance (L6) | the ON_ACCEPT stage of the payment schedule |
+| RUNNING | `POST /admin/jobs/:id/invoices/stage` (L8) | a MILESTONE stage |
+| FINAL | `createFromJob` on a BOQ job (L8) | the contract by its type, less every stage bill |
+
+A stage's bill (ADVANCE, RUNNING) carries the schedule's own amount and VAT split (`money.js#stageDocument`), and
+`paymentStageId` is unique — a stage is billed once; voiding the bill frees the stage. The FINAL bill
+(`billing.service.js#finalBillPlan`, previewed by `GET /admin/jobs/:id/final-bill`):
+
+- **LUMP_SUM** — every job line at its quoted quantity (a provisional line at its measured quantity; an omission as
+  quoted), less each source document's own discount (the quotation's and each accepted variation's).
+- **ITEM_RATE** — every line at its measured quantity (omissions as quoted) × its rate, each document's discount
+  scaled to what was measured of its own lines (`proRata`); the measurement must be closed.
+- Both then take off each earlier ADVANCE and RUNNING bill that is not void as a DEDUCTION line, with the VAT that is
+  left (`money.js#finalBillDocument` on `finalBillTotals`) — so advance + running + final = the contract to the
+  paisa, VAT included. A final that would come out negative is refused (`FINAL_BELOW_BILLED`); credit notes are
+  deferred.
+
+Worked example (the seeded item-rate job): damp treatment 240 sq.ft at Rs 220 and plaster 400 sq.ft at Rs 95,
+Rs 2,000 off, 13 % VAT, 50/40/10 — the advance and the running bill are 50 % and 40 % of Rs 1,00,344.00 (taxable
+Rs 88,800.00). Measured 5 % over (252 and 420 sq.ft) with a 60 sq.ft variation measured at 63: lines Rs 1,01,325.00,
+the discount scaled to Rs 2,100.00, taxable Rs 99,225.00, VAT Rs 12,899.25 — contract Rs 1,12,124.25; the final is
+that less the advance and the running bill. As lump sum the same quotation's contract is Rs 1,00,344.00.
+
+`jobCosting.invoiced` (and the job-margin report) sums a job's invoice lines net of each invoice's discount, void
+invoices left out — deductions are negative, so a job billed advance → running → final comes to its contract's
+taxable value.
 
 Every lead status change goes through `lead.service.js#transitionLead(tx, leadId, to, opts)`, which
 asserts the transition, stamps `closedAt` and writes the `status_change` timeline entry inside the

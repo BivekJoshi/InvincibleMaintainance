@@ -1114,6 +1114,88 @@ async function main() {
     console.log(`  execution demo: ${running.number} on site — 3 diary days (1 rain), over-plan cement, a purchase list ordered, variation ${vo.number} accepted`);
   }
 
+  // ═══ close-out demo (Phase L8): a LUMP_SUM job and an ITEM_RATE job, each billed advance → running bill →
+  //     final bill through the real services. The item-rate job was measured about 5 % over its quote and took one
+  //     variation. Advance + running + final = each contract, to the paisa. Guarded on its own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841920001' } }))) {
+    const { createQuotation, acceptQuotation } = await import('../src/services/quotation.service.js');
+    const { recordPayment, sendInvoice, createFromJob } = await import('../src/services/invoice.service.js');
+    const jobs = await import('../src/services/job.service.js');
+    const billing = await import('../src/services/billing.service.js');
+    const [plaster, damp] = await Promise.all(['PLASTER-INT', 'SEEP-CHEM'].map((code) => prisma.rateCardItem.findUnique({ where: { code } })));
+    const hari = await prisma.technician.findFirst({ where: { user: { email: 'hari@gharjatan.com.np' } } });
+    const rupees = (paisa) => paisa / 100;
+    const pay = async (invoice, method) => {
+      const sent = invoice.status === 'DRAFT' ? await sendInvoice(invoice.id) : invoice;
+      await recordPayment(sent.id, { amount: rupees(sent.total), method, reference: `${method}-${sent.number.slice(-4)}` }, users.ACCOUNTANT.id);
+      return sent;
+    };
+    const markSent = (id) => prisma.quotation.update({
+      where: { id },
+      data: {
+        status: 'SENT', submittedAt: days(-20), submittedById: users.SALES.id, approvedById: users.MANAGER.id, approvedAt: days(-20),
+        sentAt: days(-19), publicToken: token(), validUntil: days(10),
+      },
+    });
+
+    const closeOut = async ({ name, phone, area, contractType, measured, variation }) => {
+      const customer = await prisma.customer.create({
+        data: { name, phone, sites: { create: { label: 'Home', address: `${area}, Kathmandu`, area, isPrimary: true } } },
+        include: { sites: true },
+      });
+      const q = await createQuotation({
+        customerId: customer.id, siteId: customer.sites[0].id, contractType, estimatedDays: 6, discount: 2000,
+        paymentStages: [
+          { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT' },
+          { label: 'Treatment done', basisPoints: 4000, trigger: 'MILESTONE' },
+          { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+        ],
+        items: [
+          { rowType: 'SECTION', description: 'Damp treatment' },
+          { rateCardItemId: damp.id, kind: 'SERVICE', description: damp.name, unit: damp.unit, rate: rupees(damp.rate), qty: 240 },
+          { rowType: 'SECTION', description: 'Plaster' },
+          { rateCardItemId: plaster.id, kind: 'SERVICE', description: plaster.name, unit: plaster.unit, rate: rupees(plaster.rate), qty: 400 },
+        ],
+      }, users.SALES.id);
+      await markSent(q.id);
+      await acceptQuotation(q.id, { ip: '127.0.0.1', userAgent: 'seed' });
+      const job = await prisma.job.findFirst({ where: { quotationId: q.id }, include: { advanceInvoice: true } });
+      await pay(job.advanceInvoice, 'FONEPAY');
+      await jobs.scheduleJob(job.id, { scheduledStart: days(-15), technicianIds: [hari.id], notifyCustomer: false }, users.DISPATCHER.id);
+      await jobs.changeStatus(job.id, { status: 'IN_PROGRESS' }, hari.userId);
+      const stages = await prisma.quotationPaymentStage.findMany({ where: { quotationId: q.id }, orderBy: { sortOrder: 'asc' } });
+      const running = await pay(await billing.raiseStageBill(job.id, stages[1].id), 'BANK');
+      if (variation) {
+        const vo = await createQuotation({ jobId: job.id, items: variation }, users.SALES.id);
+        await markSent(vo.id);
+        await acceptQuotation(vo.id, { ip: '127.0.0.1', userAgent: 'seed' });
+      }
+      const lines = await prisma.jobLine.findMany({ where: { jobId: job.id }, orderBy: { sortOrder: 'asc' } });
+      if (measured) {
+        for (const line of lines.filter((l) => l.quotedQty > 0)) {
+          const qty = Math.round(line.quotedQty * measured * 10) / 10;
+          await billing.measureLine(job.id, line.id, { measurements: [{ area: 'Site', description: 'Measured after the work', nos: 1, l: qty }] });
+        }
+        await billing.closeMeasurement(job.id, users.DISPATCHER.id);
+      }
+      await jobs.completeJob(job.id, { note: 'Handed over — the customer walked the work.', customerRating: 5 }, hari.userId);
+      const final = await sendInvoice((await createFromJob(job.id, {})).id);
+      return { job, advance: job.advanceInvoice, running, final };
+    };
+
+    const lump = await closeOut({ name: 'Keshav Bhandari', phone: '9841920001', area: 'Baluwatar', contractType: 'LUMP_SUM' });
+    const itemRate = await closeOut({
+      name: 'Anita Gurung', phone: '9841920002', area: 'Budhanilkantha', contractType: 'ITEM_RATE', measured: 1.05,
+      variation: [
+        { rowType: 'SECTION', description: 'Stair wall' },
+        { rateCardItemId: plaster.id, kind: 'SERVICE', description: 'Plaster on the stair wall', unit: plaster.unit, rate: rupees(plaster.rate), qty: 60 },
+      ],
+    });
+    console.log(`  close-out demo: ${lump.job.number} (lump sum) ${lump.advance.number} + ${lump.running.number} + ${lump.final.number}; `
+      + `${itemRate.job.number} (item rate, measured 5 % over, a variation) ${itemRate.advance.number} + ${itemRate.running.number} + ${itemRate.final.number}`);
+  }
+
   // ═══ finance & aftercare demo (Phase I): receivables in every aging bucket, a paid invoice with a voided
   //     payment struck through, a draft and a void one, expenses on a job, an open warranty claim for the queue,
   //     an AMC contract due for renewal and a reminder the provider refused. Guarded on its own marker customer.

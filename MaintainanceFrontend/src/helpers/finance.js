@@ -155,3 +155,30 @@ export function invoiceStageLine(invoice) {
   const share = stage?.basisPoints != null ? ` (${Number((stage.basisPoints / 100).toFixed(2))}%)` : '';
   return label ? `${heading} — ${label}${share}` : `${heading}${share}`;
 }
+
+/**
+ * An invoice's lines in two blocks (Phase L8): what it bills (`kind` ITEM — a line from before L8 has no kind and is
+ * one) and what it deducts — a FINAL bill's earlier ADVANCE and RUNNING bills, `kind` DEDUCTION, negative amounts.
+ * The documents list the deductions under their own heading, each with one sign.
+ *
+ * @param {{ kind?: string }[]} [items]
+ * @returns {{ items: object[], deductions: object[] }}
+ */
+export function splitInvoiceItems(items = []) {
+  const list = items ?? [];
+  return {
+    items: list.filter((item) => item.kind !== 'DEDUCTION'),
+    deductions: list.filter((item) => item.kind === 'DEDUCTION'),
+  };
+}
+
+/**
+ * A deduction's words under the "Deducted" heading: the server's "Less: advance INV-2083-0077" without its "Less:" —
+ * the heading already says it is taken off, and the amount carries the one minus sign — "Advance INV-2083-0077".
+ *
+ * @param {string} [description]
+ */
+export function deductionLabel(description) {
+  const words = String(description ?? '').replace(/^\s*less\s*:\s*/i, '').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
+}

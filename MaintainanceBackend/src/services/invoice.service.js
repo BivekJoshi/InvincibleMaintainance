@@ -12,6 +12,7 @@ import { addDays, kathmanduDayRange, local } from '../utils/dates.js';
 import { recordEvent } from './audit.service.js';
 import { adminJobPath, webUrl } from '../utils/links.js';
 import { makeCrud } from './crud.service.js';
+import { finalBillPlan } from './billing.service.js';
 import { resolveMediaMap, uploadFiles } from './media.service.js';
 
 const INCLUDE = {
@@ -183,6 +184,33 @@ export async function createInvoice(input) {
 }
 
 /**
+ * The FINAL invoice of a BOQ job (Phase L8), a DRAFT, exactly as `GET /admin/jobs/:id/final-bill` previews it.
+ * Only the due date may be chosen: the lines, the discount and the VAT are the contract's (422
+ * QUOTED_JOB_BILLS_SCOPE otherwise). 422 MEASUREMENT_INCOMPLETE / FINAL_BELOW_BILLED from the plan's blocking.
+ */
+async function createFinalBill(plan, opts) {
+  const { job } = plan;
+  if (opts.includeMaterials || opts.includeLabour || opts.discount != null || opts.vatApplied != null) {
+    throw new AppError(422, 'QUOTED_JOB_BILLS_SCOPE',
+      `Job ${job.number}'s final bill follows its contract: its lines, discount and VAT come from the quotation and its variations. Only the due date is chosen here.`);
+  }
+  const stop = plan.blocking.find((b) => b.code !== 'FINAL_ALREADY_BILLED') ?? plan.blocking[0];
+  if (stop) throw new AppError(422, stop.code, stop.message, stop.details);
+
+  const dueDate = opts.dueDate ?? await defaultDueDate();
+  const header = {
+    customerId: job.customerId, quotationId: job.quotationId, jobId: job.id, kind: 'FINAL', dueDate,
+    note: `Final bill for job ${job.number} (${plan.contractType === 'ITEM_RATE' ? 'item rate — as measured' : 'lump sum'})`,
+  };
+  const totals = { ...plan.document, lines: plan.document.lines.map((l) => ({ ...l, jobId: job.id })) };
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.job.updateMany({ where: { id: job.id, invoicedAt: null }, data: { invoicedAt: new Date() } });
+    if (!count) throw unprocessable('This job has already been invoiced');
+    return insertInvoice(tx, header, [], {}, totals);
+  });
+}
+
+/**
  * Logged time as one line at the rate card's labour rate (`finance.labourRateCode`, per hour).
  * A technician's own hourly rate is what they cost the company, never what the customer pays.
  */
@@ -238,6 +266,10 @@ export async function createFromJob(jobId, opts = {}) {
   if (!job.isBillable) throw unprocessable('This job is marked non-billable');
   if (job.invoicedAt) throw unprocessable('This job has already been invoiced');
 
+  // A BOQ job's FINAL bill (Phase L8): by its contract type, less every stage bill — billing.service#finalBillPlan.
+  const plan = await finalBillPlan(jobId);
+  if (plan.boq) return createFinalBill(plan, opts);
+
   // The priced rows: a SECTION or NOTE carries no money and an optional row is not in the total (Phase L3).
   const quoted = job.quotation?.items?.filter((qi) => qi.rowType === 'ITEM' && !qi.isOptional) ?? [];
   const quote = quoted.length ? job.quotation : null;
@@ -254,11 +286,11 @@ export async function createFromJob(jobId, opts = {}) {
   const discount = opts.discount != null ? toPaisa(opts.discount) : (quote?.discount ?? 0);
   const vatApplied = opts.vatApplied ?? quote?.vatApplied ?? true;
 
-  // Billed in stages (Phase L6): the advance (and, from L8, running bills) already asked for part of the
-  // quotation, so this closing bill is the quotation less each of them — never the whole again.
+  // A quoted job without BOQ lines (made before Phase L6) billed in stages: the quotation less each stage bill
+  // (not void — a draft stage bill will be sent), never the whole again.
   const stageBills = quote
     ? await prisma.invoice.findMany({
-      where: { jobId, kind: { in: ['ADVANCE', 'RUNNING'] }, deletedAt: null, status: { notIn: ['DRAFT', 'VOID'] } },
+      where: { jobId, kind: { in: ['ADVANCE', 'RUNNING'] }, deletedAt: null, status: { not: 'VOID' } },
       orderBy: { issuedAt: 'asc' },
     })
     : [];
@@ -362,10 +394,18 @@ export async function voidInvoice(id, reason) {
   const inv = await findInvoice(id);
   if (inv.paidAmount > 0) throw unprocessable('Refund the payments before voiding this invoice');
   return prisma.$transaction(async (tx) => {
-    const row = await tx.invoice.update({ where: { id }, data: { status: 'VOID', voidReason: reason }, include: INCLUDE });
+    // A voided stage bill frees its stage (Phase L8), so the stage can be billed again.
+    const row = await tx.invoice.update({
+      where: { id }, data: { status: 'VOID', voidReason: reason, ...(inv.paymentStageId ? { paymentStageId: null } : {}) }, include: INCLUDE,
+    });
     await recordEvent('invoice.voided', {
-      model: 'Invoice', recordId: id, before: { status: inv.status }, after: { status: 'VOID' }, meta: { reason },
+      model: 'Invoice', recordId: id, before: { status: inv.status }, after: { status: 'VOID' },
+      meta: { reason, ...(inv.paymentStageId ? { paymentStageId: inv.paymentStageId } : {}) },
     }, tx);
+    // The job's closing bill voided: the job can be invoiced again.
+    if (inv.jobId && ['FINAL', 'STANDARD'].includes(inv.kind)) {
+      await tx.job.updateMany({ where: { id: inv.jobId }, data: { invoicedAt: null } });
+    }
     return row;
   });
 }

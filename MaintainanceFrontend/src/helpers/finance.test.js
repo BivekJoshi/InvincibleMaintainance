@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  billingRuleOf, canEditInvoice, csvFileName, defaultReportRange, invoiceActions, invoiceLinesLocked, reportRangePresets,
-  standingPayments,
+  billingRuleOf, canEditInvoice, csvFileName, deductionLabel, defaultReportRange, invoiceActions, invoiceLinesLocked,
+  reportRangePresets, splitInvoiceItems, standingPayments,
 } from '@/helpers/finance';
 import { can as roleCan } from '@/helpers/permissions';
 import {
@@ -175,5 +175,27 @@ describe('the report screens and their nav items agree', () => {
       expect(item.capability).toBe(group.capability);
     }
     expect(REPORT_GROUPS.find((g) => g.value === 'job-margin').capability).toBe('costs:read');
+  });
+});
+
+describe('a final bill’s deductions (Phase L8)', () => {
+  it('splits an invoice’s lines into what it bills and what it deducts — a line from before L8 is billed', () => {
+    const items = [
+      { id: 'a', kind: 'ITEM', amount: 5_280_000 },
+      { id: 'b', amount: 810_000 },
+      { id: 'c', kind: 'DEDUCTION', amount: -3_045_000 },
+    ];
+    const { items: billed, deductions } = splitInvoiceItems(items);
+    expect(billed.map((i) => i.id)).toEqual(['a', 'b']);
+    expect(deductions.map((i) => i.id)).toEqual(['c']);
+    expect(splitInvoiceItems(undefined)).toEqual({ items: [], deductions: [] });
+  });
+
+  it('names a deduction without its "Less:" — the heading says it, the amount carries the one sign', () => {
+    expect(deductionLabel('Less: advance INV-2083-0077')).toBe('Advance INV-2083-0077');
+    expect(deductionLabel('less:running bill INV-2083-0120')).toBe('Running bill INV-2083-0120');
+    expect(deductionLabel('Mobilisation bill INV-1')).toBe('Mobilisation bill INV-1');
+    expect(deductionLabel(null)).toBe('');
+    expect(formatSignedNpr(-3_045_000)).toBe('− Rs. 30,450.00');
   });
 });

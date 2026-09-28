@@ -67,6 +67,37 @@ export const isBlankMeasurement = (row) => !row
   || (['area', 'description', ...DIMENSIONS].every((k) => blank(row[k])));
 
 /**
+ * The phone's measurement cards (Phase L5's survey, Phase L8's final measurement) read a sheet as it is typed: these
+ * say which rows can go to the server and what they come to, as a preview.
+ */
+
+/** A row every size of which reads (blank sizes are fine — a wall has no breadth). */
+export const isReadableMeasurement = (row) => DIMENSIONS.every((k) => {
+  const v = parseLength(row?.[k]);
+  return v === undefined || Number.isFinite(v);
+});
+
+/** The rows that go to the server: not blank, every size readable. A row that does not read waits on the phone. */
+export const savedMeasurements = (rows = []) => (rows ?? []).filter((row) => !isBlankMeasurement(row) && isReadableMeasurement(row));
+
+/** A row's value, or null while it cannot be read. */
+export const readableRowValue = (row) => (isReadableMeasurement(row) ? measurementRowValue(row) : null);
+
+/** A room's (or a sheet's) total on this phone — a preview — over its rows that read. */
+export const readableTotal = (rows = []) => measurementTotal((rows ?? []).filter(isReadableMeasurement));
+
+/** Rooms in the order they were first measured; a row with no room sits under `''`. */
+export function groupMeasurementsByArea(rows = []) {
+  const groups = new Map();
+  for (const row of rows ?? []) {
+    const area = String(row?.area ?? '').trim();
+    if (!groups.has(area)) groups.set(area, []);
+    groups.get(area).push(row);
+  }
+  return [...groups.entries()].map(([area, list]) => ({ area, rows: list }));
+}
+
+/**
  * The sheet as the API takes it: blank rows dropped, lengths as numbers, text trimmed, `deduct` only when
  * set. A length that cannot be read is left as NaN for the schema to refuse.
  * @param {object[]} [rows]

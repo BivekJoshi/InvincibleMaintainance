@@ -107,6 +107,17 @@ lines, more cement issued than planned (the Materials tab's over-plan warning), 
 second week, and an accepted **variation** (VO-…) that adds the store room and omits plaster on one wall. New
 setting `job.workdayHours` (8, finance group) turns the diary's headcount into labour days.
 
+Phase L8 closes the loop with two jobs billed **advance → running bill → final bill**: Keshav Bhandari's
+**lump-sum** job, and Anita Gurung's **item-rate** job, measured 5 % over its quote with one variation, its
+measurement closed. Each job's three invoices add up to its contract to the paisa, and the Costing tab's
+"invoiced" equals the contract's taxable value.
+
+**Billing, in one paragraph.** An accepted quotation raises the ADVANCE (its ON_ACCEPT stage); the accountant raises
+a RUNNING bill for each milestone stage from the job (`POST /admin/jobs/:id/invoices/stage`); when the job is done,
+"invoice the job" raises the FINAL bill by the contract type — lump sum: the contract ± variations; item rate: what
+was measured × the quoted rates + variations — less every stage bill, VAT reconciled (see ARCHITECTURE "Billing").
+An unquoted job is still billed from its actual materials and labour.
+
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
 Both links open `<PUBLIC_WEB_ORIGIN>/reset-password`. With no `SMTP_HOST`, the email — link included — is

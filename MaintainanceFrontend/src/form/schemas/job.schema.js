@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { optionalText, rupees } from './fields';
 import { JOB_PHOTO_KINDS, JOB_TYPES, PRIORITIES } from '@/config/constants';
+import { measurementSheetSchema } from './quotation.schema';
 
 /**
  * The job forms. Mirrors MaintainanceBackend/src/shared/schemas/ops.js (`jobSchema`,
@@ -105,6 +106,26 @@ export const jobCompleteSchema = z.object({
 export const jobTaskSchema = z.object({
   title: z.string().trim().min(2, 'Give the item a title').max(300),
   note: z.string().trim().max(2000).optional(),
+});
+
+/**
+ * The handover (Phase L8): the snags first — each becomes a checklist item (`jobTaskSchema`'s title: 2–300), and an open
+ * item blocks completion — then the sign-off (`jobCompleteSchema`). Blank snags are dropped; with any snag left the
+ * dialog records them and does not complete.
+ */
+export const jobHandoverSchema = jobCompleteSchema.extend({
+  snags: z.preprocess(
+    (v) => (Array.isArray(v) ? v.map((s) => String(s ?? '').trim()).filter(Boolean) : []),
+    z.array(z.string().min(2, 'Say what is left to put right').max(300, 'At most 300 characters')).max(20, 'At most 20 snags at a time'),
+  ),
+});
+
+/**
+ * The final measurement of a job line (Phase L8) — the API's `lineMeasureSchema`: 1–200 rows, sent as numbers
+ * (`measurementSheetSchema` reads feet-inches and drops blank rows).
+ */
+export const jobLineMeasureSchema = z.object({
+  measurements: measurementSheetSchema.refine((rows) => rows.length > 0, 'Add at least one measurement'),
 });
 
 export const jobPhotoSchema = z.object({

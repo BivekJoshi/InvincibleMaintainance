@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGetJobCostingQuery } from '@/api/jobsApi';
 import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { ErrorState } from '@/components/common/ErrorState';
+import { StateBadge } from '@/components/common/StateBadge';
 import { StatusBadge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { CardSkeleton } from '@/components/ui/skeleton';
@@ -34,10 +35,69 @@ function Section({ title, total, children }) {
   );
 }
 
+/** Quoted cost against actual, by kind (Phase L8): the server's two figures side by side — never a difference worked here. */
+const QUOTED_KINDS = [
+  { key: 'materials', label: 'Materials', actual: (c) => c.cost.materials },
+  { key: 'labour', label: 'Labour', actual: (c) => c.cost.labour },
+  { key: 'other', label: 'Other (expenses)', actual: (c) => c.cost.expenses },
+  { key: 'total', label: 'Total', actual: (c) => c.cost.total, emphasis: true },
+];
+
+/** Over or within the quote, in words — a comparison of the server's two figures, no arithmetic. */
+function quoteVerdict(quoted, actual) {
+  if (quoted === null || quoted === undefined) return <span className="text-xs text-muted-foreground">No quoted cost</span>;
+  return actual > quoted
+    ? <StateBadge tone="warning">Over the quote</StateBadge>
+    : <StateBadge tone="success">Within the quote</StateBadge>;
+}
+
+/**
+ * Phase L8 — **quoted vs actual**: the cost frozen in the accepted quotation's and its variations' recipes (`quoted`:
+ * materials, labour, other, total, and `complete` — whether every priced row had a known cost) beside what the job
+ * actually cost. `costs:read` only, like the whole tab. Nothing on a job without a quotation.
+ */
+function QuotedVsActual({ costing }) {
+  const { quoted } = costing;
+  const rows = QUOTED_KINDS.map((k) => ({ ...k, quoted: quoted[k.key], actual: k.actual(costing) }));
+  return (
+    <section className="space-y-2" aria-labelledby="quoted-vs-actual" data-testid="quoted-vs-actual">
+      <h3 id="quoted-vs-actual" className="text-sm font-semibold">Quoted vs actual cost</h3>
+      <p className="text-xs text-muted-foreground">
+        Quoted: the cost the accepted quotation’s and variations’ recipes carried when they were priced. Actual: what this job has used and logged.
+      </p>
+      {!quoted.complete ? (
+        <p role="note" className="surface-warning rounded-md border px-3 py-2 text-xs" data-testid="quoted-incomplete">
+          Some quoted rows had no known cost (no recipe, or a cost missing in one) — the quoted cost is a floor, not the whole.
+        </p>
+      ) : null}
+      <CustomTable
+        columns={[
+          { key: 'label', header: 'Cost', cell: (r) => <span className={r.emphasis ? 'font-semibold' : undefined}>{r.label}</span> },
+          { key: 'quoted', header: 'Quoted', className: 'text-right', cell: (r) => <span className="tabular-nums" data-testid={`quoted-${r.key}`}>{r.quoted === null || r.quoted === undefined ? '—' : formatNpr(r.quoted)}</span> },
+          { key: 'actual', header: 'Actual', className: 'text-right', cell: (r) => <span className={cn('tabular-nums', r.emphasis && 'font-semibold')} data-testid={`actual-${r.key}`}>{formatNpr(r.actual)}</span> },
+          { key: 'verdict', header: '', label: 'Against the quote', cell: (r) => quoteVerdict(r.quoted, r.actual) },
+        ]}
+        data={rows}
+        meta={meta(rows)}
+        params={{}}
+        onParamsChange={() => {}}
+        searchable={false}
+        pageSizes={[]}
+        getRowId={(r) => r.key}
+        rowLabel={(r) => r.label}
+      />
+    </section>
+  );
+}
+
 /**
  * What the job cost against what it was invoiced for, all in paisa from the API. Every total is
  * the sum of the lines under it — the API rounds each line once — so the page reconciles to the
  * paisa. Labour is time × each technician's hourly rate; materials are costed at purchase rate.
+ *
+ * Since Phase L8 **Invoiced** is what was billed net of discount and VAT (void invoices left out; a final bill's
+ * deductions are negative lines, so stage bills never count twice) — on a fully billed BOQ job, the contract's taxable
+ * value — and the tab opens with quoted vs actual cost (`QuotedVsActual`).
  */
 export function JobCostingTab({ job }) {
   const { data: c, isLoading, error, refetch } = useGetJobCostingQuery(job.id);
@@ -60,7 +120,7 @@ export function JobCostingTab({ job }) {
         <Stat label="Materials at cost" value={formatNpr(c.cost.materials)} sub={`Billable ${formatNpr(c.billable.materials)}`} />
         <Stat label="Expenses" value={formatNpr(c.cost.expenses)} />
         <Stat label="Total cost" value={formatNpr(c.cost.total)} />
-        <Stat label="Invoiced" value={formatNpr(c.billable.invoiced)} sub={c.billable.invoiced ? undefined : 'Not invoiced yet'} />
+        <Stat label="Invoiced" value={formatNpr(c.billable.invoiced)} sub={c.billable.invoiced ? 'Before VAT, net of discount' : 'Not invoiced yet'} />
         <Stat
           label="Margin"
           value={formatNpr(c.margin)}
@@ -68,6 +128,8 @@ export function JobCostingTab({ job }) {
           tone={c.margin < 0 ? 'text-destructive' : 'text-success'}
         />
       </div>
+
+      {c.quoted ? <QuotedVsActual costing={c} /> : null}
 
       <Section title="Materials" total={formatNpr(c.cost.materials)}>
         {table([

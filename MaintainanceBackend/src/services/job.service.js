@@ -3,7 +3,8 @@ import { env } from '../config/env.js';
 import { AppError, notFound, badRequest, forbidden, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
-import { formatNpr, lineAmount, margin, outstanding, sum } from '../utils/money.js';
+import { formatNpr, lineAmount, margin, outstanding, proRata, sum } from '../utils/money.js';
+import { takeoffFor } from './boq.service.js';
 import { addDays, dayjs, kathmanduDayRange, local, startOfDay, endOfDay } from '../utils/dates.js';
 import { JOB_TRANSITIONS, QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
@@ -33,7 +34,7 @@ const INCLUDE = {
       landmark: true, contactName: true, contactPhone: true,
     },
   },
-  quotation: { select: { id: true, number: true, total: true, status: true } },
+  quotation: { select: { id: true, number: true, total: true, status: true, contractType: true } },
   assignments: {
     include: { technician: { include: { user: { select: { id: true, name: true, phone: true } } } } },
   },
@@ -212,6 +213,7 @@ export async function getJob(id) {
       requirements: { orderBy: [{ kind: 'asc' }, { description: 'asc' }] },
       advanceInvoice: ADVANCE_FULL,
       advanceOverrideBy: { select: { id: true, name: true } },
+      measurementClosedBy: { select: { id: true, name: true } },
     },
   });
   if (!job) throw notFound('Job');
@@ -681,6 +683,44 @@ export async function removeTimeLog(jobId, logId) {
 // ── costing
 
 /** Labour + materials + expenses against what was invoiced. */
+/**
+ * What the job billed, excluding VAT (Phase L8): its invoice lines — deductions are negative, so a final bill never
+ * counts its stage bills twice — each invoice's document discount taken off in proportion (money.js#proRata),
+ * void and deleted invoices left out. A job billed advance → running → final comes to its contract's taxable value.
+ */
+export function invoicedFor(items) {
+  const byInvoice = new Map();
+  for (const item of items) {
+    if (!item.invoice || item.invoice.status === 'VOID' || item.invoice.deletedAt) continue;
+    const entry = byInvoice.get(item.invoice.id) ?? { invoice: item.invoice, amounts: [] };
+    entry.amounts.push(item.amount);
+    byInvoice.set(item.invoice.id, entry);
+  }
+  return sum([...byInvoice.values()].map(({ invoice, amounts }) => {
+    const lines = sum(amounts);
+    return lines - proRata(invoice.discount, lines, invoice.subtotal);
+  }));
+}
+
+/**
+ * The cost frozen into the job's accepted quotation and variations (their recipes and material costs, L2–L3):
+ * materials, labour and other, and whether every priced row had a known cost.
+ */
+async function quotedCost(job) {
+  if (!job.quotationId) return null;
+  const variations = await prisma.quotation.findMany({ where: { jobId: job.id, kind: 'VARIATION', status: 'CONVERTED', deletedAt: null }, select: { id: true } });
+  const rows = await prisma.quotationItem.findMany({
+    where: { quotationId: { in: [job.quotationId, ...variations.map((v) => v.id)] } }, orderBy: [{ quotationId: 'asc' }, { sortOrder: 'asc' }],
+  });
+  const t = await takeoffFor(rows);
+  const part = (list) => (list.every((x) => x.costAmount != null) ? sum(list.map((x) => x.costAmount)) : null);
+  const materials = part(t.materials);
+  const labour = part(t.labour);
+  const other = part(t.other);
+  const complete = materials != null && labour != null && other != null && !t.rowsWithoutRecipe.length;
+  return { materials, labour, other, total: sum([materials, labour, other].map((x) => x ?? 0)), complete };
+}
+
 export async function jobCosting(id) {
   const job = await prisma.job.findFirst({
     where: { id, deletedAt: null },
@@ -688,7 +728,7 @@ export async function jobCosting(id) {
       materials: { include: { material: { select: { name: true, code: true, unit: true, purchaseRate: true } } } },
       timeLogs: { include: { technician: { select: { hourlyRate: true, user: { select: { name: true } } } } } },
       expenses: true,
-      invoiceItems: { include: { invoice: { select: { id: true, number: true, status: true } } } },
+      invoiceItems: { include: { invoice: { select: { id: true, number: true, status: true, kind: true, subtotal: true, discount: true, deletedAt: true } } } },
     },
   });
   if (!job) throw notFound('Job');
@@ -701,8 +741,9 @@ export async function jobCosting(id) {
   const labourMinutes = sum(job.timeLogs.map((t) => t.minutes ?? 0));
   const labourCost = sum(job.timeLogs.map(timeCost));
   const expenseCost = sum(job.expenses.map((e) => e.amount));
-  const invoiced = sum(job.invoiceItems.map((i) => i.amount));
+  const invoiced = invoicedFor(job.invoiceItems);
   const totalCost = materialCost + labourCost + expenseCost;
+  const quoted = await quotedCost(job);
 
   return {
     jobId: id,
@@ -710,6 +751,8 @@ export async function jobCosting(id) {
     cost: { materials: materialCost, labour: labourCost, expenses: expenseCost, total: totalCost },
     labourMinutes,
     billable: { materials: materialBilled, invoiced },
+    // The cost the accepted recipes promised (Phase L8), beside the actual — costs:read, like everything here.
+    quoted,
     margin: invoiced - totalCost,
     marginPct: margin(invoiced, totalCost).pct,
     breakdown: {

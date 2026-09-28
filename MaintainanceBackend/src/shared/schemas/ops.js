@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isActive, listQuery, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
+import { measurementRow } from './crm.js';
 import {
   AMC_BILLING_CYCLES, AMC_STATUSES, CLAIM_STATUSES, INVOICE_KINDS, INVOICE_STATUSES, LOST_TIME_REASONS,
   PURCHASE_LIST_STATUSES, WEATHER, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES,
@@ -156,7 +157,8 @@ export const jobCompleteSchema = z.object({
   customerRating: z.coerce.number().int().min(1).max(5).optional(),
   customerFeedback: z.string().trim().max(2000).optional(),
   warrantyDays: z.coerce.number().int().min(0).max(3650).optional(),
-  warrantyScope: z.string().trim().max(2000).optional(),
+  // An empty box keeps the default wording (Phase L8 found '' wiping it).
+  warrantyScope: z.string().trim().max(2000).optional().transform((v) => v || undefined),
 });
 
 /** `true` / `false` in a query string. `z.coerce.boolean()` reads the string 'false' as true. */
@@ -210,6 +212,13 @@ export const jobScheduleSchema = z.object({
 }).refine((v) => !v.scheduledEnd || v.scheduledEnd - v.scheduledStart <= 90 * 86_400_000, {
   message: 'A job cannot be scheduled for longer than 90 days', path: ['scheduledEnd'],
 });
+
+/** PUT …/jobs/:id/lines/:lineId/measure (Phase L8) — the final measurement's rows; the quantity is the server's. */
+export const lineMeasureSchema = z.object({ measurements: z.array(measurementRow).min(1).max(200) }).strict();
+export const jobLineParams = z.object({ id: z.string().min(1), lineId: z.string().min(1) });
+
+/** POST /admin/jobs/:id/invoices/stage (Phase L8) — the MILESTONE stage to bill. */
+export const stageBillSchema = z.object({ paymentStageId: z.string().min(1) }).strict();
 
 /** POST /admin/jobs/:id/advance-override (L-D3) — the reason is required and kept. */
 export const advanceOverrideSchema = z.object({ reason: z.string().trim().min(5, 'Say why the work may start before the advance').max(500) }).strict();

@@ -339,3 +339,37 @@ describe('a variation\'s omissions (Phase L7)', () => {
     expect(diffQty(3, 4.5)).toBe(-1.5);
   });
 });
+
+describe('the seeded close-out jobs, by hand (Phase L8)', () => {
+  // Damp treatment 240 sq.ft at Rs 220, plaster 400 sq.ft at Rs 95, Rs 2,000 off, 13 % VAT, 50/40/10.
+  const quoted = [{ qty: 240, rate: 22_000 }, { qty: 400, rate: 9_500 }];
+  const stagesOf = async (totals) => {
+    const { paymentSchedule, stageDocument } = await import('../src/utils/money.js');
+    const [advance, running] = paymentSchedule(totals, [{ basisPoints: 5000 }, { basisPoints: 4000 }, { basisPoints: 1000 }]);
+    return [advance, running].map((st) => ({ st, doc: stageDocument(st, { description: 'stage' }) }));
+  };
+
+  it('LUMP_SUM: Rs 1,00,344.00 = advance + running + final', async () => {
+    const { documentTotals, finalBillDocument } = await import('../src/utils/money.js');
+    const contract = documentTotals(quoted, { discount: 200_000 });
+    expect([contract.subtotal, contract.subtotal - contract.discount, contract.vatAmount, contract.total]).toEqual([9_080_000, 8_880_000, 1_154_400, 10_034_400]);
+    const bills = await stagesOf(contract);
+    const final = finalBillDocument(quoted, bills.map(({ st }) => ({ description: 'Less', taxable: st.taxable, vat: st.vat })), { discount: 200_000 });
+    expect(bills.reduce((a, b) => a + b.doc.total, 0) + final.total).toBe(10_034_400);
+    expect(bills.reduce((a, b) => a + b.doc.vatAmount, 0) + final.vatAmount).toBe(1_154_400);
+  });
+
+  it('ITEM_RATE, measured 5 % over with a 60 sq.ft variation (63 measured): Rs 1,12,124.25', async () => {
+    const { documentTotals, finalBillDocument, lineAmount, proRata } = await import('../src/utils/money.js');
+    const measured = [{ qty: 252, rate: 22_000 }, { qty: 420, rate: 9_500 }, { qty: 63, rate: 9_500 }];
+    const discount = proRata(200_000, lineAmount(252, 22_000) + lineAmount(420, 9_500), 9_080_000);
+    expect(discount).toBe(210_000);
+    const contract = documentTotals(measured, { discount });
+    expect([contract.subtotal - contract.discount, contract.vatAmount, contract.total]).toEqual([9_922_500, 1_289_925, 11_212_425]);
+    // The stage bills were worked out on the quotation as accepted, before the measurement.
+    const bills = await stagesOf(documentTotals(quoted, { discount: 200_000 }));
+    const final = finalBillDocument(measured, bills.map(({ st }) => ({ description: 'Less', taxable: st.taxable, vat: st.vat })), { discount });
+    expect(bills.reduce((a, b) => a + b.doc.total, 0) + final.total).toBe(11_212_425);
+    expect(final.lines.filter((l) => l.kind === 'DEDUCTION')).toHaveLength(2);
+  });
+});

@@ -3,8 +3,13 @@ import {
   answerToReading, hasPhoto, isAnswered, missingAnswers, readingToAnswer,
 } from '@/helpers/inspection';
 import {
-  isBlankMeasurement, measurementRowValue, measurementTotal, measurementsBody, parseLength,
+  groupMeasurementsByArea, isReadableMeasurement, measurementTotal, measurementsBody,
+  readableRowValue, readableTotal, savedMeasurements,
 } from '@/helpers/measurements';
+
+// The measurement cards' reading of a sheet moved to `helpers/measurements` in Phase L8 (the final measurement's cards
+// use it too); the stepper keeps its names.
+export { isReadableMeasurement, savedMeasurements };
 
 /**
  * The survey stepper's state, and the one payload it queues (Phase L5). Pure: the page holds the state,
@@ -113,16 +118,6 @@ export function surveyToForm(survey) {
   };
 }
 
-const DIMENSIONS = ['nos', 'l', 'b', 'h'];
-
-/** A row every size of which reads (blank sizes are fine — a wall has no breadth). */
-export const isReadableMeasurement = (row) => DIMENSIONS.every((k) => {
-  const v = parseLength(row?.[k]);
-  return v === undefined || Number.isFinite(v);
-});
-
-/** The rows that go to the server: not blank, every size readable. A row that does not read waits on the phone. */
-export const savedMeasurements = (rows = []) => (rows ?? []).filter((row) => !isBlankMeasurement(row) && isReadableMeasurement(row));
 
 /** A line measured by its sheet (at least one row that goes to the server). */
 export const isMeasured = (item) => savedMeasurements(item?.measurements).length > 0;
@@ -272,15 +267,7 @@ export function serverFlagFor(question, answer, survey) {
 }
 
 /** Rooms in the order they were first measured; a row with no room sits under `''`. */
-export function groupByArea(rows = []) {
-  const groups = new Map();
-  for (const row of rows) {
-    const area = text(row.area).trim();
-    if (!groups.has(area)) groups.set(area, []);
-    groups.get(area).push(row);
-  }
-  return [...groups.entries()].map(([area, list]) => ({ area, rows: list }));
-}
+export const groupByArea = groupMeasurementsByArea;
 
 /** Every room named on the survey — the photo step suggests them. */
 export function areasOf(form) {
@@ -295,10 +282,10 @@ export function areasOf(form) {
 }
 
 /** A room's total on this phone (a preview), over its rows that read. */
-export const roomTotal = (rows) => measurementTotal(rows.filter(isReadableMeasurement));
+export const roomTotal = readableTotal;
 
 /** A row's value, or null while it cannot be read. */
-export const rowValue = (row) => (isReadableMeasurement(row) ? measurementRowValue(row) : null);
+export const rowValue = readableRowValue;
 
 /**
  * Where each step stands, for the step bar: `done` (a tick) and a short `count`.

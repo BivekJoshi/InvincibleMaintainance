@@ -31,10 +31,11 @@ const blankMeasurement = () => {
 };
 
 /**
- * `{ type: 'measurements', unit? }` — a measurement sheet (Phase L3), the site engineer's measurement book:
+ * `{ type: 'measurements', unit?, keptBy? }` — a measurement sheet (Phase L3), the site engineer's measurement book:
  * rows of area, description, nos, L, B, H and a deduct flag. Lengths take feet-inches — `12'6"` is read as
  * 12.5, `6"` as 0.5 — and show as the number they were read as. Each row's value and the sheet's total are a
- * **preview**; the quantity a quotation keeps is the one the server works out from the rows it saves.
+ * **preview**; the quantity a quotation keeps is the one the server works out from the rows it saves. `keptBy` names
+ * what keeps it in the footer — "the job line" for Phase L8's final measurement (default "quotation").
  */
 export function MeasurementsField({ field, id }) {
   const { field: input, fieldState } = useController({ name: field.name });
@@ -69,7 +70,7 @@ export function MeasurementsField({ field, id }) {
             <div className="space-y-0.5 text-xs text-muted-foreground">
               <p>
                 Total <span className="font-semibold tabular-nums text-foreground" data-testid="measurement-total">{formatQty(total)}</span>
-                {field.unit ? ` ${field.unit}` : ''} — a preview; the quotation keeps the server’s figure.
+                {field.unit ? ` ${field.unit}` : ''} — a preview; the {field.keptBy ?? 'quotation'} keeps the server’s figure.
               </p>
               <p>Type feet and inches as 12&apos;6&quot; (read as 12.5). A deduction (a door, a window) subtracts.</p>
             </div>

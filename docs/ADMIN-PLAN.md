@@ -795,7 +795,7 @@ photos use the same upload queue. The field words are in an en/ne copy object fo
 - **Follow-ups:** scope the offline queue per signed-in user (it belongs to the device today); the survey form's own
   fields are still English only (J1).
 
-### Phase L — Pipeline stages that work like a site team · ~33 days · L0–L8 (planned 2026-09-26)
+### Phase L — Pipeline stages that work like a site team · ~33 days · L0–L8 (planned 2026-09-26) · ✅ complete 2026-09-28
 
 Prompts `docs/prompts/PHASE-L0…L8-*.md`. Decisions L-D1…L-D4 (§4). The owner asked that every pipeline stage carry
 the tools a salesperson, site engineer, estimator and foreman need, that the quotation be a professional BOQ
@@ -1102,13 +1102,41 @@ a purchase list raises stock.
 - Tests: the API suite gained `runningBoqJob()` (a paid-on-completion BOQ job, accepted and scheduled); the purchase
   list test plans more than the shared test database holds, so the job is short.
 
-**L8 · Close-out & final bill (≈3 days)** — running bills per stage, final measurement (ITEM_RATE), FINAL invoice
+**L8 · Close-out & final bill (≈3 days) · ✅ done 2026-09-28** — running bills per stage, final measurement (ITEM_RATE), FINAL invoice
 by contract type with every earlier bill deducted, quoted-vs-actual costing, handover with warranty and an AMC offer.
 *Acceptance:* an ITEM_RATE job measured 5 % over quote bills measured × rate + variation − stage bills; a LUMP_SUM
 job bills contract ± variations − stage bills; advance + running + final equal the contract value to the paisa.
 
-**Deferred:** customers ticking optional items on the link; retention; credit notes; stock reservation and
-negative-stock blocking; unit conversion between recipe and purchase units; actual labour per trade; a drawing
+**Deviations (Phase L8, 2026-09-28)**
+- **Each document's own discount:** the final bill takes off the quotation's discount and each accepted variation's —
+  in full on LUMP_SUM, scaled to what was measured of that document's lines on ITEM_RATE (`proRata`) — rather than one
+  discount pro rata to the whole.
+- **What is measured:** ITEM_RATE measures every line but omissions (a variation's negative line keeps its quoted
+  quantity — 422 `LINE_NOT_MEASURED`); LUMP_SUM measures only provisional lines. Closing checks exactly those, and the
+  measurement **can be reopened by jobs:write until the final bill is raised** (then void the final first).
+- **A running bill is a DRAFT** with locked lines, sent like any invoice; only MILESTONE stages (the advance is L6's,
+  ON_COMPLETION is the final's). An already-billed stage is **409** `STAGE_BILLED` (the advance's stage too); voiding
+  a stage bill frees its stage, and voiding a closing bill lets the job be invoiced again.
+- **The final's stage deductions include draft stage bills** (they will be sent) — only void ones are left out. A
+  BOQ job's final takes only the due date (the rest is the contract's). Its lines read "A.1 …" when the BOQ had
+  sections.
+- **Costing's `invoiced`** is now net of each invoice's discount with void invoices left out (it used to count
+  gross lines, void included), and the job-margin report counts it the same way; `quoted` adds the frozen recipe
+  cost. **Offer AMC** is a lead with the new source `amc_offer`, owned by the job's seller (else the round-robin), one
+  open offer per customer.
+- The L6 backfill names its "Less: …" lines DEDUCTION (a separate data migration).
+- **Frontend:** the Complete dialog became the handover dialog (snags become checklist tasks and the job stays open;
+  sign-off; then the warranty link and Offer AMC — also on a finished job's Overview); a running bill can be raised
+  from any unbilled MILESTONE stage, with a confirmation when it is not yet due; deductions render in their own
+  "Deducted — billed before" block with one sign. **The field's final measurement saves online** (a direct PUT) —
+  not yet a `/tech/sync` kind; a follow-up. The L5 measurement card moved to `components/tech/MeasurementCard.jsx`
+  for reuse. An empty warranty scope no longer wipes the default wording (the schema maps '' to nothing).
+
+**Phase L is complete (2026-09-28).** The pipeline runs lead → follow-through → visit kit → BOQ quotation → terms and
+the customer document → hand-off with the advance → execution → close-out, each stage with the tools a site team
+uses. **Confirmed deferred** (not built, as planned): customers ticking optional items on the link; retention money;
+credit notes (a final below what was billed is refused); stock reservation and negative-stock blocking; unit
+conversion between recipe and purchase units; actual labour per trade (it needs `Technician.tradeId`); a drawing
 canvas in the field app.
 
 ### Phase I — Finance & aftercare screens · ~6 days · ✅ done 2026-09-28
@@ -1207,7 +1235,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | I Finance & aftercare ✅ 2026-09-28 | 6 | 62 | Billing and retention |
 | L6 Won → hand-off ✅ 2026-09-28 | 4 | 66 | Job with its BOQ, material list and advance gate |
 | L7 Execution ✅ 2026-09-28 | 5 | 71 | Site diary, planned vs actual, purchases, variations |
-| L8 Close-out & final bill | 3 | 74 | Lump-sum and item-rate final bills |
+| L8 Close-out & final bill ✅ 2026-09-28 | 3 | 74 | Lump-sum and item-rate final bills — Phase L complete |
 | J1 Nepali UI | 2 | 76 | Field app, site, customer pages in Nepali |
 | J2 Reliability & PDFs | 2 | 78 | Queued notifications, cron locks, PDFs |
 | J3 Security & deploy | 2 | **80 ≈ 16 weeks** | **Production launch** |

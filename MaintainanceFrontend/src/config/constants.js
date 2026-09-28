@@ -28,7 +28,8 @@ export const MESSAGE_CHANNELS = ['sms', 'email'];
 export const MESSAGE_STATUSES = ['queued', 'sent', 'failed'];
 
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON', 'LOST'];
-export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
+/** `amc_offer` (Phase L8): a lead the job handover raised, for sales to offer a maintenance contract. */
+export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'amc_offer', 'other'];
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 
 /**
@@ -64,6 +65,7 @@ export const LEAD_SOURCE_LABELS = {
   viber: 'Viber',
   walk_in: 'Walk-in',
   referral: 'Referral',
+  amc_offer: 'AMC offer',
   other: 'Other',
 };
 
@@ -353,6 +355,12 @@ export const INVOICE_KINDS = ['STANDARD', 'ADVANCE', 'RUNNING', 'FINAL'];
 export const INVOICE_KIND_LABELS = {
   STANDARD: 'Standard', ADVANCE: 'Advance', RUNNING: 'Running bill', FINAL: 'Final bill',
 };
+/**
+ * What an invoice line is (Phase L8): a billed ITEM, or a DEDUCTION — an earlier ADVANCE or RUNNING bill taken off the
+ * FINAL one, a negative line ("Less: advance INV-…"). The documents list deductions in a block of their own.
+ */
+export const INVOICE_ITEM_KINDS = ['ITEM', 'DEDUCTION'];
+export const INVOICE_ITEM_KIND_LABELS = { ITEM: 'Billed', DEDUCTION: 'Deducted' };
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const PAYMENT_METHOD_LABELS = {
   CASH: 'Cash', BANK: 'Bank transfer', ESEWA: 'eSewa', KHALTI: 'Khalti', FONEPAY: 'Fonepay', CHEQUE: 'Cheque',

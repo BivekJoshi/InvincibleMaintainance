@@ -9,6 +9,7 @@
 //   { sed -n '1,/^\/\/ ═══/p' docs/DATA-MODEL.prisma; cat MaintainanceBackend/prisma/schema.prisma; } \
 //     > /tmp/dm && mv /tmp/dm docs/DATA-MODEL.prisma
 //
+// Phase L8 (2026-09-28): Job.measurementClosedAt/By, InvoiceItemKind and InvoiceItem.kind — edited in by hand.
 // Phase L7 (2026-09-28): SiteDiary (+ DiaryWeather, LostTimeReason), PurchaseList(+Item, status), StockMovement.supplierId,
 // QuotationKind and Quotation.kind/jobId (variations); the Job↔Quotation relations are named — edited in by hand.
 // Phase L6 (2026-09-28): Service.jobType, Job plan/advance fields, JobLine, JobRequirement, InvoiceKind and
@@ -76,6 +77,7 @@ model User {
   approvedQuotes   Quotation[]      @relation("QuotationApprover")
   createdJobs      Job[]            @relation("JobCreator")
   advanceOverrides Job[]            @relation("JobAdvanceOverride")
+  measurementsClosed Job[]          @relation("JobMeasurementCloser")
   diaries          SiteDiary[]      @relation("DiaryAuthor")
   jobEvents        JobStatusEvent[]
   submittedSurveys SiteSurvey[]     @relation("SurveySubmitter")
@@ -1156,7 +1158,10 @@ model Job {
   advanceOverrideById   String?
   advanceOverrideReason String?
   advanceOverriddenAt   DateTime?
-  createdById      String?
+  /// The final measurement is closed (Phase L8): an ITEM_RATE job bills its measured quantities from here.
+  measurementClosedAt   DateTime?
+  measurementClosedById String?
+  createdById         String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
@@ -1168,6 +1173,7 @@ model Job {
   createdBy    User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
   advanceInvoice    Invoice?     @relation("JobAdvanceInvoice", fields: [advanceInvoiceId], references: [id], onDelete: SetNull)
   advanceOverrideBy User?        @relation("JobAdvanceOverride", fields: [advanceOverrideById], references: [id], onDelete: SetNull)
+  measurementClosedBy User?      @relation("JobMeasurementCloser", fields: [measurementClosedById], references: [id], onDelete: SetNull)
   invoices          Invoice[]    @relation("JobInvoices")
   lines             JobLine[]
   requirements      JobRequirement[]
@@ -1742,9 +1748,17 @@ model Invoice {
   @@index([jobId])
 }
 
+/// A line billed, or an earlier stage bill deducted from the final one (Phase L8) — negative, so every report
+/// that sums invoice lines stays right.
+enum InvoiceItemKind {
+  ITEM
+  DEDUCTION
+}
+
 model InvoiceItem {
-  id          String  @id @default(cuid())
+  id          String          @id @default(cuid())
   invoiceId   String
+  kind        InvoiceItemKind @default(ITEM)
   jobId       String?
   description String
   unit        String?

@@ -46,23 +46,23 @@ export async function jobProgress(jobId, { role } = {}) {
     if (sections.at(-1)?.title !== title) sections.push({ title, lines: [] });
     sections.at(-1).lines.push({
       id: line.id, number: line.number, source: line.source, description: line.description, unit: line.unit,
-      quotedQty: line.quotedQty, progressPct: line.progressPct, isProvisional: line.isProvisional,
+      quotedQty: line.quotedQty, measuredQty: line.measuredQty, progressPct: line.progressPct, isProvisional: line.isProvisional,
       ...(money ? { rate: line.rate, value: v, earned: e } : {}),
     });
   }
 
   const stageRows = job.quotation?.stages ?? [];
-  const billed = new Set((await prisma.invoice.findMany({
+  const bills = new Map((await prisma.invoice.findMany({
     where: { paymentStageId: { in: stageRows.map((st) => st.id) }, status: { not: 'VOID' }, deletedAt: null },
-    select: { paymentStageId: true },
-  })).map((i) => i.paymentStageId));
+    select: { id: true, number: true, status: true, paymentStageId: true },
+  })).map((i) => [i.paymentStageId, { id: i.id, number: i.number, status: i.status }]));
   let cumulative = 0;
   const stages = stageRows.map((st) => {
     cumulative += st.basisPoints;
-    const isBilled = billed.has(st.id);
+    const invoice = bills.get(st.id) ?? null;
     return {
       id: st.id, label: st.label, basisPoints: st.basisPoints, trigger: st.trigger, cumulativeBp: cumulative,
-      billed: isBilled, due: st.trigger === 'MILESTONE' && !isBilled && earnedPct * 100 >= cumulative,
+      billed: Boolean(invoice), invoice, due: st.trigger === 'MILESTONE' && !invoice && earnedPct * 100 >= cumulative,
     };
   });
   const next = stages.find((st) => st.due) ?? null;

@@ -818,8 +818,9 @@ GET    /admin/jobs/:id/diary        jobs:read · the site diary (Phase L7), newe
                                     createdBy { id, name }, updatedAt }], media { [mediaId]: media } }
 GET    /admin/jobs/:id/progress     jobs:read · BOQ & progress (Phase L7): { sections [{ title, lines [{ id,
                                     number, source, description, unit, quotedQty, progressPct, isProvisional,
-                                    rate?, value?, earned? }] }], totals { earnedPct, value?, earned? }, stages
-                                    [{ id, label, basisPoints, trigger, cumulativeBp, billed, due }], nextBill
+                                    rate?, value?, earned?, measuredQty }] }], totals { earnedPct, value?, earned? },
+                                    stages [{ id, label, basisPoints, trigger, cumulativeBp, billed, invoice { id,
+                                    number, status } | null, due }], nextBill
                                     { stageId, label, basisPoints } | null }. rate, value (qty × rate) and earned
                                     (value × progress, money.js) only for quotations:read or invoices:read (SALES,
                                     MANAGER, ACCOUNTANT, ADMIN) — not DISPATCHER. A MILESTONE stage is due once
@@ -834,6 +835,38 @@ GET    /admin/jobs/:id/planned-vs-actual   jobs:read · quantities only (Phase L
 GET    /admin/jobs/:id/variations   jobs:read · the job's variation orders, newest first: [{ id, number,
                                     version, status, kind, total?, createdAt, sentAt, decidedAt }] (total for
                                     quotations:read only)
+POST   /admin/jobs/:id/invoices/stage   invoices:write · { paymentStageId } → 201 the RUNNING bill for a
+                                    MILESTONE stage of the job's quotation (Phase L8): the stage's amount from
+                                    the payment schedule (its own VAT split), a DRAFT with locked lines, sent as
+                                    usual. 404 STAGE_NOT_FOUND (not this job's quotation), 409 STAGE_BILLED (a
+                                    live invoice has it — also the advance's stage), 422 STAGE_NOT_MILESTONE (the
+                                    advance comes at acceptance, the rest with the final), 422
+                                    FINAL_ALREADY_BILLED
+PUT    /admin/jobs/:id/lines/:lineId/measure   jobs:write · { measurements [{ area?, description?, nos?, l?,
+                                    b?, h?, deduct? }] (1–200) } → the line, quantities only { id, number,
+                                    section, source, description, unit, quotedQty, isProvisional, measurements,
+                                    measuredQty (the server's measurementQty) }. 422 MEASUREMENT_CLOSED, 422
+                                    LINE_NOT_MEASURED (an omission keeps its quoted qty), 422 NEGATIVE_LINE
+POST   /admin/jobs/:id/measurement/close    jobs:write → the job (measurementClosedAt, measurementClosedBy). The
+                                    lines a contract measures — ITEM_RATE every line but omissions, LUMP_SUM its
+                                    provisional lines — must all have a measured qty: else 422
+                                    MEASUREMENT_INCOMPLETE { details: [{ lineId, number, description }] }.
+                                    Audited job.measurement_closed
+POST   /admin/jobs/:id/measurement/reopen   jobs:write → the job; until the final bill is raised (422
+                                    FINAL_ALREADY_BILLED — void it first); 422 MEASUREMENT_OPEN when it is not
+                                    closed. Audited job.measurement_reopened
+GET    /admin/jobs/:id/final-bill   invoices:read · the FINAL bill's preview (Phase L8): { boq: false } for a job
+                                    with no lines; else { boq, contractType, measurementRequired,
+                                    measurementClosed, lines [{ lineId, number, source, description, unit, qty,
+                                    rate, amount }], deductions [{ invoiceId, number, kind, description, taxable,
+                                    vat, total }], totals { contract { subtotal, discount, taxable, vatAmount,
+                                    total }, billed { taxable, vat, total }, due { taxable, vat, total } },
+                                    blocking [{ code MEASUREMENT_INCOMPLETE | FINAL_ALREADY_BILLED |
+                                    FINAL_BELOW_BILLED, message, details? }] }
+POST   /admin/jobs/:id/offer-amc    jobs:write · at handover (Phase L8): a lead for sales to offer a maintenance
+                                    contract — source amc_offer, the customer, the site's address, owned by the
+                                    job's seller (else the round-robin) → 201 the lead; an open AMC-offer lead
+                                    for the customer → 200 that one — both with assignedTo { id, name }
 POST   /admin/jobs/:id/purchase-lists/from-shortfall   materials:write · 201 a DRAFT purchase list for the
                                     job: each planned material's shortfall (planned − issued − on hand), bought in
                                     whole packs where the material has a pack size; the materials' supplier when
@@ -879,7 +912,12 @@ POST   /admin/jobs/:id/complete     { note, signatureMediaId, customerRating, cu
                                     -> creates Warranty, enables invoicing
 POST   /admin/jobs/:id/verify       COMPLETED -> VERIFIED
 GET    /admin/jobs/:id/costing      costs:read (MANAGER, ADMIN — Phase L2; 403 for SALES, DISPATCHER, ACCOUNTANT)
-                                    labour + materials + expenses vs invoiced (all paisa):
+                                    labour + materials + expenses vs invoiced (all paisa). Phase L8: invoiced is
+                                    net of each invoice's discount, void and deleted invoices left out,
+                                    deductions negative — a fully billed BOQ job's equals its contract's taxable
+                                    value; + quoted { materials, labour, other, total, complete } — the cost frozen
+                                    in the accepted quotation's and variations' recipes (null without a
+                                    quotation). The job-margin report counts invoiced the same way:
                                     { cost: { materials, labour, expenses, total }, labourMinutes,
                                       billable: { materials, invoiced }, margin, marginPct,
                                       breakdown: { materials[] { name, code, unit, qty, rate, amount (billed),
@@ -1076,6 +1114,9 @@ GET   /tech/jobs/:id/diary          the site diary's days (Phase L7), newest fir
 GET   /tech/jobs/:id/diary/:day     { day, entry | null, lines [{ id, number, section, source, description, unit,
                                     quotedQty, progressPct }] (no rate), trades [{ id, code, name }], materials
                                     [{ id, code, name, unit }], media { [mediaId]: media } (the entry's photos) }
+PUT   /tech/jobs/:id/lines/:lineId/measure   the final measurement from site (Phase L8), people on the job
+                                    only — as the admin route, quantities only (a rate never reaches the field).
+                                    Online only for now: not a /tech/sync kind
 PUT   /tech/jobs/:id/diary/:day     the day's entry, a FULL replace — { weather? SUNNY|CLOUDY|RAIN|HEAVY_RAIN|COLD,
                                     headcount [{ tradeId, count 0–200 }], progress [{ jobLineId, progressPct
                                     0–100 }], received [{ materialId?, description, qty > 0, unit?, challanNo? }],
@@ -1164,6 +1205,9 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
                                     job { id, number } | null and paymentStage { id, label, basisPoints,
                                     trigger } | null. An ADVANCE invoice is the hand-off's; paying it in full
                                     frees its job (the advance gate).
+                                    Phase L8: items[].kind ITEM | DEDUCTION — a DEDUCTION is a negative line (an
+                                    earlier stage bill taken off the final), so every report that sums lines
+                                    stays right.
                                     PUT /:id: a DRAFT only — 422 INVOICE_LOCKED once sent (void it and issue
                                     another). An ADVANCE, RUNNING or FINAL draft takes dueDate, note and terms
                                     only: items, discount or vatApplied is 422 INVOICE_LINES_LOCKED (Phase L6 —
@@ -1171,7 +1215,9 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
                                     stored lines through documentTotals.
 GET    /admin/invoices/:id/history  invoices:history (ACCOUNTANT, ADMIN) · see "Record history"
 POST   /admin/invoices/:id/send
-POST   /admin/invoices/:id/void     { reason }
+POST   /admin/invoices/:id/void     { reason } · a voided stage bill frees its stage (paymentStageId cleared, kept in
+                                    the event), and a voided closing bill (FINAL, or a job's STANDARD) lets the job
+                                    be invoiced again (Phase L8)
 POST   /admin/invoices/from-job/:jobId          once per job — a second is 422. { dueDate?, discount? (rupees),
                                                 vatApplied?, includeMaterials?, includeLabour? }
                                                 One billing rule, never both:
@@ -1179,11 +1225,29 @@ POST   /admin/invoices/from-job/:jobId          once per job — a second is 422
                                                   choice (the invoice total equals the quotation's);
                                                   includeMaterials / includeLabour → 422
                                                   QUOTED_JOB_BILLS_SCOPE
-                                                · quoted job billed in stages (Phase L6: an ADVANCE, later
-                                                  RUNNING bills) → kind FINAL: the quotation's lines, less
-                                                  one "Less: advance INV-…" line per stage bill not DRAFT or
-                                                  VOID, with the VAT left over (money.js#finalBillDocument),
-                                                  so the stage bills + this one = the quotation to the paisa
+                                                · a BOQ job (it has job lines — Phase L8) → the FINAL bill
+                                                  by its contract type (L-D2), a DRAFT, exactly as
+                                                  GET /admin/jobs/:id/final-bill previews it:
+                                                  LUMP_SUM — every line at its quoted qty (a provisional
+                                                  line at its measured qty; omissions as quoted), less each
+                                                  source document's discount (the quotation's and each
+                                                  variation's);
+                                                  ITEM_RATE — every line at its measured qty (omissions as
+                                                  quoted) × rate, each document's discount scaled to what
+                                                  was measured of its own lines (proRata); the measurement
+                                                  must be closed;
+                                                  then one DEDUCTION line (kind DEDUCTION, negative: "Less:
+                                                  advance INV-…", "Less: running bill INV-…") per stage bill
+                                                  not void, with the VAT left over (money.js#finalBillDocument
+                                                  on finalBillTotals) — the stage bills + the final = the
+                                                  contract to the paisa, VAT included. Only dueDate is
+                                                  taken: includeMaterials / includeLabour / discount /
+                                                  vatApplied → 422 QUOTED_JOB_BILLS_SCOPE. 422
+                                                  MEASUREMENT_INCOMPLETE (details: the lines), 422
+                                                  FINAL_BELOW_BILLED (the stage bills exceed the contract —
+                                                  credit notes are deferred)
+                                                · a quoted job without BOQ lines (before Phase L6) billed in
+                                                  stages → FINAL: the quotation's lines less each stage bill
                                                 · unquoted job → billable materials at their issued rate
                                                   + logged time at the rate-card item named by
                                                   finance.labourRateCode (per hour; default LABOUR-SKILL,
@@ -1562,6 +1626,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `job.scheduled` | `POST /admin/jobs/:id/schedule` (the dispatch board) | status, scheduledStart, scheduledEnd, technicianIds → the same |
 | `job.completed` | a job is completed (admin, field app, survey submit) | status → COMPLETED · customerRating |
 | `job.verified` | `POST /admin/jobs/:id/verify` | COMPLETED → VERIFIED |
+| `job.measurement_closed` · `job.measurement_reopened` | the final measurement closed / reopened (Phase L8) | · lines, contractType |
 | `job.variation_added` | a VARIATION accepted (the customer's link or a staff convert, Phase L7) | · quotationId, number, version, lines, total |
 | `site_diary.saved` | PUT /tech/jobs/:id/diary/:day or `diary_save` (model `SiteDiary`) | · jobId, day, lines |
 | `purchase_list.ordered` · `.received` · `.cancelled` | the purchase list's moves (model `PurchaseList`) | status → status · items / reason |

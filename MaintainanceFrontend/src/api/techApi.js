@@ -59,6 +59,26 @@ export const techApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       invalidatesTags: (r, e, { id }) => [{ type: 'Job', id }, { type: 'Job', id: 'TECH_TODAY' }, 'Dashboard'],
     }),
+    /**
+     * `PUT /tech/jobs/:id/lines/:lineId/measure { measurements }` (Phase L8) — the final measurement of one line from
+     * site, for the people on the job. Quantities in and out: the answer is the line with the server's `measuredQty`,
+     * never a rate. Written into the cached job at once, then the job is refetched. 422 MEASUREMENT_CLOSED, 422
+     * LINE_NOT_MEASURED. It needs signal: `/tech/sync` has no kind for it.
+     */
+    measureMyJobLine: build.mutation({
+      query: ({ id, lineId, measurements }) => ({ url: `/tech/jobs/${id}/lines/${lineId}/measure`, method: 'PUT', body: { measurements } }),
+      transformResponse: (r) => r.data,
+      async onQueryStarted({ id, lineId }, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          dispatch(techApi.util.updateQueryData('getMyJob', id, (draft) => {
+            const line = draft?.lines?.find((l) => l.id === lineId);
+            if (line) Object.assign(line, { measurements: data.measurements, measuredQty: data.measuredQty });
+          }));
+        } catch { /* the screen says why */ }
+      },
+      invalidatesTags: (r, e, { id }) => (e ? [] : [{ type: 'Job', id }]),
+    }),
     // ── site surveys. Quantities only: nothing here sends or receives a rate.
     getMySurveys: build.query({
       query: (params = {}) => ({ url: '/tech/surveys', params }),
@@ -152,4 +172,5 @@ export const {
   useGetTechRateCardQuery,
   useGetMyDiaryQuery,
   useGetMyDiaryDayQuery,
+  useMeasureMyJobLineMutation,
 } = techApi;

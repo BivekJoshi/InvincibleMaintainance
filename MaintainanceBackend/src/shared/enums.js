@@ -7,7 +7,8 @@ export const SESSION_CLIENTS = ['WEB', 'DESKTOP'];
 export const FIELD_ROLES = ['TECHNICIAN', 'SURVEYOR'];
 
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON', 'LOST'];
-export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'other'];
+/** `amc_offer` (Phase L8): a lead the handover raised to offer a maintenance contract. */
+export const LEAD_SOURCES = ['web_form', 'estimator', 'booking', 'call', 'whatsapp', 'viber', 'walk_in', 'referral', 'amc_offer', 'other'];
 
 /** Visit windows a customer can pick when booking online. Times are Asia/Kathmandu. */
 export const BOOKING_SLOTS = [
@@ -93,6 +94,8 @@ export const LOST_TIME_REASONS = ['RAIN', 'LATE_MATERIAL', 'CUSTOMER', 'BANDH', 
 export const PURCHASE_LIST_STATUSES = ['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED'];
 /** What an invoice bills (Phase L6): ordinary work, the advance on acceptance, a running bill, the final bill. */
 export const INVOICE_KINDS = ['STANDARD', 'ADVANCE', 'RUNNING', 'FINAL'];
+/** An invoice line billed, or an earlier stage bill deducted from the final (negative) — Phase L8. */
+export const INVOICE_ITEM_KINDS = ['ITEM', 'DEDUCTION'];
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const STOCK_MOVEMENT_TYPES = ['PURCHASE', 'ISSUE_TO_JOB', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
 export const WARRANTY_STATUSES = ['ACTIVE', 'EXPIRED', 'VOID', 'CLAIMED'];
@@ -180,6 +183,9 @@ export const AUDIT_EVENTS = Object.freeze({
   PURCHASE_LIST_CANCELLED: 'purchase_list.cancelled',
   /** A variation order accepted: its lines joined the job (Phase L7). */
   JOB_VARIATION_ADDED: 'job.variation_added',
+  /** The final measurement closed, or reopened before the final bill (Phase L8). */
+  JOB_MEASUREMENT_CLOSED: 'job.measurement_closed',
+  JOB_MEASUREMENT_REOPENED: 'job.measurement_reopened',
   /** A manager let the work go ahead before the advance was paid (L-D3, Phase L6). */
   JOB_ADVANCE_OVERRIDDEN: 'job.advance_overridden',
   /** The customer's answer on the /visit/:token page (Phase L5). */

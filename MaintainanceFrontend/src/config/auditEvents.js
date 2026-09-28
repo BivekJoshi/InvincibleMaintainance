@@ -28,6 +28,8 @@ export const AUDIT_EVENT_LABELS = {
   'job.verified': 'Job verified',
   'job.advance_overridden': 'Advance overridden',
   'job.variation_added': 'Variation added to the job',
+  'job.measurement_closed': 'Final measurement closed',
+  'job.measurement_reopened': 'Final measurement reopened',
   'site_diary.saved': 'Site diary filed',
   'purchase_list.ordered': 'Purchase list ordered',
   'purchase_list.received': 'Purchase list received into stock',

@@ -1,7 +1,8 @@
 import { Ban, Receipt } from 'lucide-react';
 import { INVOICE_STATUS_LABELS } from '@/config/constants';
 import { formatBalance, formatDateAdBs, formatNpr } from '@/helpers/format';
-import { invoiceStageLine } from '@/helpers/finance';
+import { invoiceStageLine, splitInvoiceItems } from '@/helpers/finance';
+import { DeductionsTable } from './DeductionsTable';
 import { DocumentHeader } from './DocumentHeader';
 import { DocumentLetterhead } from './DocumentLetterhead';
 import { DocumentNotice } from './DocumentNotice';
@@ -20,6 +21,8 @@ const LETTERHEAD_COPY = { panVat: 'PAN / VAT No.', phone: 'Phone', email: 'Email
  * **Every figure is the server's** — subtotal, discount, VAT, total, paid and `balance` (never below zero); the
  * document adds up nothing. A void invoice says so and owes nothing. `print` drops the status badge. Since Phase L6
  * an advance invoice names its stage under the dates — "Advance — on acceptance (50%)" (`helpers/finance#invoiceStageLine`).
+ * Since Phase L8 a final bill's deductions — its lines of `kind` DEDUCTION, the earlier stage bills — are a block of their
+ * own under the billed lines (`DeductionsTable`: "Advance INV-…  − Rs. 36,450.00"), never rows among the work.
  *
  * @param {{ invoice: object, print?: boolean, detailedPayments?: boolean }} props
  */
@@ -29,6 +32,8 @@ export function InvoiceDocument({ invoice: inv, print = false, detailedPayments 
   const customer = inv.customer ?? {};
   // Phase L6: an advance (or a later stage bill) says which stage of the payment schedule it is.
   const stage = invoiceStageLine(inv);
+  // Phase L8: what it bills, then what it takes off — a final bill's earlier stage bills.
+  const { items, deductions } = splitInvoiceItems(inv.items);
 
   return (
     <div data-testid="invoice-document">
@@ -61,7 +66,8 @@ export function InvoiceDocument({ invoice: inv, print = false, detailedPayments 
         </div>
       ) : null}
 
-      <LineItemsTable items={inv.items ?? []} />
+      <LineItemsTable items={items} />
+      <DeductionsTable items={deductions} />
 
       <TotalsList
         className="border-t pt-5"

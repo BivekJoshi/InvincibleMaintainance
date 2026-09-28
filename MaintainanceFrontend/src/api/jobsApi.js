@@ -19,6 +19,11 @@ import { apiSlice, tagList } from '@/api/apiSlice';
  * also tagged with the job, so whatever refreshes the job refreshes them. `createShortfallPurchaseList` raises a DRAFT
  * purchase list from the job's shortfall. Issuing material answers `{ line, warnings }` — `OVER_PLAN` when the job's
  * issued total passes its plan (a warning; the issue still happened).
+ *
+ * Phase L8 — close-out: `measureJobLine` (the final measurement of one line — its rows; the quantity is the server's),
+ * `closeJobMeasurement` / `reopenJobMeasurement`, and `offerAmc` (a lead for sales at handover). Each refreshes the job,
+ * its BOQ & progress tab and the final bill's preview (`{ type: 'Job', id: 'final-bill:<id>' }`, read by
+ * `financeApi#getFinalBill`).
  */
 
 const jobTag = (id) => ({ type: 'Job', id });
@@ -28,6 +33,8 @@ const progressTag = (id) => ({ type: 'Job', id: `progress:${id}` });
 const pvaTag = (id) => ({ type: 'Job', id: `pva:${id}` });
 const diaryTag = (id) => ({ type: 'Job', id: `diary:${id}` });
 const variationsTag = (id) => ({ type: 'Job', id: `variations:${id}` });
+/** The final bill's preview (Phase L8) — `financeApi#getFinalBill` provides it; a measurement change refreshes it. */
+export const finalBillTag = (id) => ({ type: 'Job', id: `final-bill:${id}` });
 /** The purchase-list registry's list (`cmsApi` tags a registry resource `{ type: 'Cms', id: resource }`). */
 const PURCHASE_LISTS = { type: 'Cms', id: 'purchase-lists' };
 const LIST = { type: 'Job', id: 'LIST' };
@@ -217,6 +224,43 @@ export const jobsApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       invalidatesTags: (result, error, { id }) => [PURCHASE_LISTS, pvaTag(id), 'History'],
     }),
+    /**
+     * `PUT /admin/jobs/:id/lines/:lineId/measure { measurements }` (Phase L8, `jobs:write`) — the line's final measurement
+     * rows (1–200). Answers the line, quantities only: `{ id, number, section, source, description, unit, quotedQty,
+     * isProvisional, measurements, measuredQty }` — `measuredQty` is the server's. 422 MEASUREMENT_CLOSED, 422
+     * LINE_NOT_MEASURED (an omission), 404 for a line not on the job.
+     */
+    measureJobLine: build.mutation({
+      query: ({ id, lineId, measurements }) => ({ url: `/admin/jobs/${id}/lines/${lineId}/measure`, method: 'PUT', body: { measurements } }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, { id }) => [jobTag(id), progressTag(id), finalBillTag(id), 'History'],
+    }),
+    /**
+     * `POST /admin/jobs/:id/measurement/close` (Phase L8, `jobs:write`) → the job detail with `measurementClosedAt` and
+     * `measurementClosedBy`. 422 MEASUREMENT_INCOMPLETE with `details: [{ lineId, number, description }]` — the lines
+     * the contract measures that have no quantity yet.
+     */
+    closeJobMeasurement: build.mutation({
+      query: ({ id }) => ({ url: `/admin/jobs/${id}/measurement/close`, method: 'POST' }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, { id }) => [jobTag(id), progressTag(id), finalBillTag(id), 'History'],
+    }),
+    /** `POST …/measurement/reopen` (Phase L8, `jobs:write`) → the job; 422 FINAL_ALREADY_BILLED once a final bill exists. */
+    reopenJobMeasurement: build.mutation({
+      query: ({ id }) => ({ url: `/admin/jobs/${id}/measurement/reopen`, method: 'POST' }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (result, error, { id }) => [jobTag(id), progressTag(id), finalBillTag(id), 'History'],
+    }),
+    /**
+     * `POST /admin/jobs/:id/offer-amc` (Phase L8, `jobs:write`) — a lead for sales to offer a maintenance contract
+     * (`source: 'amc_offer'`), linked to the customer and the site. 201 a new lead; **200** the customer's open AMC-offer
+     * lead instead of a second one — answered here as `{ lead, existing }`.
+     */
+    offerAmc: build.mutation({
+      query: ({ id }) => ({ url: `/admin/jobs/${id}/offer-amc`, method: 'POST' }),
+      transformResponse: (r, meta) => ({ lead: r.data, existing: meta?.response?.status === 200 }),
+      invalidatesTags: (result, error, { id }) => [jobTag(id), { type: 'Lead', id: 'LIST' }, 'LeadBoard', 'Dashboard', 'History'],
+    }),
     getJobCosting: build.query({
       query: (id) => `/admin/jobs/${id}/costing`,
       transformResponse: (r) => r.data,
@@ -258,5 +302,6 @@ export const {
   useGetJobCostingQuery, usePublishCaseStudyMutation, useGetJobPlanQuery, useOverrideJobAdvanceMutation,
   useGetJobProgressQuery, useGetJobPlannedVsActualQuery, useGetJobDiaryQuery, useGetJobVariationsQuery,
   useCreateShortfallPurchaseListMutation,
+  useMeasureJobLineMutation, useCloseJobMeasurementMutation, useReopenJobMeasurementMutation, useOfferAmcMutation,
   useGetDispatchBoardQuery, useGetUnassignedJobsQuery, useGetDispatchTechniciansQuery,
 } = jobsApi;

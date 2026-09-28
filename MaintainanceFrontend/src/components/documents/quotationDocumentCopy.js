@@ -51,6 +51,13 @@ export const QUOTATION_DOCUMENT_COPY = {
       sectionTotal: (number) => `Total of ${number}`,
       swipe: 'Swipe the table sideways to see the rates and amounts.',
     },
+    /** A final bill's earlier stage bills, taken off it (Phase L8) — the invoice documents' "Deducted" block. */
+    deductions: {
+      title: 'Deducted — billed before',
+      body: 'The advance and running bills already sent for this work, taken off this bill.',
+      bill: 'Bill',
+      amount: 'Amount',
+    },
     summary: {
       title: 'Summary by section',
       section: 'Section',
@@ -138,6 +145,12 @@ export const QUOTATION_DOCUMENT_COPY = {
       provisional: 'अस्थायी — नापपछि यकिन हुने',
       sectionTotal: (number) => `${number} को जम्मा`,
       swipe: 'दर र रकम हेर्न तालिकालाई छेउतिर सार्नुहोस्।',
+    },
+    deductions: {
+      title: 'घटाइएको — पहिले बिल गरिएको',
+      body: 'यस कामका लागि पहिले नै पठाइएका अग्रिम र चालु बिलहरू, यो बिलबाट घटाइएको।',
+      bill: 'बिल',
+      amount: 'रकम',
     },
     summary: {
       title: 'खण्डअनुसार सारांश',

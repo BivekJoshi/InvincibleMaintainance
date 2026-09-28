@@ -22,7 +22,12 @@ import { SITE_PHOTO } from './support/survey.js';
  * Record payment sheet; the dispatchers are told it is ready, and the dispatcher schedules it. Phase L7: Suresh, on the
  * job, files today's site diary on a 360 px phone — the weather, the crew, progress on a BOQ line in 5 % steps — and the
  * dispatcher finds that progress on the job's BOQ & progress tab (no earned value for dispatch) and the day in its Site
- * diary tab. L8 extends it.
+ * diary tab. Phase L8 closes it: the rest of the work is filed as done (over the field API), so the 40 % milestone is due
+ * and the accountant raises the **running bill** from the job's BOQ & progress tab; the dispatcher completes the job
+ * through the **handover** dialog (the warranty's certificate link, **Offer AMC** — a lead for sales); the accountant
+ * raises the **final bill** from Invoices › Create from job, whose preview is the server's (the advance and the running
+ * bill deducted), and the invoice lists its deductions in a block of their own. Over the API: advance + running + final =
+ * the quotation's total to the paisa, and the job's costing has invoiced the contract's taxable value.
  *
  * Set-up that is not under test runs over the API; everything is keyed to a unique name and phone.
  */
@@ -46,6 +51,8 @@ const paisaOf = (text) => Math.round(Number(String(text).replace(/^[^\d]*/, '').
 test.describe.configure({ mode: 'serial' });
 
 test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured line; MANAGER approves and sends; the customer opens it on a phone and accepts', async ({ browser }) => {
+  // The whole road, lead to final bill (Phases L3–L8), is one test: it outlasts the suite's 180 s.
+  test.setTimeout(420_000);
   const [admin, sales, manager] = await Promise.all(['ADMIN', 'SALES', 'MANAGER'].map((r) => apiAs(r)));
   await admin.patch('/admin/settings', { values: { 'quotation.makerChecker': true, 'quotation.autoApproveBelow': 0 } });
   const customer = await sales.post('/admin/customers', { name: customerName, phone });
@@ -449,6 +456,102 @@ test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured li
     await expect(dpage.getByText(`${line.number} 15%`)).toBeVisible();
   });
 
+  // ── Phase L8: close-out. The running bill, the handover, the final bill — the three bills come to the contract.
+  const quote = await sales.get(`/admin/quotations/${quotationId}`);
+  const [, stage2] = quote.paymentStages;
+  const accountsCtx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const apage = await accountsCtx.newPage();
+  await signIn(apage, 'ACCOUNTANT');
+  let running;
+
+  await test.step('L8: the work is done, so the 40% milestone is due — the accountant raises the running bill from the job', async () => {
+    // Suresh files the rest of today's progress from site (over the field API — the diary itself is L7's subject).
+    const suresh = await apiAs('SURESH');
+    const { lines } = await dispatcher.get(`/admin/jobs/${job.id}`);
+    await suresh.put(`/tech/jobs/${job.id}/diary/${ktmDay(0)}`, {
+      weather: 'SUNNY', progress: lines.map((l) => ({ jobLineId: l.id, progressPct: 100 })),
+    });
+    await suresh.dispose();
+    const progress = await accountant.get(`/admin/jobs/${job.id}/progress`);
+    expect(progress.totals.earnedPct).toBe(100);
+    expect(progress.nextBill).toMatchObject({ stageId: stage2.id });
+
+    await apage.goto(`/admin/jobs/${job.id}?tab=progress`);
+    const prompt = apage.getByTestId('next-bill');
+    await expect(prompt).toContainText(`Earned value has passed ${stage2.label}`);
+    await prompt.getByRole('button', { name: 'Raise running bill' }).click();
+    await apage.waitForURL(/\/admin\/invoices\/[^/]+$/);
+    await expect(apage.getByTestId('invoice-kind')).toHaveText('Running bill');
+    running = await accountant.get(`/admin/invoices/${apage.url().split('/').pop()}`);
+    // The stage's amount from the payment schedule — the server's, to the paisa.
+    expect(running).toMatchObject({ kind: 'RUNNING', status: 'DRAFT', paymentStageId: stage2.id, total: stage2.total });
+    await accountant.post(`/admin/invoices/${running.id}/send`);
+    // Once only: the stage is billed.
+    await expect(accountant.post(`/admin/jobs/${job.id}/invoices/stage`, { paymentStageId: stage2.id })).rejects.toThrow(/→ 409 .*STAGE_BILLED/);
+  });
+
+  await test.step('L8: the dispatcher completes it through the handover — the warranty link, and Offer AMC makes a lead for sales', async () => {
+    const detail = await dispatcher.get(`/admin/jobs/${job.id}`);
+    for (const task of detail.tasks.filter((t) => !t.isDone && !t.isSkipped)) {
+      await dispatcher.patch(`/admin/jobs/${job.id}/tasks/${task.id}`, { isDone: true });
+    }
+    if (detail.status !== 'IN_PROGRESS') await dispatcher.patch(`/admin/jobs/${job.id}/status`, { status: 'IN_PROGRESS' });
+
+    await dpage.goto(`/admin/jobs/${job.id}`);
+    await dpage.getByRole('button', { name: 'Complete…' }).click();
+    const dialog = dpage.getByRole('dialog', { name: `Hand over ${job.number}` });
+    await expect(dialog).toContainText('Every checklist item must be done or skipped first.');
+    await dialog.getByLabel('What was done').fill('छत र भित्ताको काम सकियो');
+    await dialog.getByRole('button', { name: 'Complete and hand over' }).click();
+    const handed = dpage.getByRole('dialog', { name: `${job.number} is handed over` });
+    await expect(handed.getByTestId('warranty-link')).toContainText('/warranty/');
+    await handed.getByRole('button', { name: 'Offer AMC' }).click();
+    await expect(handed.getByTestId('amc-offered')).toBeVisible();
+    await handed.getByRole('button', { name: 'Done' }).click();
+
+    const completed = await dispatcher.get(`/admin/jobs/${job.id}`);
+    expect(completed.status).toBe('COMPLETED');
+    expect(completed.warranty?.publicToken).toBeTruthy();
+    const offers = (await sales.list(`/admin/leads?source=amc_offer&q=${phone}&limit=10`)).data;
+    expect(offers.filter((l) => l.customerId === customer.id || l.phone === phone)).toHaveLength(1);
+  });
+
+  await test.step('L8: the accountant raises the final bill from Create from job — the server’s preview, both stage bills deducted', async () => {
+    const preview = await accountant.get(`/admin/jobs/${job.id}/final-bill`);
+    expect(preview).toMatchObject({ boq: true, contractType: 'LUMP_SUM', blocking: [] });
+    expect(preview.deductions.map((d) => d.number)).toEqual([advance.number, running.number]);
+
+    await apage.goto('/admin/invoices');
+    await apage.getByRole('button', { name: 'Create from job' }).click();
+    const sheet = apage.getByRole('dialog', { name: 'Create an invoice from a job' });
+    await sheet.getByRole('textbox', { name: /Search/ }).fill(job.number);
+    await sheet.getByText(job.number, { exact: true }).click();
+    const final = apage.getByRole('dialog', { name: `Final bill for ${job.number}` });
+    const shown = final.getByTestId('final-bill-preview');
+    await expect(shown.getByTestId('final-due-total')).toHaveText(rupeesText(preview.totals.due.total));
+    await expect(shown.getByTestId('final-bill-deductions')).toContainText(advance.number);
+    await expect(shown.getByTestId('final-bill-deductions')).toContainText(running.number);
+    await final.getByRole('button', { name: 'Create final bill (draft)' }).click();
+    await apage.waitForURL(/\/admin\/invoices\/[^/]+$/);
+    // The list's badges leave with the page transition; then the one on the invoice's header is left.
+    await expect(apage.getByTestId('invoice-kind')).toHaveCount(1);
+    await expect(apage.getByTestId('invoice-kind')).toHaveText('Final bill');
+    await apage.getByRole('tab', { name: 'Invoice' }).click();
+    const deducted = apage.getByTestId('invoice-deductions');
+    await expect(deducted.locator('[data-row-type="DEDUCTION"]')).toHaveCount(2);
+    await expect(deducted).not.toContainText('Less:');
+    await expect(apage.getByTestId('invoice-document')).not.toContainText('Rs. -');
+
+    // Advance + running + final = the contract, to the paisa; the job has invoiced its taxable value.
+    const bill = await accountant.get(`/admin/invoices/${apage.url().split('/').pop()}`);
+    expect(bill).toMatchObject({ kind: 'FINAL', status: 'DRAFT', total: preview.totals.due.total });
+    expect(bill.items.filter((i) => i.kind === 'DEDUCTION')).toHaveLength(2);
+    expect(advance.total + running.total + bill.total).toBe(quote.total);
+    const costing = await admin.get(`/admin/jobs/${job.id}/costing`);
+    expect(costing.billable.invoiced).toBe(quote.subtotal - quote.discount);
+  });
+
+  await accountsCtx.close();
   await dispatchCtx.close();
   await customerCtx.close();
   await salesCtx.close();

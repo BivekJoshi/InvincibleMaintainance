@@ -42,25 +42,26 @@ model User {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  refreshTokens    RefreshToken[]
-  passwordResets   PasswordReset[]
-  assignedLeads    Lead[]           @relation("LeadAssignee")
-  leadNotes        LeadNote[]
-  leadActivities   LeadActivity[]
-  technician       Technician?
-  auditLogs        AuditLog[]
-  notifications    Notification[]
-  shortcuts        UserShortcut[]
-  notes            UserNote[]
-  createdQuotes    Quotation[]      @relation("QuotationCreator")
-  submittedQuotes  Quotation[]      @relation("QuotationSubmitter")
-  approvedQuotes   Quotation[]      @relation("QuotationApprover")
-  createdJobs      Job[]            @relation("JobCreator")
-  advanceOverrides Job[]            @relation("JobAdvanceOverride")
-  diaries          SiteDiary[]      @relation("DiaryAuthor")
-  jobEvents        JobStatusEvent[]
-  submittedSurveys SiteSurvey[]     @relation("SurveySubmitter")
-  reviewedSurveys  SiteSurvey[]     @relation("SurveyReviewer")
+  refreshTokens      RefreshToken[]
+  passwordResets     PasswordReset[]
+  assignedLeads      Lead[]           @relation("LeadAssignee")
+  leadNotes          LeadNote[]
+  leadActivities     LeadActivity[]
+  technician         Technician?
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  shortcuts          UserShortcut[]
+  notes              UserNote[]
+  createdQuotes      Quotation[]      @relation("QuotationCreator")
+  submittedQuotes    Quotation[]      @relation("QuotationSubmitter")
+  approvedQuotes     Quotation[]      @relation("QuotationApprover")
+  createdJobs        Job[]            @relation("JobCreator")
+  advanceOverrides   Job[]            @relation("JobAdvanceOverride")
+  measurementsClosed Job[]            @relation("JobMeasurementCloser")
+  diaries            SiteDiary[]      @relation("DiaryAuthor")
+  jobEvents          JobStatusEvent[]
+  submittedSurveys   SiteSurvey[]     @relation("SurveySubmitter")
+  reviewedSurveys    SiteSurvey[]     @relation("SurveyReviewer")
 
   @@index([role, isActive])
   @@index([deletedAt])
@@ -1120,39 +1121,43 @@ model Job {
   advanceOverrideById   String?
   advanceOverrideReason String?
   advanceOverriddenAt   DateTime?
+  /// The final measurement is closed (Phase L8): an ITEM_RATE job bills its measured quantities from here.
+  measurementClosedAt   DateTime?
+  measurementClosedById String?
   createdById           String?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
   deletedAt             DateTime?
 
-  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  site              CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  lead              Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  quotation         Quotation?       @relation("JobQuotation", fields: [quotationId], references: [id], onDelete: SetNull)
-  createdBy         User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  advanceInvoice    Invoice?         @relation("JobAdvanceInvoice", fields: [advanceInvoiceId], references: [id], onDelete: SetNull)
-  advanceOverrideBy User?            @relation("JobAdvanceOverride", fields: [advanceOverrideById], references: [id], onDelete: SetNull)
-  invoices          Invoice[]        @relation("JobInvoices")
-  lines             JobLine[]
-  requirements      JobRequirement[]
+  customer            Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site                CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead                Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  quotation           Quotation?       @relation("JobQuotation", fields: [quotationId], references: [id], onDelete: SetNull)
+  createdBy           User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  advanceInvoice      Invoice?         @relation("JobAdvanceInvoice", fields: [advanceInvoiceId], references: [id], onDelete: SetNull)
+  advanceOverrideBy   User?            @relation("JobAdvanceOverride", fields: [advanceOverrideById], references: [id], onDelete: SetNull)
+  measurementClosedBy User?            @relation("JobMeasurementCloser", fields: [measurementClosedById], references: [id], onDelete: SetNull)
+  invoices            Invoice[]        @relation("JobInvoices")
+  lines               JobLine[]
+  requirements        JobRequirement[]
   /// Variation orders against this job (Phase L7): quotations of kind VARIATION.
-  variations        Quotation[]      @relation("JobVariations")
-  diaries           SiteDiary[]
-  purchaseLists     PurchaseList[]
-  parentJob         Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
-  childJobs         Job[]            @relation("JobRework")
-  tasks             JobTask[]
-  assignments       JobAssignment[]
-  events            JobStatusEvent[]
-  photos            JobPhoto[]
-  timeLogs          TimeLog[]
-  materials         JobMaterial[]
-  invoiceItems      InvoiceItem[]
-  expenses          Expense[]
-  warranty          Warranty?
-  amcVisit          AmcVisit?
-  survey            SiteSurvey?
-  project           Project?
+  variations          Quotation[]      @relation("JobVariations")
+  diaries             SiteDiary[]
+  purchaseLists       PurchaseList[]
+  parentJob           Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
+  childJobs           Job[]            @relation("JobRework")
+  tasks               JobTask[]
+  assignments         JobAssignment[]
+  events              JobStatusEvent[]
+  photos              JobPhoto[]
+  timeLogs            TimeLog[]
+  materials           JobMaterial[]
+  invoiceItems        InvoiceItem[]
+  expenses            Expense[]
+  warranty            Warranty?
+  amcVisit            AmcVisit?
+  survey              SiteSurvey?
+  project             Project?
 
   @@index([status, scheduledStart])
   @@index([customerId])
@@ -1722,16 +1727,24 @@ model Invoice {
   @@index([jobId])
 }
 
+/// A line billed, or an earlier stage bill deducted from the final one (Phase L8) — negative, so every report
+/// that sums invoice lines stays right.
+enum InvoiceItemKind {
+  ITEM
+  DEDUCTION
+}
+
 model InvoiceItem {
-  id          String  @id @default(cuid())
+  id          String          @id @default(cuid())
   invoiceId   String
+  kind        InvoiceItemKind @default(ITEM)
   jobId       String?
   description String
   unit        String?
-  qty         Float   @default(1)
+  qty         Float           @default(1)
   rate        Int
   amount      Int
-  sortOrder   Int     @default(0)
+  sortOrder   Int             @default(0)
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   job     Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
