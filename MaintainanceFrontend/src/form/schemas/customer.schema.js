@@ -22,7 +22,14 @@ const optionalCoordinate = (min, max) => z.preprocess(
   z.coerce.number().min(min).max(max).optional(),
 );
 
-/** Mirrors `customerSiteSchema`. */
+/** Optional words that may be cleared: empty (or null, as the API returns it) is left out — the form sends null. */
+const clearableText = (max) => z.string().trim().max(max).nullish().transform((v) => v || undefined);
+
+/**
+ * Mirrors `customerSiteSchema`. Since Phase L5 a site also knows who opens the door (the caretaker while
+ * the owner is abroad) and how to find it; the three fields are `nullable` in `siteFields`, so emptying one
+ * clears it on the API.
+ */
 export const customerSiteSchema = z.object({
   label: z.string().trim().min(1, 'Name the site, e.g. Home').max(120),
   address: z.string().trim().min(3, 'Enter the address').max(400),
@@ -30,6 +37,9 @@ export const customerSiteSchema = z.object({
   lat: optionalCoordinate(-90, 90),
   lng: optionalCoordinate(-180, 180),
   accessNotes: optionalText,
+  contactName: clearableText(120),
+  contactPhone: z.preprocess((v) => v ?? undefined, optionalPhone),
+  landmark: clearableText(200),
   isPrimary: z.boolean(),
 });
 

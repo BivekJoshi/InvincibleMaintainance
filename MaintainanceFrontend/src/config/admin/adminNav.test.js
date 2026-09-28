@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { activeNavPath, activeNavTab, breadcrumbsFor, contentHomeFor, landingPathFor, navForRole, navTabsForRole } from '@/config/admin/adminNav';
+import { can } from '@/helpers/permissions';
 
 /** `{ group label: [item labels] }` for a role. */
 const navOf = (role) => Object.fromEntries(navForRole(role).map((g) => [g.label, g.items.map((i) => i.label)]));
@@ -7,7 +8,7 @@ const navOf = (role) => Object.fromEntries(navForRole(role).map((g) => [g.label,
 describe('admin nav', () => {
   it('shows ADMIN every group, in business order', () => {
     expect(Object.keys(navOf('ADMIN'))).toEqual([
-      'Overview', 'Sales', 'Operations', 'Finance', 'Aftercare',
+      'Overview', 'Sales', 'Operations', 'Finance', 'Aftercare', 'Reports',
       'Catalog', 'Page blocks', 'Messaging', 'Content', 'Blog & pages', 'Platform',
     ]);
     expect(navOf('ADMIN').Platform).toEqual([
@@ -35,9 +36,31 @@ describe('admin nav', () => {
     expect(contentHomeFor('EDITOR')).toBe('/admin/content/home');
   });
 
-  it('shows ACCOUNTANT the rate card, read-only by capability', () => {
-    expect(navOf('ACCOUNTANT').Catalog).toContain('Rate card');
+  it('shows ACCOUNTANT the rate library and trades, read-only by capability', () => {
+    expect(navOf('ACCOUNTANT').Catalog).toEqual(['Rate library', 'Trades & wages', 'Terms library', 'Job templates']);
     expect(navOf('ACCOUNTANT').Content).toBeUndefined();
+  });
+
+  it('shows the rate library to whoever prices work, never to the field (Phase L2)', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SALES', 'ACCOUNTANT']) {
+      expect(navOf(role).Catalog, role).toEqual(expect.arrayContaining(['Rate library', 'Trades & wages']));
+    }
+    for (const role of ['DISPATCHER', 'EDITOR', 'SURVEYOR', 'TECHNICIAN']) {
+      expect(navOf(role).Catalog ?? [], role).not.toContain('Rate library');
+    }
+    expect(breadcrumbsFor('/admin/trades/cl1')).toEqual([{ label: 'Catalog' }, { label: 'Trades & wages', to: '/admin/trades' }, { label: 'Edit' }]);
+  });
+
+  it('puts the terms library beside the rate library, for whoever reads rates (Phase L4)', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SALES', 'ACCOUNTANT']) {
+      expect(navOf(role).Catalog, role).toContain('Terms library');
+    }
+    for (const role of ['DISPATCHER', 'EDITOR', 'SURVEYOR', 'TECHNICIAN']) {
+      expect(navOf(role).Catalog ?? [], role).not.toContain('Terms library');
+    }
+    expect(breadcrumbsFor('/admin/quotation-terms/new')).toEqual([
+      { label: 'Catalog' }, { label: 'Terms library', to: '/admin/quotation-terms' }, { label: 'New' },
+    ]);
   });
 
   it('shows the admin platform screens to ADMIN alone', () => {
@@ -59,11 +82,13 @@ describe('admin nav', () => {
 
   it('hides Content, Finance and Platform from SALES', () => {
     const nav = navOf('SALES');
-    expect(Object.keys(nav)).toEqual(['Overview', 'Sales', 'Operations', 'Aftercare', 'Catalog']);
+    expect(Object.keys(nav)).toEqual(['Overview', 'Sales', 'Operations', 'Aftercare', 'Reports', 'Catalog']);
+    // Lost leads moved into Reports › Sales reports (Phase I10).
     expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations']);
+    expect(nav.Reports).toEqual(['Sales reports']);
     // SALES reads jobs, templates and technicians (to pick a surveyor); dispatch and stock are not theirs.
-    expect(nav.Operations).toEqual(['Jobs', 'Technicians']);
-    expect(nav.Catalog).toEqual(['Rate card', 'Job templates']);
+    expect(nav.Operations).toEqual(['Jobs', 'Technicians', 'Inspection templates']);
+    expect(nav.Catalog).toEqual(['Rate library', 'Trades & wages', 'Terms library', 'Job templates']);
     expect(landingPathFor('SALES')).toBe('/admin');
     expect(contentHomeFor('SALES')).toBe('/admin');
   });
@@ -74,13 +99,15 @@ describe('admin nav', () => {
     expect(sales.find((i) => i.label === 'Leads').soon).toBeFalsy();
     const ops = navForRole('SALES').find((g) => g.key === 'operations').items;
     expect(ops.find((i) => i.label === 'Jobs').soon).toBeFalsy();
+    // Finance is built (Phase I).
     const finance = navForRole('ADMIN').find((g) => g.key === 'finance').items;
-    expect(finance.find((i) => i.label === 'Invoices').soon).toBe(true);
+    expect(finance.filter((i) => i.soon)).toEqual([]);
   });
 
   it('gives the dispatcher the whole of Operations (Phase H1)', () => {
     const nav = navOf('DISPATCHER');
-    expect(nav.Operations).toEqual(['Jobs', 'Dispatch board', 'Technicians', 'Stock']);
+    // Phase L7 added Purchase lists beside Stock (materials:read).
+    expect(nav.Operations).toEqual(['Jobs', 'Dispatch board', 'Technicians', 'Stock', 'Purchase lists', 'Inspection templates']);
     expect(nav.Catalog).toEqual(['Job templates', 'Materials', 'Material categories', 'Suppliers']);
     expect(navOf('ACCOUNTANT').Operations).toEqual(['Jobs']);
     expect(breadcrumbsFor('/admin/jobs/cl1')).toEqual([{ label: 'Operations' }, { label: 'Jobs', to: '/admin/jobs' }, { label: 'Details' }]);
@@ -88,6 +115,30 @@ describe('admin nav', () => {
     expect(breadcrumbsFor('/admin/material-categories/new').at(-2)).toEqual({ label: 'Material categories', to: '/admin/material-categories' });
     expect(breadcrumbsFor('/admin/materials/cl1').at(-1)).toEqual({ label: 'Edit' });
     expect(activeNavPath('/admin/dispatch')).toBe('/admin/dispatch');
+  });
+
+  it('lists purchase lists under Operations for whoever reads materials (Phase L7)', () => {
+    for (const role of ['ADMIN', 'DISPATCHER']) expect(navOf(role).Operations, role).toContain('Purchase lists');
+    for (const role of ['SALES', 'MANAGER', 'ACCOUNTANT', 'EDITOR', 'TECHNICIAN', 'SURVEYOR']) {
+      expect(navOf(role).Operations ?? [], role).not.toContain('Purchase lists');
+    }
+    expect(breadcrumbsFor('/admin/purchase-lists/cl1')).toEqual([
+      { label: 'Operations' }, { label: 'Purchase lists', to: '/admin/purchase-lists' }, { label: 'Details' },
+    ]);
+    expect(activeNavPath('/admin/purchase-lists/new')).toBe('/admin/purchase-lists');
+  });
+
+  it('lists the inspection templates under Operations for whoever reads surveys (Phase L5)', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SALES', 'DISPATCHER']) {
+      expect(navOf(role).Operations, role).toContain('Inspection templates');
+    }
+    for (const role of ['ACCOUNTANT', 'EDITOR', 'SURVEYOR', 'TECHNICIAN']) {
+      expect(navOf(role).Operations ?? [], role).not.toContain('Inspection templates');
+    }
+    expect(breadcrumbsFor('/admin/inspection-templates/new')).toEqual([
+      { label: 'Operations' }, { label: 'Inspection templates', to: '/admin/inspection-templates' }, { label: 'New' },
+    ]);
+    expect(breadcrumbsFor('/admin/inspection-templates/it1').at(-1)).toEqual({ label: 'Edit' });
   });
 
   it('builds the breadcrumb from the path', () => {
@@ -98,7 +149,7 @@ describe('admin nav', () => {
     expect(breadcrumbsFor('/admin/content/faqs/cl123/').at(-1)).toEqual({ label: 'Edit' });
     expect(breadcrumbsFor('/admin/content/nope')).toEqual([{ label: 'Content' }]);
     expect(breadcrumbsFor('/admin/content/media')).toEqual([{ label: 'Content' }, { label: 'Media library', to: '/admin/content/media' }]);
-    expect(breadcrumbsFor('/admin/rate-card/cl123')).toEqual([{ label: 'Catalog' }, { label: 'Rate card', to: '/admin/rate-card' }, { label: 'Edit' }]);
+    expect(breadcrumbsFor('/admin/rate-card/cl123')).toEqual([{ label: 'Catalog' }, { label: 'Rate library', to: '/admin/rate-card' }, { label: 'Edit' }]);
     expect(breadcrumbsFor('/admin/content/services/new')).toEqual([
       { label: 'Content' }, { label: 'Services', to: '/admin/content/services' }, { label: 'New' },
     ]);
@@ -112,6 +163,69 @@ describe('admin nav', () => {
     expect(breadcrumbsFor('/tech')).toEqual([]);
     expect(breadcrumbsFor('/admin/leads/board')).toEqual([{ label: 'Sales' }, { label: 'Pipeline', to: '/admin/leads/board' }]);
     expect(breadcrumbsFor('/admin/customers/cl1')).toEqual([{ label: 'Sales' }, { label: 'Customers', to: '/admin/customers' }, { label: 'Details' }]);
+  });
+});
+
+describe('finance and reports (Phase I)', () => {
+  it('gives the accountant the whole of Finance, and nobody else money they do not hold', () => {
+    expect(navOf('ACCOUNTANT').Finance).toEqual(['Invoices', 'Payments', 'Expenses', 'Finance reports']);
+    expect(navOf('ADMIN').Finance).toEqual(['Invoices', 'Payments', 'Expenses', 'Finance reports']);
+    for (const role of ['SALES', 'MANAGER', 'DISPATCHER', 'EDITOR', 'TECHNICIAN', 'SURVEYOR']) {
+      expect(navOf(role).Finance, `${role} sees Finance`).toBeUndefined();
+    }
+    // The accountant has no sales or operations reports, and no job margin (costs:read is the money wall's).
+    expect(navOf('ACCOUNTANT').Reports).toBeUndefined();
+  });
+
+  it('shows each report screen to its capability only — job margin to costs:read', () => {
+    expect(navOf('ADMIN').Reports).toEqual(['Sales reports', 'Operations reports', 'Job margin']);
+    expect(navOf('MANAGER').Reports).toEqual(['Sales reports', 'Job margin']);
+    expect(navOf('SALES').Reports).toEqual(['Sales reports']);
+    expect(navOf('DISPATCHER').Reports).toEqual(['Operations reports']);
+    for (const role of ['SALES', 'DISPATCHER', 'ACCOUNTANT', 'EDITOR']) {
+      expect(navOf(role).Reports ?? [], role).not.toContain('Job margin');
+    }
+  });
+
+  it('names the finance screens in the breadcrumb', () => {
+    expect(breadcrumbsFor('/admin/invoices/inv1')).toEqual([{ label: 'Finance' }, { label: 'Invoices', to: '/admin/invoices' }, { label: 'Details' }]);
+    expect(breadcrumbsFor('/admin/expenses/new')).toEqual([{ label: 'Finance' }, { label: 'Expenses', to: '/admin/expenses' }, { label: 'New' }]);
+    expect(breadcrumbsFor('/admin/expenses/ex1').at(-1)).toEqual({ label: 'Edit' });
+    expect(breadcrumbsFor('/admin/finance/payments')).toEqual([{ label: 'Finance' }, { label: 'Payments', to: '/admin/finance/payments' }]);
+    expect(breadcrumbsFor('/admin/reports/sales')).toEqual([{ label: 'Reports' }, { label: 'Sales reports', to: '/admin/reports/sales' }]);
+    expect(activeNavTab('/admin/finance/reports')).toBe('home');
+  });
+});
+
+describe('aftercare (Phase I)', () => {
+  const AFTERCARE = ['Warranties', 'Warranty claims', 'AMC contracts', 'Service reminders'];
+
+  it('shows the Aftercare group to whoever reads it, by capability — not to the accountant', () => {
+    for (const role of ['ADMIN', 'DISPATCHER', 'SALES', 'MANAGER']) expect(navOf(role).Aftercare, role).toEqual(AFTERCARE);
+    for (const role of ['ACCOUNTANT', 'EDITOR', 'TECHNICIAN', 'SURVEYOR']) expect(navOf(role).Aftercare, role).toBeUndefined();
+    expect(navForRole('ADMIN').find((g) => g.key === 'aftercare').items.filter((i) => i.soon)).toEqual([]);
+  });
+
+  it('gates each item on the capability its API checks: DISPATCHER writes, SALES and MANAGER read only', () => {
+    const items = navForRole('ADMIN').find((g) => g.key === 'aftercare').items;
+    expect(Object.fromEntries(items.map((i) => [i.to, i.capability]))).toEqual({
+      '/admin/warranties': 'warranties:read',
+      '/admin/warranty-claims': 'warranties:read',
+      '/admin/amc-contracts': 'amc:read',
+      '/admin/service-reminders': 'reminders:read',
+    });
+    for (const write of ['warranties:write', 'amc:write', 'reminders:write']) {
+      expect(can('DISPATCHER', write), write).toBe(true);
+      for (const role of ['SALES', 'MANAGER', 'ACCOUNTANT']) expect(can(role, write), `${role} ${write}`).toBe(false);
+    }
+  });
+
+  it('names the aftercare screens in the breadcrumb, a claim apart from its warranty', () => {
+    expect(breadcrumbsFor('/admin/warranties/w1')).toEqual([{ label: 'Aftercare' }, { label: 'Warranties', to: '/admin/warranties' }, { label: 'Details' }]);
+    expect(breadcrumbsFor('/admin/warranty-claims/cl1')).toEqual([{ label: 'Aftercare' }, { label: 'Warranty claims', to: '/admin/warranty-claims' }, { label: 'Details' }]);
+    expect(breadcrumbsFor('/admin/amc-contracts/a1').at(-2)).toEqual({ label: 'AMC contracts', to: '/admin/amc-contracts' });
+    expect(activeNavPath('/admin/warranty-claims/cl1')).toBe('/admin/warranty-claims');
+    expect(activeNavTab('/admin/service-reminders')).toBe('home');
   });
 });
 
@@ -140,7 +254,7 @@ describe('the sidebar tabs', () => {
 
   it('splits ADMIN into Home, Helpers, Others and Settings', () => {
     expect(tabsOf('ADMIN')).toEqual([
-      ['home', ['Overview', 'Sales', 'Operations', 'Finance', 'Aftercare']],
+      ['home', ['Overview', 'Sales', 'Operations', 'Finance', 'Aftercare', 'Reports']],
       ['helpers', ['Catalog', 'Page blocks', 'Messaging']],
       ['others', ['Content', 'Blog & pages']],
       ['settings', ['Platform']],

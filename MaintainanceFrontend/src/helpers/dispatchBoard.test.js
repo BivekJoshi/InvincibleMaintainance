@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDaysTo, boardStats, dropTechnicians, dropWindow, isSameDrop, durationOf, filterLanes, hoursOf, jobsInCell, ktmDay, laneOptions,
-  isDayOff, personToneStyle, scheduleWarnings, shiftBoardDate, warningText, windowAt, windowLabel,
+  isDayOff, personToneStyle, scheduleWarnings, shiftBoardDate, visitFlag, warningText, windowAt, windowLabel,
 } from '@/helpers/dispatchBoard';
 
 /** An instant on a Kathmandu day at a Kathmandu time. */
@@ -187,5 +187,39 @@ describe('the board strip', () => {
     expect(personToneStyle('t-hari')['--tone']).toMatch(/^var\(--/);
     expect(isDayOff('2026-09-19')).toBe(true);
     expect(isDayOff('2026-09-18')).toBe(false);
+  });
+});
+
+describe('an inspection’s answer from the customer (Phase L5)', () => {
+  const visit = (over = {}) => ({
+    type: 'INSPECTION', status: 'ASSIGNED', scheduledStart: at(DAY, '10:00'),
+    visitAnswer: null, customerConfirmedAt: null, visitAnsweredAt: null, visitAnswerNote: null, ...over,
+  });
+
+  it('flags a booked visit nobody has confirmed, quietly', () => {
+    expect(visitFlag(visit())).toMatchObject({ kind: 'unconfirmed', label: 'Not confirmed' });
+    expect(visitFlag(visit({ status: 'DRAFT' })).kind).toBe('unconfirmed');
+    expect(visitFlag(visit({ visitReminderSentAt: at('2026-09-17', '17:00') })).title).toMatch(/reminder sent 17 Sept 2026, 17:00/);
+  });
+
+  it('flags a request for another time loudly, with when and the note — even with the time taken off', () => {
+    const flag = visitFlag(visit({ visitAnswer: 'RESCHEDULE_REQUESTED', visitAnsweredAt: at('2026-09-16', '09:30'), visitAnswerNote: 'शनिबार बिहान' }));
+    expect(flag).toMatchObject({ kind: 'reschedule', label: 'Wants another time' });
+    expect(flag.title).toBe('The customer asked for another time · 16 Sept 2026, 09:30 — “शनिबार बिहान”');
+    expect(visitFlag(visit({ visitAnswer: 'RESCHEDULE_REQUESTED', scheduledStart: null })).kind).toBe('reschedule');
+  });
+
+  it('ticks a confirmed visit', () => {
+    const flag = visitFlag(visit({ visitAnswer: 'CONFIRMED', customerConfirmedAt: at('2026-09-16', '11:00') }));
+    expect(flag).toMatchObject({ kind: 'confirmed', label: 'Confirmed' });
+    expect(flag.title).toMatch(/16 Sept 2026, 11:00/);
+  });
+
+  it('says nothing for other work, work under way or closed, or a visit with no time yet', () => {
+    expect(visitFlag({ ...visit(), type: 'REPAIR' })).toBeNull();
+    for (const status of ['EN_ROUTE', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'VERIFIED', 'CANCELLED']) {
+      expect(visitFlag(visit({ status, visitAnswer: 'RESCHEDULE_REQUESTED' })), status).toBeNull();
+    }
+    expect(visitFlag(visit({ scheduledStart: null }))).toBeNull();
   });
 });

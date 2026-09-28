@@ -5,27 +5,20 @@ import { describe, it, expect } from 'vitest';
 import { RESOURCES, getResourceEntry, schemaOf, screenPathOf } from '@/config/admin/resourceRegistry';
 import { cmsApi } from '@/api/cmsApi';
 import { ADMIN_NAV, BESPOKE_CONTENT } from '@/config/admin/adminNav';
-import { flattenFields } from '@/components/common/ResourceForm/formValues';
+import { DISPLAY_TYPES, flattenFields } from '@/components/common/ResourceForm/formValues';
 import { PERMISSIONS } from '@/helpers/permissions';
 
 /** The resources the API's CRUD factory mounts, read from the route files themselves (tests run from MaintainanceFrontend/). */
 const readApi = (file) => readFileSync(resolve(cwd(), '../MaintainanceBackend/src/routes/admin', file), 'utf8');
 const mounter = readApi('mountResource.js');
-/** Every file that mounts registry resources through `mountResource` (content, and operations since H1). */
-const MOUNTING_FILES = ['cms.routes.js', 'ops.routes.js'].map(readApi);
-const MOUNTED = new Set(MOUNTING_FILES.flatMap((src) => [...src.matchAll(/mountResource\(router, '([a-z-]+)'/g)].map((m) => m[1])));
-
 /**
- * The same endpoints, mounted by hand outside cms.routes.js (the rate card): the eight the
- * generic screens call, plus the History tab's. Each must answer every call the screens make.
+ * Every file that mounts registry resources through `mountResource`: content, operations (since H1),
+ * the rate library and its trades (crm.routes.js, since L2 — the last hand-mounted resource moved over), and
+ * the inspection templates (surveys.routes.js, since L5) and the expenses (finance.routes.js, Phase I).
  */
-const HAND_MOUNTED = { 'rate-card': readApi('crm.routes.js') };
-const GENERIC_CALLS = (r) => [
-  `router.get('/${r}/:id/history'`,
-  `router.get('/${r}'`, `router.post('/${r}'`, `router.patch('/${r}/reorder'`, `router.get('/${r}/:id'`,
-  `router.put('/${r}/:id'`, `router.patch('/${r}/:id/toggle'`, `router.patch('/${r}/:id/restore'`, `router.delete('/${r}/:id'`,
-];
-const isMounted = (r) => MOUNTED.has(r) || Boolean(HAND_MOUNTED[r] && GENERIC_CALLS(r).every((c) => HAND_MOUNTED[r].includes(c)));
+const MOUNTING_FILES = ['cms.routes.js', 'ops.routes.js', 'crm.routes.js', 'surveys.routes.js', 'finance.routes.js'].map(readApi);
+const MOUNTED = new Set(MOUNTING_FILES.flatMap((src) => [...src.matchAll(/mountResource\(router, '([a-z-]+)'/g)].map((m) => m[1])));
+const isMounted = (r) => MOUNTED.has(r);
 
 const CAPABILITIES = new Set([...Object.values(PERMISSIONS).flat(), 'cms:purge']);
 const TEXT_TYPES = new Set(['text', 'textarea', 'prose', 'markdown']);
@@ -74,11 +67,19 @@ describe('resource registry', () => {
     for (const col of entry.columns) {
       expect(col.key).toBeTruthy();
       expect(col.header).toBeTruthy();
+      if (col.capability) expect(CAPABILITIES.has(col.capability), `unknown ${col.capability}`).toBe(true);
     }
 
     const fields = flattenFields(entry.fields);
     expect(fields.length).toBeGreaterThan(0);
     for (const field of fields) {
+      if (field.capability) expect(CAPABILITIES.has(field.capability), `unknown ${field.capability}`).toBe(true);
+      // A display field (the rate library's cost card) holds no value: it is a component, not a schema key.
+      if (DISPLAY_TYPES.has(field.type)) {
+        expect(typeof field.component, `${field.name} has no component`).toBe('function');
+        expect(shape).not.toHaveProperty(field.name);
+        continue;
+      }
       expect(shape, `field ${field.name} is not in the schema`).toHaveProperty(field.name);
     }
     for (const name of entry.translatable ?? []) {
@@ -87,7 +88,8 @@ describe('resource registry', () => {
       expect(TEXT_TYPES.has(field.type)).toBe(true);
     }
     for (const filter of entry.filters ?? []) {
-      expect(['enum', 'boolean', 'relation', 'dateRange']).toContain(filter.type);
+      // `text`: typed and applied on Enter (an expense's category, Phase I).
+      expect(['enum', 'boolean', 'relation', 'dateRange', 'text']).toContain(filter.type);
       if (filter.defaultValue != null) expect(filter.options.map((o) => o.value)).toContain(filter.defaultValue);
     }
     if (entry.reorderWithin) {
@@ -116,6 +118,27 @@ describe('resource registry', () => {
     }
   });
 
+  it('gives every extra bulk action words, a runner and a known capability', () => {
+    for (const entry of entries.filter((e) => e.bulkActions)) {
+      for (const action of entry.bulkActions) {
+        expect(action.label, entry.resource).toBeTruthy();
+        expect(typeof action.run, `${entry.resource}: ${action.label}`).toBe('function');
+        if (action.capability) expect(CAPABILITIES.has(action.capability)).toBe(true);
+      }
+    }
+  });
+
+  it('keeps cost behind costs:read in the rate library and trades (Phase L2)', () => {
+    const gated = (entry, keys) => keys.every((k) => [...entry.columns, ...flattenFields(entry.fields)]
+      .filter((x) => (x.key ?? x.name) === k).every((x) => x.capability === 'costs:read'));
+    expect(RESOURCES['rate-card'].capability).toBe('rates:read');
+    expect(RESOURCES['rate-card'].writeCapability).toBe('rates:write');
+    expect(gated(RESOURCES['rate-card'], ['unitCost', 'margin', 'overheadPct', 'profitPct', 'roundTo', 'costPreview'])).toBe(true);
+    expect(flattenFields(RESOURCES['rate-card'].fields).find((f) => f.type === 'recipe').costCapability).toBe('costs:read');
+    expect(RESOURCES.trades.capability).toBe('rates:read');
+    expect(gated(RESOURCES.trades, ['dayWage'])).toBe(true);
+  });
+
   it('gives every entry a built nav item at its screen path with the same capability', () => {
     for (const entry of entries) {
       const item = allItems.find((i) => i.to === screenPathOf(entry));
@@ -136,6 +159,7 @@ describe('resource registry', () => {
 
   it('keeps entries with their own address out of Content, and bespoke pages out of the registry', () => {
     expect(screenPathOf(RESOURCES['rate-card'])).toBe('/admin/rate-card');
+    expect(screenPathOf(RESOURCES.trades)).toBe('/admin/trades');
     for (const path of BESPOKE_CONTENT) expect(getResourceEntry(path.split('/')[3])).toBeUndefined();
   });
 

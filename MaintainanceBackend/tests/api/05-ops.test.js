@@ -148,8 +148,9 @@ describe('jobs', () => {
     expect(expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/verify`), 200).data.status).toBe('VERIFIED');
   });
 
-  it('GET /admin/jobs/:id/costing', async () => {
-    const body = expectStatus(await dispatcher.get(`/admin/jobs/${job.id}/costing`), 200);
+  it('GET /admin/jobs/:id/costing — costs:read (a manager), not the dispatcher (Phase L2)', async () => {
+    expectStatus(await dispatcher.get(`/admin/jobs/${job.id}/costing`), 403);
+    const body = expectStatus(await (await as('MANAGER')).get(`/admin/jobs/${job.id}/costing`), 200);
     expect(body.data.cost).toBeTypeOf('object');
     expect(body.data.labourMinutes).toBe(90);
   });

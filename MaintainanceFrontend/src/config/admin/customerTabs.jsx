@@ -1,22 +1,17 @@
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '@/components/ui/badge';
-import { StateBadge } from '@/components/common/StateBadge';
-import { formatDate, formatNpr, titleCase } from '@/helpers/format';
-import { JOB_STATUS_LABELS, JOB_TYPE_LABELS } from '@/config/constants';
+import { AftercareStatus } from '@/components/aftercare/AftercareStatus';
+import { formatBalance, formatDate, formatNpr, formatSignedNpr, titleCase } from '@/helpers/format';
+import { INVOICE_STATUS_LABELS, JOB_STATUS_LABELS, JOB_TYPE_LABELS } from '@/config/constants';
 
 /**
  * The record tabs on a customer's page: each is that domain's own list, filtered by the
  * customer. `can(role, can)` decides whether the tab shows — the same rule its API uses.
- * A record whose page is not built yet says "Soon" instead of linking nowhere.
+ * Every record here has its own page (invoices, warranties and AMC since Phase I).
  *
  * @typedef {{ key: string, label: string, kind: string, allowed: (ctx: { can: Function, role: string }) => boolean,
  *   columns: object[], href?: (row: object) => string, emptyTitle: string }} CustomerRecordTab
  */
-
-const soon = <StateBadge title="This record’s page is not built yet">Soon</StateBadge>;
-const number = (r) => <span className="font-mono text-xs">{r.number}</span>;
-/** Warranties and AMC are mounted for these roles (aftercare.routes.js authorize). */
-const AFTERCARE_ROLES = ['ADMIN', 'DISPATCHER', 'SALES', 'MANAGER'];
 
 /** @type {CustomerRecordTab[]} */
 export const CUSTOMER_RECORD_TABS = [
@@ -28,7 +23,8 @@ export const CUSTOMER_RECORD_TABS = [
     columns: [
       { key: 'number', header: 'Number', sortable: true, cell: (r) => <Link to={`/admin/quotations/${r.id}`} className="font-mono text-xs hover:underline">{r.number}</Link> },
       { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} /> },
-      { key: 'total', header: 'Total', sortable: true, className: 'text-right tabular-nums', cell: (r) => formatNpr(r.total) },
+      // A variation's total may be below zero (Phase L7): "− Rs. …".
+      { key: 'total', header: 'Total', sortable: true, className: 'text-right tabular-nums', cell: (r) => formatSignedNpr(r.total) },
       { key: 'createdAt', header: 'Created', sortable: true, cell: (r) => formatDate(r.createdAt) },
     ],
   },
@@ -46,41 +42,45 @@ export const CUSTOMER_RECORD_TABS = [
     ],
   },
   {
+    // Phase I: the invoice's own page; "still due" is the server's `balance`, never worked out here.
     key: 'invoices', label: 'Invoices', kind: 'invoices',
     allowed: ({ can }) => can('invoices:read'),
+    href: (r) => `/admin/invoices/${r.id}`,
     emptyTitle: 'No invoices yet',
     columns: [
-      { key: 'number', header: 'Number', sortable: true, cell: number },
-      { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} /> },
+      { key: 'number', header: 'Number', sortable: true, cell: (r) => <Link to={`/admin/invoices/${r.id}`} className="font-mono text-xs hover:underline">{r.number}</Link> },
+      { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} label={INVOICE_STATUS_LABELS[r.status]} /> },
       { key: 'total', header: 'Total', sortable: true, className: 'text-right tabular-nums', cell: (r) => formatNpr(r.total) },
-      { key: 'due', header: 'Still due', className: 'text-right tabular-nums', cell: (r) => formatNpr(Math.max(0, r.total - (r.paidAmount ?? 0))) },
+      { key: 'due', header: 'Still due', className: 'text-right tabular-nums', cell: (r) => (r.status === 'VOID' ? '—' : formatBalance(r.balance)) },
       { key: 'dueDate', header: 'Due', sortable: true, cell: (r) => formatDate(r.dueDate) },
-      { key: 'page', header: '', cell: () => soon },
     ],
   },
   {
+    // Phase I: the warranty's own page; `warranties:read` (SALES, MANAGER, DISPATCHER, ADMIN).
     key: 'warranties', label: 'Warranties', kind: 'warranties',
-    allowed: ({ role }) => AFTERCARE_ROLES.includes(role),
+    allowed: ({ can }) => can('warranties:read'),
+    href: (r) => `/admin/warranties/${r.id}`,
     emptyTitle: 'No warranties yet',
     columns: [
-      { key: 'job', header: 'Job', cell: (r) => <span className="font-mono text-xs">{r.job?.number ?? '—'}</span> },
-      { key: 'scope', header: 'Covers', cell: (r) => r.scope ?? r.job?.title ?? '—' },
-      { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} /> },
+      { key: 'job', header: 'Job', cell: (r) => <Link to={`/admin/warranties/${r.id}`} className="font-mono text-xs hover:underline">{r.job?.number ?? '—'}</Link> },
+      { key: 'scope', header: 'Covers', cell: (r) => <span className="line-clamp-1">{r.scope || r.job?.title || '—'}</span> },
+      { key: 'status', header: 'Status', cell: (r) => <AftercareStatus kind="warranty" status={r.status} /> },
       { key: 'endsAt', header: 'Until', sortable: true, cell: (r) => formatDate(r.endsAt) },
-      { key: 'page', header: '', cell: () => soon },
+      { key: 'claims', header: 'Claims', className: 'text-right tabular-nums', cell: (r) => r.claims?.length ?? 0 },
     ],
   },
   {
+    // Phase I: the contract's own page; `amc:read`. The amount is the server's paisa.
     key: 'contracts', label: 'AMC', kind: 'contracts',
-    allowed: ({ role }) => AFTERCARE_ROLES.includes(role),
+    allowed: ({ can }) => can('amc:read'),
+    href: (r) => `/admin/amc-contracts/${r.id}`,
     emptyTitle: 'No maintenance contracts',
     columns: [
-      { key: 'number', header: 'Number', sortable: true, cell: number },
+      { key: 'number', header: 'Number', sortable: true, cell: (r) => <Link to={`/admin/amc-contracts/${r.id}`} className="font-mono text-xs hover:underline">{r.number}</Link> },
       { key: 'planName', header: 'Plan', cell: (r) => r.planName },
-      { key: 'status', header: 'Status', cell: (r) => <StateBadge tone={r.status === 'active' ? 'success' : 'muted'}>{titleCase(r.status)}</StateBadge> },
+      { key: 'status', header: 'Status', cell: (r) => <AftercareStatus kind="amc" status={r.status} /> },
       { key: 'period', header: 'Period', cell: (r) => `${formatDate(r.startDate)} – ${formatDate(r.endDate)}` },
       { key: 'amount', header: 'Amount', className: 'text-right tabular-nums', cell: (r) => formatNpr(r.amount) },
-      { key: 'page', header: '', cell: () => soon },
     ],
   },
 ];

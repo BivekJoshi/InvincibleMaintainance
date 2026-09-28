@@ -19,8 +19,17 @@ export async function apiAs(role) {
     return body;
   };
 
+  /** A multipart POST: `file` as `{ name, mimeType, buffer }` under the field `files`, plus text `fields`. */
+  const upload = async (path, { file, fields = {} }) => {
+    const res = await ctx.fetch(path.replace(/^\//, ''), { method: 'POST', headers, multipart: { ...fields, files: file } });
+    const body = await res.json().catch(() => ({}));
+    if (res.status() >= 400) throw new Error(`POST ${path} as ${role} → ${res.status()} ${JSON.stringify(body)}`);
+    return body.data;
+  };
+
   return {
     user,
+    upload,
     get: (path) => call('GET', path).then((b) => b.data),
     list: (path) => call('GET', path),
     post: (path, data = {}) => call('POST', path, data).then((b) => b.data),

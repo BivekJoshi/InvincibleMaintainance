@@ -5,8 +5,9 @@ import { customersWithPhone, siteForConvert } from './customer.service.js';
 import { createJob, announceAssignment } from './job.service.js';
 import { createFromJob } from './survey.service.js';
 import { createQuotation } from './quotation.service.js';
-import { transitionLead } from './lead.service.js';
+import { bookNextAction, transitionLead } from './lead.service.js';
 import { recordEvent } from './audit.service.js';
+import { announceVisit } from './visit.service.js';
 
 /** Funnel order. Convert only ever moves a lead forward along it, never back. */
 const FUNNEL = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON'];
@@ -120,6 +121,14 @@ export async function convertLead(leadId, input, userId) {
       data: { customerId: customer.id, firstResponseAt: lead.firstResponseAt ?? new Date() },
     });
 
+    // Who opens the door and how to find the house (Phase L5) belong to the site: the next job there knows them.
+    const siteDetails = Object.fromEntries(Object.entries({
+      contactName: input.siteContactName, contactPhone: input.siteContactPhone, landmark: input.landmark,
+    }).filter(([, v]) => v));
+    if (site && Object.keys(siteDetails).length) {
+      Object.assign(site, await tx.customerSite.update({ where: { id: site.id }, data: siteDetails }));
+    }
+
     const out = { customer, customerCreated: created, site, quotation: null, job: null, survey: null };
 
     if (input.createQuotation) {
@@ -164,12 +173,20 @@ export async function convertLead(leadId, input, userId) {
       out.survey = survey;
     }
 
-    const stages = ['CONTACTED', ...(out.job ? ['INSPECTION_SCHEDULED'] : []), ...(out.quotation ? ['QUOTED'] : [])];
+    // A draft quotation does not make the lead QUOTED — sending it does (Phase L1).
+    const stages = ['CONTACTED', ...(out.job ? ['INSPECTION_SCHEDULED'] : [])];
     let { status } = lead;
     for (const stage of stages) {
       if (funnelRank(status) < funnelRank(stage)) {
         ({ status } = await transitionLead(tx, leadId, stage, { actorId: userId, note: 'Lead converted' }));
       }
+    }
+
+    // What the owner does next: be at the visit, or get the draft approved and sent.
+    if (out.job) {
+      await bookNextAction(tx, leadId, { at: out.job.scheduledStart ?? new Date(), type: 'VISIT', note: `Site visit ${out.job.number}` });
+    } else if (out.quotation) {
+      await bookNextAction(tx, leadId, { at: new Date(), type: 'SEND_QUOTE', note: `Get ${out.quotation.number} approved and sent` });
     }
 
     await tx.leadActivity.create({
@@ -198,5 +215,7 @@ export async function convertLead(leadId, input, userId) {
   if (result.job?.assignments?.length) {
     await announceAssignment(result.job, result.job.assignments.map((a) => a.technicianId));
   }
+  // The customer (and the site contact) hear about the visit only once it is committed (Phase L5).
+  if (result.job) await announceVisit(result.job.id);
   return result;
 }

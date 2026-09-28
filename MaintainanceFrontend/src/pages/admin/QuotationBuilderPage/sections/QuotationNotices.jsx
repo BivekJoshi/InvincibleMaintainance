@@ -3,11 +3,13 @@ import { Clock, MessageSquareWarning, ShieldCheck, Undo2, UserX } from 'lucide-r
 import { DocumentNotice } from '@/components/documents/DocumentNotice';
 import { formatDateTime } from '@/helpers/format';
 import { isSelfApproval, sentAge, validityWarning } from '@/helpers/quotationActions';
+import { LOST_CATEGORY_LABELS } from '@/config/constants';
 
 /**
  * What a reader must see before touching a quotation: the customer's change request
- * (on the version they answered and on the revision built from it), why it came back to
- * draft, an automatic approval, and the self-approval rule for its own author.
+ * (on the version they answered and on the revision built from it), a decline with the reason
+ * the customer picked (Phase L4), why it came back to draft, an automatic approval, and the
+ * self-approval rule for its own author.
  */
 export function QuotationNotices({ quotation: q, can, userId }) {
   const notices = [];
@@ -30,8 +32,16 @@ export function QuotationNotices({ quotation: q, can, userId }) {
   }
   if (q.status === 'REJECTED') {
     notices.push(
-      <DocumentNotice key="declined" tone="muted" icon={UserX} animate={false} title="The customer declined">
-        {q.decisionNote ? <span className="block whitespace-pre-wrap">{q.decisionNote}</span> : 'They gave no reason.'}
+      <DocumentNotice
+        key="declined"
+        tone="muted"
+        icon={UserX}
+        animate={false}
+        title={`The customer declined${q.declineCategory ? ` — ${LOST_CATEGORY_LABELS[q.declineCategory] ?? q.declineCategory}` : ''}`}
+      >
+        {q.decisionNote
+          ? <span lang="ne" className="block whitespace-pre-wrap">{q.decisionNote}</span>
+          : q.declineCategory ? 'They picked a reason and wrote nothing more.' : 'They gave no reason.'}
       </DocumentNotice>,
     );
   }

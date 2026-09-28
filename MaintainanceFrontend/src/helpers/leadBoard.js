@@ -15,6 +15,33 @@ export const canDrop = (from, to) => Boolean(from && to) && from !== to && nextS
 /** A move that needs more than the drop: LOST asks why. */
 export const needsReason = (to) => to === 'LOST';
 
+/**
+ * Whether the lead has a quotation. `true` / `false` when the row says (`quotations[]` on the lead's own
+ * record, or a `_count` / `quotationCount` on a list row), `null` when it does not — `LeadBoardPage` then reads the lead's record.
+ */
+export function hasQuotation(lead) {
+  if (Array.isArray(lead?.quotations)) return lead.quotations.length > 0;
+  const count = lead?._count?.quotations ?? lead?.quotationCount;
+  return typeof count === 'number' ? count > 0 : null;
+}
+
+/**
+ * The dialog behind a board move (the drop, the keyboard, and "Move to" alike), or null for a plain
+ * status change:
+ * - INSPECTION_SCHEDULED → `'visit'` — book it (the convert with an inspection);
+ * - QUOTED without a quotation → `'quotation'` — start one (the lead moves when it is *sent*);
+ * - LOST → `'lost'` — why (the category is required).
+ *
+ * @param {string} to
+ * @param {boolean|null} quoted  `hasQuotation(lead)`, resolved
+ */
+export function dropDialogFor(to, quoted) {
+  if (to === 'INSPECTION_SCHEDULED') return 'visit';
+  if (to === 'QUOTED' && !quoted) return 'quotation';
+  if (to === 'LOST') return 'lost';
+  return null;
+}
+
 /** The board's columns: every status, in funnel order. */
 export const BOARD_COLUMNS = LEAD_STATUSES;
 

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { publicLeadSchema } from '../src/shared/schemas/crm.js';
+import {
+  leadActivitySchema, leadNextActionSchema, leadQualification, leadStatusSchema, publicLeadSchema,
+} from '../src/shared/schemas/crm.js';
 import { serviceSchema } from '../src/shared/schemas/cms.js';
 import { toPartial } from '../src/shared/schemas/common.js';
 import {
@@ -158,5 +160,42 @@ describe('admin shell shortcuts and notes', () => {
     expect(noteUpdateSchema.safeParse({}).success).toBe(false);
     expect(noteUpdateSchema.parse({ isPinned: true })).toEqual({ isPinned: true });
     expect(noteUpdateSchema.safeParse({ color: 'purple' }).success).toBe(true);
+  });
+});
+
+describe('lead follow-through (Phase L1)', () => {
+  const at = '2026-10-01T04:15:00.000Z';
+  const ok = (schema, v) => schema.safeParse(v).success;
+
+  it('an outcome belongs to a contact, and a close needs the outcome that closed it', () => {
+    expect(ok(leadActivitySchema, { type: 'call', summary: 'x', outcome: 'no_answer' })).toBe(true);
+    expect(ok(leadActivitySchema, { type: 'note', summary: 'x', outcome: 'no_answer' })).toBe(false);
+    expect(ok(leadActivitySchema, { type: 'call', summary: 'x', close: { lostCategory: 'PRICE' } })).toBe(false);
+    expect(ok(leadActivitySchema, { type: 'call', summary: 'x', outcome: 'not_interested', close: { lostCategory: 'PRICE' } })).toBe(true);
+  });
+
+  it('never both a next action and a close; Other needs its reason', () => {
+    const both = { type: 'call', summary: 'x', outcome: 'wrong_number', nextAction: { at, type: 'CALL' }, close: { lostCategory: 'UNREACHABLE' } };
+    expect(ok(leadActivitySchema, both)).toBe(false);
+    expect(ok(leadActivitySchema, { type: 'call', summary: 'x', outcome: 'not_interested', close: { lostCategory: 'OTHER' } })).toBe(false);
+    expect(ok(leadActivitySchema, { type: 'call', summary: 'x', outcome: 'not_interested', close: { lostCategory: 'OTHER', lostReason: 'Moving abroad' } })).toBe(true);
+  });
+
+  it('LOST needs a category', () => {
+    expect(ok(leadStatusSchema, { status: 'LOST', lostReason: 'Too pricey' })).toBe(false);
+    expect(ok(leadStatusSchema, { status: 'LOST', lostCategory: 'PRICE' })).toBe(true);
+    expect(ok(leadStatusSchema, { status: 'CONTACTED' })).toBe(true);
+  });
+
+  it('a next action is cleared with null, and a time needs a type', () => {
+    expect(leadNextActionSchema.parse({ at: null })).toEqual({ at: null });
+    expect(ok(leadNextActionSchema, { at })).toBe(false);
+    expect(leadNextActionSchema.parse({ at, type: 'VISIT' }).at).toBeInstanceOf(Date);
+  });
+
+  it('qualification takes only what it knows', () => {
+    expect(ok(leadQualification, { propertyType: 'house', floors: 3, budgetBand: '1l_5l', decisionMaker: 'owner_abroad' })).toBe(true);
+    expect(ok(leadQualification, { budgetBand: 'lots' })).toBe(false);
+    expect(ok(leadQualification, { colour: 'blue' })).toBe(false);
   });
 });

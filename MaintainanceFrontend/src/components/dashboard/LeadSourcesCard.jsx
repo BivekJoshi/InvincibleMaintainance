@@ -26,6 +26,9 @@ export function LeadSourcesCard({ sources, className }) {
       title="Where enquiries come from"
       subtitle="Last 30 days, by channel"
       icon={Megaphone}
+      // Phase I: the full report, with a date range and CSV.
+      to="/admin/reports/sales?report=lead-sources"
+      linkLabel="Open the report"
       className={className}
       aside={<span className="mr-2 hidden gap-3 md:flex"><LegendKey shape="box" color={WON} label="Won" /><LegendKey shape="box" color={REST} label="Not won" /></span>}
       table={(

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { stripCosts } from '../utils/moneyWall.js';
 import { prisma } from '../lib/prisma.js';
 import { notFound } from '../utils/AppError.js';
 import { meta, parseListQuery } from '../utils/pagination.js';
@@ -76,11 +77,19 @@ const toEntry = (row) => ({
 });
 
 /**
+ * Models whose trail carries cost (L-D4): without costs:read, their before/after/changes lose the cost
+ * keys, so an audit snapshot never shows what the live record hides. (A material's purchase rate stays in
+ * the materials trail — the dispatcher who keeps stock records it.)
+ */
+const COST_WALLED_MODELS = new Set(['RateCardItem', 'Trade', 'Quotation', 'QuotationItem']);
+
+/**
  * @param {string} model  a Prisma model name ('Lead', 'Faq', 'RateCardItem')
  * @param {string} id
  * @param {{ page?: number, limit?: number }} query
+ * @param {{ role?: string }} [ctx]  the caller, for the cost wall
  */
-export async function recordHistory(model, id, query = {}) {
+export async function recordHistory(model, id, query = {}, ctx) {
   if (!MODELS.has(model)) throw new Error(`No model ${model}`);
   // A deleted record's history stays readable: it is the record of why it went. A purged
   // one has no row, and answers 404 like an id that never existed.
@@ -105,5 +114,6 @@ export async function recordHistory(model, id, query = {}) {
     }),
     prisma.auditLog.count({ where }),
   ]);
-  return { items: rows.map(toEntry), meta: meta({ page, limit, total }) };
+  const entries = rows.map(toEntry);
+  return { items: COST_WALLED_MODELS.has(model) ? stripCosts(entries, ctx) : entries, meta: meta({ page, limit, total }) };
 }

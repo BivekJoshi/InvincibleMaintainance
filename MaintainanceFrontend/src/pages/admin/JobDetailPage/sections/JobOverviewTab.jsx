@@ -193,7 +193,13 @@ export function JobOverviewTab({ job, can }) {
             </div>
           ) : null}
           {job.warranty ? (
-            <p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" aria-hidden /> Warranty until {formatDate(job.warranty.endsAt)}</p>
+            can('warranties:read') && job.warranty.id ? (
+              <Link to={`/admin/warranties/${job.warranty.id}`} className="inline-flex items-center gap-2 hover:underline">
+                <ShieldCheck className="h-4 w-4 text-primary" aria-hidden /> Warranty until {formatDate(job.warranty.endsAt)}
+              </Link>
+            ) : (
+              <p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" aria-hidden /> Warranty until {formatDate(job.warranty.endsAt)}</p>
+            )
           ) : null}
         </CardContent>
       </Card>

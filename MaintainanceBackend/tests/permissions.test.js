@@ -95,3 +95,43 @@ describe('role capabilities', () => {
     expect(Object.keys(PERMISSIONS).sort()).toEqual([...ROLES].sort());
   });
 });
+
+describe('the money wall capabilities (Phase L2, L-D4)', () => {
+  const holders = (cap) => Object.keys(PERMISSIONS).filter((role) => can(role, cap)).sort();
+
+  it('cost and margin: MANAGER and ADMIN only — never ACCOUNTANT, SALES or the field', () => {
+    expect(holders('costs:read')).toEqual(['ADMIN', 'MANAGER']);
+  });
+
+  it('the rate library: SALES, MANAGER and ACCOUNTANT read it; only MANAGER (and ADMIN) write it', () => {
+    expect(holders('rates:read')).toEqual(['ACCOUNTANT', 'ADMIN', 'MANAGER', 'SALES']);
+    expect(holders('rates:write')).toEqual(['ADMIN', 'MANAGER']);
+  });
+
+  it('the advance override is a manager\'s', () => {
+    expect(holders('jobs:advance-override')).toEqual(['ADMIN', 'MANAGER']);
+  });
+
+  it('the field roles hold none of them (D1)', () => {
+    for (const role of ['TECHNICIAN', 'SURVEYOR']) {
+      for (const cap of ['costs:read', 'rates:read', 'rates:write', 'jobs:advance-override']) expect(can(role, cap), `${role} ${cap}`).toBe(false);
+    }
+  });
+});
+
+describe('aftercare capabilities (Phase I) keep the access the role lists gave', () => {
+  const holders = (cap) => Object.keys(PERMISSIONS).filter((role) => can(role, cap)).sort();
+
+  it('warranties, AMC and service reminders: SALES, MANAGER and DISPATCHER read; DISPATCHER (and ADMIN) write', () => {
+    for (const domain of ['warranties', 'amc', 'reminders']) {
+      expect(holders(`${domain}:read`), `${domain}:read`).toEqual(['ADMIN', 'DISPATCHER', 'MANAGER', 'SALES']);
+      expect(holders(`${domain}:write`), `${domain}:write`).toEqual(['ADMIN', 'DISPATCHER']);
+    }
+  });
+
+  it('ACCOUNTANT and the field roles stay out of aftercare', () => {
+    for (const role of ['ACCOUNTANT', 'EDITOR', 'TECHNICIAN', 'SURVEYOR']) {
+      for (const cap of ['warranties:read', 'amc:read', 'reminders:read']) expect(can(role, cap), `${role} ${cap}`).toBe(false);
+    }
+  });
+});

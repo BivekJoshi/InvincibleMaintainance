@@ -156,6 +156,11 @@ async function main() {
       },
       update: { excerpt: rest.excerpt, body: rest.body },
     });
+    // Phase L6: the job type an accepted quotation becomes — set once; an owner's later choice is kept.
+    const jobType = D.SERVICE_JOB_TYPES[s.name];
+    if (jobType && services[slug].jobType === 'REPAIR') {
+      services[slug] = await prisma.service.update({ where: { id: services[slug].id }, data: { jobType } });
+    }
   }
   console.log(`  services: ${Object.keys(services).length}`);
 
@@ -257,6 +262,45 @@ async function main() {
   }
   console.log(`  materials: ${D.MATERIALS.length} with opening stock`);
 
+  // ── Phase L2: pack sizes on an older database, trades, and demo recipes (only on items with none)
+  for (const m of D.MATERIALS.filter((x) => x.packSize)) {
+    await prisma.material.updateMany({ where: { code: m.code, packSize: null }, data: { packSize: m.packSize, packLabel: m.packLabel } });
+  }
+  const trades = {};
+  for (const t of D.TRADES) {
+    trades[t.code] = await prisma.trade.upsert({
+      where: { code: t.code }, create: { ...t, dayWage: toPaisa(t.dayWage) }, update: {},
+    });
+  }
+  let recipes = 0;
+  for (const [code, recipe] of Object.entries(D.RECIPES)) {
+    const item = await prisma.rateCardItem.findUnique({ where: { code }, include: { _count: { select: { components: true } } } });
+    if (!item || item._count.components) continue;
+    await prisma.rateCardItem.update({
+      where: { code },
+      data: {
+        rateMode: recipe.rateMode,
+        recipeQty: recipe.recipeQty,
+        components: {
+          create: recipe.components.map(([kind, ref, qty, wastagePct = 0, cost], sortOrder) => {
+            const material = kind === 'MATERIAL' ? materials[ref] : null;
+            const trade = kind === 'LABOUR' ? trades[ref] : null;
+            return {
+              kind, qty, wastagePct, sortOrder,
+              materialId: material?.id ?? null,
+              tradeId: trade?.id ?? null,
+              description: material || trade ? null : ref,
+              unit: material?.unit ?? (trade ? 'day' : 'lump'),
+              cost: cost != null ? toPaisa(cost) : null,
+            };
+          }),
+        },
+      },
+    });
+    recipes += 1;
+  }
+  console.log(`  trades: ${D.TRADES.length} · recipes: ${recipes} new`);
+
   // ── job templates
   for (const t of D.JOB_TEMPLATES) {
     const { service, ...rest } = t;
@@ -265,6 +309,15 @@ async function main() {
       await prisma.jobTemplate.create({ data: { ...rest, serviceId: service ? services[service]?.id ?? null : null } });
     }
   }
+
+  // ── site checklists (Phase L5)
+  for (const t of D.INSPECTION_TEMPLATES) {
+    const { service, ...rest } = t;
+    if (!(await prisma.inspectionTemplate.findFirst({ where: { name: t.name } }))) {
+      await prisma.inspectionTemplate.create({ data: { ...rest, serviceId: service ? services[service]?.id ?? null : null } });
+    }
+  }
+  console.log(`  inspection templates: ${D.INSPECTION_TEMPLATES.length}`);
 
   // ═══ demo pipeline: leads → customer → quotation → job → invoice → warranty → AMC
 
@@ -600,6 +653,557 @@ async function main() {
       });
     }
     console.log(`  quotation approval demo: ${DEMO.map((d) => d.status).join(', ')}`);
+  }
+
+  // ═══ follow-through demo (Phase L1): a lead in every state the leads list, the board and the
+  //     lost report show — due today, overdue, nothing booked, a quote gone quiet, and losses.
+  //     Guarded on its own marker lead, so it tops up an older database.
+
+  if (!(await prisma.lead.findFirst({ where: { phone: '9841600001' } }))) {
+    const seepage = services['seepage-and-damp-treatment'];
+    const hours = (n) => new Date(Date.now() + n * 3600_000);
+    const base = { source: 'call', assignedToId: users.SALES.id, serviceId: seepage?.id ?? null, slaDueAt: days(-6), firstResponseAt: days(-6) };
+    const FOLLOW = [
+      {
+        name: 'Suman Thapa', phone: '9841600001', area: 'Kirtipur', status: 'CONTACTED', createdAt: days(-2), stageEnteredAt: days(-2),
+        contactAttempts: 2, nextActionAt: hours(3), nextActionType: 'CALL', nextActionNote: 'Asked us to call after 2 pm — decides with his brother',
+        qualification: { propertyType: 'house', floors: 3, buildingAgeYears: 22, budgetBand: '1l_5l', decisionMaker: 'family' },
+        activity: { outcome: 'call_back', summary: 'Interested; call back this afternoon once his brother is home' },
+      },
+      {
+        name: 'Pramila Shakya', phone: '9841600002', area: 'Patan', status: 'CONTACTED', createdAt: days(-6), stageEnteredAt: days(-5),
+        contactAttempts: 1, nextActionAt: days(-2), nextActionType: 'FOLLOW_UP', nextActionNote: 'Comparing three companies on price',
+        qualification: { propertyType: 'apartment', budgetBand: 'under_25k', decisionMaker: 'self' },
+        activity: { outcome: 'price_shopping', summary: 'Getting three quotes; wants a price per sq.ft over the phone' },
+      },
+      {
+        name: 'Deepak Maharjan', phone: '9841600003', area: 'Bhaktapur', status: 'CONTACTED', createdAt: days(-3), stageEnteredAt: days(-3),
+        contactAttempts: 1, activity: { outcome: null, summary: 'Spoke briefly, will think about it' },
+      },
+    ];
+    for (const { activity, ...d } of FOLLOW) {
+      const lead = await prisma.lead.create({ data: { ...base, ...d } });
+      await prisma.leadActivity.create({
+        data: { leadId: lead.id, userId: users.SALES.id, type: 'call', summary: activity.summary, outcome: activity.outcome, createdAt: d.stageEnteredAt },
+      });
+    }
+
+    // Sent five days ago and not answered — the stale sweep reminds its owner.
+    const quiet = await prisma.customer.create({
+      data: {
+        name: 'Rajendra Basnet', phone: '9841600004', preferredLocale: 'en',
+        sites: { create: { label: 'Home', address: 'Tokha, Kathmandu', area: 'Tokha', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    const quietLead = await prisma.lead.create({
+      data: {
+        ...base, name: quiet.name, phone: quiet.phone, area: 'Tokha', status: 'QUOTED', customerId: quiet.id, createdAt: days(-9),
+        stageEnteredAt: days(-5), contactAttempts: 3, nextActionAt: days(-2), nextActionType: 'FOLLOW_UP',
+      },
+    });
+    const totals = documentTotals([{ description: 'Terrace membrane waterproofing', unit: 'sq.ft', qty: 480, rate: toPaisa(275), sortOrder: 0 }], { vatApplied: true, vatRate: 13 });
+    await prisma.quotation.create({
+      data: {
+        number: await prisma.$transaction((tx) => nextNumber(tx, 'QT')), status: 'SENT', customerId: quiet.id, siteId: quiet.sites[0].id,
+        leadId: quietLead.id, validUntil: days(10), subtotal: totals.subtotal, discount: totals.discount, vatApplied: true, vatRate: 13,
+        vatAmount: totals.vatAmount, total: totals.total, createdById: users.SALES.id, submittedAt: days(-6), submittedById: users.SALES.id,
+        approvedById: users.MANAGER.id, approvedAt: days(-6), sentAt: days(-5), publicToken: token(),
+        items: { create: totals.lines },
+      },
+    });
+
+    // Losses at different stages, so the lost report has something to say.
+    const LOST = [
+      { name: 'Kamal Joshi', phone: '9841600005', lostCategory: 'PRICE', lostAtStage: 'QUOTED', lostReason: 'Our quote was 30% over what he expected', closedAt: days(-3) },
+      { name: 'Sarita Poudel', phone: '9841600006', lostCategory: 'COMPETITOR', lostAtStage: 'QUOTED', lostReason: 'Went with the company her neighbour used', closedAt: days(-6) },
+      { name: 'Binod Tamang', phone: '9841600007', lostCategory: 'OWN_LABOUR', lostAtStage: 'CONTACTED', lostReason: 'His own mistri will do the plaster', closedAt: days(-8) },
+      { name: 'Asha Rana', phone: '9841600008', lostCategory: 'OUT_OF_AREA', lostAtStage: 'NEW', lostReason: 'Site is in Pokhara', closedAt: days(-1) },
+    ];
+    for (const d of LOST) {
+      await prisma.lead.create({ data: { ...base, ...d, status: 'LOST', createdAt: days(-12), stageEnteredAt: d.closedAt } });
+    }
+    console.log(`  follow-through demo: ${FOLLOW.length} leads to work, 1 quiet quotation, ${LOST.length} lost leads`);
+  }
+
+  // ═══ BOQ demo (Phase L3): one quotation as a real bill of quantities — three sections, measured rows,
+  //     a NOTE, an optional row and rows priced from the rate library with their recipes frozen — so the
+  //     builder, the take-off and the labour tab have something to show. Built through the same service
+  //     as the screens. Guarded on its own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841700001' } }))) {
+    const { createQuotation } = await import('../src/services/quotation.service.js');
+    const card = async (code) => prisma.rateCardItem.findUnique({ where: { code } });
+    const [plaster, paint, damp, tiles] = await Promise.all(['PLASTER-INT', 'PAINT-INT', 'SEEP-CHEM', 'TILE-FLOOR'].map(card));
+    const cement = await prisma.material.findUnique({ where: { code: 'CEM-OPC' } });
+    const rupees = (paisa) => paisa / 100;
+    const boqCustomer = await prisma.customer.create({
+      data: {
+        name: 'Prakash Joshi', phone: '9841700001', preferredLocale: 'en',
+        sites: { create: { label: 'Home', address: 'Bhaisepati, Lalitpur', area: 'Bhaisepati', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    const q = await createQuotation({
+      customerId: boqCustomer.id,
+      siteId: boqCustomer.sites[0].id,
+      internalNote: 'Demo BOQ (Phase L3): ground-floor bedroom and kitchen after a seepage repair.',
+      items: [
+        { rowType: 'SECTION', description: 'Damp treatment' },
+        {
+          rateCardItemId: damp.id, kind: 'SERVICE', description: damp.name, unit: damp.unit, rate: rupees(damp.rate),
+          spec: 'Chip loose plaster to 1 m height, apply crystalline slurry in two coats, cure 72 hours.',
+          measurements: [
+            { area: 'Bedroom', description: 'North and west walls to 1 m', nos: 2, l: 12, h: 3.28 },
+            { area: 'Kitchen', description: 'Back wall to 1 m', l: 10, h: 3.28 },
+          ],
+        },
+        { rowType: 'NOTE', description: 'Walls must dry for 7 days before plaster and paint.' },
+        { rowType: 'SECTION', description: 'Plaster and paint' },
+        {
+          rateCardItemId: plaster.id, kind: 'SERVICE', description: plaster.name, unit: plaster.unit, rate: rupees(plaster.rate),
+          measurements: [
+            { area: 'Bedroom', description: 'Walls', nos: 2, l: 12, h: 9 },
+            { area: 'Bedroom', description: 'Door', l: 3, h: 7, deduct: true },
+          ],
+        },
+        { rateCardItemId: paint.id, kind: 'SERVICE', description: paint.name, unit: paint.unit, rate: rupees(paint.rate), qty: 820 },
+        { rowType: 'SECTION', description: 'Flooring' },
+        { rateCardItemId: tiles.id, kind: 'SERVICE', description: tiles.name, unit: tiles.unit, rate: rupees(tiles.rate), qty: 180, isOptional: true },
+        { kind: 'MATERIAL', materialId: cement.id, description: cement.name, unit: cement.unit, qty: 6, wastagePct: 5, rate: rupees(cement.sellRate) },
+      ],
+    }, users.SALES.id);
+    console.log(`  BOQ demo: ${q.number} — ${q.items.length} rows in ${q.boq.sections.length} sections`);
+  }
+
+  // ═══ Phase L4: the terms library, the BOQ demo's contract, and a quotation below the minimum margin
+  //     waiting for approval — so the gate shows. Each part tops up an older database.
+
+  if (!(await prisma.quotationTerms.count())) {
+    const standard = D.SETTINGS.find((st) => st.key === 'finance.quotationTerms')?.value ?? '';
+    await prisma.quotationTerms.createMany({
+      data: [
+        {
+          title: 'Standard terms', body: standard, isDefault: true, sortOrder: 0,
+          bodyNe: '१. यो दरभाउ जारी मितिदेखि १५ दिनसम्म मान्य हुनेछ।\n२. काम सुरु गर्नुअघि ५०% अग्रिम भुक्तानी आवश्यक छ।\n'
+            + '३. उल्लेख नभएसम्म दरमा भ्याट समावेश छैन।\n४. कामको एक महिनाको वारेन्टी हुनेछ।',
+        },
+        {
+          title: 'Waterproofing — extended warranty', sortOrder: 1,
+          body: 'Waterproofing carries a 3-year warranty against seepage through the treated area, provided the surface is not '
+            + 'drilled or re-plastered by others. The warranty does not cover structural cracks that open after the work.',
+        },
+      ],
+    });
+    console.log('  terms library: 2 (the standard one is the default)');
+  }
+
+  const boqDemo = await prisma.quotation.findFirst({
+    where: { customer: { phone: '9841700001' }, deletedAt: null }, include: { stages: true },
+  });
+  // Keyed on the duration, so a fresh database (where the demo was just made with the default schedule) and
+  // an older one end up the same.
+  if (boqDemo && boqDemo.estimatedDays == null) {
+    const standard = await prisma.quotationTerms.findFirst({ where: { isDefault: true } });
+    await prisma.quotation.update({
+      where: { id: boqDemo.id },
+      data: {
+        estimatedDays: 6,
+        exclusions: 'Water and electricity during the work are the owner\'s. Moving heavy furniture is not included.',
+        terms: standard?.body ?? boqDemo.terms ?? null,
+        stages: {
+          deleteMany: {},
+          create: [
+            { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT', sortOrder: 0 },
+            { label: 'Plaster done', basisPoints: 4000, trigger: 'MILESTONE', sortOrder: 1 },
+            { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION', sortOrder: 2 },
+          ],
+        },
+      },
+    });
+    console.log(`  BOQ demo contract: ${boqDemo.number} — 50/40/10, 6 days`);
+  }
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841700002' } }))) {
+    const { createQuotation } = await import('../src/services/quotation.service.js');
+    const crystalline = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+    const lowCustomer = await prisma.customer.create({
+      data: {
+        name: 'Sunil Maharjan', phone: '9841700002', preferredLocale: 'ne',
+        sites: { create: { label: 'Home', address: 'Kirtipur, Kathmandu', area: 'Kirtipur', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    // Sold at Rs 480 against a purchase rate of Rs 450: a 6% margin, under the 15% minimum.
+    const low = await createQuotation({
+      customerId: lowCustomer.id,
+      siteId: lowCustomer.sites[0].id,
+      internalNote: 'Demo (Phase L4): priced under the minimum margin — approving it asks for the acknowledgement.',
+      items: [
+        { rowType: 'SECTION', description: 'Damp treatment' },
+        { kind: 'MATERIAL', materialId: crystalline.id, description: crystalline.name, unit: crystalline.unit, qty: 40, rate: 480 },
+      ],
+    }, users.SALES.id);
+    await prisma.quotation.update({
+      where: { id: low.id }, data: { status: 'PENDING_APPROVAL', submittedAt: new Date(), submittedById: users.SALES.id },
+    });
+    console.log(`  low-margin demo: ${low.number} waiting for approval`);
+  }
+
+  // ═══ site-visit demo (Phase L5): a visit the customer confirmed, one they have not (the owner is abroad
+  //     and a relative opens the door), and a submitted survey with the damp checklist answered — a flagged
+  //     reading with its photo, two rooms measured with the door and window deducted, photos by room and a
+  //     paper sketch. Guarded on its own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841800001' } }))) {
+    const { uploadFiles } = await import('../src/services/media.service.js');
+    const { dayjs } = await import('../src/utils/dates.js');
+    const { default: sharp } = await import('sharp');
+    const seepage = services['seepage-and-damp-treatment'];
+    const damp = await prisma.inspectionTemplate.findFirst({ where: { name: D.INSPECTION_TEMPLATES[0].name } });
+    const [seepChem, labourSkill] = await Promise.all(['SEEP-CHEM', 'LABOUR-SKILL'].map((code) => prisma.rateCardItem.findUnique({ where: { code } })));
+    /** A Kathmandu wall-clock time, `n` days from today. */
+    const ktmAt = (n, hour) => dayjs().tz('Asia/Kathmandu').add(n, 'day').startOf('day').hour(hour).toDate();
+    /** A stand-in photograph: a coloured frame with what it shows written on it. */
+    const picture = async (label, background) => {
+      const svg = `<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg"><text x="40" y="310" font-size="42" fill="#ffffff" font-family="sans-serif">${label}</text></svg>`;
+      const buffer = await sharp({ create: { width: 800, height: 600, channels: 3, background } })
+        .composite([{ input: Buffer.from(svg) }]).jpeg().toBuffer();
+      const [media] = await uploadFiles([{ buffer, originalname: `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`, mimetype: 'image/jpeg' }], { uploadedBy: users.SURVEYOR.id });
+      return media;
+    };
+
+    const book = async ({ customer, locale = 'en', site, lead, day, from, to, answer, status = 'ASSIGNED' }) => {
+      const row = await prisma.customer.create({
+        data: { ...customer, preferredLocale: locale, sites: { create: { label: 'Home', isPrimary: true, ...site } } },
+        include: { sites: true },
+      });
+      const leadRow = await prisma.lead.create({
+        data: {
+          name: customer.name, phone: customer.phone, address: site.address, area: site.area, serviceId: seepage?.id ?? null,
+          source: 'call', status: 'INSPECTION_SCHEDULED', assignedToId: users.SALES.id, customerId: row.id, preferredLocale: locale,
+          createdAt: days(-3), slaDueAt: days(-3), firstResponseAt: days(-3), stageEnteredAt: days(-2),
+          nextActionAt: ktmAt(day, from), nextActionType: 'VISIT', ...lead,
+        },
+      });
+      const job = await prisma.job.create({
+        data: {
+          number: await prisma.$transaction((tx) => nextNumber(tx, 'JOB')), type: 'INSPECTION', status,
+          customerId: row.id, siteId: row.sites[0].id, leadId: leadRow.id, isBillable: false, priority: 'HIGH',
+          title: 'Free inspection — Seepage & Damp Treatment', description: lead.message ?? null,
+          scheduledStart: ktmAt(day, from), scheduledEnd: ktmAt(day, to), visitToken: token(),
+          ...(answer === 'CONFIRMED' ? { visitAnswer: 'CONFIRMED', visitAnsweredAt: days(-1), customerConfirmedAt: days(-1), visitAnswerIp: '127.0.0.1' } : {}),
+          assignments: { create: { technicianId: surveyor.id, isLead: true } },
+        },
+      });
+      return { customer: row, site: row.sites[0], lead: leadRow, job };
+    };
+    const surveyFor = async ({ customer, site, lead, job }, data = {}) => prisma.siteSurvey.create({
+      data: {
+        number: await prisma.$transaction((tx) => nextNumber(tx, 'SRV')), jobId: job.id, leadId: lead.id,
+        customerId: customer.id, siteId: site.id, serviceId: seepage?.id ?? null, surveyorId: surveyor.id,
+        urgency: 'HIGH', problemSummary: lead.message ?? null, ...data,
+      },
+    });
+
+    // Confirmed, tomorrow 10–12. The customer sent two photos with the enquiry.
+    const confirmed = await book({
+      customer: { name: 'Ramesh Shrestha', phone: '9841800001', email: 'ramesh.shrestha@example.com' },
+      site: { address: 'Sanepa-2, Lalitpur', area: 'Sanepa', landmark: 'Behind Sanepa chowk, the house with the green gate' },
+      lead: { message: 'Bedroom and kitchen walls are wet up to knee height, paint bubbling.', qualification: { propertyType: 'house', floors: 2, buildingAgeYears: 18, decisionMaker: 'self' } },
+      day: 1, from: 10, to: 12, answer: 'CONFIRMED',
+    });
+    for (const [i, [label, colour]] of [['Bedroom wall, paint bubbling', '#8a6d4b'], ['Kitchen skirting, white salt', '#6b7b8c']].entries()) {
+      const media = await picture(label, colour);
+      await prisma.leadPhoto.create({ data: { leadId: confirmed.lead.id, mediaId: media.id, caption: label, sortOrder: i } });
+    }
+    await surveyFor(confirmed);
+
+    // Not answered yet, the day after tomorrow 14–16. The owner is abroad; her brother-in-law opens the door.
+    const pending = await book({
+      customer: { name: 'गीता थापा', phone: '9841800002' }, locale: 'ne',
+      site: { address: 'Budhanilkantha-5, Kathmandu', area: 'Budhanilkantha', landmark: 'Narayanthan temple, second lane on the left', contactName: 'हरि थापा (देवर)', contactPhone: '9851800002' },
+      lead: { message: 'छतबाट पानी चुहिन्छ, माथिल्लो तलाको कोठामा दाग।', qualification: { propertyType: 'house', floors: 3, decisionMaker: 'owner_abroad' } },
+      day: 2, from: 14, to: 16,
+    });
+    await surveyFor(pending);
+
+    // Surveyed yesterday and submitted: the checklist answered, two rooms measured, photos by room.
+    const done = await book({
+      customer: { name: 'Laxmi Karki', phone: '9841800003' },
+      site: { address: 'Sitapaila-3, Kathmandu', area: 'Sitapaila', landmark: 'Opposite the ward office', lat: 27.7218, lng: 85.2787 },
+      lead: { message: 'Ground floor walls always damp, worse in the monsoon.', status: 'INSPECTION_SCHEDULED' },
+      day: -1, from: 11, to: 13, answer: 'CONFIRMED', status: 'COMPLETED',
+    });
+    await prisma.job.update({ where: { id: done.job.id }, data: { actualStart: ktmAt(-1, 11), actualEnd: ktmAt(-1, 12), completionNote: 'Site survey submitted' } });
+    const shots = {
+      meter: await picture('Bedroom - meter reads 26%', '#3f6e8c'),
+      salt: await picture('Kitchen - heavy salt bloom', '#7c8a6a'),
+      plinth: await picture('Outside - no DPC at plinth', '#6d5a4b'),
+      sketch: await picture('Sketch - ground floor plan', '#9a9a9a'),
+    };
+    await prisma.jobPhoto.createMany({
+      data: [
+        { jobId: done.job.id, mediaId: shots.meter.id, kind: 'ISSUE', caption: 'Meter at 300 mm, north wall', area: 'Bedroom' },
+        { jobId: done.job.id, mediaId: shots.salt.id, kind: 'ISSUE', caption: 'Salt behind the gas table', area: 'Kitchen' },
+        { jobId: done.job.id, mediaId: shots.plinth.id, kind: 'ISSUE', caption: 'Plinth, north side', area: 'Outside' },
+        { jobId: done.job.id, mediaId: shots.sketch.id, kind: 'SKETCH', caption: 'Ground floor with sizes', area: 'Ground floor' },
+      ],
+    });
+    const bedroom = [
+      { area: 'Bedroom', description: 'North and east walls to 1 m', nos: 2, l: 12.5, h: 3.25 },
+      { area: 'Bedroom', description: 'Door', nos: 1, l: 3, h: 3.25, deduct: true },
+    ];
+    const kitchen = [
+      { area: 'Kitchen', description: 'Back wall to 1 m', nos: 1, l: 10, h: 3.25 },
+      { area: 'Kitchen', description: 'Window', nos: 1, l: 4, h: 1, deduct: true },
+    ];
+    const { measurementQty } = await import('../src/utils/quantity.js');
+    const flagged = await surveyFor(done, {
+      status: 'SUBMITTED', submittedAt: days(-1), submittedById: users.SURVEYOR.id,
+      diagnosis: 'Rising damp: 26 % at 300 mm falling to 12 % at 1 m, heavy salt, no DPC at the plinth.',
+      recommendation: 'Chip to 1 m, crystalline treatment in both rooms, replaster with a waterproof admixture.',
+      estimatedDays: 3,
+      readings: {
+        create: [
+          { questionKey: 'moisture_low', label: 'Moisture 300 mm above the floor', metric: 'moisture', value: 26, unit: '%', flagged: true, mediaId: shots.meter.id, location: 'Bedroom, north wall', sortOrder: 0 },
+          { questionKey: 'moisture_high', label: 'Moisture 1 m above the floor', metric: 'moisture', value: 12, unit: '%', flagged: false, location: 'Bedroom, north wall', sortOrder: 1 },
+          { questionKey: 'salt', label: 'Salt deposits (white bloom)', metric: 'observation', textValue: 'Heavy', flagged: true, mediaId: shots.salt.id, location: 'Kitchen', sortOrder: 2 },
+          { questionKey: 'dpc_visible', label: 'Damp-proof course visible at the plinth?', metric: 'observation', textValue: 'no', flagged: true, sortOrder: 3 },
+          { questionKey: 'water_source', label: 'Likely source of the water', metric: 'observation', textValue: 'Rising damp', sortOrder: 4 },
+          { questionKey: 'wet_room_behind', label: 'Bathroom or kitchen on the other side?', metric: 'observation', textValue: 'no', sortOrder: 5 },
+          { questionKey: 'customer_story', label: 'When it started, and whether it is worse after rain', metric: 'observation', textValue: 'Since they moved in 4 years ago; worst in Shrawan.', sortOrder: 6 },
+        ],
+      },
+      items: {
+        create: [
+          { kind: 'SERVICE', rateCardItemId: seepChem?.id, description: 'Crystalline treatment, bedroom', unit: 'sq.ft', qty: measurementQty(bedroom), measurements: bedroom, sortOrder: 0 },
+          { kind: 'SERVICE', rateCardItemId: seepChem?.id, description: 'Crystalline treatment, kitchen', unit: 'sq.ft', qty: measurementQty(kitchen), measurements: kitchen, sortOrder: 1 },
+          { kind: 'LABOUR', rateCardItemId: labourSkill?.id, description: 'Skilled applicator — chipping and treatment', unit: 'hour', qty: 20, sortOrder: 2 },
+        ],
+      },
+    });
+    console.log(`  site-visit demo: ${confirmed.job.number} confirmed, ${pending.job.number} not yet (ne, caretaker), `
+      + `${flagged.number} submitted with the ${damp ? 'damp' : 'no'} checklist, 2 rooms measured, 4 photos`);
+  }
+
+  // ═══ won → hand-off demo (Phase L6): two BOQ quotations the customers accepted through the real Accept — one
+  //     job waiting for its advance (gated), one whose advance is paid and is ready to schedule. Guarded on its
+  //     own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841910001' } }))) {
+    const { createQuotation, acceptQuotation } = await import('../src/services/quotation.service.js');
+    const { recordPayment } = await import('../src/services/invoice.service.js');
+    const [plaster, paint, damp] = await Promise.all(['PLASTER-INT', 'PAINT-INT', 'SEEP-CHEM'].map((code) => prisma.rateCardItem.findUnique({ where: { code } })));
+    const cement = await prisma.material.findUnique({ where: { code: 'CEM-OPC' } });
+    const renovation = services['house-renovation-and-remodelling'] ?? null;
+    const rupees = (paisa) => paisa / 100;
+    const accepted = async ({ name, phone, area, locale = 'en', paid }) => {
+      const customer = await prisma.customer.create({
+        data: { name, phone, preferredLocale: locale, sites: { create: { label: 'Home', address: `${area}, Lalitpur`, area, isPrimary: true } } },
+        include: { sites: true },
+      });
+      const lead = await prisma.lead.create({
+        data: {
+          name, phone, area, source: 'call', status: 'QUOTED', assignedToId: users.SALES.id, customerId: customer.id,
+          serviceId: renovation?.id ?? null, preferredLocale: locale, firstResponseAt: days(-12), createdAt: days(-12), slaDueAt: days(-12),
+        },
+      });
+      const q = await createQuotation({
+        customerId: customer.id, siteId: customer.sites[0].id, leadId: lead.id, estimatedDays: 8,
+        items: [
+          { rowType: 'SECTION', description: 'Damp treatment' },
+          { rateCardItemId: damp.id, kind: 'SERVICE', description: damp.name, unit: damp.unit, rate: rupees(damp.rate), qty: 180 },
+          { rowType: 'SECTION', description: 'Plaster and paint' },
+          { rateCardItemId: plaster.id, kind: 'SERVICE', description: plaster.name, unit: plaster.unit, rate: rupees(plaster.rate), qty: 420 },
+          { rateCardItemId: paint.id, kind: 'SERVICE', description: paint.name, unit: paint.unit, rate: rupees(paint.rate), qty: 900 },
+          { kind: 'MATERIAL', materialId: cement.id, description: cement.name, unit: cement.unit, qty: 12, rate: rupees(cement.sellRate) },
+        ],
+      }, users.SALES.id);
+      await prisma.quotation.update({
+        where: { id: q.id },
+        data: {
+          status: 'SENT', submittedAt: days(-6), submittedById: users.SALES.id, approvedById: users.MANAGER.id, approvedAt: days(-6),
+          sentAt: days(-5), publicToken: token(), validUntil: days(10),
+        },
+      });
+      await acceptQuotation(q.id, { ip: '127.0.0.1', userAgent: 'seed' });
+      const job = await prisma.job.findFirst({ where: { quotationId: q.id }, include: { advanceInvoice: true } });
+      if (paid && job.advanceInvoice) {
+        await recordPayment(job.advanceInvoice.id, { amount: rupees(job.advanceInvoice.total), method: 'FONEPAY', reference: `FP-${phone.slice(-5)}` }, users.ACCOUNTANT.id);
+      }
+      return { q, job };
+    };
+    const waiting = await accepted({ name: 'Rabin Maharjan', phone: '9841910001', area: 'Jawalakhel' });
+    const ready = await accepted({ name: 'Sabina Shakya', phone: '9841910002', area: 'Pulchowk', locale: 'ne', paid: true });
+    console.log(`  hand-off demo: ${waiting.job.number} waits for its advance ${waiting.job.advanceInvoice?.number}; `
+      + `${ready.job.number}'s advance is paid — ready to schedule`);
+  }
+
+  // ═══ execution demo (Phase L7): the hand-off demo's paid job, on site — three diary days (one lost to rain),
+  //     progress on its lines, an over-plan issue, a purchase list ORDERED and an accepted variation with an
+  //     omission. Guarded on the job having a diary.
+
+  const running = await prisma.job.findFirst({
+    where: { customer: { phone: '9841910002' }, deletedAt: null },
+    include: { lines: { orderBy: { sortOrder: 'asc' } }, requirements: true, diaries: { select: { id: true } } },
+  });
+  if (running && !running.diaries.length) {
+    const jobs = await import('../src/services/job.service.js');
+    const { saveDiary } = await import('../src/services/diary.service.js');
+    const { purchaseLists, orderList } = await import('../src/services/purchase.service.js');
+    const { createQuotation, acceptQuotation } = await import('../src/services/quotation.service.js');
+    const { local: ktm } = await import('../src/utils/dates.js');
+    const hari = await prisma.technician.findFirst({ where: { user: { email: 'hari@gharjatan.com.np' } } });
+    await jobs.scheduleJob(running.id, { scheduledStart: days(-2), technicianIds: [hari.id], notifyCustomer: false }, users.DISPATCHER.id);
+    await jobs.changeStatus(running.id, { status: 'EN_ROUTE' }, hari.userId);
+    await jobs.changeStatus(running.id, { status: 'IN_PROGRESS' }, hari.userId);
+
+    const trades = await prisma.trade.findMany({ where: { deletedAt: null }, orderBy: { sortOrder: 'asc' }, take: 2 });
+    const cement = await prisma.material.findUnique({ where: { code: 'CEM-OPC' } });
+    const day = (n) => ktm(days(-n), 'YYYY-MM-DD');
+    const [l1, l2, l3] = running.lines;
+    const crew = (a, b) => trades.map((t, i) => ({ tradeId: t.id, count: i ? b : a }));
+    await saveDiary(running.id, day(2), {
+      weather: 'SUNNY', headcount: crew(2, 3), progress: [{ jobLineId: l1.id, progressPct: 30 }], photoMediaIds: [],
+      received: [{ materialId: cement.id, description: cement.name, qty: 20, unit: cement.unit, challanNo: 'CH-2083-118' }],
+      issues: 'Chipped the north wall to 1 m; salt deeper than the survey said.', lostHours: 0,
+    }, hari.userId);
+    await saveDiary(running.id, day(1), {
+      weather: 'HEAVY_RAIN', headcount: crew(2, 1), progress: [{ jobLineId: l1.id, progressPct: 45 }], photoMediaIds: [], received: [],
+      issues: 'Heavy rain from 11 am; plaster could not cure outside.', lostHours: 5, lostReason: 'RAIN',
+    }, hari.userId);
+    await saveDiary(running.id, day(0), {
+      weather: 'CLOUDY', headcount: crew(3, 3),
+      progress: [{ jobLineId: l1.id, progressPct: 80 }, ...(l2 ? [{ jobLineId: l2.id, progressPct: 25 }] : []), ...(l3 ? [{ jobLineId: l3.id, progressPct: 10 }] : [])],
+      photoMediaIds: [], received: [], lostHours: 0,
+    }, hari.userId);
+
+    // More cement than the plan: the office sees OVER_PLAN.
+    const cementPlan = running.requirements.filter((r) => r.materialId === cement.id).reduce((a, r) => a + r.qty, 0);
+    await jobs.addMaterial(running.id, { materialId: cement.id, qty: Math.ceil(cementPlan) + 3, isBillable: false }, users.DISPATCHER.id);
+
+    // A purchase list for what is still short, ordered from the first supplier.
+    const supplier = await prisma.supplier.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } });
+    const shortItems = running.requirements.filter((r) => r.kind === 'MATERIAL' && r.materialId !== cement.id).slice(0, 2)
+      .map((r) => ({ materialId: r.materialId, qty: Math.ceil(r.qty), packs: r.packs ?? null }));
+    if (shortItems.length) {
+      const list = await purchaseLists.create({ jobId: running.id, supplierId: supplier?.id ?? null, note: 'For the second week', items: shortItems }, { userId: users.DISPATCHER.id });
+      await orderList(list.id);
+    }
+
+    // The customer asked for the store room too and dropped the plaster on one wall: a variation, accepted.
+    const [plaster, damp] = await Promise.all(['PLASTER-INT', 'SEEP-CHEM'].map((code) => prisma.rateCardItem.findUnique({ where: { code } })));
+    const rupees = (paisa) => paisa / 100;
+    const vo = await createQuotation({
+      jobId: running.id,
+      items: [
+        { rowType: 'SECTION', description: 'Store room' },
+        { rateCardItemId: damp.id, kind: 'SERVICE', description: 'Damp treatment, store room wall', unit: damp.unit, rate: rupees(damp.rate), qty: 40 },
+        { rateCardItemId: plaster.id, kind: 'SERVICE', description: 'Omit: plaster on the east wall (kept as is)', unit: plaster.unit, rate: rupees(plaster.rate), qty: -60 },
+      ],
+    }, users.SALES.id);
+    await prisma.quotation.update({
+      where: { id: vo.id },
+      data: {
+        status: 'SENT', submittedAt: days(-1), submittedById: users.SALES.id, approvedById: users.MANAGER.id, approvedAt: days(-1),
+        sentAt: days(-1), publicToken: token(), validUntil: days(10),
+      },
+    });
+    await acceptQuotation(vo.id, { ip: '127.0.0.1', userAgent: 'seed' });
+    console.log(`  execution demo: ${running.number} on site — 3 diary days (1 rain), over-plan cement, a purchase list ordered, variation ${vo.number} accepted`);
+  }
+
+  // ═══ finance & aftercare demo (Phase I): receivables in every aging bucket, a paid invoice with a voided
+  //     payment struck through, a draft and a void one, expenses on a job, an open warranty claim for the queue,
+  //     an AMC contract due for renewal and a reminder the provider refused. Guarded on its own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841900001' } }))) {
+    const demo = await prisma.customer.create({
+      data: {
+        name: 'Bishnu Prasad Koirala', phone: '9841900001', email: 'bishnu.koirala@example.com', preferredLocale: 'en',
+        sites: { create: { label: 'Home', address: 'Maharajgunj, Kathmandu', area: 'Maharajgunj', isPrimary: true } },
+      },
+      include: { sites: true },
+    });
+    const site = demo.sites[0];
+    const lines = (area) => [
+      { description: 'Crystalline damp treatment', unit: 'sq.ft', qty: area, rate: toPaisa(220) },
+      { description: 'Waterproof plaster', unit: 'sq.ft', qty: area, rate: toPaisa(95) },
+    ];
+    const invoice = async ({ area, issued, due, status, payments = [], extra = {} }) => {
+      const t = documentTotals(lines(area).map((l, i) => ({ ...l, sortOrder: i })), { vatApplied: true, vatRate: 13 });
+      const paid = payments.filter((p) => !p.voidedAt).reduce((a, p) => a + p.amount, 0);
+      return prisma.invoice.create({
+        data: {
+          number: await prisma.$transaction((tx) => nextNumber(tx, 'INV')), customerId: demo.id, status,
+          issuedAt: days(issued), dueDate: days(due), subtotal: t.subtotal, discount: t.discount, vatApplied: true, vatRate: 13,
+          vatAmount: t.vatAmount, total: t.total, paidAmount: paid,
+          ...(status === 'DRAFT' ? {} : { publicToken: token(), sentAt: days(issued) }),
+          note: 'Demo (Phase I)', ...extra,
+          items: { create: t.lines },
+          ...(payments.length ? { payments: { create: payments } } : {}),
+        },
+      });
+    };
+    const made = [
+      await invoice({ area: 120, issued: -3, due: 12, status: 'SENT' }),
+      await invoice({ area: 200, issued: -27, due: -12, status: 'OVERDUE', payments: [{ amount: toPaisa(20000), method: 'KHALTI', reference: 'KH-55120', receivedAt: days(-10) }] }),
+      await invoice({ area: 90, issued: -60, due: -45, status: 'OVERDUE' }),
+      await invoice({ area: 150, issued: -115, due: -100, status: 'OVERDUE' }),
+      await invoice({ area: 80, issued: 0, due: 15, status: 'DRAFT' }),
+      await invoice({ area: 60, issued: -20, due: -5, status: 'VOID', extra: { voidReason: 'Raised against the wrong customer' } }),
+    ];
+    // Paid in two parts, after an eSewa payment that was entered twice and voided.
+    const t = documentTotals(lines(100).map((l, i) => ({ ...l, sortOrder: i })), { vatApplied: true, vatRate: 13 });
+    const first = toPaisa(20000);
+    made.push(await invoice({
+      area: 100, issued: -18, due: -3, status: 'PAID',
+      payments: [
+        { amount: first, method: 'ESEWA', reference: 'ESW-77341', receivedAt: days(-14), voidedAt: days(-14), voidReason: 'Entered twice', voidedById: users.ACCOUNTANT.id },
+        { amount: first, method: 'CASH', receivedAt: days(-14), receivedBy: users.ACCOUNTANT.id },
+        { amount: t.total - first, method: 'BANK', reference: 'NIC-ASIA 0042', receivedAt: days(-4), receivedBy: users.ACCOUNTANT.id },
+      ],
+    }));
+
+    // A finished job with a warranty and an open claim — the claims queue's demo — and its expenses.
+    const tech = await prisma.technician.findFirst({ where: { user: { email: 'hari@gharjatan.com.np' } } });
+    const done = await prisma.job.create({
+      data: {
+        number: await prisma.$transaction((tx) => nextNumber(tx, 'JOB')), type: 'REPAIR', customerId: demo.id, siteId: site.id,
+        title: 'Bathroom wall seepage — ground floor', status: 'COMPLETED', scheduledStart: days(-20), actualStart: days(-20),
+        actualEnd: days(-18), completionNote: 'Treated and replastered.', isBillable: true, invoicedAt: days(-18),
+        assignments: tech ? { create: { technicianId: tech.id, isLead: true } } : undefined,
+      },
+    });
+    const warranty = await prisma.warranty.create({
+      data: { jobId: done.id, customerId: demo.id, scope: 'Workmanship on the treated bathroom wall', startsAt: days(-18), endsAt: days(12), publicToken: token(), status: 'CLAIMED' },
+    });
+    await prisma.warrantyClaim.create({
+      data: { warrantyId: warranty.id, description: 'A damp patch has come back at the skirting, about a foot wide, since last week\'s rain.' },
+    });
+    await prisma.expense.createMany({
+      data: [
+        { category: 'Transport', amount: toPaisa(1850), jobId: done.id, vendor: 'Pathao', spentAt: days(-20), approvedBy: users.ACCOUNTANT.id },
+        { category: 'Scaffolding hire', amount: toPaisa(3500), jobId: done.id, vendor: 'Shrestha Scaffolding', spentAt: days(-20), approvedBy: users.ACCOUNTANT.id },
+        { category: 'Food for crew', amount: toPaisa(960.5), jobId: done.id, spentAt: days(-19), approvedBy: users.ACCOUNTANT.id, note: 'Khaja for three' },
+        { category: 'Tools', amount: toPaisa(4200), vendor: 'Bhatbhateni Hardware', spentAt: days(-8), approvedBy: users.ACCOUNTANT.id, note: 'Moisture meter probes' },
+      ],
+    });
+
+    // Up for renewal within the 60-day preset, and a reminder the SMS provider refused.
+    await prisma.amcContract.create({
+      data: {
+        number: await prisma.$transaction((tx) => nextNumber(tx, 'AMC')), customerId: demo.id, siteId: site.id,
+        planName: 'Annual Home Care — Premium', coveredServices: ['seepage', 'plumbing'], startDate: days(-325), endDate: days(40),
+        visitsPerYear: 2, amount: toPaisa(36000), billingCycle: 'annual',
+        visits: { create: [{ dueDate: days(-143), status: 'completed' }, { dueDate: days(39) }] },
+      },
+    });
+    await prisma.serviceReminder.create({
+      data: { customerId: demo.id, dueAt: days(-2), channel: 'sms', status: 'failed', message: 'Your pre-monsoon terrace check is due. Reply or call us to book. - Ghar Jatan' },
+    });
+    console.log(`  finance & aftercare demo: ${made.length} invoices across the aging buckets, 4 expenses, 1 open claim, 1 renewal due`);
   }
 
   console.log('\nSeed complete.');

@@ -16,11 +16,23 @@ export const MESSAGE_KEYS = {
   quotation_accepted_staff: { audience: 'staff', when: 'A customer accepted — to sales and dispatch.' },
   quotation_changes_requested_staff: { audience: 'staff', when: 'A customer asked for changes — to sales.' },
   quotation_rejected_staff: { audience: 'staff', when: 'A customer declined — to sales.' },
+  visit_booked: {
+    audience: 'customer',
+    when: 'A site visit is booked or moved — the window, who is coming and the link to confirm or ask for another time; also to the site contact (a caretaker) when that is another number.',
+  },
+  visit_reminder: {
+    audience: 'customer',
+    when: 'At 17:00 the evening before a site visit, once — the same link to confirm or ask for another time.',
+  },
   survey_returned: { audience: 'staff', when: 'The office sends a survey back — to the surveyor.' },
   job_assigned: { audience: 'staff', when: 'A job is assigned — to each technician.' },
   job_scheduled: { audience: 'customer', when: 'Dispatch puts the job on the calendar, or moves it.' },
   job_en_route: { audience: 'customer', when: 'The technician sets off.' },
   job_completed: { audience: 'customer', when: 'The job is finished.' },
+  advance_due: {
+    audience: 'customer',
+    when: 'A customer accepts a quotation whose payment schedule asks for an advance (Phase L6) — the amount, the due date, the advance invoice’s link and where to pay (the bank account and Fonepay settings). The job is not scheduled until it is paid.',
+  },
   invoice_sent: { audience: 'customer', when: 'An invoice is sent — with the link to view it.' },
   invoice_overdue: { audience: 'customer', when: 'An invoice is past its due date.' },
   warranty_claim_accepted: { audience: 'customer', when: 'A warranty claim is accepted.' },
@@ -59,7 +71,11 @@ export const SAMPLE_VARS = {
   body: 'QT-2083-0001 v2 · NPR 45,200',
   hours: '72',
   time: '10:00–12:00',
+  window: '10:00–12:00',
+  surveyor: 'Ram Thapa (9841000000)',
   link: 'https://gharjatan.com.np/quotation/abc123',
+  quotation: 'QT-2083-0001',
+  payTo: 'Bank: Nabil Bank, Baneshwor · A/C 0101017500123 · Fonepay: 9801234567',
 };
 
 /** The placeholder names in texts, in order of first use — the API's own rule (`notify.service.js`). */

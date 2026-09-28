@@ -3,20 +3,27 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { validate } from '../../middleware/validate.js';
 import { requires } from '../../middleware/authorize.js';
 import { ok, created, noContent } from '../../utils/response.js';
-import { idParam, listQuery, reorderBody, toPartial } from '../../shared/schemas/common.js';
+import { idParam } from '../../shared/schemas/common.js';
 import * as leads from '../../services/lead.service.js';
 import * as customers from '../../services/customer.service.js';
 import * as quotations from '../../services/quotation.service.js';
 import { convertLead, customerMatches } from '../../services/convert.service.js';
 import { historyRoute } from './historyRoute.js';
+import { mountResource } from './mountResource.js';
+import { costWall } from '../../middleware/costWall.js';
+import * as rateLibrary from '../../services/rateLibrary.service.js';
+import { quotationTerms } from '../../services/quotationTerms.service.js';
+import { exportQuotationXlsx } from '../../services/quotationExport.service.js';
+import { convertQuotationToJob } from '../../services/handoff.service.js';
 import { can } from '../../shared/permissions.js';
-import { makeCrud } from '../../services/crud.service.js';
 import { recordEvent } from '../../services/audit.service.js';
 import * as s from '../../shared/schemas/crm.js';
-import * as jobs from '../../services/job.service.js';
 import { quotationToJobSchema } from '../../shared/schemas/ops.js';
 
 const router = Router();
+// Quotation rows carry cost and margin (Phase L3); a convert answers with its quotation. costs:read only.
+router.use('/quotations', costWall);
+router.use('/leads', costWall);
 const readLeads = requires('leads:read');
 const writeLeads = requires('leads:write');
 
@@ -75,6 +82,9 @@ router.put('/leads/:id', writeLeads, validate({ params: idParam, body: s.leadUpd
 router.patch('/leads/:id/status', writeLeads, validate({ params: idParam, body: s.leadStatusSchema }),
   asyncHandler(async (req, res) => ok(res, await leads.changeStatus(req.params.id, req.body, req.user.id))));
 
+router.patch('/leads/:id/next-action', writeLeads, validate({ params: idParam, body: s.leadNextActionSchema }),
+  asyncHandler(async (req, res) => ok(res, await leads.setNextAction(req.params.id, req.body))));
+
 router.patch('/leads/:id/assign', writeLeads, validate({ params: idParam, body: s.leadAssignSchema }),
   asyncHandler(async (req, res) => ok(res, await leads.assignLead(req.params.id, req.body, req.user.id))));
 
@@ -122,35 +132,24 @@ router.put('/customers/:id/sites/:siteId', writeCust, validate({ params: s.siteP
 router.delete('/customers/:id/sites/:siteId', writeCust, validate({ params: s.siteParams }),
   asyncHandler(async (req, res) => { await customers.deleteSite(req.params.id, req.params.siteId); noContent(res); }));
 
-// ── rate card
-const rateCard = makeCrud({
-  model: 'rateCardItem', label: 'Rate card item', searchFields: ['name', 'code', 'category'], moneyFields: ['rate'],
+// ── rate library (Phase L2): the rate card with recipes, and the trades their labour is priced with.
+// Reads rates:read (SALES, MANAGER, ACCOUNTANT), writes rates:write (MANAGER); cost, margin, recipe cost
+// and wages only for costs:read — the service strips them. Soft delete; `?hard=true` needs cms:purge.
+mountResource(router, 'rate-card', rateLibrary.rateLibrary, s.rateCardItemSchema, {
+  capability: 'rates',
+  updateSchema: s.rateCardItemUpdateSchema,
+  extra: (r, { write }) => {
+    r.post('/rate-card/derive', requires('costs:read'), validate({ body: s.rateCardDeriveSchema }),
+      asyncHandler(async (req, res) => ok(res, await rateLibrary.deriveRecipe(req.body))));
+    r.post('/rate-card/reprice', write, validate({ body: s.rateCardRepriceSchema }),
+      asyncHandler(async (req, res) => ok(res, await rateLibrary.repriceRates(req.body))));
+  },
 });
-// The same surface as a CMS resource (list, get, create, update, toggle, reorder, delete, restore), so the
-// back office manages it through the generic resource screens; the capabilities are the quotation ones.
-const readRate = requires('quotations:read');
-const writeRate = requires('quotations:write');
-router.get('/rate-card', readRate, validate({ query: listQuery.passthrough() }),
-  asyncHandler(async (req, res) => { const { items, meta } = await rateCard.list(req.query); ok(res, items, meta); }));
-router.post('/rate-card', writeRate, validate({ body: s.rateCardItemSchema }),
-  asyncHandler(async (req, res) => created(res, await rateCard.create(req.body))));
-router.patch('/rate-card/reorder', writeRate, validate({ body: reorderBody }),
-  asyncHandler(async (req, res) => { await rateCard.reorder(req.body.items); noContent(res); }));
-router.get('/rate-card/:id', readRate, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await rateCard.get(req.params.id))));
-router.put('/rate-card/:id', writeRate, validate({ params: idParam, body: toPartial(s.rateCardItemSchema) }),
-  asyncHandler(async (req, res) => ok(res, await rateCard.update(req.params.id, req.body))));
-router.get('/rate-card/:id/history', ...historyRoute('RateCardItem', 'quotations:history'));
-router.patch('/rate-card/:id/toggle', writeRate, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await rateCard.toggle(req.params.id))));
-router.patch('/rate-card/:id/restore', writeRate, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await rateCard.restore(req.params.id))));
-// Soft delete: quotation and survey lines keep pointing at the item. `?hard=true` needs cms:purge (ADMIN).
-router.delete('/rate-card/:id', writeRate, validate({ params: idParam }),
-  asyncHandler(async (req, res) => {
-    await rateCard.remove(req.params.id, { hard: req.query.hard === 'true', role: req.user.role });
-    noContent(res);
-  }));
+mountResource(router, 'trades', rateLibrary.trades, s.tradeSchema, { capability: 'rates' });
+// The terms library (Phase L4): the manager's, like the rate library; whoever writes quotations reads it.
+mountResource(router, 'quotation-terms', quotationTerms, s.quotationTermsSchema, {
+  capability: 'rates', readAlso: ['quotations:read'], historyCapability: 'rates:read',
+});
 
 // ── quotations
 const readQ = requires('quotations:read');
@@ -179,7 +178,22 @@ router.post('/quotations/:id/send-back', approveQ, validate({ params: idParam, b
 router.post('/quotations/:id/pull-back', writeQ, validate({ params: idParam, body: s.quotationReturnSchema }),
   asyncHandler(async (req, res) => ok(res, await quotations.pullBackQuotation(req.params.id, req.body))));
 router.post('/quotations/:id/send', writeQ, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await quotations.sendQuotation(req.params.id))));
+  asyncHandler(async (req, res) => ok(res, await quotations.sendQuotation(req.params.id, req.user.id))));
+router.get('/quotations/:id/export.xlsx', readQ, validate({ params: idParam }),
+  asyncHandler(async (req, res) => {
+    const { filename, buffer } = await exportQuotationXlsx(req.params.id, { role: req.user.role });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }));
+router.post('/quotations/preview', writeQ, validate({ body: s.quotationPreviewSchema }),
+  asyncHandler(async (req, res) => ok(res, await quotations.previewQuotation(req.body))));
+router.get('/quotations/:id/takeoff', readQ, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await quotations.quotationTakeoff(req.params.id))));
+router.post('/quotations/:id/reprice', writeQ, validate({ params: idParam, body: s.quotationRepriceSchema }),
+  asyncHandler(async (req, res) => ok(res, await quotations.repriceQuotation(req.params.id, req.body))));
+router.post('/quotations/:id/copy', writeQ, validate({ params: idParam, body: s.quotationCopySchema }),
+  asyncHandler(async (req, res) => created(res, await quotations.copyQuotation(req.params.id, req.body, req.user.id))));
 router.post('/quotations/:id/revise', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => created(res, await quotations.reviseQuotation(req.params.id, req.user.id))));
 // Scheduling the crew is dispatch's call, so this takes jobs:write rather than
@@ -188,7 +202,7 @@ router.post('/quotations/:id/revise', writeQ, validate({ params: idParam }),
 // that, and refuses one that already has its job.
 router.post('/quotations/:id/convert-to-job', requires('jobs:write'),
   validate({ params: idParam, body: quotationToJobSchema }),
-  asyncHandler(async (req, res) => created(res, await jobs.createJobFromQuotation(req.params.id, req.body, req.user.id))));
+  asyncHandler(async (req, res) => created(res, await convertQuotationToJob(req.params.id, req.body, req.user.id))));
 router.delete('/quotations/:id', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => { await quotations.deleteQuotation(req.params.id); noContent(res); }));
 

@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { isActive, listQuery, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
 import {
-  INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES, MESSAGE_CHANNELS, MESSAGE_STATUSES, PAYMENT_METHODS,
-  PRIORITIES, ROLES, STOCK_MOVEMENT_TYPES,
+  AMC_BILLING_CYCLES, AMC_STATUSES, CLAIM_STATUSES, INVOICE_KINDS, INVOICE_STATUSES, LOST_TIME_REASONS,
+  PURCHASE_LIST_STATUSES, WEATHER, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES,
+  MESSAGE_CHANNELS, MESSAGE_STATUSES, PAYMENT_METHODS, PRIORITIES, REMINDER_STATUSES, REVENUE_GROUPS, ROLES,
+  STOCK_MOVEMENT_TYPES, WARRANTY_STATUSES,
 } from '../enums.js';
 
 export const technicianSchema = z.object({
@@ -28,7 +30,8 @@ export const jobTemplateSchema = z.object({
 });
 
 export const jobSchema = z.object({
-  type: z.enum(JOB_TYPES).default('REPAIR'),
+  // Left out, REPAIR — or, for a job made from a quotation, the service's jobType (Phase L6).
+  type: z.enum(JOB_TYPES).optional(),
   customerId: z.string().min(1),
   siteId: z.string().optional().nullable(),
   leadId: z.string().optional().nullable(),
@@ -59,8 +62,9 @@ export const jobUpdateSchema = z.object({
 });
 
 /** POST /admin/quotations/:id/convert-to-job — only what the quotation does not already know. */
+/** Converting an approved quotation (Phase L6: the hand-off). The type defaults to the service's jobType. */
 export const quotationToJobSchema = z.object({
-  type: z.enum(JOB_TYPES).default('REPAIR'),
+  type: z.enum(JOB_TYPES).optional(),
   title: z.string().trim().min(2).max(250).optional(),
   description: optionalText,
   priority: z.enum(PRIORITIES).default('NORMAL'),
@@ -115,6 +119,15 @@ export const jobPhotoSchema = z.object({
   kind: z.enum(JOB_PHOTO_KINDS).default('DURING'),
   caption: z.string().trim().max(300).optional(),
 });
+
+/**
+ * POST /public/visits/:token/respond (Phase L5): the customer confirms the window, or asks for another
+ * time — a note ("after 3 pm, or Saturday") helps the office pick one.
+ */
+export const visitResponseSchema = z.object({
+  answer: z.enum(['confirm', 'reschedule']),
+  note: z.string().trim().max(500).optional(),
+}).strict();
 
 export const jobMaterialSchema = z.object({
   materialId: z.string().min(1),
@@ -181,18 +194,25 @@ export const unassignedQuery = listQuery.pick({ page: true, limit: true, q: true
  * POST /admin/jobs/:id/schedule — the board's drop and its Schedule dialog. `technicianIds`
  * replaces the assignment when given (the first one leads unless `leadTechnicianId` says).
  */
+/**
+ * POST /admin/jobs/:id/schedule. Without `scheduledEnd` the job's planned days set it (Phase L6). A window runs
+ * 90 days at most — a renovation runs weeks (it was 14).
+ */
 export const jobScheduleSchema = z.object({
   scheduledStart: z.coerce.date(),
-  scheduledEnd: z.coerce.date(),
+  scheduledEnd: z.coerce.date().optional(),
   technicianIds: z.array(z.string().min(1)).min(1, 'Choose at least one technician').max(20).optional(),
   leadTechnicianId: z.string().min(1).optional(),
   note: z.string().trim().max(1000).optional(),
   notifyCustomer: z.boolean().default(true),
-}).refine((v) => v.scheduledEnd > v.scheduledStart, {
+}).refine((v) => !v.scheduledEnd || v.scheduledEnd > v.scheduledStart, {
   message: 'End time must be after the start time', path: ['scheduledEnd'],
-}).refine((v) => v.scheduledEnd - v.scheduledStart <= 14 * 86_400_000, {
-  message: 'A visit cannot be longer than 14 days', path: ['scheduledEnd'],
+}).refine((v) => !v.scheduledEnd || v.scheduledEnd - v.scheduledStart <= 90 * 86_400_000, {
+  message: 'A job cannot be scheduled for longer than 90 days', path: ['scheduledEnd'],
 });
+
+/** POST /admin/jobs/:id/advance-override (L-D3) — the reason is required and kept. */
+export const advanceOverrideSchema = z.object({ reason: z.string().trim().min(5, 'Say why the work may start before the advance').max(500) }).strict();
 
 /** GET /admin/jobs. `from` / `to` are Kathmandu days; `invoiced=false` is finished billable work not yet invoiced. */
 export const jobListQuery = z.object({
@@ -240,6 +260,9 @@ export const materialSchema = z.object({
   unit,
   purchaseRate: rupees.default(0),
   sellRate: rupees.default(0),
+  /** How it is bought: 50 (kg) a bag; 1 when the unit already is the pack. The take-off rounds up to packs. */
+  packSize: z.coerce.number().positive().max(100_000).nullable().optional(),
+  packLabel: z.string().trim().max(20).nullable().optional(),
   reorderLevel: z.coerce.number().min(0).max(1_000_000).default(0),
   sortOrder,
   isActive,
@@ -300,11 +323,15 @@ export const invoiceUpdateSchema = invoiceSchema.partial().extend({
   items: z.array(invoiceItem).min(1).max(200).optional(),
 });
 
+/**
+ * A quoted job bills its quotation: `includeMaterials` / `includeLabour` apply to an unquoted job
+ * (default on) and are refused on a quoted one. `vatApplied` and `discount` default to the quotation's.
+ */
 export const invoiceFromJobSchema = z.object({
   dueDate: z.coerce.date().optional(),
-  includeMaterials: z.coerce.boolean().default(true),
-  includeLabour: z.coerce.boolean().default(true),
-  vatApplied: z.coerce.boolean().default(true),
+  includeMaterials: z.boolean().optional(),
+  includeLabour: z.boolean().optional(),
+  vatApplied: z.boolean().optional(),
   discount: optionalRupees,
 });
 
@@ -322,47 +349,84 @@ export const invoiceVoidSchema = z.object({ reason: z.string().trim().min(3).max
 export const paymentVoidSchema = z.object({ reason: z.string().trim().min(3).max(500) });
 export const paymentParams = z.object({ id: z.string().min(1), paymentId: z.string().min(1) });
 
+/** An expense (a registry resource since Phase I). approvedBy is the server's: the user who records it. */
 export const expenseSchema = z.object({
   category: z.string().trim().min(2).max(80),
   amount: rupees,
   jobId: z.string().optional().nullable(),
-  vendor: z.string().trim().max(160).optional(),
-  billMediaId: z.string().optional(),
+  vendor: z.string().trim().max(160).optional().nullable(),
+  billMediaId: z.string().optional().nullable(),
   spentAt: z.coerce.date().optional(),
   note: optionalText,
 });
 
+/** GET /admin/expenses — Kathmandu days on spentAt. */
+export const expenseListQuery = listQuery.extend({
+  category: z.string().trim().max(80).optional(),
+  jobId: z.string().optional(),
+  from: day.optional(),
+  to: day.optional(),
+}).passthrough();
+
+/** GET /admin/invoices — `from`/`to` are Kathmandu days on issuedAt. */
 export const invoiceListQuery = z.object({
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  sort: z.string().optional(),
+  sort: z.enum(['number', '-number', 'issuedAt', '-issuedAt', 'dueDate', '-dueDate', 'total', '-total', 'createdAt', '-createdAt']).optional(),
   q: z.string().trim().max(200).optional(),
   status: z.enum(INVOICE_STATUSES).optional(),
+  /** ADVANCE, RUNNING, FINAL (Phase L6) or STANDARD. */
+  kind: z.enum(INVOICE_KINDS).optional(),
   customerId: z.string().optional(),
-  overdueOnly: z.coerce.boolean().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  overdueOnly: flag.optional(),
+  from: day.optional(),
+  to: day.optional(),
 });
 
+/** GET /admin/payments — `from`/`to` are Kathmandu days on receivedAt. */
 export const paymentListQuery = z.object({
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  sort: z.string().optional(),
+  sort: z.enum(['receivedAt', '-receivedAt', 'amount', '-amount']).optional(),
   q: z.string().trim().max(200).optional(),
   method: z.enum(PAYMENT_METHODS).optional(),
   customerId: z.string().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  from: day.optional(),
+  to: day.optional(),
+});
+
+/**
+ * Every report (Phase I): Kathmandu days (the last 30 by default), a grouping where the report has one, and
+ * `format=csv` for the download.
+ */
+export const reportQuery = z.object({
+  from: day.optional(),
+  to: day.optional(),
+  groupBy: z.enum(REVENUE_GROUPS).optional(),
+  format: z.enum(['csv']).optional(),
 });
 
 // ── aftercare
 
+/** PUT /admin/warranties/:id — the scope and the end date. The status is the server's; voiding has its own route. */
 export const warrantyUpdateSchema = z.object({
   scope: z.string().trim().max(2000).optional(),
   endsAt: z.coerce.date().optional(),
-  status: z.enum(['ACTIVE', 'EXPIRED', 'VOID', 'CLAIMED']).optional(),
-  voidReason: z.string().trim().max(500).optional(),
-});
+}).strict();
+
+export const warrantyVoidSchema = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
+
+export const warrantyListQuery = listQuery.extend({
+  status: z.enum(WARRANTY_STATUSES).optional(),
+  customerId: z.string().optional(),
+  activeOnly: flag.optional(),
+  /** Active warranties ending within this many days. */
+  expiringDays: z.coerce.number().int().min(1).max(365).optional(),
+}).passthrough();
+
+export const warrantyClaimListQuery = listQuery.extend({
+  status: z.enum(CLAIM_STATUSES).optional(),
+}).passthrough();
 
 export const warrantyClaimSchema = z.object({
   description: z.string().trim().min(10, 'Describe the problem in at least 10 characters').max(4000),
@@ -376,20 +440,51 @@ export const warrantyClaimDecisionSchema = z.object({
   message: 'A reason is required when rejecting a claim', path: ['rejectReason'],
 });
 
-export const amcContractSchema = z.object({
-  customerId: z.string().min(1),
-  siteId: z.string().optional().nullable(),
-  planName: z.string().trim().min(2).max(160),
-  coveredServices: z.array(z.string()).max(50).optional(),
+/** The visit schedule's inputs — on create, and on its preview (Phase I). At most 5 years, 260 visits. */
+const amcScheduleFields = {
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   visitsPerYear: z.coerce.number().int().min(1).max(52).default(4),
+};
+const endAfterStart = [(v) => v.endDate > v.startDate, { message: 'End date must be after the start date', path: ['endDate'] }];
+const atMostFiveYears = [(v) => v.endDate - v.startDate <= 5 * 366 * 86_400_000, { message: 'A contract runs five years at most', path: ['endDate'] }];
+
+const amcContractFields = {
+  customerId: z.string().min(1),
+  siteId: z.string().optional().nullable(),
+  planName: z.string().trim().min(2).max(160),
+  coveredServices: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
   amount: rupees,
-  billingCycle: z.enum(['annual', 'quarterly', 'monthly']).default('annual'),
+  billingCycle: z.enum(AMC_BILLING_CYCLES).default('annual'),
   notes: optionalText,
-}).refine((v) => v.endDate > v.startDate, {
-  message: 'End date must be after the start date', path: ['endDate'],
-});
+};
+
+export const amcContractSchema = z.object({ ...amcContractFields, ...amcScheduleFields })
+  .refine(...endAfterStart).refine(...atMostFiveYears);
+
+export const amcSchedulePreviewSchema = z.object(amcScheduleFields).strict()
+  .refine(...endAfterStart).refine(...atMostFiveYears);
+
+/**
+ * PUT /admin/amc-contracts/:id — everything but the schedule, which was laid down on create: a new schedule is
+ * a renewal (a new contract). The status moves by hand only between active and cancelled.
+ */
+export const amcContractUpdateSchema = z.object({
+  siteId: amcContractFields.siteId,
+  planName: amcContractFields.planName.optional(),
+  coveredServices: amcContractFields.coveredServices,
+  amount: rupees.optional(),
+  billingCycle: z.enum(AMC_BILLING_CYCLES).optional(),
+  notes: optionalText,
+  status: z.enum(['active', 'cancelled']).optional(),
+}).strict();
+
+export const amcContractListQuery = listQuery.extend({
+  status: z.enum(AMC_STATUSES).optional(),
+  customerId: z.string().optional(),
+  /** Active contracts ending within this many days — the renewals-due preset. */
+  renewalsDays: z.coerce.number().int().min(1).max(365).optional(),
+}).passthrough();
 
 export const serviceReminderSchema = z.object({
   customerId: z.string().min(1),
@@ -399,6 +494,13 @@ export const serviceReminderSchema = z.object({
   channel: z.enum(['sms', 'email']).default('sms'),
   message: z.string().trim().min(5).max(1000),
 });
+
+export const serviceReminderListQuery = listQuery.extend({
+  status: z.enum(REMINDER_STATUSES).optional(),
+  customerId: z.string().optional(),
+  from: day.optional(),
+  to: day.optional(),
+}).passthrough();
 
 export const messageTemplateSchema = z.object({
   // The key the code sends by (`quotation_sent`): lower-case words joined by underscores.
@@ -443,3 +545,91 @@ export const messageLogQuery = listQuery.pick({ page: true, limit: true, q: true
   relatedModel: z.string().trim().max(60).optional(),
   relatedId: z.string().trim().max(64).optional(),
 });
+
+// ── the field app's offline queue (Phase H2: moved here from the route)
+
+const SURVEY_KINDS = ['survey_draft', 'survey_submit'];
+
+// ── site diary (Phase L7)
+
+/** A Kathmandu day in a path: `/tech/jobs/:id/diary/2026-09-28`. */
+export const diaryParams = z.object({ id: z.string().min(1), day });
+
+/**
+ * One day's diary — a FULL replace (PUT and the `diary_save` sync kind), so a replay lands on the same state.
+ * Headcount per trade (daily-wage labour are not users), progress per job line, deliveries with the challan,
+ * lost hours with a reason. No money anywhere (D1).
+ */
+export const diarySchema = z.object({
+  weather: z.enum(WEATHER).nullable().optional(),
+  headcount: z.array(z.object({ tradeId: z.string().min(1), count: z.coerce.number().int().min(0).max(200) }).strict()).max(40).default([]),
+  progress: z.array(z.object({ jobLineId: z.string().min(1), progressPct: z.coerce.number().min(0).max(100) }).strict()).max(500).default([]),
+  received: z.array(z.object({
+    materialId: z.string().min(1).nullable().optional(),
+    description: z.string().trim().min(1).max(200),
+    qty: z.coerce.number().positive().max(1_000_000),
+    unit: z.string().trim().max(20).nullable().optional(),
+    challanNo: z.string().trim().max(60).nullable().optional(),
+  }).strict()).max(50).default([]),
+  issues: z.string().trim().max(4000).nullable().optional(),
+  lostHours: z.coerce.number().min(0).max(24).default(0),
+  lostReason: z.enum(LOST_TIME_REASONS).nullable().optional(),
+  photoMediaIds: z.array(z.string().min(1)).max(30).default([]),
+  note: z.string().trim().max(2000).nullable().optional(),
+}).strict().refine((v) => !(v.lostHours > 0) || v.lostReason, { message: 'Say why the hours were lost', path: ['lostReason'] });
+
+/** `diary_save` carries the day in its payload. */
+export const diarySyncPayload = diarySchema.innerType().extend({ day }).strict();
+
+// ── purchase lists (Phase L7)
+
+const purchaseItem = z.object({
+  materialId: z.string().min(1),
+  qty: z.coerce.number().positive().max(1_000_000),
+  packs: z.coerce.number().int().min(0).max(1_000_000).nullable().optional(),
+  note: z.string().trim().max(300).nullable().optional(),
+}).strict();
+
+export const purchaseListSchema = z.object({
+  jobId: z.string().min(1).nullable().optional(),
+  supplierId: z.string().min(1).nullable().optional(),
+  note: optionalText,
+  items: z.array(purchaseItem).min(1, 'Add at least one material').max(200),
+});
+
+export const purchaseListListQuery = listQuery.extend({
+  status: z.enum(PURCHASE_LIST_STATUSES).optional(),
+  jobId: z.string().optional(),
+  supplierId: z.string().optional(),
+}).passthrough();
+
+/** Receiving: each item's quantity received (default: as ordered). */
+export const purchaseReceiveSchema = z.object({
+  items: z.array(z.object({ itemId: z.string().min(1), receivedQty: z.coerce.number().min(0).max(1_000_000) }).strict()).max(200).optional(),
+  note: optionalText,
+}).strict();
+
+export const purchaseCancelSchema = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
+
+/**
+ * POST /tech/sync — the offline queue: 1–200 mutations, each with an idempotency key and the time it was made.
+ * A survey mutation addresses a surveyId; every other kind a jobId.
+ */
+export const techSyncSchema = z.object({
+  mutations: z.array(z.object({
+    idempotencyKey: z.string().min(8).max(80),
+    at: z.coerce.date(),
+    kind: z.enum(['status', 'task', 'material', 'time_start', 'time_stop', 'complete', 'diary_save', ...SURVEY_KINDS]),
+    jobId: z.string().min(1).optional(),
+    surveyId: z.string().min(1).optional(),
+    taskId: z.string().optional(),
+    payload: z.record(z.any()).default({}),
+  }).refine(
+    // jobId went optional so survey mutations could address a surveyId instead.
+    // Without this, a malformed job mutation would sail through validation and
+    // fail somewhere in the service layer with a far less useful message.
+    (m) => (SURVEY_KINDS.includes(m.kind) ? Boolean(m.surveyId) : Boolean(m.jobId)),
+    { message: 'A survey mutation needs a surveyId; every other kind needs a jobId' },
+  )).min(1).max(200),
+});
+

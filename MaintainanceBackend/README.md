@@ -32,11 +32,13 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 |---|---|---|
 | `admin@gharjatan.com.np` | ADMIN | everything |
 | `editor@gharjatan.com.np` | EDITOR | CMS + media only |
-| `sales@gharjatan.com.np` | SALES | leads, customers, quotations (prepares and submits them) |
-| `manager@gharjatan.com.np` | MANAGER | everything SALES sees, plus approving quotations |
-| `dispatch@gharjatan.com.np` | DISPATCHER | jobs, the dispatch board, technicians, materials and stock; reads the service catalogue |
-| `accounts@gharjatan.com.np` | ACCOUNTANT | invoices, payments, reports |
+| `sales@gharjatan.com.np` | SALES | leads, customers, quotations (prepares and submits them); reads warranties, AMC contracts and service reminders |
+| `manager@gharjatan.com.np` | MANAGER | everything SALES sees, plus approving quotations, the rate library's cost and margin |
+| `dispatch@gharjatan.com.np` | DISPATCHER | jobs, the dispatch board, technicians, materials and stock; decides warranty claims, runs AMC contracts and service reminders; reads the service catalogue |
+| `accounts@gharjatan.com.np` | ACCOUNTANT | invoices, payments, expenses, the finance reports and customer statements — no aftercare, no cost |
 | `hari@gharjatan.com.np` | TECHNICIAN | only jobs assigned to them |
+| `suresh@gharjatan.com.np` | TECHNICIAN | a second technician, for crews and the dispatch board |
+| `survey@gharjatan.com.np` | SURVEYOR | site visits and surveys assigned to them (the field app's survey stepper) |
 
 The seed builds a browsable demo: 18 services, 3 projects, a rate card, 10 materials with
 opening stock, a blog (2 published posts in 2 categories), an About page at `/about`, and a complete pipeline — leads (one already SLA-breached, one at risk) →
@@ -47,6 +49,63 @@ OFFICE_APPROVED, SENT and CHANGES_REQUESTED (a Nepali customer's message) — th
 `quotation.makerChecker` / `quotation.autoApproveBelow` settings, and the `quotation_accepted`,
 `quotation_changes_received` and `quotation_changes_requested_staff` templates in English and Nepali, and the
 `password_reset` and `account_invite` emails staff accounts receive.
+
+Phase L1 adds leads to work — one due today (with its qualification filled), one overdue, one with
+nothing booked — a quotation sent five days ago and unanswered (the stale sweep reminds its owner), and
+four lost leads across categories and stages for the lost report. The `pipeline.*` settings (SLA group)
+hold the follow-up clocks: the No-answer retry (120 min), price-shopper follow-up (3 days), digest hour
+(09:00 Kathmandu), quiet-lead (3 days), unquoted-survey (48 h), waiting-approval (24 h), unanswered-quote
+(3 days) and expiring-quote (2 days) thresholds.
+
+Phase L2 adds the rate library's demo: five trades with **illustrative** day wages (set your own under
+Trades & wages), pack sizes on the materials plus a floor tile and a tile adhesive, and recipes per 100
+sq.ft on internal plaster, floor tiling and chemical damp treatment (MANUAL — their rates stay, the recipe
+costs them for the margin) and on interior painting (DERIVED and left at its old rate, so the library shows
+one item "Out of date" to reprice). The quotation costing settings (minimum margin 15 %, overhead 10 %,
+profit 10 %, derived rates rounded up to Rs 1, contract type, the 50/40/10 payment schedule, the advance
+gate and its 7-day due date) sit in the finance group. Recipe norms are simplified for the demo — review
+them before quoting real work.
+
+Phase L3 adds one quotation as a real bill of quantities (customer Prakash Joshi, Bhaisepati): three
+sections, measured rows with a door deducted, a note, an optional flooring row and rows priced from the
+rate library with their recipes frozen — built through the same service as the builder, so its take-off
+and labour tabs have something to show.
+
+Phase L4 adds the **terms library** (a default "Standard terms" in English and Nepali, and a waterproofing
+warranty entry), gives the BOQ demo a 50/40/10 schedule, a 6-day duration and exclusions, and seeds a
+quotation priced under the minimum margin, waiting for approval (customer Sunil Maharjan) — approving it
+asks for the acknowledgement. Dependency: **exceljs** (the quotation's Excel export); `package.json` overrides its
+`uuid` to ^11.1.1 (GHSA-w5hq-g745-h8pq — exceljs only uses uuid v4, but the patched version costs nothing).
+
+Phase L5 adds the **site-visit kit's** demo: the `visit_booked` and `visit_reminder` SMS templates in English
+and Nepali; a **"Seepage & damp — site checklist"** inspection template on the seepage service (moisture at
+300 mm and 1 m with flag thresholds, salt deposits, DPC visible, source of water, a wet room behind the wall,
+hollow plaster, the customer's story — the moisture and salt answers need a photo); a visit tomorrow that the
+customer has confirmed (Ramesh Shrestha, Sanepa — two photos he sent with the enquiry), one the day after
+that nobody has answered (a Nepali customer abroad, her brother-in-law as the site contact); and a submitted
+survey (Laxmi Karki, Sitapaila) with the checklist answered — three flagged answers, the meter's photo on its
+reading — two rooms measured with the door and window deducted, photos by room and a paper sketch. The
+photos are generated placeholder images stored through the media service. The **`visits:remind`** task
+(every 15 min) sends tomorrow's visit reminders from `visits.reminderHour` (17:00 Kathmandu, a setting in the
+SLA group), once per visit and window.
+
+Phase I adds a **finance & aftercare** demo (customer Bishnu Prasad Koirala, Maharajgunj): receivables in every
+aging bucket (not yet due, 12, 45 and 100 days overdue — one part-paid by Khalti), a draft and a void invoice, a paid
+one whose first eSewa payment was entered twice and voided (struck through), four expenses on a job, a warranty
+with an open claim for the claims queue, an AMC contract due for renewal within 60 days and a service reminder the
+SMS provider refused. Aftercare routes now check capabilities (`warranties:*`, `amc:*`, `reminders:*`) instead of
+role lists — the same access as before (see the table above). Every report downloads as CSV with `?format=csv`.
+
+Phase L6 adds the **won → hand-off** demo: two BOQ quotations accepted through the real Accept — Rabin Maharjan's
+job waits for its advance (the gate holds it), Sabina Shakya's advance is paid (Fonepay) and her job is ready to
+schedule. Services carry a job type (renovation, installation…). New settings `finance.bankAccount` and
+`finance.fonepayNumber` (illustrative values — set your own) print in the new **`advance_due`** SMS (en/ne) and
+email the customer gets on accepting.
+
+Phase L7 puts that paid job **on site**: Hari's three diary days (one lost to heavy rain), progress on its
+lines, more cement issued than planned (the Materials tab's over-plan warning), a purchase list ORDERED for the
+second week, and an accepted **variation** (VO-…) that adds the store room and omits plaster on one wall. New
+setting `job.workdayHours` (8, finance group) turns the diary's headcount into labour days.
 
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
@@ -117,7 +176,9 @@ src/
   services/            all business logic — controllers never touch Prisma
   routes/              public · auth · tech · admin/{cms,crm,ops,finance,aftercare,platform}
                        admin/historyRoute.js — GET …/:id/history for any model
-  queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders
+  queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders,
+                       lead follow-ups + morning digest, stale-pipeline reminders (Phase L1),
+                       tomorrow's site-visit reminders (visits:remind, Phase L5)
 prisma/                schema.prisma · seed.js · seed-data.js
 tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging,
                        notification links (a source scan: staff links are /admin/…, field links /tech/…),
@@ -145,7 +206,10 @@ warranty and opens the job for invoicing. A quotation is never sent without **in
 SALES submits it, a MANAGER or ADMIN who did not write it approves it (or it auto-approves below
 `quotation.autoApproveBelow`), and only then can it be sent. On the link the customer can Accept, Ask for
 changes or Decline; a change request loops into a revision — a new version that is approved again — and
-an acceptance converts the quotation, wins the lead and creates the job in one transaction.
+an acceptance converts the quotation, wins the lead and creates the job in one transaction — since Phase L6 with
+the accepted BOQ as its lines, the take-off as its requirements and, when the payment schedule has an advance, the
+ADVANCE invoice. **The job cannot be scheduled, assigned or started until that advance is paid** (422
+`ADVANCE_UNPAID`); a manager may override, with a reason, audited. `job.advanceGate` switches the gate off.
 
 ---
 

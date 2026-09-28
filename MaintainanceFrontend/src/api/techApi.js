@@ -44,6 +44,16 @@ export const techApi = apiSlice.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/tech/jobs/${id}/time/stop`, method: 'POST', body }),
       invalidatesTags: (r, e, { id }) => [{ type: 'Job', id }],
     }),
+    /**
+     * Job photos — multipart `files` + `kind` (BEFORE | DURING | AFTER | ISSUE | SIGNATURE) + optional `caption`,
+     * answered with `{ photos, media }`. `body` is the FormData; the field app sends it from its upload queue
+     * (`hooks/useOfflineQueue.js`), never straight from a screen.
+     */
+    uploadMyJobPhotos: build.mutation({
+      query: ({ id, body }) => ({ url: `/tech/jobs/${id}/photos`, method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (r, e, { id }) => [{ type: 'Job', id }],
+    }),
     completeMyJob: build.mutation({
       query: ({ id, ...body }) => ({ url: `/tech/jobs/${id}/complete`, method: 'POST', body }),
       transformResponse: (r) => r.data,
@@ -88,10 +98,35 @@ export const techApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: ['RateCard'],
     }),
+    /** Reference data: code, name, unit — never a rate. Kept all shift, so the materials sheet works with no signal. */
     getTechMaterials: build.query({
       query: () => '/tech/materials',
       transformResponse: (r) => r.data,
       providesTags: ['Material'],
+      keepUnusedDataFor: 12 * 60 * 60,
+    }),
+    // ── the site diary (Phase L7). No money: headcount per trade, progress per line, deliveries, lost time, photos.
+    /**
+     * `GET /tech/jobs/:id/diary` (own jobs) → `{ days: [{ day, weather, headcountTotal, lostHours, updatedAt }], today }`,
+     * newest first — `today` is the server's Kathmandu day. Kept for the shift, so the list opens with no signal.
+     */
+    getMyDiary: build.query({
+      query: (jobId) => `/tech/jobs/${jobId}/diary`,
+      transformResponse: (r) => r.data,
+      providesTags: (result, error, jobId) => [{ type: 'Job', id: `diary:${jobId}` }],
+      keepUnusedDataFor: 12 * 60 * 60,
+    }),
+    /**
+     * `GET /tech/jobs/:id/diary/:day` → `{ day, entry: Diary | null, lines, trades, materials }` — the job's lines (no
+     * rate), the trades and the materials a delivery can name. Loaded by the job page for today while there is signal
+     * and kept for the shift, so the day can be filled in a basement. Every write goes through the queue
+     * (`diary_save`, a full replace of the day), never straight from the screen.
+     */
+    getMyDiaryDay: build.query({
+      query: ({ jobId, day }) => `/tech/jobs/${jobId}/diary/${day}`,
+      transformResponse: (r) => r.data,
+      providesTags: (result, error, { jobId, day }) => [{ type: 'Job', id: `diary:${jobId}:${day}` }],
+      keepUnusedDataFor: 12 * 60 * 60,
     }),
     /** Replays the offline queue. Idempotency keys make a repeat send harmless. */
     syncOffline: build.mutation({
@@ -113,5 +148,8 @@ export const {
   useSaveSurveyDraftMutation,
   useSubmitSurveyMutation,
   useUploadSurveyPhotosMutation,
+  useUploadMyJobPhotosMutation,
   useGetTechRateCardQuery,
+  useGetMyDiaryQuery,
+  useGetMyDiaryDayQuery,
 } = techApi;

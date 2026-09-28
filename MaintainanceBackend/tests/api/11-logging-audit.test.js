@@ -387,7 +387,8 @@ describe('domain events: leads', () => {
 
     const converted = rid();
     expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).set('X-Request-Id', converted).send({ createQuotation: true }), 201);
-    const events = await expectEvents(converted, 'lead.converted', 'quotation.created', 'lead.status_changed');
+    // A draft quotation leaves a CONTACTED lead where it is; sending it makes the lead QUOTED (Phase L1).
+    const events = await expectEvents(converted, 'lead.converted', 'quotation.created');
     expect(events['lead.converted'].recordId).toBe(lead.id);
 
     const exported = rid();

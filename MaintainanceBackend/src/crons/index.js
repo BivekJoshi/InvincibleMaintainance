@@ -6,7 +6,7 @@ const MINUTE = 60_000;
 
 /**
  * Lightweight interval scheduler. Deliberately not a cron library: this system
- * has seven recurring tasks and setInterval expresses them clearly.
+ * has a dozen recurring tasks and setInterval expresses them clearly.
  * Runs only in the process that owns background work.
  */
 const SCHEDULE = [
@@ -18,6 +18,12 @@ const SCHEDULE = [
   { name: 'amc:sweepContracts', everyMs: 12 * 60 * MINUTE },
   { name: 'amc:materialiseVisits', everyMs: 6 * 60 * MINUTE },
   { name: 'reminders:dispatch', everyMs: 30 * MINUTE },
+  // A lead's next action falling due, and the morning digest (once a Kathmandu day, from pipeline.digestHour).
+  { name: 'leads:followups', everyMs: 15 * MINUTE, immediate: true },
+  // Quiet leads, visits without surveys, unquoted surveys, waiting approvals, unanswered and expiring quotes.
+  { name: 'pipeline:stale', everyMs: 60 * MINUTE },
+  // Tomorrow's site visits, from visits.reminderHour (17:00) Kathmandu time — once per visit and window.
+  { name: 'visits:remind', everyMs: 15 * MINUTE },
 ];
 
 const timers = [];

@@ -166,14 +166,104 @@ export async function approveAndSend(id, { requestId } = {}) {
   const lapsed = q.validUntil && q.validUntil < new Date() ? q.validUntil : null;
   if (!q.validUntil || lapsed) await prisma.quotation.update({ where: { id }, data: { validUntil: daysFromNow(15) } });
   const submitted = expectStatus(await sales.post(`/admin/quotations/${id}/submit`), 200).data;
-  if (submitted.status === 'PENDING_APPROVAL') expectStatus(await manager.post(`/admin/quotations/${id}/approve`).send({}), 200);
+  // Most callers are not testing the Phase L4 margin gate, and their lines have no known cost: acknowledged.
+  if (submitted.status === 'PENDING_APPROVAL') {
+    expectStatus(await manager.post(`/admin/quotations/${id}/approve`).send({ acknowledgeLowMargin: true }), 200);
+  }
   const send = sales.post(`/admin/quotations/${id}/send`);
   expectStatus(await (requestId ? send.set('X-Request-Id', requestId) : send), 200);
   if (lapsed) await prisma.quotation.update({ where: { id }, data: { validUntil: lapsed } });
   return prisma.quotation.findUnique({ where: { id } });
 }
 
+/**
+ * Every key path under `value` whose key `isKey` accepts, e.g. `data[].assignments[].technician.hourlyRate`
+ * (array indexes collapsed, so a leak repeated on every row is listed once) — for the money-wall scans.
+ * @param {unknown} value
+ * @param {(key: string) => boolean} isKey
+ */
+export function findKeys(value, isKey, path = 'data', found = new Set()) {
+  if (Array.isArray(value)) value.forEach((v) => findKeys(v, isKey, `${path}[]`, found));
+  else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      if (isKey(k)) found.add(`${path}.${k}`);
+      findKeys(v, isKey, `${path}.${k}`, found);
+    }
+  }
+  return [...found];
+}
+
 export async function uploadImage(api, color) {
   const res = await api.post('/admin/media').attach('files', await pngBuffer(color), 'test.png');
   return expectStatus(res, 201).data[0];
+}
+
+/**
+ * A lead converted with a booked site visit (Phase L5): the window, the SURVEYOR, a caretaker as the site
+ * contact and a landmark. Returns the lead, the inspection job, its survey and the /visit/:token token.
+ * @param {{ start?: Date, hours?: number, locale?: 'en'|'ne', contactPhone?: string|null, serviceId?: string }} [opts]
+ */
+export async function bookVisit({ start = daysFromNow(3), hours = 2, locale = 'en', contactPhone = phone(), serviceId } = {}) {
+  const sales = await as('SALES');
+  const salesUser = await prisma.user.findUnique({ where: { email: USERS.SALES } });
+  const customerPhone = phone();
+  const lead = expectStatus(await sales.post('/admin/leads').send({
+    name: `Visit ${uid()}`, phone: customerPhone, assignedToId: salesUser.id, ...(serviceId ? { serviceId } : {}),
+  }), 201).data;
+  const body = expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({
+    createNewCustomer: true,
+    preferredLocale: locale,
+    site: { label: 'Home', address: `House ${uid()}, Jhamsikhel, Lalitpur`, area: 'Jhamsikhel' },
+    createInspectionJob: true,
+    scheduledStart: start.toISOString(),
+    scheduledEnd: new Date(start.getTime() + hours * 3_600_000).toISOString(),
+    surveyorId: await technicianIdFor('SURVEYOR'),
+    ...(contactPhone ? { siteContactName: 'Ram Bahadur (caretaker)', siteContactPhone: contactPhone } : {}),
+    landmark: 'Opposite the Bhatbhateni, blue gate',
+  }), 201).data;
+  const job = await prisma.job.findUnique({ where: { id: body.job.id } });
+  return { lead, job, survey: body.survey, token: job.visitToken, customerPhone, customer: body.customer };
+}
+
+/**
+ * Pays a job's advance invoice in full as the accountant (Phase L6), so a test can schedule, assign or move
+ * the job the gate holds. A job with no advance, or one already paid, is left alone.
+ */
+export async function payAdvance(jobId) {
+  const job = await prisma.job.findUnique({ where: { id: jobId }, include: { advanceInvoice: true } });
+  const inv = job?.advanceInvoice;
+  if (!inv || ['PAID', 'VOID'].includes(inv.status)) return null;
+  const accountant = await as('ACCOUNTANT');
+  expectStatus(await accountant.post(`/admin/invoices/${inv.id}/payments`).send({ amount: (inv.total - inv.paidAmount) / 100, method: 'BANK' }), 201);
+  return prisma.invoice.findUnique({ where: { id: inv.id } });
+}
+
+/**
+ * A running BOQ job (Phase L7): a quotation priced from the rate library (a plaster row whose recipe gives
+ * material and labour requirements, and a crystalline-compound MATERIAL row), paid on completion so no advance
+ * holds it, accepted on the customer's link, and scheduled today with `assignee` on it.
+ * @returns {Promise<{ job: object, quote: object, customer: object }>}
+ */
+export async function runningBoqJob({ assignee = 'TECHNICIAN' } = {}) {
+  const [sales, dispatcher] = await Promise.all([as('SALES'), as('DISPATCHER')]);
+  const customer = await createCustomer(sales);
+  const plaster = await prisma.rateCardItem.findUnique({ where: { code: 'PLASTER-INT' } });
+  const cryst = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
+  const quote = expectStatus(await sales.post('/admin/quotations').send({
+    customerId: customer.id, estimatedDays: 5,
+    paymentStages: [{ label: 'On completion', basisPoints: 10000, trigger: 'ON_COMPLETION' }],
+    items: [
+      { rowType: 'SECTION', description: 'Plaster' },
+      { rateCardItemId: plaster.id, kind: 'SERVICE', description: plaster.name, unit: plaster.unit, rate: plaster.rate / 100, qty: 200 },
+      { kind: 'MATERIAL', materialId: cryst.id, description: cryst.name, unit: cryst.unit, qty: 10, rate: 480 },
+    ],
+  }), 201).data;
+  const { publicToken } = await approveAndSend(quote.id);
+  expectStatus(await request(getApp()).post(`/api/v1/public/quotations/${publicToken}/decide`)
+    .set('X-Forwarded-For', nextIp()).set('User-Agent', 'Mozilla/5.0 (Linux; Android 14) Mobile').send({ decision: 'approve' }), 200);
+  const job = await prisma.job.findFirst({ where: { quotationId: quote.id } });
+  expectStatus(await dispatcher.post(`/admin/jobs/${job.id}/schedule`).send({
+    scheduledStart: new Date().toISOString(), technicianIds: [await technicianIdFor(assignee)],
+  }), 200);
+  return { job: await prisma.job.findUnique({ where: { id: job.id }, include: { lines: { orderBy: { sortOrder: 'asc' } }, requirements: true } }), quote, customer };
 }

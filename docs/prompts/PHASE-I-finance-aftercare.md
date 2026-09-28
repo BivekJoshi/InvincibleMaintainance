@@ -1,6 +1,6 @@
 # Phase I — Finance & aftercare screens
 
-~6 days · branch `admin/phase-i-finance-aftercare` · requires Phase H2 done
+~6 days · branch `admin/phase-i-finance-aftercare` · requires Phase L5 done (runs after H2 and L5 since 2026-09-26)
 
 ````text
 You are working in the InvincibleMaintainance repo. This is Phase I of docs/ADMIN-PLAN.md: screens
@@ -95,7 +95,7 @@ warranty page → free WARRANTY job appears unassigned. Create an AMC contract a
 schedule.
 
 ACCEPTANCE (ADMIN-PLAN Phase I = v1 Phase 8/9 UI)
-Job → invoice with real materials and labour, partial payment recorded and voidable, aging correct,
+Job → invoice by its one billing rule (a quoted job bills its quotation, an unquoted job its real materials and labour — defect #16, fixed in L0), partial payment recorded and voidable, aging correct,
 VAT reconciles to the paisa with the server; warranty claim → free job; AMC schedules visits; every
 report viewable and exportable by the right roles only.
 

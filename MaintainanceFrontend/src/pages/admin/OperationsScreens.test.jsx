@@ -171,9 +171,9 @@ describe('JobDetailPage', () => {
     await waitFor(() => expect(toastTitles(store)).toContain('22 kg of Crystalline slurry issued'));
   });
 
-  it('shows costing to the paisa and the events with where they happened', async () => {
+  it('shows costing to the paisa to a manager, and the events with where they happened', async () => {
     const user = userEvent.setup();
-    renderJob('DISPATCHER', () => undefined, '?tab=costing');
+    renderJob('MANAGER', () => undefined, '?tab=costing');
     expect(await screen.findByText('Rs. 577.25')).toBeInTheDocument();
     expect(screen.getAllByText('Rs. 305.55').length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('Rs. 271.70').length).toBeGreaterThanOrEqual(2);
@@ -184,6 +184,16 @@ describe('JobDetailPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Events' }));
     expect(await screen.findByRole('link', { name: /27\.6801, 85\.3102/ })).toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=27.6801,85.3102');
     expect(screen.getByText('System', { exact: false })).toBeInTheDocument();
+  });
+
+  it.each(['DISPATCHER', 'SALES', 'ACCOUNTANT'])('has no Costing tab for %s, and never asks for the costing (Phase L2)', async (role) => {
+    const { calls } = renderJob(role, () => undefined, '?tab=costing');
+    expect(await screen.findByRole('heading', { name: /JOB-2083-0042/ })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Costing' })).not.toBeInTheDocument();
+    // `?tab=costing` falls back to the overview rather than an empty panel.
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText('Rs. 577.25')).not.toBeInTheDocument();
+    expect(calls.some((c) => c.path === '/admin/jobs/j1/costing')).toBe(false);
   });
 
   it('records time for a technician on the job', async () => {

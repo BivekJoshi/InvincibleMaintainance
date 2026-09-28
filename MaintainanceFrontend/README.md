@@ -52,19 +52,47 @@ uploads the Playwright trace when it fails.
   the only kind `useBlocker` works in — with `signedInAs(role)` for capability checks.
 - Money, phone numbers and Nepali text are the three things that break (CLAUDE.md rule 5). Test them.
 
-### End-to-end tests (Phases F2, H1)
+### End-to-end tests (Phases F2, H1, L3, H2, L5, I)
 
-`npm run test:e2e` runs [Playwright](https://playwright.dev) over two flows in a real browser:
+`npm run test:e2e` runs [Playwright](https://playwright.dev) over these flows in a real browser:
 
 - `e2e/quotation-flow.spec.js` — the whole quotation loop: a customer books at `/book` on a phone-sized
   screen, the office prices and approves the quotation, the customer asks for changes in Nepali, the office
   revises and approves again, the customer accepts — and the lead, the job in the dispatch queue and the
   notifications are checked over the API.
 - `e2e/operations-flow.spec.js` — the dispatcher's day: the job an accepted quotation made is dragged onto
-  Hari's 10:00 tomorrow, moved with the Schedule dialog, a second job dropped on the same slot is warned about
+  Hari's 10:00 on a coming day, moved with the Schedule dialog, a second job dropped on the same slot is warned about
   and not saved, 22 kg is issued (stock falls by 22), time is recorded, costing reconciles, completion waits for
   the checklist, the job is completed and verified, and an admin drafts the case study. It clears Hari's
-  tomorrow of jobs earlier runs left, and accepts a warning about the ones it cannot move.
+  day of jobs earlier runs left — on the first day from tomorrow with no closed job of an earlier run on it —
+  and accepts a warning about the ones it cannot move.
+- `e2e/boq-flow.spec.js` — the BOQ builder (Phase L3; L4–L8 extend it): SALES starts a blank quotation from the
+  New quotation sheet, builds a section by keyboard, pastes 15 rows from `e2e/fixtures/boq-paste.tsv` (two text
+  rows become sections), adds a rate-library row with `/`, measures a line in feet-inches and marks one optional,
+  saves — the server's totals must equal what the builder showed — and submits; a MANAGER sees the margin,
+  approves and sends, and the customer's link shows the sections and the optional row. Its second test (Phase L5)
+  books a site visit from a lead with a caretaker contact, has the customer confirm it in Nepali at `/visit/:token`
+  on a 360 px phone, drives the survey stepper as the surveyor (`survey@gharjatan.com.np`, 360 px, the GPS granted,
+  **offline** — the seepage checklist with a flagged reading and its photos, two rooms in feet-inches with a door
+  deducted, a sketch — submitted on the phone, synced when the signal is back) and builds the quotation from the survey, whose BOQ row carries the same measurements and quantity. The quotation
+  loop answers the seeded seepage checklist over the API (`e2e/support/survey.js`) before it submits its survey.
+  Phase L7 continues the first test on site: Suresh (`suresh@gharjatan.com.np`, the second seeded technician — the
+  job is scheduled on him) opens the job on a 360 px phone and files today's **site diary** — weather, headcount,
+  progress on a BOQ line in 5 % steps — which syncs at once; the dispatcher then sees that progress on the job's
+  **BOQ & progress** tab (no earned value for dispatch) and the day on its **Site diary** tab.
+- `e2e/field-flow.spec.js` — the field app (Phase H2), as Hari (`hari@gharjatan.com.np`) on a 360 px phone: on my
+  way, start, a tick and the timer; then with the browser offline a photo (`e2e/fixtures/site-photo.jpg`), a material
+  and a tick wait on the phone; back online the queue drains by itself; the last tick, a drawn signature, complete —
+  and the dispatcher finds the photos, the signature, the material, the time and the warranty.
+- `e2e/aftercare-flow.spec.js` — aftercare (Phase I): a job completed over the API with a 30-day warranty; the
+  customer raises a claim from the certificate link on a 360 px phone, with no account; the dispatcher accepts it in
+  the claims queue and the free WARRANTY job is in the dispatch queue, unassigned; then the dispatcher creates an AMC
+  contract through the calendar, and the visits saved are exactly the schedule the sheet previewed.
+- `e2e/finance-flow.spec.js` — finance (Phase I), as the accountant (`accounts@gharjatan.com.np`): a job completed
+  over the API with billable material is invoiced from Invoices › Create from job (it bills what it used), sent, paid
+  in part by eSewa, that payment voided (struck through, the balance back up), then settled by cash and a bank
+  transfer to PAID; aging lists it while money is owed and drops it once paid, collections show the two payments and
+  not the voided one, and the collections CSV (the API's, with the dates on screen) carries its header and the row.
 
 ```bash
 npx playwright install chromium     # once

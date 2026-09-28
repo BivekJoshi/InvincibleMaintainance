@@ -204,14 +204,14 @@ describe('lead convert — priced by documentTotals, all or nothing', () => {
     });
   });
 
-  it('a NEW lead passes through CONTACTED on its way to QUOTED, one timeline entry per step', async () => {
+  it('a draft quotation makes a NEW lead CONTACTED, not QUOTED — sending it does that (Phase L1)', async () => {
     const lead = await newLead();
     expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createQuotation: true }), 201);
-    expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('QUOTED');
-    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>QUOTED']);
+    expect(await prisma.lead.findUnique({ where: { id: lead.id } })).toMatchObject({ status: 'CONTACTED', nextActionType: 'SEND_QUOTE' });
+    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED']);
   });
 
-  it('an inspection and a quotation together walk the funnel in order and end QUOTED', async () => {
+  it('an inspection and a quotation together walk the funnel in order and wait at the visit', async () => {
     const lead = await newLead();
     expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({
       site: { address: 'Lazimpat, Kathmandu' },
@@ -219,12 +219,13 @@ describe('lead convert — priced by documentTotals, all or nothing', () => {
       createInspectionJob: true,
       surveyorId: await technicianIdFor('SURVEYOR'),
     }), 201);
-    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>INSPECTION_SCHEDULED', 'INSPECTION_SCHEDULED>QUOTED']);
+    expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>INSPECTION_SCHEDULED']);
+    expect((await prisma.lead.findUnique({ where: { id: lead.id } })).nextActionType).toBe('VISIT');
   });
 
   it('never moves a lead backwards: a QUOTED lead sent for an inspection stays QUOTED', async () => {
     const lead = await newLead();
-    expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createQuotation: true }), 201);
+    for (const status of ['CONTACTED', 'QUOTED']) expectStatus(await sales.patch(`/admin/leads/${lead.id}/status`).send({ status }), 200);
     const body = expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({ createInspectionJob: true }), 201).data;
     expect(body.job.type).toBe('INSPECTION');
     expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('QUOTED');
@@ -313,6 +314,13 @@ describe('customers', () => {
 
 describe('rate card', () => {
   let itemId;
+  // Since Phase L2 the rate library is written by rates:write (MANAGER, ADMIN); SALES reads it.
+  let manager;
+  beforeAll(async () => { manager = await as('MANAGER'); });
+
+  it('SALES reads the library but cannot write it', async () => {
+    expectStatus(await sales.post('/admin/rate-card').send({ code: `NOPE-${Date.now()}`, name: 'Sales cannot', unit: 'nos', rate: 1 }), 403);
+  });
 
   it('GET /admin/rate-card', async () => {
     expect(expectStatus(await sales.get('/admin/rate-card'), 200).data.length).toBeGreaterThan(0);
@@ -320,47 +328,47 @@ describe('rate card', () => {
 
   it('POST/PUT/DELETE /admin/rate-card', async () => {
     const code = uid('RC-').toUpperCase();
-    itemId = expectStatus(await sales.post('/admin/rate-card').send({ code, name: 'Test rate', unit: 'sq.ft', rate: 99.5 }), 201).data.id;
+    itemId = expectStatus(await manager.post('/admin/rate-card').send({ code, name: 'Test rate', unit: 'sq.ft', rate: 99.5 }), 201).data.id;
     expect((await prisma.rateCardItem.findUnique({ where: { id: itemId } })).rate).toBe(9950);
-    expectStatus(await sales.put(`/admin/rate-card/${itemId}`).send({ rate: 105 }), 200);
-    expectStatus(await sales.delete(`/admin/rate-card/${itemId}`), 204);
+    expectStatus(await manager.put(`/admin/rate-card/${itemId}`).send({ rate: 105 }), 200);
+    expectStatus(await manager.delete(`/admin/rate-card/${itemId}`), 204);
   });
 
   it('offers the resource surface the back office screens use: get, toggle, reorder, restore', async () => {
     const code = uid('rc-');
-    const item = expectStatus(await sales.post('/admin/rate-card').send({ code, name: 'Surface rate', unit: 'rft', rate: 40 }), 201).data;
+    const item = expectStatus(await manager.post('/admin/rate-card').send({ code, name: 'Surface rate', unit: 'rft', rate: 40 }), 201).data;
     expect(item.code).toBe(code.toUpperCase());
     expect(expectStatus(await sales.get(`/admin/rate-card/${item.id}`), 200).data.rate).toBe(4000);
-    expect(expectStatus(await sales.patch(`/admin/rate-card/${item.id}/toggle`), 200).data.isActive).toBe(false);
-    expectStatus(await sales.patch('/admin/rate-card/reorder').send({ items: [{ id: item.id, sortOrder: 42 }] }), 204);
+    expect(expectStatus(await manager.patch(`/admin/rate-card/${item.id}/toggle`), 200).data.isActive).toBe(false);
+    expectStatus(await manager.patch('/admin/rate-card/reorder').send({ items: [{ id: item.id, sortOrder: 42 }] }), 204);
     expect((await prisma.rateCardItem.findUnique({ where: { id: item.id } })).sortOrder).toBe(42);
 
-    expectStatus(await sales.delete(`/admin/rate-card/${item.id}`), 204);
+    expectStatus(await manager.delete(`/admin/rate-card/${item.id}`), 204);
     expectStatus(await sales.get(`/admin/rate-card/${item.id}`), 404);
     const trash = expectStatus(await sales.get('/admin/rate-card?deleted=true&limit=100'), 200).data;
     expect(trash.map((r) => r.id)).toContain(item.id);
-    expectStatus(await sales.patch(`/admin/rate-card/${item.id}/restore`), 200);
+    expectStatus(await manager.patch(`/admin/rate-card/${item.id}/restore`), 200);
     expectStatus(await sales.get(`/admin/rate-card/${item.id}`), 200);
 
     // Deleting for good is cms:purge, which SALES does not hold.
-    expectStatus(await sales.delete(`/admin/rate-card/${item.id}?hard=true`), 403);
+    expectStatus(await manager.delete(`/admin/rate-card/${item.id}?hard=true`), 403);
     expectStatus(await (await as('ADMIN')).delete(`/admin/rate-card/${item.id}?hard=true`), 204);
     expect(await prisma.rateCardItem.findUnique({ where: { id: item.id } })).toBeNull();
   });
 
   it('a lower-case code is the same code as its upper-case twin', async () => {
     const code = uid('RC-').toUpperCase();
-    expectStatus(await sales.post('/admin/rate-card').send({ code, name: 'Twin', unit: 'nos', rate: 1 }), 201);
-    expect((await sales.post('/admin/rate-card').send({ code: code.toLowerCase(), name: 'Twin', unit: 'nos', rate: 1 })).status).toBe(409);
+    expectStatus(await manager.post('/admin/rate-card').send({ code, name: 'Twin', unit: 'nos', rate: 1 }), 201);
+    expect((await manager.post('/admin/rate-card').send({ code: code.toLowerCase(), name: 'Twin', unit: 'nos', rate: 1 })).status).toBe(409);
   });
 
   it('a rate change reaches the public pricing page', async () => {
     const code = uid('RC-').toUpperCase();
-    const item = expectStatus(await sales.post('/admin/rate-card').send({ code, name: 'Pricing page rate', unit: 'sq.ft', rate: 10 }), 201).data;
-    expectStatus(await sales.put(`/admin/rate-card/${item.id}`).send({ rate: 12.5 }), 200);
+    const item = expectStatus(await manager.post('/admin/rate-card').send({ code, name: 'Pricing page rate', unit: 'sq.ft', rate: 10 }), 201).data;
+    expectStatus(await manager.put(`/admin/rate-card/${item.id}`).send({ rate: 12.5 }), 200);
     const row = expectStatus(await anon().get('/public/pricing'), 200).data.rateCard.find((r) => r.id === item.id);
     expect(row.rate).toBe(1250);
-    expectStatus(await sales.delete(`/admin/rate-card/${item.id}`), 204);
+    expectStatus(await manager.delete(`/admin/rate-card/${item.id}`), 204);
   });
 
   it('ACCOUNTANT can read quotations but not write the rate card', async () => {
@@ -465,7 +473,7 @@ describe('quotations', () => {
       const lead = expectStatus(await sales.post('/admin/leads').send({ name: 'Approval Lead', phone: phone() }), 201).data;
       for (const status of statuses) {
         expectStatus(await sales.patch(`/admin/leads/${lead.id}/status`).send({
-          status, ...(status === 'LOST' ? { lostReason: 'Went with another company' } : {}),
+          status, ...(status === 'LOST' ? { lostCategory: 'COMPETITOR', lostReason: 'Went with another company' } : {}),
         }), 200);
       }
       return lead;
@@ -478,13 +486,14 @@ describe('quotations', () => {
       return anon().post(`/public/quotations/${publicToken}/decide`).send({ decision: 'approve' });
     };
 
-    it('a NEW lead is WON by way of CONTACTED, with closedAt and a timeline entry per step', async () => {
+    it('a NEW lead is QUOTED when the quotation is sent, then WON — with closedAt and a timeline entry per step', async () => {
       const lead = await leadAt();
       expectStatus(await approveFor(lead.id), 200);
       const after = await prisma.lead.findUnique({ where: { id: lead.id } });
       expect(after.status).toBe('WON');
       expect(after.closedAt).toBeTruthy();
-      expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>WON']);
+      expect(after.nextActionAt).toBeNull();
+      expect(await statusTrail(lead.id)).toEqual(['NEW>CONTACTED', 'CONTACTED>QUOTED', 'QUOTED>WON']);
     });
 
     it('a LOST lead does not fail the customer — it stays LOST and the timeline says the customer accepted', async () => {
@@ -512,8 +521,9 @@ describe('quotations', () => {
     expectStatus(await sales.delete(`/admin/quotations/${draft.id}`), 204);
   });
 
-  it('refuses a quotation with no lines or an unknown customer', async () => {
-    expectStatus(await sales.post('/admin/quotations').send({ customerId: customer.id, items: [] }), 400);
+  it('a draft may start blank (Phase L3) — submitting it is refused; an unknown customer is refused at once', async () => {
+    const blank = expectStatus(await sales.post('/admin/quotations').send({ customerId: customer.id, items: [] }), 201).data;
+    expect(expectStatus(await sales.post(`/admin/quotations/${blank.id}/submit`), 422).error.code).toBe('QUOTATION_INCOMPLETE');
     const res = await sales.post('/admin/quotations').send({ customerId: 'nope', items: [{ description: 'x', qty: 1, rate: 1 }] });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.status).toBeLessThan(500);
@@ -529,7 +539,14 @@ describe('quotations', () => {
         customerId: customer.id,
         items: [{ description: 'Terrace waterproofing', unit: 'sq.ft', qty: 400, rate: 180 }],
       }), 201).data;
-      await prisma.quotation.update({ where: { id: approved.id }, data: { status: 'APPROVED', sentAt: new Date(), decidedAt: new Date() } });
+      // Paid on completion: no advance, so the convert may date the job at once (the advance gate is 19-handoff's).
+      await prisma.quotation.update({
+        where: { id: approved.id },
+        data: {
+          status: 'APPROVED', sentAt: new Date(), decidedAt: new Date(),
+          stages: { deleteMany: {}, create: [{ label: 'On completion', basisPoints: 10000, trigger: 'ON_COMPLETION', sortOrder: 0 }] },
+        },
+      });
     });
 
     it('POST /admin/jobs refuses to convert a quotation nobody approved', async () => {

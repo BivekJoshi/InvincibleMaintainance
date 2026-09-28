@@ -2,23 +2,18 @@ import { useCallback, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { FormDialog } from '@/components/common/FormDialog';
+import { ApproveQuotationDialog } from '@/components/quotations/ApproveQuotationDialog';
 import {
-  useApproveQuotationMutation, useConvertQuotationToJobMutation, usePullBackQuotationMutation,
+  useConvertQuotationToJobMutation, usePullBackQuotationMutation,
   useReviseQuotationMutation, useSendBackQuotationMutation, useSendQuotationMutation, useSubmitQuotationMutation,
 } from '@/api/quotationsApi';
 import { useConfirm } from '@/hooks/useConfirm';
 import { quotationNoteSchema } from '@/form/schemas/quotation.schema';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
-import { formatNpr } from '@/helpers/format';
+import { formatSignedNpr } from '@/helpers/format';
 
-/** The note dialog's words per action. */
+/** The note dialog's words per action. Approve has its own dialog (the margin and its acknowledgement). */
 const NOTE_COPY = {
-  approve: {
-    title: 'Approve this quotation',
-    description: 'It can then be sent to the customer. A remark is optional.',
-    label: 'Remark (optional)',
-    submitLabel: 'Approve',
-  },
   sendBack: {
     title: 'Send back to the draft',
     description: 'Whoever prepared it sees this note on the quotation and can edit and resubmit it.',
@@ -36,7 +31,9 @@ const NOTE_COPY = {
 /**
  * Runs a quotation action from `helpers/quotationActions` — the one way a screen moves
  * a quotation. Actions with a note ask for it first; sending, revising and converting
- * ask for a confirmation. A refusal toasts the API's reason.
+ * ask for a confirmation. A refusal toasts the API's reason. Approve opens
+ * `ApproveQuotationDialog` (Phase L4): the margin, a remark, and the low-margin
+ * acknowledgement when the API asks for it.
  *
  *   const [runAction, actionDialogs] = useQuotationActions();
  *   await runAction(action, quotation);   // true when it ran
@@ -48,9 +45,9 @@ export function useQuotationActions() {
   const navigate = useNavigate();
   const [confirm, confirmDialog] = useConfirm();
   const [asking, setAsking] = useState(null); // { action, quotation, resolve }
+  const [approving, setApproving] = useState(null); // { quotation, resolve }
 
   const [submit] = useSubmitQuotationMutation();
-  const [approve] = useApproveQuotationMutation();
   const [sendBack] = useSendBackQuotationMutation();
   const [pullBack] = usePullBackQuotationMutation();
   const [send] = useSendQuotationMutation();
@@ -65,6 +62,9 @@ export function useQuotationActions() {
     const name = `${q.number}${q.version > 1 ? ` v${q.version}` : ''}`;
     if (action.disabledReason) return false;
 
+    if (action.key === 'approve') {
+      return new Promise((resolve) => setApproving({ quotation: q, resolve }));
+    }
     if (action.note) {
       return new Promise((resolve) => setAsking({ action, quotation: q, resolve }));
     }
@@ -81,7 +81,7 @@ export function useQuotationActions() {
         case 'send': {
           const ok = await confirm({
             title: `Send ${name} to ${q.customer?.name ?? 'the customer'}?`,
-            description: `They get an SMS${q.customer?.email ? ' and an email' : ''} with a link to accept, ask for changes or decline ${formatNpr(q.total)}.`,
+            description: `They get an SMS${q.customer?.email ? ' and an email' : ''} with a link to accept, ask for changes or decline ${formatSignedNpr(q.total)}.`,
             confirmLabel: 'Send',
           });
           if (!ok) return false;
@@ -104,14 +104,31 @@ export function useQuotationActions() {
           return true;
         }
         case 'convert': {
+          if (q.kind === 'VARIATION') {
+            // Phase L7: a variation joins its job — no new job, no advance, the lead untouched.
+            const target = q.job?.number ?? 'its job';
+            const yes = await confirm({
+              title: `Add ${name} to ${target}?`,
+              description: `Its rows join the job’s bill of quantities as variation lines, with what they need. No new job is made and no advance is raised.`,
+              confirmLabel: 'Add to the job',
+            });
+            if (!yes) return false;
+            const job = await convert({ id: q.id }).unwrap();
+            dispatch(toastSuccess(`${name} added to ${job.number ?? target}`, 'Its rows are on the job’s BOQ & progress tab.'));
+            return true;
+          }
           const ok = await confirm({
             title: `Create the job for ${name}?`,
-            description: 'An unscheduled job is created from it and waits in the dispatch queue.',
+            description: 'An unscheduled job is created from it, with its lines and plan, and waits in the dispatch queue. When its payment schedule asks for an advance, the advance invoice is raised too and the job waits for it.',
             confirmLabel: 'Create job',
           });
           if (!ok) return false;
           const job = await convert({ id: q.id }).unwrap();
-          dispatch(toastSuccess(`Job ${job.number} created`, 'It is waiting to be scheduled.'));
+          // Phase L6: the hand-off may have raised an advance the job now waits for.
+          const held = job.advance?.awaitingAdvance;
+          dispatch(toastSuccess(`Job ${job.number} created`, held
+            ? `It is scheduled once the advance${job.advance.invoice?.number ? ` ${job.advance.invoice.number}` : ''} is paid.`
+            : 'It is waiting to be scheduled.'));
           return true;
         }
         default:
@@ -142,10 +159,10 @@ export function useQuotationActions() {
       submitLabel={copy?.submitLabel}
       onSubmit={async ({ note }) => {
         const { action, quotation: q, resolve } = asking;
-        const mutate = { approve, sendBack, pullBack }[action.key];
+        const mutate = { sendBack, pullBack }[action.key];
         // A refusal throws: the dialog stays open with the API's message.
         await mutate({ id: q.id, ...(note ? { note } : {}) }).unwrap();
-        const verb = { approve: 'approved', sendBack: 'sent back', pullBack: 'pulled back' }[action.key];
+        const verb = { sendBack: 'sent back', pullBack: 'pulled back' }[action.key];
         dispatch(toastSuccess(`${q.number} ${verb}`));
         resolve(true);
         setAsking(null);
@@ -153,5 +170,23 @@ export function useQuotationActions() {
     />
   );
 
-  return [run, <>{dialog}{confirmDialog}</>];
+  const approveDialog = (
+    <ApproveQuotationDialog
+      quotation={approving?.quotation ?? null}
+      open={Boolean(approving)}
+      onOpenChange={(open) => {
+        if (open) return;
+        approving?.resolve(false);
+        setApproving(null);
+      }}
+      onApproved={() => {
+        const q = approving.quotation;
+        dispatch(toastSuccess(`${q.number} approved`));
+        approving.resolve(true);
+        setApproving(null);
+      }}
+    />
+  );
+
+  return [run, <>{dialog}{approveDialog}{confirmDialog}</>];
 }

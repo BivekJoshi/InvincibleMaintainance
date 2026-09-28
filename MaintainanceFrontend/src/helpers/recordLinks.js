@@ -2,7 +2,7 @@ import { RESOURCES, screenPathOf } from '@/config/admin/resourceRegistry';
 
 /**
  * Where an audit row's record can be opened in the back office, or null when it has no
- * screen (yet — invoices get theirs in Phase I).
+ * screen (an exported report, say).
  *
  * A child row (a lead's note, a project's picture, a record's Nepali copy) links to its
  * parent, found in the row's own snapshot.
@@ -14,6 +14,13 @@ const byModel = {
   Quotation: (id) => `/admin/quotations/${id}`,
   SiteSurvey: (id) => `/admin/surveys/${id}`,
   Job: (id) => `/admin/jobs/${id}`,
+  // Aftercare (Phase I).
+  Warranty: (id) => `/admin/warranties/${id}`,
+  WarrantyClaim: (id) => `/admin/warranty-claims/${id}`,
+  AmcContract: (id) => `/admin/amc-contracts/${id}`,
+  ServiceReminder: () => '/admin/service-reminders?view=all',
+  // Finance (Phase I). An expense is a registry entry, found by its model like any other.
+  Invoice: (id) => `/admin/invoices/${id}`,
   User: (id) => `/admin/platform/users?open=${id}`,
   Setting: () => '/admin/platform/settings',
   HomeSection: () => '/admin/content/home',
@@ -26,12 +33,19 @@ const PARENTS = {
   LeadNote: ['leadId', 'Lead'],
   CustomerSite: ['customerId', 'Customer'],
   QuotationItem: ['quotationId', 'Quotation'],
+  QuotationPaymentStage: ['quotationId', 'Quotation'],
   ProjectImage: ['projectId', 'Project'],
   JobAssignment: ['jobId', 'Job'],
   JobTask: ['jobId', 'Job'],
   JobPhoto: ['jobId', 'Job'],
   JobMaterial: ['jobId', 'Job'],
   TimeLog: ['jobId', 'Job'],
+  AmcVisit: ['contractId', 'AmcContract'],
+  InvoiceItem: ['invoiceId', 'Invoice'],
+  Payment: ['invoiceId', 'Invoice'],
+  RateCardComponent: ['rateCardItemId', 'RateCardItem'],
+  // Phase L7: a purchase list's item opens its list (a registry entry, found by its model).
+  PurchaseListItem: ['listId', 'PurchaseList'],
 };
 
 /** `faq` → the registry screen; the Prisma client name is what Translation rows carry. */
@@ -47,8 +61,10 @@ const clientNameOf = (model) => model.charAt(0).toLowerCase() + model.slice(1);
  * @param {{ model: string, recordId?: string|null, before?: object|null, after?: object|null }} row
  * @returns {string|null}
  */
-export function recordHref({ model, recordId, before, after }) {
-  const snapshot = { ...before, ...after };
+export function recordHref({ model, recordId, before, after, meta }) {
+  const snapshot = { ...meta, ...before, ...after };
+  // A site diary day (Phase L7) opens its job's Site diary tab; its event names the job in `meta`.
+  if (model === 'SiteDiary') return snapshot.jobId ? `/admin/jobs/${snapshot.jobId}?tab=diary` : null;
   if (PARENTS[model]) {
     const [field, parent] = PARENTS[model];
     const parentId = snapshot[field];

@@ -9,9 +9,13 @@ export const toRupees = (paisa) => Number(paisa || 0) / 100;
 /** Round half-up to the nearest paisa. */
 const r = (n) => Math.round(n + Number.EPSILON);
 
-/** qty may be fractional (e.g. 12.5 sq.ft); rate is paisa per unit. */
+/**
+ * qty may be fractional (e.g. 12.5 sq.ft); rate is paisa per unit. A variation's omission has a negative qty
+ * (Phase L7): rounded half away from zero, so −12.5 paisa is −13 as 12.5 is 13.
+ */
 export function lineAmount(qty, ratePaisa) {
-  return r(Number(qty || 0) * Number(ratePaisa || 0));
+  const n = Number(qty || 0) * Number(ratePaisa || 0);
+  return (Math.sign(n) * r(Math.abs(n))) || 0;
 }
 
 /**
@@ -23,9 +27,12 @@ export function lineAmount(qty, ratePaisa) {
 export function documentTotals(items, { discount = 0, vatApplied = true, vatRate = 13 } = {}) {
   const lines = items.map((i) => ({ ...i, amount: lineAmount(i.qty, i.rate) }));
   const subtotal = lines.reduce((sum, l) => sum + l.amount, 0);
-  const safeDiscount = Math.min(Math.max(0, r(discount)), subtotal);
+  // A net-negative document (a variation that omits more than it adds, Phase L7) takes no discount, and its
+  // VAT is a negative figure rounded like a positive one.
+  const safeDiscount = subtotal > 0 ? Math.min(Math.max(0, r(discount)), subtotal) : 0;
   const taxable = subtotal - safeDiscount;
-  const vatAmount = vatApplied ? r((taxable * vatRate) / 100) : 0;
+  const raw = (taxable * vatRate) / 100;
+  const vatAmount = vatApplied ? ((Math.sign(raw) * r(Math.abs(raw))) || 0) : 0;
   return { lines, subtotal, discount: safeDiscount, vatApplied, vatRate, vatAmount, total: taxable + vatAmount };
 }
 
@@ -37,3 +44,280 @@ export function formatNpr(paisa, { withSymbol = true } = {}) {
 
 /** Sums a list of paisa amounts safely. */
 export const sum = (nums) => nums.reduce((a, b) => a + Number(b || 0), 0);
+
+/** `part` as a percentage of `whole`, to one decimal — earned value against the job's value (Phase L7). */
+export const pctOf = (part, whole) => (whole ? Math.round((Number(part) * 1000) / Number(whole)) / 10 : 0);
+
+/** What is still owed on a document: total less paid, never below zero (an overpayment is refused upstream). */
+export const outstanding = (total, paid) => Math.max(0, Number(total || 0) - Number(paid || 0));
+
+/**
+ * Paisa as plain rupees with two decimals — `123456` → `'1234.56'`, `-5` → `'-0.05'` — for a CSV cell a
+ * spreadsheet reads as a number. Integer arithmetic, so no float ever shows as 1234.5599999.
+ */
+export function rupeesText(paisa) {
+  const n = Math.round(Number(paisa || 0));
+  const abs = Math.abs(n);
+  return `${n < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}
+
+/** Rounds half away from zero — for signed amounts (a variation's omission line), where `r` would lean up. */
+export const rs = (n) => (Math.sign(n) * Math.round(Math.abs(n) + Number.EPSILON)) || 0;
+
+/** `amount × part / whole`, rounded (signed); 0 when there is no whole. */
+export const proRata = (amount, part, whole) => (whole ? rs((amount * part) / whole) : 0);
+
+/**
+ * Splits an integer total by weights (basis points, quantities…) with the largest-remainder method: the
+ * parts are integers and always add up to `total`; a tie goes to the earlier part.
+ * @param {number} total  paisa
+ * @param {number[]} weights  non-negative, not all zero
+ */
+export function allocate(total, weights) {
+  const whole = weights.reduce((a, w) => a + w, 0);
+  if (!(whole > 0)) throw new Error('allocate needs at least one positive weight');
+  const parts = weights.map((w) => Math.floor((total * w) / whole));
+  const byRemainder = weights
+    .map((w, i) => ({ i, rem: (total * w) % whole }))
+    .sort((a, b) => b.rem - a.rem || a.i - b.i);
+  let left = total - parts.reduce((a, p) => a + p, 0);
+  for (const { i } of byRemainder) {
+    if (left <= 0) break;
+    parts[i] += 1;
+    left -= 1;
+  }
+  return parts;
+}
+
+/**
+ * What one unit of a rate-library item costs, from its recipe (L-D1). Each component's batch cost is
+ * `qty × price × (100 + wastage%) / 100`, rounded once; the buckets are that ÷ `recipeQty`, rounded; the
+ * direct cost is their sum, so the breakdown always adds up; overhead is a % of direct.
+ *
+ * A component whose price is unknown (`null` — a material with no purchase rate) is left out and the
+ * result says `complete: false`: an unknown cost is never priced at zero.
+ *
+ * @param {{ kind: 'MATERIAL'|'LABOUR'|'EQUIPMENT'|'OTHER', qty: number, wastagePct?: number, price: number|null }[]} components
+ *   price: paisa per unit of the component (a material's purchase rate, a trade's day wage, an equipment cost)
+ * @param {{ recipeQty?: number, overheadPct?: number }} opts  the recipe is for `recipeQty` units of work
+ * @returns {{ material: number, labour: number, equipment: number, other: number, direct: number,
+ *   overhead: number, unitCost: number, complete: boolean, lines: { lineCost: number|null }[] }}
+ */
+export function recipeCost(components, { recipeQty = 1, overheadPct = 0 } = {}) {
+  const per = Number(recipeQty) > 0 ? Number(recipeQty) : 1;
+  const batch = { MATERIAL: 0, LABOUR: 0, EQUIPMENT: 0, OTHER: 0 };
+  const lines = components.map((c) => {
+    if (c.price == null) return { lineCost: null };
+    const lineCost = r((Number(c.qty || 0) * Number(c.price) * (100 + Number(c.wastagePct || 0))) / 100);
+    batch[c.kind] += lineCost;
+    return { lineCost };
+  });
+  const material = r(batch.MATERIAL / per);
+  const labour = r(batch.LABOUR / per);
+  const equipment = r(batch.EQUIPMENT / per);
+  const other = r(batch.OTHER / per);
+  const direct = material + labour + equipment + other;
+  const overhead = r((direct * Number(overheadPct || 0)) / 100);
+  return {
+    material, labour, equipment, other, direct, overhead, unitCost: direct + overhead,
+    complete: components.length > 0 && lines.every((l) => l.lineCost !== null),
+    lines,
+  };
+}
+
+/**
+ * The selling rate for a unit cost: profit on top, then rounded UP to `roundTo` paisa (100 = the next
+ * rupee), so rounding never eats the margin. `null` in, `null` out.
+ */
+export function sellRate(unitCost, { profitPct = 0, roundTo = 0 } = {}) {
+  if (unitCost == null) return null;
+  const derived = r((unitCost * (100 + Number(profitPct || 0))) / 100);
+  return roundTo > 0 ? Math.ceil(derived / roundTo) * roundTo : derived;
+}
+
+/** Margin on the selling price: `{ amount, pct }` (pct to 2 dp, null on a zero price); null when the cost is unknown. */
+export function margin(sell, cost) {
+  if (cost == null) return null;
+  const amount = sell - cost;
+  return { amount, pct: sell ? Number(((amount / sell) * 100).toFixed(2)) : null };
+}
+
+/**
+ * A BOQ's totals (Phase L3): `documentTotals` over the ITEM rows that are not optional — SECTION and NOTE
+ * rows carry no money, and an optional row is priced but never totalled. Adds each row's own amount
+ * (`rowAmounts`, null for SECTION/NOTE), the subtotal of each section (rows before the first section
+ * form an untitled one), and the optional rows' total.
+ * @param {{ rowType?: 'ITEM'|'SECTION'|'NOTE', title?: string, qty?: number, rate?: number, isOptional?: boolean }[]} rows
+ * @param {{ discount?: number, vatApplied?: boolean, vatRate?: number }} opts
+ */
+export function boqTotals(rows, opts = {}) {
+  const isItem = (row) => (row.rowType ?? 'ITEM') === 'ITEM';
+  const totals = documentTotals(rows.filter((row) => isItem(row) && !row.isOptional), opts);
+  const rowAmounts = rows.map((row) => (isItem(row) ? lineAmount(row.qty, row.rate) : null));
+  const sections = [];
+  let current = null;
+  let optionalTotal = 0;
+  rows.forEach((row, i) => {
+    if (row.rowType === 'SECTION') {
+      // A stored SECTION row keeps its title in `description`.
+      current = { index: i, title: row.title ?? row.description ?? null, subtotal: 0 };
+      sections.push(current);
+    } else if (isItem(row)) {
+      if (row.isOptional) { optionalTotal += rowAmounts[i]; return; }
+      if (!current) { current = { index: null, title: null, subtotal: 0 }; sections.push(current); }
+      current.subtotal += rowAmounts[i];
+    }
+  });
+  return { ...totals, rowAmounts, sections, optionalTotal };
+}
+
+/**
+ * A quotation's payment schedule (L-D3): each stage's share of the taxable amount and of the VAT, both
+ * split by its basis points with `allocate` — so the stages add up to the quotation's total exactly, and
+ * no stage's VAT goes negative.
+ * @param {{ subtotal: number, discount: number, vatAmount: number }} totals  a `documentTotals` result
+ * @param {{ basisPoints: number }[]} stages
+ */
+export function paymentSchedule(totals, stages) {
+  const weights = stages.map((st) => st.basisPoints);
+  const taxable = allocate(totals.subtotal - totals.discount, weights);
+  const vat = allocate(totals.vatAmount, weights);
+  return stages.map((st, i) => ({ ...st, taxable: taxable[i], vat: vat[i], total: taxable[i] + vat[i] }));
+}
+
+/**
+ * One payment stage as an invoice (Phase L6, L-D3): a single line of the stage's taxable amount carrying the
+ * stage's OWN VAT — the schedule's split. VAT worked out again on the part (`documentTotals`) can land a paisa
+ * away from it, and then the stage bills would no longer add up to the quotation. Same shape as
+ * `documentTotals`, so it is stored the same way.
+ * @param {{ taxable: number, vat: number }} stage  a `paymentSchedule` stage
+ * @param {{ description: string, vatApplied?: boolean, vatRate?: number, unit?: string }} opts
+ */
+export function stageDocument(stage, { description, vatApplied = true, vatRate = 13, unit = 'lump' } = {}) {
+  const vatAmount = vatApplied ? stage.vat : 0;
+  return {
+    lines: [{ description, unit, qty: 1, rate: stage.taxable, amount: stage.taxable, sortOrder: 0 }],
+    subtotal: stage.taxable,
+    discount: 0,
+    vatApplied,
+    vatRate,
+    vatAmount,
+    total: stage.taxable + vatAmount,
+  };
+}
+
+/**
+ * The final bill (Phase L8): the contract's totals less what was already billed (advance and running
+ * bills), in taxable amount and in VAT, so everything invoiced reconciles to the contract to the paisa.
+ * A negative `due` is the caller's to refuse (credit notes are deferred).
+ * @param {{ qty: number, rate: number }[]} lines  the contract's lines (paisa)
+ * @param {{ taxable: number, vat: number }[]} earlierBills
+ * @param {{ discount?: number, vatApplied?: boolean, vatRate?: number }} opts
+ */
+export function finalBillTotals(lines, earlierBills, opts = {}) {
+  const contract = documentTotals(lines, opts);
+  const billed = { taxable: sum(earlierBills.map((b) => b.taxable)), vat: sum(earlierBills.map((b) => b.vat)) };
+  billed.total = billed.taxable + billed.vat;
+  const due = { taxable: contract.subtotal - contract.discount - billed.taxable, vat: contract.vatAmount - billed.vat };
+  due.total = due.taxable + due.vat;
+  return { contract, billed, due };
+}
+
+/**
+ * The closing bill of a job billed in stages (Phase L6 — the rule Phase L8's FINAL builds on): the contract's
+ * lines, less one line per earlier stage bill (its taxable amount), with the VAT that is left —
+ * `finalBillTotals`, so advance + running bills + this one add up to the contract to the paisa, VAT included.
+ * Same shape as `documentTotals`; its own sums hold (total = subtotal − discount + VAT).
+ * @param {{ description: string, unit?: string, qty: number, rate: number }[]} lines  the contract (paisa)
+ * @param {{ description: string, taxable: number, vat: number }[]} earlierBills
+ * @param {{ discount?: number, vatApplied?: boolean, vatRate?: number }} opts  the contract's
+ */
+export function finalBillDocument(lines, earlierBills, opts = {}) {
+  const { contract, billed, due } = finalBillTotals(lines, earlierBills, opts);
+  const deductions = earlierBills.map((b, i) => ({
+    description: b.description, unit: 'lump', qty: 1, rate: -b.taxable, amount: -b.taxable, sortOrder: contract.lines.length + i,
+  }));
+  return {
+    lines: [...contract.lines.map((l, i) => ({ ...l, sortOrder: l.sortOrder ?? i })), ...deductions],
+    subtotal: contract.subtotal - billed.taxable,
+    discount: contract.discount,
+    vatApplied: contract.vatApplied,
+    vatRate: contract.vatRate,
+    vatAmount: due.vat,
+    total: due.total,
+  };
+}
+
+/** A discount of `pct`% of the subtotal (Phase L3's "%" helper): rounded once, between 0 and the subtotal. */
+export function discountForPct(subtotal, pct) {
+  return Math.min(Math.max(0, r((subtotal * Number(pct || 0)) / 100)), subtotal);
+}
+
+/**
+ * The discount that brings a document to `targetTotal` (VAT included) — "Rs 4,50,000 flat". The taxable
+ * amount is solved for, then nudged by a paisa so `documentTotals` lands on the target exactly or, when
+ * VAT rounding makes that impossible, on the nearest total below it. A target above the undiscounted
+ * total gives no discount.
+ */
+export function discountForTarget(subtotal, targetTotal, { vatApplied = true, vatRate = 13 } = {}) {
+  const totalFor = (taxable) => taxable + (vatApplied ? r((taxable * vatRate) / 100) : 0);
+  const guess = vatApplied ? Math.round((targetTotal * 100) / (100 + vatRate)) : targetTotal;
+  let taxable = Math.min(subtotal, Math.max(0, guess + 1));
+  while (taxable > 0 && totalFor(taxable) > targetTotal) taxable -= 1;
+  return subtotal - taxable;
+}
+
+const EN_ONES = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve',
+  'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const EN_TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+/** Nepali has its own word for each number to 99 — they are not built from tens and ones. */
+const NE_TO_99 = ['शून्य', 'एक', 'दुई', 'तीन', 'चार', 'पाँच', 'छ', 'सात', 'आठ', 'नौ', 'दस',
+  'एघार', 'बाह्र', 'तेह्र', 'चौध', 'पन्ध्र', 'सोह्र', 'सत्र', 'अठार', 'उन्नाइस', 'बीस',
+  'एक्काइस', 'बाइस', 'तेइस', 'चौबिस', 'पच्चिस', 'छब्बिस', 'सत्ताइस', 'अट्ठाइस', 'उनन्तीस', 'तीस',
+  'एकतीस', 'बत्तीस', 'तेत्तीस', 'चौँतीस', 'पैँतीस', 'छत्तीस', 'सैँतीस', 'अठतीस', 'उनन्चालीस', 'चालीस',
+  'एकचालीस', 'बयालीस', 'त्रिचालीस', 'चवालीस', 'पैँतालीस', 'छयालीस', 'सतचालीस', 'अठचालीस', 'उनन्चास', 'पचास',
+  'एकाउन्न', 'बाउन्न', 'त्रिपन्न', 'चवन्न', 'पचपन्न', 'छपन्न', 'सन्ताउन्न', 'अन्ठाउन्न', 'उनन्साठी', 'साठी',
+  'एकसट्ठी', 'बयसट्ठी', 'त्रिसट्ठी', 'चौसट्ठी', 'पैँसट्ठी', 'छयसट्ठी', 'सतसट्ठी', 'अठसट्ठी', 'उनन्सत्तरी', 'सत्तरी',
+  'एकहत्तर', 'बहत्तर', 'त्रिहत्तर', 'चौहत्तर', 'पचहत्तर', 'छयहत्तर', 'सतहत्तर', 'अठहत्तर', 'उनासी', 'असी',
+  'एकासी', 'बयासी', 'त्रियासी', 'चौरासी', 'पचासी', 'छयासी', 'सतासी', 'अठासी', 'उनान्नब्बे', 'नब्बे',
+  'एकानब्बे', 'बयानब्बे', 'त्रियानब्बे', 'चौरानब्बे', 'पन्चानब्बे', 'छयानब्बे', 'सन्तानब्बे', 'अन्ठानब्बे', 'उनान्सय'];
+
+const WORDS = {
+  en: {
+    below100: (n) => (n < 20 ? EN_ONES[n] : `${EN_TENS[Math.floor(n / 10)]}${n % 10 ? `-${EN_ONES[n % 10]}` : ''}`),
+    units: { crore: 'Crore', lakh: 'Lakh', thousand: 'Thousand', hundred: 'Hundred' },
+    say: (words, paisa) => `Rupees ${words}${paisa ? ` and ${paisa} Paisa` : ''} Only`,
+  },
+  ne: {
+    below100: (n) => NE_TO_99[n],
+    units: { crore: 'करोड', lakh: 'लाख', thousand: 'हजार', hundred: 'सय' },
+    say: (words, paisa) => `रुपैयाँ ${words}${paisa ? ` र ${paisa} पैसा` : ''} मात्र`,
+  },
+};
+
+/** A whole number in words, in crore / lakh / thousand / hundred (a crore count above 99 recurses). */
+function inWords(n, lang) {
+  const { below100, units } = WORDS[lang];
+  if (n === 0) return below100(0);
+  const parts = [];
+  const push = (count, unit) => { if (count) parts.push(`${count >= 100 ? inWords(count, lang) : below100(count)} ${unit}`); };
+  push(Math.floor(n / 10_000_000), units.crore);
+  push(Math.floor((n % 10_000_000) / 100_000), units.lakh);
+  push(Math.floor((n % 100_000) / 1000), units.thousand);
+  push(Math.floor((n % 1000) / 100), units.hundred);
+  if (n % 100) parts.push(below100(n % 100));
+  return parts.join(' ');
+}
+
+/**
+ * An amount (paisa) in words, as a Nepali quotation or invoice states its total (Phase L4):
+ * "Rupees Twenty-Eight Lakh … and Seventy Paisa Only" / "रुपैयाँ अट्ठाइस लाख … र सत्तरी पैसा मात्र".
+ * @param {number} paisa  a non-negative integer
+ * @param {'en'|'ne'} [locale]
+ */
+export function amountInWords(paisa, locale = 'en') {
+  const lang = WORDS[locale] ? locale : 'en';
+  const rupees = Math.floor(paisa / 100);
+  const rest = paisa % 100;
+  return WORDS[lang].say(inWords(rupees, lang), rest ? inWords(rest, lang) : null);
+}

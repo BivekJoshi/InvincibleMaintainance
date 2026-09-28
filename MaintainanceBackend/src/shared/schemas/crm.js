@@ -4,8 +4,11 @@ import {
   preferredLocale, rupees, sortOrder, unit,
 } from './common.js';
 import {
-  BOOKING_SLOT_KEYS, CUSTOMER_TYPES, LEAD_SOURCES, LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, PRIORITIES,
-  QUOTATION_DECISIONS, QUOTATION_STAGES, QUOTATION_STATUSES,
+  BOOKING_SLOT_KEYS, BUDGET_BANDS, CONTACT_ACTIVITY_TYPES, CONTRACT_TYPES, CUSTOMER_TYPES, DECISION_MAKERS, LEAD_OUTCOMES,
+  LEAD_SOURCES, PAYMENT_TRIGGERS,
+  LEAD_STATUSES, LOGGABLE_ACTIVITY_TYPES, LOST_CATEGORIES, NEXT_ACTION_TYPES, PRIORITIES, PROPERTY_TYPES,
+  QUOTATION_DECISIONS, QUOTATION_KINDS, QUOTATION_ROW_TYPES, QUOTATION_STAGES, QUOTATION_STATUSES, RATE_MODES, RECIPE_COMPONENT_KINDS,
+  SURVEY_ITEM_KINDS,
 } from '../enums.js';
 
 /** A booking may be made for today or up to 90 days out — never for the past. */
@@ -42,6 +45,19 @@ export const publicLeadSchema = z.object({
   elapsedMs: z.coerce.number().int().min(0).optional(),
 });
 
+/**
+ * What sales learns on the first call (`Lead.qualification`), so nobody drives 12 km for a Rs 5,000 job or
+ * waits on an owner who decides from abroad. Every field is optional; the budget band is a label, not money.
+ */
+export const leadQualification = z.object({
+  propertyType: z.enum(PROPERTY_TYPES).optional(),
+  floors: z.coerce.number().int().min(0).max(60).optional(),
+  buildingAgeYears: z.coerce.number().int().min(0).max(300).optional(),
+  budgetBand: z.enum(BUDGET_BANDS).optional(),
+  decisionMaker: z.enum(DECISION_MAKERS).optional(),
+  note: z.string().trim().max(500).optional(),
+}).strict();
+
 export const adminLeadCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
   phone: nepaliPhone,
@@ -56,18 +72,41 @@ export const adminLeadCreateSchema = z.object({
   assignedToId: z.string().optional().nullable(),
   estimatedAmount: optionalRupees,
   preferredLocale: preferredLocale.default('en'),
+  qualification: leadQualification.nullable().optional(),
 });
 
 // `.partial()` keeps a default, which would reset the language on every edit that leaves it out.
 export const leadUpdateSchema = adminLeadCreateSchema.extend({ preferredLocale: preferredLocale.optional() }).partial();
 
+const lostReason = z.string().trim().max(500).optional();
+const otherNeedsReason = [
+  (v) => v.lostCategory !== 'OTHER' || Boolean(v.lostReason),
+  { message: 'Say why, when the reason is Other', path: ['lostReason'] },
+];
+
+/** LOST says why (a category, required) and may add detail (the free text). */
 export const leadStatusSchema = z.object({
   status: z.enum(LEAD_STATUSES),
-  lostReason: z.string().trim().max(500).optional(),
+  lostCategory: z.enum(LOST_CATEGORIES).optional(),
+  lostReason,
   note: z.string().trim().max(2000).optional(),
-}).refine((v) => v.status !== 'LOST' || Boolean(v.lostReason), {
-  message: 'A reason is required when marking a lead as lost', path: ['lostReason'],
+}).refine((v) => v.status !== 'LOST' || Boolean(v.lostCategory), {
+  message: 'Choose why the lead was lost', path: ['lostCategory'],
+}).refine(...otherNeedsReason);
+
+/** What happens next on a lead, and when. */
+export const nextActionInput = z.object({
+  at: z.coerce.date(),
+  type: z.enum(NEXT_ACTION_TYPES),
+  note: z.string().trim().max(300).optional(),
 });
+
+/** PATCH /admin/leads/:id/next-action — `at: null` clears it; a time needs a type. */
+export const leadNextActionSchema = z.object({
+  at: z.coerce.date().nullable(),
+  type: z.enum(NEXT_ACTION_TYPES).optional(),
+  note: z.string().trim().max(300).optional(),
+}).refine((v) => v.at === null || Boolean(v.type), { message: 'Say what the next action is', path: ['type'] });
 
 export const leadAssignSchema = z.object({
   assignedToId: z.string().nullable(),
@@ -76,11 +115,25 @@ export const leadAssignSchema = z.object({
 
 export const leadNoteSchema = z.object({ note: z.string().trim().min(1).max(4000) });
 
-/** status_change and assignment entries are written by the system, never typed in. */
+/**
+ * status_change and assignment entries are written by the system, never typed in.
+ *
+ * A contact may carry what it came to (`outcome`) — and then it ends with a next action or the lead
+ * closed (`close`), which lead.service#addActivity enforces, with defaults per outcome.
+ */
 export const leadActivitySchema = z.object({
   type: z.enum(LOGGABLE_ACTIVITY_TYPES),
   summary: z.string().trim().min(1).max(1000),
   meta: z.record(z.any()).optional(),
+  outcome: z.enum(LEAD_OUTCOMES).optional(),
+  nextAction: nextActionInput.optional(),
+  close: z.object({ lostCategory: z.enum(LOST_CATEGORIES), lostReason }).refine(...otherNeedsReason).optional(),
+}).refine((v) => !v.outcome || CONTACT_ACTIVITY_TYPES.includes(v.type), {
+  message: 'An outcome belongs to a call, a message or a visit', path: ['outcome'],
+}).refine((v) => !v.close || Boolean(v.outcome), {
+  message: 'Closing a lead from the timeline needs the outcome that closed it', path: ['close'],
+}).refine((v) => !(v.nextAction && v.close), {
+  message: 'Book a next action or close the lead — not both', path: ['close'],
 });
 
 export const leadBulkAssignSchema = z.object({
@@ -115,11 +168,23 @@ export const leadConvertSchema = z.object({
   createQuotation: z.coerce.boolean().default(false),
   createInspectionJob: z.coerce.boolean().default(false),
   scheduledStart: z.coerce.date().optional(),
+  /** The end of the visit's window (Phase L5): the customer is told "between 10:00 and 12:00". */
   scheduledEnd: z.coerce.date().optional(),
   /** Technician.id of the surveyor to send. Assigning one also creates the survey. */
   surveyorId: z.string().optional(),
+  /**
+   * Who opens the door when it is not the customer — the caretaker while the owner is abroad — and how
+   * to find the house (Phase L5). Stored on the visit's site, so the next job there knows them too.
+   */
+  siteContactName: z.string().trim().max(120).optional(),
+  siteContactPhone: optionalPhone,
+  landmark: z.string().trim().max(200).optional(),
 }).refine((v) => !(v.customerId && v.createNewCustomer), {
   message: 'Choose an existing customer or a new one, not both', path: ['customerId'],
+}).refine((v) => !(v.scheduledStart && v.scheduledEnd) || v.scheduledEnd > v.scheduledStart, {
+  message: 'The window must end after it starts', path: ['scheduledEnd'],
+}).refine((v) => !v.siteContactPhone || v.siteContactName, {
+  message: 'Say whose number this is', path: ['siteContactName'],
 });
 
 /** `boolean` query flags arrive as strings; z.coerce.boolean() would read 'false' as true. */
@@ -139,6 +204,8 @@ export const leadListQuery = z.object({
   slaRisk: z.enum(['at_risk', 'breached', 'ok']).optional(),
   /** Leads that name a visit day (online bookings, and bookings folded onto an enquiry). */
   requestedVisit: flag.optional(),
+  /** Open leads by their next action: due in the Kathmandu day, past due, or none booked. */
+  nextAction: z.enum(['due_today', 'overdue', 'none']).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   /** Export only: the rows picked in the table, comma separated. */
@@ -187,6 +254,10 @@ export const customerSiteSchema = z.object({
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),
   accessNotes: optionalText,
+  /** The caretaker or tenant who opens the door, and how to find the house (Phase L5). */
+  contactName: z.string().trim().max(120).nullable().optional(),
+  contactPhone: z.union([nepaliPhone, z.literal(''), z.null()]).optional().transform((v) => v || null),
+  landmark: z.string().trim().max(200).nullable().optional(),
   isPrimary: z.coerce.boolean().default(false),
 });
 
@@ -194,30 +265,165 @@ export const customerSiteUpdateSchema = customerSiteSchema.extend({ isPrimary: z
 
 export { historyQuery } from './common.js';
 
-export const rateCardItemSchema = z.object({
-  // Stored upper-case, so `seep-chem` and `SEEP-CHEM` are one code (the column is unique).
-  code: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9_-]+$/, 'Use letters, numbers, dash or underscore')
-    .transform((v) => v.toUpperCase()),
+// Stored upper-case, so `seep-chem` and `SEEP-CHEM` are one code (the column is unique).
+const upperCode = z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9_-]+$/, 'Use letters, numbers, dash or underscore')
+  .transform((v) => v.toUpperCase());
+
+/**
+ * One line of a recipe (L-D1). A material is measured in its own unit and a trade in man-days; equipment
+ * and other costs carry their own cost per unit (rupees in, paisa stored). The server fills the unit.
+ */
+export const recipeComponent = z.object({
+  kind: z.enum(RECIPE_COMPONENT_KINDS),
+  materialId: z.string().min(1).nullable().optional(),
+  tradeId: z.string().min(1).nullable().optional(),
+  description: z.string().trim().max(200).nullable().optional(),
+  qty: z.coerce.number().positive().max(1_000_000),
+  wastagePct: z.coerce.number().min(0).max(100).optional(),
+  cost: rupees.nullable().optional(),
+}).superRefine((c, ctx) => {
+  const need = (path, message) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (c.kind === 'MATERIAL' && !c.materialId) need('materialId', 'Choose the material');
+  if (c.kind === 'LABOUR' && !c.tradeId) need('tradeId', 'Choose the trade');
+  if (['EQUIPMENT', 'OTHER'].includes(c.kind)) {
+    if (!c.description) need('description', 'Say what it is');
+    if (c.cost == null) need('cost', 'What does one unit cost?');
+  }
+});
+
+/** No defaults here: an update that leaves a field out keeps it (the create applies MANUAL and 1). */
+const rateCardFields = z.object({
+  code: upperCode,
   name: z.string().trim().min(2).max(200),
   description: optionalText,
   category: z.string().trim().max(80).optional(),
   unit,
-  rate: rupees,
+  /** Rupees. Required when MANUAL; a DERIVED item's rate comes from its recipe. */
+  rate: rupees.optional(),
+  rateMode: z.enum(RATE_MODES).optional(),
+  /** The recipe is written for this many units of work — DoR norms are "per 10 sq.m". */
+  recipeQty: z.coerce.number().positive().max(100_000).optional(),
+  /** null = the settings default. */
+  overheadPct: z.coerce.number().min(0).max(200).nullable().optional(),
+  profitPct: z.coerce.number().min(0).max(500).nullable().optional(),
+  /** Rupees; the derived rate rounds UP to a multiple of it. null = the setting. */
+  roundTo: rupees.nullable().optional(),
+  components: z.array(recipeComponent).max(40).optional(),
   sortOrder,
   isActive,
 });
 
-const quotationItem = z.object({
-  rateCardItemId: z.string().optional().nullable(),
-  description: z.string().trim().min(1).max(500),
-  unit: z.string().trim().max(20).optional(),
-  qty: z.coerce.number().min(0.01).max(1_000_000),
-  rate: rupees,
-  sortOrder: z.coerce.number().int().min(0).default(0),
+/** POST /admin/rate-card. A DERIVED item needs its recipe; a MANUAL one its rate. */
+export const rateCardItemSchema = rateCardFields
+  .refine((v) => v.rateMode === 'DERIVED' || v.rate != null, { message: 'Enter the rate', path: ['rate'] })
+  .refine((v) => v.rateMode !== 'DERIVED' || (v.components?.length ?? 0) > 0, {
+    message: 'A derived rate needs its recipe', path: ['components'],
+  });
+
+/** PUT /admin/rate-card/:id — partial; the service checks the merged item. */
+export const rateCardItemUpdateSchema = rateCardFields.partial();
+
+/**
+ * POST /admin/rate-card/derive — a recipe's cost and derived rate, computed by the server, nothing saved.
+ * `rate` (rupees, optional) is the rate on the form, so the margin at it comes from the server too.
+ */
+export const rateCardDeriveSchema = rateCardFields.pick({ recipeQty: true, overheadPct: true, profitPct: true, roundTo: true, rate: true })
+  .extend({ components: z.array(recipeComponent).min(1).max(40) });
+
+/** POST /admin/rate-card/reprice — `apply: false` previews and writes nothing. */
+export const rateCardRepriceSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500).optional(),
+  apply: z.boolean(),
 });
 
+/** A trade and its day wage (rupees in, paisa stored) — /admin/trades. */
+export const tradeSchema = z.object({
+  code: upperCode,
+  name: z.string().trim().min(2).max(120),
+  dayWage: rupees.default(0),
+  sortOrder,
+  isActive,
+});
+
+const dimension = z.coerce.number().min(0).max(100_000).nullable().optional();
+
+/** One measurement-book row: nos × L × B × H over the dimensions given; `deduct` subtracts (a door, a window). */
+export const measurementRow = z.object({
+  area: z.string().trim().max(80).nullable().optional(),
+  description: z.string().trim().max(200).nullable().optional(),
+  nos: dimension,
+  l: dimension,
+  b: dimension,
+  h: dimension,
+  deduct: z.coerce.boolean().optional(),
+});
+
+/**
+ * One BOQ row (Phase L3), rates in RUPEES. A SECTION's title and a NOTE's text are its description. An ITEM
+ * needs a rate and a quantity or measurements; its quantity must come out above zero (the service answers
+ * 422 NEGATIVE_LINE otherwise). `id` is a stored row's, so its frozen recipe and cost are kept. Cost fields
+ * are not part of the row: a client-sent unitCost, costAmount or recipe is dropped here, never trusted.
+ */
+export const quotationRow = z.object({
+  id: z.string().min(1).optional(),
+  rowType: z.enum(QUOTATION_ROW_TYPES).default('ITEM'),
+  rateCardItemId: z.string().min(1).nullable().optional(),
+  materialId: z.string().min(1).nullable().optional(),
+  kind: z.enum(SURVEY_ITEM_KINDS).nullable().optional(),
+  description: z.string().trim().min(1).max(500),
+  spec: z.string().trim().max(2000).nullable().optional(),
+  unit: z.string().trim().max(20).nullable().optional(),
+  qty: z.coerce.number().min(-1_000_000).max(1_000_000).optional(),
+  measurements: z.array(measurementRow).max(200).nullable().optional(),
+  wastagePct: z.coerce.number().min(0).max(100).optional(),
+  rate: rupees.optional(),
+  isOptional: z.coerce.boolean().optional(),
+  isProvisional: z.coerce.boolean().optional(),
+  sortOrder: z.coerce.number().int().min(0).optional(),
+}).superRefine((row, ctx) => {
+  if (row.rowType !== 'ITEM') return;
+  if (row.rate == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rate'], message: 'Enter the rate' });
+  if (row.qty == null && !row.measurements?.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['qty'], message: 'Enter the quantity, or measure it' });
+  }
+});
+
+const quotationRows = z.array(quotationRow).max(500);
+
+/**
+ * A payment schedule (L-D3, Phase L4): 1–10 stages in basis points summing to exactly 10000 (100 %), at
+ * most one ON_ACCEPT (the advance). Amounts are the server's (money.js#paymentSchedule).
+ */
+export const paymentStages = z.array(z.object({
+  label: z.string().trim().min(1).max(80),
+  basisPoints: z.coerce.number().int().min(1).max(10000),
+  trigger: z.enum(PAYMENT_TRIGGERS),
+})).min(1).max(10)
+  .refine((stages) => stages.reduce((a, st) => a + st.basisPoints, 0) === 10000, { message: 'The stages must add up to 100 %' })
+  .refine((stages) => stages.filter((st) => st.trigger === 'ON_ACCEPT').length <= 1, { message: 'Only one stage can be the advance on acceptance' });
+
+/** The contract around the BOQ (Phase L4) — the same fields on create, update and preview. */
+const contractFields = {
+  contractType: z.enum(CONTRACT_TYPES).optional(),
+  estimatedDays: z.coerce.number().positive().max(3650).nullable().optional(),
+  exclusions: z.string().trim().max(4000).nullable().optional(),
+  showMeasurements: z.coerce.boolean().optional(),
+  summaryOnly: z.coerce.boolean().optional(),
+  paymentStages: paymentStages.optional(),
+};
+
+/**
+ * A new quotation. A DRAFT may start with no rows (a blank BOQ); submitting needs a priced row. Left out,
+ * the contract type, the payment schedule and the terms come from the settings and the terms library.
+ */
 export const quotationSchema = z.object({
-  customerId: z.string().min(1),
+  /** Left out for a variation: the job's customer. */
+  customerId: z.string().min(1).optional(),
+  /**
+   * A variation order against this job (Phase L7): the quotation is kind VARIATION, numbered VO-, takes the
+   * job's customer, site and lead, may carry negative rows (omissions) and has no payment schedule.
+   */
+  jobId: z.string().min(1).optional(),
   siteId: z.string().optional().nullable(),
   leadId: z.string().optional().nullable(),
   validUntil: z.coerce.date().optional(),
@@ -225,11 +431,49 @@ export const quotationSchema = z.object({
   vatApplied: z.coerce.boolean().default(true),
   terms: optionalText,
   internalNote: optionalText,
-  items: z.array(quotationItem).min(1, 'Add at least one line item').max(200),
+  items: quotationRows.default([]),
+  ...contractFields,
+}).refine((v) => v.customerId || v.jobId, { message: 'Choose the customer', path: ['customerId'] });
+
+/** The kind, the job and the customer of a saved quotation do not change. */
+export const quotationUpdateSchema = z.object({
+  siteId: z.string().optional().nullable(),
+  leadId: z.string().optional().nullable(),
+  validUntil: z.coerce.date().optional(),
+  discount: optionalRupees,
+  vatApplied: z.coerce.boolean().optional(),
+  terms: optionalText,
+  internalNote: optionalText,
+  items: quotationRows.optional(),
+  ...contractFields,
 });
 
-export const quotationUpdateSchema = quotationSchema.partial().extend({
-  items: z.array(quotationItem).min(1).max(200).optional(),
+/**
+ * POST /admin/quotations/preview — unsaved rows through the same server code as a save, for the builder's
+ * live totals. `discountPct` or `targetTotal` (rupees, VAT included) has the server work out the discount.
+ */
+export const quotationPreviewSchema = z.object({
+  quotationId: z.string().min(1).optional(),
+  /** VARIATION previews allow negative rows (Phase L7); a saved quotation's own kind wins. */
+  kind: z.enum(QUOTATION_KINDS).optional(),
+  items: quotationRows.default([]),
+  paymentStages: paymentStages.optional(),
+  discount: optionalRupees,
+  discountPct: z.coerce.number().min(0).max(100).optional(),
+  targetTotal: optionalRupees,
+  vatApplied: z.coerce.boolean().default(true),
+}).refine((v) => v.discountPct == null || v.targetTotal == null, {
+  message: 'Use a percentage or a target total, not both', path: ['targetTotal'],
+});
+
+/** POST /admin/quotations/:id/reprice — `apply: false` previews and writes nothing. */
+export const quotationRepriceSchema = z.object({ apply: z.boolean() });
+
+/** POST /admin/quotations/:id/copy — a new DRAFT from this one's rows, for this or another customer. */
+export const quotationCopySchema = z.object({
+  customerId: z.string().min(1).optional(),
+  siteId: z.string().min(1).nullable().optional(),
+  leadId: z.string().min(1).nullable().optional(),
 });
 
 export const quotationListQuery = z.object({
@@ -242,13 +486,21 @@ export const quotationListQuery = z.object({
   status: z.enum(QUOTATION_STATUSES).optional(),
   customerId: z.string().optional(),
   leadId: z.string().optional(),
+  /** QUOTATION or VARIATION (Phase L7); `jobId` — a job's variations. */
+  kind: z.enum(QUOTATION_KINDS).optional(),
+  jobId: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
 });
 
 /** An approver's optional remark. */
+/**
+ * Approve. Below quotation.minMarginPct, or with a cost unknown, the approver must say so
+ * (`acknowledgeLowMargin: true`) — otherwise 422 LOW_MARGIN (Phase L4).
+ */
 export const quotationApproveSchema = z.object({
   note: z.string().trim().max(1000).optional(),
+  acknowledgeLowMargin: z.boolean().optional(),
 });
 
 /** Send back (approver) and pull back (sales): the reason is what the next editor reads. */
@@ -265,6 +517,8 @@ export const quotationDecisionSchema = z.object({
   decision: z.enum(QUOTATION_DECISIONS),
   note: z.string().trim().max(1000).optional()
     .transform((v) => v || undefined),
+  /** Why the customer declined (a lost-lead category, Phase L4) — the "Mark lost?" prompt starts from it. */
+  category: z.enum(LOST_CATEGORIES).optional(),
 }).superRefine((v, ctx) => {
   if (v.decision === 'request_changes' && (!v.note || v.note.length < 5)) {
     ctx.addIssue({ code: 'custom', path: ['note'], message: 'Tell us what you would like changed (at least 5 characters)' });
@@ -277,4 +531,20 @@ export const estimateSchema = z.object({
   qty: z.coerce.number().min(0.1).max(1_000_000),
 }).refine((v) => v.serviceId || v.pricingPlanId, {
   message: 'Choose a service or a pricing plan', path: ['serviceId'],
+});
+
+/** GET /admin/reports/lost — Kathmandu calendar days, on the day each lead was closed. */
+export const lostReportQuery = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
+});
+
+/** The terms library (Phase L4) — /admin/quotation-terms. Setting isDefault moves the flag from the others. */
+export const quotationTermsSchema = z.object({
+  title: z.string().trim().min(2).max(120),
+  body: z.string().trim().min(1).max(8000),
+  bodyNe: z.string().trim().max(8000).nullable().optional(),
+  isDefault: z.coerce.boolean().default(false),
+  sortOrder,
+  isActive,
 });

@@ -108,6 +108,28 @@ export const publicApi = apiSlice.injectEndpoints({
       query: ({ token, ...body }) => ({ url: `/public/warranties/${token}/claim`, method: 'POST', body }),
       transformResponse: (r) => r.data,
     }),
+    /**
+     * A booked site visit, for the customer's /visit/:token page (Phase L5): the window, the site, who is
+     * coming, the answer so far and whether one can still be given (`canAnswer`). No money in it.
+     */
+    getVisitByToken: build.query({
+      query: (token) => `/public/visits/${token}`,
+      transformResponse: (r) => r.data,
+    }),
+    /**
+     * The customer's answer — `{ token, answer: 'confirm' | 'reschedule', note? }`; the latest one wins. The API
+     * answers with the visit as it now is, which replaces the page's copy, so the page shows the recorded state.
+     */
+    respondToVisit: build.mutation({
+      query: ({ token, ...body }) => ({ url: `/public/visits/${token}/respond`, method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      async onQueryStarted({ token }, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          dispatch(publicApi.util.upsertQueryData('getVisitByToken', token, data));
+        } catch { /* the page shows the error, and refetches on VISIT_CLOSED */ }
+      },
+    }),
   }),
 });
 
@@ -121,4 +143,5 @@ export const {
   useGetQuotationByTokenQuery, useDecideQuotationMutation,
   useGetInvoiceByTokenQuery,
   useGetWarrantyByTokenQuery, useClaimWarrantyMutation,
+  useGetVisitByTokenQuery, useRespondToVisitMutation,
 } = publicApi;

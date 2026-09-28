@@ -24,7 +24,17 @@ export const lookupApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       keepUnusedDataFor: 60,
     }),
+    /**
+     * Words a text field suggests (Phase I): an endpoint answering `string[]` — the expense categories in use. The
+     * one tagged lookup: `tag` (the list the words come from) refreshes it after a save adds a new word.
+     */
+    getSuggestions: build.query({
+      query: ({ path, params }) => ({ url: path, params }),
+      transformResponse: (r) => (Array.isArray(r?.data) ? r.data.filter((w) => typeof w === 'string' && w) : []),
+      providesTags: (result, error, { tag }) => (tag ? [tag] : []),
+      keepUnusedDataFor: 60,
+    }),
   }),
 });
 
-export const { useSearchRecordsQuery, useGetRecordQuery } = lookupApi;
+export const { useSearchRecordsQuery, useGetRecordQuery, useGetSuggestionsQuery } = lookupApi;

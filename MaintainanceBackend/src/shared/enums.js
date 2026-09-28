@@ -23,6 +23,27 @@ export const LOGGABLE_ACTIVITY_TYPES = ['call', 'sms', 'whatsapp', 'email', 'vis
 export const CONTACT_ACTIVITY_TYPES = ['call', 'sms', 'whatsapp', 'email', 'visit'];
 export const CUSTOMER_TYPES = ['individual', 'company'];
 
+/**
+ * What a contact attempt came to (Phase L1). Each one ends with a next action or the lead closed;
+ * `lead.service#addActivity` holds the rules.
+ */
+export const LEAD_OUTCOMES = [
+  'no_answer', 'wrong_number', 'call_back', 'book_visit', 'quote_without_visit', 'price_shopping', 'not_now', 'not_interested',
+];
+/** Outcomes where the customer was reached: a NEW lead becomes CONTACTED. */
+export const REACHED_OUTCOMES = ['call_back', 'book_visit', 'quote_without_visit', 'price_shopping', 'not_now', 'not_interested'];
+/** What the owner does next, and when (`Lead.nextActionAt`). */
+export const NEXT_ACTION_TYPES = ['CALL', 'BOOK_VISIT', 'VISIT', 'SEND_QUOTE', 'FOLLOW_UP'];
+/** Why a lead was lost — required with LOST; the free-text reason stays alongside. Mirrors enum LostCategory. */
+export const LOST_CATEGORIES = [
+  'PRICE', 'COMPETITOR', 'UNREACHABLE', 'POSTPONED', 'BUDGET', 'OWN_LABOUR', 'OUT_OF_SCOPE', 'OUT_OF_AREA', 'DUPLICATE_SPAM', 'OTHER',
+];
+/** `Lead.qualification` — what sales learns on the first call, before anyone drives out. */
+export const PROPERTY_TYPES = ['house', 'apartment', 'commercial', 'land', 'other'];
+/** Labels, not amounts: the customer's own words on budget. */
+export const BUDGET_BANDS = ['under_25k', '25k_1l', '1l_5l', '5l_25l', 'over_25l'];
+export const DECISION_MAKERS = ['self', 'family', 'owner_abroad', 'landlord', 'company'];
+
 export const SURVEY_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'RETURNED', 'QUOTED', 'CANCELLED'];
 export const SURVEY_ITEM_KINDS = ['LABOUR', 'MATERIAL', 'SERVICE', 'OTHER'];
 /** Suggestions for the field app's metric picker — free text, because instruments differ. */
@@ -55,12 +76,53 @@ export const JOB_TYPES = ['INSPECTION', 'REPAIR', 'INSTALLATION', 'RENOVATION', 
 export const JOB_STATUSES = [
   'DRAFT', 'SCHEDULED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'VERIFIED', 'CANCELLED',
 ];
-export const JOB_PHOTO_KINDS = ['BEFORE', 'DURING', 'AFTER', 'ISSUE', 'SIGNATURE'];
+/** SKETCH (Phase L5): a photo of the surveyor's paper sketch — a floor plan with dimensions. */
+export const JOB_PHOTO_KINDS = ['BEFORE', 'DURING', 'AFTER', 'ISSUE', 'SIGNATURE', 'SKETCH'];
+/** What a survey photo may be (Phase L5): evidence of the problem, or a sketch. */
+export const SURVEY_PHOTO_KINDS = ['ISSUE', 'SKETCH'];
+/** An inspection-template question (Phase L5): yes/no, a number with a flag threshold, a choice, text. */
+export const INSPECTION_QUESTION_TYPES = ['YES_NO', 'NUMBER', 'CHOICE', 'TEXT'];
+/** The customer's answer on the /visit/:token page (Phase L5). */
+export const VISIT_ANSWERS = ['CONFIRMED', 'RESCHEDULE_REQUESTED'];
 export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 'VOID'];
+/** A quotation for new work, or a variation order against a running job (Phase L7). */
+export const QUOTATION_KINDS = ['QUOTATION', 'VARIATION'];
+/** The site diary (Phase L7). */
+export const WEATHER = ['SUNNY', 'CLOUDY', 'RAIN', 'HEAVY_RAIN', 'COLD'];
+export const LOST_TIME_REASONS = ['RAIN', 'LATE_MATERIAL', 'CUSTOMER', 'BANDH', 'FESTIVAL', 'OTHER'];
+export const PURCHASE_LIST_STATUSES = ['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED'];
+/** What an invoice bills (Phase L6): ordinary work, the advance on acceptance, a running bill, the final bill. */
+export const INVOICE_KINDS = ['STANDARD', 'ADVANCE', 'RUNNING', 'FINAL'];
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const STOCK_MOVEMENT_TYPES = ['PURCHASE', 'ISSUE_TO_JOB', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
 export const WARRANTY_STATUSES = ['ACTIVE', 'EXPIRED', 'VOID', 'CLAIMED'];
-export const UNITS = ['sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set'];
+/** A warranty claim's life (Phase I names them): open → accepted (a free job) | rejected; accepted → resolved. */
+export const CLAIM_STATUSES = ['open', 'accepted', 'rejected', 'resolved'];
+export const AMC_STATUSES = ['active', 'expired', 'cancelled'];
+export const AMC_BILLING_CYCLES = ['annual', 'quarterly', 'monthly'];
+export const AMC_VISIT_STATUSES = ['pending', 'scheduled', 'completed', 'missed'];
+/** skipped: the customer has no address on that channel. failed: the provider refused it. */
+export const REMINDER_STATUSES = ['pending', 'sent', 'failed', 'skipped'];
+/** How the revenue report groups invoices (Phase I). */
+export const REVENUE_GROUPS = ['month', 'day', 'service', 'technician'];
+/** How a site team measures and buys. Recipe quantities use each material's own unit (no conversion). */
+export const UNITS = [
+  'sq.ft', 'rft', 'nos', 'hour', 'day', 'lump', 'kg', 'litre', 'bag', 'set',
+  'sq.m', 'cu.ft', 'cu.m', 'm', 'rmt', 'box', 'tin', 'trip', 'point',
+];
+/** What a recipe component is (RateCardComponent.kind). */
+export const RECIPE_COMPONENT_KINDS = ['MATERIAL', 'LABOUR', 'EQUIPMENT', 'OTHER'];
+/**
+ * How the final bill is worked out (L-D2, Phase L4): LUMP_SUM — the quoted price ± customer-approved
+ * variations; ITEM_RATE — the finished work is measured and billed at the quoted rates.
+ */
+export const CONTRACT_TYPES = ['LUMP_SUM', 'ITEM_RATE'];
+/** When a payment stage falls due (L-D3): the advance on acceptance, a running bill, or on completion. */
+export const PAYMENT_TRIGGERS = ['ON_ACCEPT', 'MILESTONE', 'ON_COMPLETION'];
+/** A quotation's BOQ rows (Phase L3): a priced ITEM, a SECTION heading, or a NOTE. */
+export const QUOTATION_ROW_TYPES = ['ITEM', 'SECTION', 'NOTE'];
+/** DERIVED: the rate comes from the recipe; MANUAL: typed, the recipe (if any) only costs it. */
+export const RATE_MODES = ['MANUAL', 'DERIVED'];
 export const LOCALES = ['en', 'ne'];
 
 /** Home page sections, matching the studied site's anatomy. */
@@ -111,6 +173,18 @@ export const AUDIT_EVENTS = Object.freeze({
   JOB_SCHEDULED: 'job.scheduled',
   JOB_COMPLETED: 'job.completed',
   JOB_VERIFIED: 'job.verified',
+  /** The site diary for a day was filed or changed (Phase L7). */
+  SITE_DIARY_SAVED: 'site_diary.saved',
+  PURCHASE_LIST_ORDERED: 'purchase_list.ordered',
+  PURCHASE_LIST_RECEIVED: 'purchase_list.received',
+  PURCHASE_LIST_CANCELLED: 'purchase_list.cancelled',
+  /** A variation order accepted: its lines joined the job (Phase L7). */
+  JOB_VARIATION_ADDED: 'job.variation_added',
+  /** A manager let the work go ahead before the advance was paid (L-D3, Phase L6). */
+  JOB_ADVANCE_OVERRIDDEN: 'job.advance_overridden',
+  /** The customer's answer on the /visit/:token page (Phase L5). */
+  VISIT_CONFIRMED: 'visit.confirmed',
+  VISIT_RESCHEDULE_REQUESTED: 'visit.reschedule_requested',
 
   INVOICE_CREATED: 'invoice.created',
   INVOICE_SENT: 'invoice.sent',
@@ -118,9 +192,15 @@ export const AUDIT_EVENTS = Object.freeze({
   PAYMENT_RECORDED: 'payment.recorded',
   PAYMENT_VOIDED: 'payment.voided',
 
+  WARRANTY_VOIDED: 'warranty.voided',
+  /** A claim accepted (a free job), rejected or resolved — `meta.status` says which (Phase I). */
+  WARRANTY_CLAIM_DECIDED: 'warranty.claim_decided',
+
   SURVEY_SUBMITTED: 'survey.submitted',
   SURVEY_RETURNED: 'survey.returned',
   SURVEY_QUOTED: 'survey.quoted',
+  /** The surveyor's GPS fix moved a site's pin (Phase L5). */
+  SITE_PINNED: 'site.pinned',
 
   AUTH_LOGIN: 'auth.login',
   AUTH_LOGIN_FAILED: 'auth.login_failed',
@@ -140,6 +220,10 @@ export const AUDIT_EVENTS = Object.freeze({
   USER_DISABLED: 'user.disabled',
   USER_ROLE_CHANGED: 'user.role_changed',
   MESSAGE_RETRIED: 'message.retried',
+  /** A rate-library item's rate set to its derived rate by a deliberate reprice (Phase L2). */
+  RATE_CARD_REPRICED: 'rate_card.repriced',
+  /** A quotation downloaded as an Excel workbook (Phase L4) — who, and whether it carried the cost sheet. */
+  EXPORT_XLSX: 'export.xlsx',
 });
 
 /** The sign-in events: what the login activity screen lists. */

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Link } from 'react-router-dom';
+import { useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
 import { applyServerErrors } from '@/components/common/ResourceForm/serverErrors';
@@ -254,5 +255,231 @@ describe('ResourceForm field types added in D2', () => {
     expect(screen.getByText('Write the text')).toBeInTheDocument();
     expect(screen.getByLabelText('Text 1')).toHaveAttribute('aria-invalid', 'true');
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe('ResourceForm options added in L2', () => {
+  // A field's spec may follow the values (`adapt`), clear a column (`nullable`), or be a panel with no value (`preview`).
+  const schema = z.object({
+    mode: z.enum(['TYPED', 'WORKED_OUT']),
+    rate: z.coerce.number().min(0).optional(),
+    packSize: z.coerce.number().positive().nullable().optional(),
+    packLabel: z.string().max(20).nullable().optional(),
+  });
+  function Echo({ id }) {
+    const [mode, rate] = useWatch({ name: ['mode', 'rate'] });
+    return <p id={`${id}-title`}>Preview: {mode} at {rate ?? '—'}</p>;
+  }
+  const fields = [
+    { name: 'mode', type: 'select', label: 'Mode', options: [{ value: 'TYPED', label: 'Typed' }, { value: 'WORKED_OUT', label: 'Worked out' }] },
+    {
+      name: 'rate', type: 'money', label: 'Rate',
+      adapt: (v) => (v.mode === 'WORKED_OUT' ? { disabled: true, description: 'Worked out on save.' } : { required: true }),
+    },
+    { name: 'packSize', type: 'number', label: 'Pack size', nullable: true, adapt: (v) => (v.mode === 'WORKED_OUT' ? { hidden: true } : null) },
+    { name: 'packLabel', type: 'text', label: 'Pack', nullable: true },
+    { name: 'preview', type: 'preview', label: 'Preview', component: Echo },
+  ];
+
+  it('follows the values, sends null for a cleared nullable field, and never sends a preview', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm schema={schema} fields={fields} defaultValues={{ mode: 'TYPED', rate: 38000, packSize: 50, packLabel: 'bag' }} onSubmit={onSubmit} />,
+    );
+    expect(screen.getByText('Preview: TYPED at 380')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Rate/)).toBeEnabled();
+
+    await user.clear(screen.getByLabelText('Pack size'));
+    await user.clear(screen.getByLabelText('Pack'));
+    expect(screen.getByLabelText('Pack size')).toHaveValue(null);
+
+    await user.click(screen.getByRole('combobox', { name: 'Mode' }));
+    await user.click(await screen.findByRole('option', { name: 'Worked out' }));
+    expect(screen.getByLabelText(/Rate/)).toBeDisabled();
+    expect(screen.getByText('Worked out on save.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Pack size')).not.toBeInTheDocument();
+    expect(screen.getByText('Preview: WORKED_OUT at 380')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // A hidden field keeps its value — here the cleared pack size, sent as null.
+    expect(onSubmit.mock.calls[0][0]).toEqual({ mode: 'WORKED_OUT', rate: 380, packSize: null, packLabel: null });
+  });
+});
+
+describe('ResourceForm — the EditableGrid field types (Phase L3)', () => {
+  const cellOf = (gridName, row, key) => screen.getByRole('grid', { name: gridName }).querySelector(`[data-cell="${row}:${key}"]`);
+
+  it('a `measurements` field reads feet-inches, previews each row and the total, and sends numbers', async () => {
+    const user = userEvent.setup();
+    const { measurementSheetFormSchema } = await import('@/form/schemas/quotation.schema');
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm
+        schema={measurementSheetFormSchema}
+        fields={[{ name: 'measurements', type: 'measurements', label: 'Measurement sheet', unit: 'sq.ft' }]}
+        defaultValues={{ measurements: [{ area: 'बैठक कोठा', description: 'East wall', nos: 1, l: 12, h: 10 }] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(cellOf('Measurement sheet', 0, 'value')).toHaveTextContent('120');
+    await user.click(screen.getByRole('button', { name: 'Add measurement' }));
+    await user.keyboard('बैठक कोठा{Tab}Door{Tab}1{Tab}3\'6"{Tab}{Tab}7\'{Tab} ');
+    expect(cellOf('Measurement sheet', 1, 'l')).toHaveTextContent('3.5');
+    expect(cellOf('Measurement sheet', 1, 'value')).toHaveTextContent('-24.5');
+    expect(screen.getByTestId('measurement-total')).toHaveTextContent('95.5');
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].measurements).toEqual([
+      { area: 'बैठक कोठा', description: 'East wall', nos: 1, l: 12, h: 10 },
+      { area: 'बैठक कोठा', description: 'Door', nos: 1, l: 3.5, h: 7, deduct: true },
+    ]);
+  });
+
+  it('a `measurements` field refuses a length it cannot read', async () => {
+    const user = userEvent.setup();
+    const { measurementSheetFormSchema } = await import('@/form/schemas/quotation.schema');
+    const onSubmit = vi.fn();
+    renderWithProviders(
+      <ResourceForm
+        schema={measurementSheetFormSchema}
+        fields={[{ name: 'measurements', type: 'measurements', label: 'Measurement sheet' }]}
+        defaultValues={{ measurements: [] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Add measurement' }));
+    await user.keyboard('Hall{Tab}{Tab}{Tab}twelve feet{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('button', { name: /Row 1 · L: Use a number, or feet and inches/ })).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('a generic `grid` field edits rows of small objects and drops a blank one', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue({});
+    const columns = [
+      { key: 'name', header: 'Name', grow: 1, editor: 'text' },
+      { key: 'qty', header: 'Qty', width: 80, editor: 'number', align: 'right' },
+    ];
+    renderWithProviders(
+      <ResourceForm
+        schema={z.object({ parts: z.array(z.object({ name: z.string(), qty: z.any() }).passthrough()) })}
+        fields={[{ name: 'parts', type: 'grid', label: 'Parts', columns }]}
+        defaultValues={{ parts: [{ name: 'Hinge', qty: 4 }] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    await user.click(cellOf('Parts', 0, 'qty'));
+    await user.keyboard('6{Tab}');
+    expect(cellOf('Parts', 1, 'name')).toHaveFocus();
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].parts).toEqual([{ name: 'Hinge', qty: 6 }]);
+  });
+});
+
+describe('ResourceForm — the payment schedule and checkbox field types (Phase L4)', () => {
+  const cellOf = (row, key) => screen.getByRole('grid', { name: 'Payment stages' }).querySelector(`[data-cell="${row}:${key}"]`);
+  const STAGES = [
+    { id: 'st1', label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT', taxable: 3645000, vat: 473850, total: 4118850 },
+    { id: 'st2', label: 'Running bill', basisPoints: 4000, trigger: 'MILESTONE', taxable: 2916000, vat: 379080, total: 3295080 },
+    { id: 'st3', label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION', taxable: 729000, vat: 94770, total: 823770 },
+  ];
+
+  it('loads stages as shares with the server’s amounts, must make 100 %, offers the presets and sends basis points', async () => {
+    const user = userEvent.setup();
+    const { paymentScheduleSchema } = await import('@/form/schemas/quotation.schema');
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm
+        schema={z.object({ paymentStages: paymentScheduleSchema })}
+        fields={[{ name: 'paymentStages', type: 'paymentSchedule', label: 'Payment stages', figures: STAGES }]}
+        defaultValues={{ paymentStages: STAGES }}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(cellOf(0, 'pct')).toHaveTextContent('50%');
+    expect(cellOf(0, 'trigger')).toHaveTextContent('On acceptance (advance)');
+    // The amount is the server's figure for the stage — the field multiplies nothing.
+    expect(cellOf(0, 'amount')).toHaveTextContent('Rs. 41,188.50');
+    expect(cellOf(2, 'amount')).toHaveTextContent('Rs. 8,237.70');
+    expect(screen.getByRole('button', { name: '50 · 40 · 10' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('schedule-total')).toHaveTextContent('Adds up to 100%.');
+
+    // 50 + 30 + 10: refused here, as the API would.
+    await user.click(cellOf(1, 'pct'));
+    await user.keyboard('30{Enter}');
+    expect(screen.getByTestId('schedule-total')).toHaveTextContent('Adds up to 90% — 10% short. The stages must make 100%.');
+    expect(screen.getByRole('button', { name: '50 · 40 · 10' })).toHaveAttribute('aria-pressed', 'false');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('The stages add up to 90% — they must make 100%')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // A preset replaces the rows.
+    await user.click(screen.getByRole('button', { name: '40 · 30 · 20 · 10' }));
+    expect(screen.getByRole('grid', { name: 'Payment stages' }).querySelectorAll('[data-row]')).toHaveLength(4);
+    expect(cellOf(3, 'trigger')).toHaveTextContent('On completion');
+    expect(screen.getByTestId('schedule-total')).toHaveTextContent('Adds up to 100%.');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].paymentStages).toEqual([
+      { label: 'Advance', basisPoints: 4000, trigger: 'ON_ACCEPT' },
+      { label: 'Running bill 1', basisPoints: 3000, trigger: 'MILESTONE' },
+      { label: 'Running bill 2', basisPoints: 2000, trigger: 'MILESTONE' },
+      { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+    ]);
+  });
+
+  it('“100 on completion” is one stage, and a new stage is typed in Nepali', async () => {
+    const user = userEvent.setup();
+    const { paymentScheduleSchema } = await import('@/form/schemas/quotation.schema');
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm
+        schema={z.object({ paymentStages: paymentScheduleSchema })}
+        fields={[{ name: 'paymentStages', type: 'paymentSchedule', label: 'Payment stages' }]}
+        defaultValues={{ paymentStages: [] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(screen.getByText('No stages yet. Pick a preset, or add a stage.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '100 on completion' }));
+    expect(cellOf(0, 'pct')).toHaveTextContent('100%');
+    // Nothing to show yet: no amount is made up.
+    expect(cellOf(0, 'amount')).toHaveTextContent('—');
+    await user.click(cellOf(0, 'pct'));
+    await user.keyboard('60{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Add stage' }));
+    await user.keyboard('अग्रिम{Tab}40{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].paymentStages).toEqual([
+      { label: 'On completion', basisPoints: 6000, trigger: 'ON_COMPLETION' },
+      { label: 'अग्रिम', basisPoints: 4000, trigger: 'MILESTONE' },
+    ]);
+  });
+
+  it('a `checkbox` field is a statement ticked on purpose', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderWithProviders(
+      <ResourceForm
+        schema={z.object({ agreed: z.boolean().refine((v) => v, 'Tick it to go on') })}
+        fields={[{ name: 'agreed', type: 'checkbox', label: 'I have read it', description: 'Recorded with the change.' }]}
+        defaultValues={{}}
+        onSubmit={onSubmit}
+      />,
+    );
+    const box = screen.getByRole('checkbox', { name: 'I have read it' });
+    expect(box).not.toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Tick it to go on')).toBeInTheDocument();
+    await user.click(box);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSubmit.mock.calls[0][0]).toEqual({ agreed: true }));
   });
 });

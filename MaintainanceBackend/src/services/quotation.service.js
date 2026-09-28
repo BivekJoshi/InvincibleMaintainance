@@ -2,24 +2,34 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { AppError, notFound, badRequest, conflict, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
-import { documentTotals, toPaisa, formatNpr } from '../utils/money.js';
+import { amountInWords, lineAmount, margin, paymentSchedule, toPaisa, formatNpr } from '../utils/money.js';
+import { formatBs } from '../utils/nepaliDate.js';
 import { nextNumber } from '../utils/numbering.js';
 import { publicToken } from '../utils/tokens.js';
 import { QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
-import { QUOTATION_DECISIONS, QUOTATION_STAGES, ROLES } from '../shared/enums.js';
+import { CONTRACT_TYPES, QUOTATION_DECISIONS, QUOTATION_STAGES, ROLES } from '../shared/enums.js';
+import { resolveMediaMap } from './media.service.js';
 import { can } from '../shared/permissions.js';
 import { getSetting } from './settings.service.js';
 import { notify, notifyUsers, userIdsWithRoles } from './notify.service.js';
-import { transitionLead } from './lead.service.js';
+import { bookNextAction, transitionLead } from './lead.service.js';
 import { recordEvent } from './audit.service.js';
-import { createJob } from './job.service.js';
-import { adminJobPath, adminQuotationPath, webUrl } from '../utils/links.js';
+import {
+  advanceFor, announceAdvance, announceVariation, applyVariation, handOff, handOffPlan, variationPlan,
+} from './handoff.service.js';
+import { adminJobPath, adminLeadMarkLostPath, adminQuotationPath, webUrl } from '../utils/links.js';
+import { addDays } from '../utils/dates.js';
+import { buildLines, costSummary, decorateBoq, takeoffFor, totalsFor } from './boq.service.js';
+import { recipeSnapshots } from './rateLibrary.service.js';
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true, panVatNo: true, preferredLocale: true } },
+  // A variation's job (Phase L7).
+  job: { select: { id: true, number: true, status: true, title: true } },
   site: { select: { id: true, label: true, address: true, area: true } },
   lead: { select: { id: true, name: true, status: true, assignedToId: true } },
   items: { orderBy: { sortOrder: 'asc' } },
+  stages: { orderBy: { sortOrder: 'asc' } },
   createdBy: { select: { id: true, name: true } },
   submittedBy: { select: { id: true, name: true } },
   approvedBy: { select: { id: true, name: true } },
@@ -56,17 +66,77 @@ const KATHMANDU_OFFSET_MS = (5 * 60 + 45) * 60_000;
 const npr = (paisa) => `NPR ${formatNpr(paisa, { withSymbol: false })}`;
 const label = (q) => `${q.number} v${q.version}`;
 
-/** Converts rupee-denominated request items to paisa and computes document totals. */
-async function buildTotals(items, { discount = 0, vatApplied = true }) {
-  const vatRate = Number(await getSetting('finance.vatRate', env.business.vatRate));
-  const paisaItems = items.map((i, idx) => ({
-    ...i,
-    qty: Number(i.qty),
-    rate: toPaisa(i.rate),
-    sortOrder: i.sortOrder ?? idx,
-  }));
-  const totals = documentTotals(paisaItems, { discount: toPaisa(discount), vatApplied, vatRate });
-  return { ...totals, items: totals.lines };
+/** The money columns a quotation stores, from `totalsFor`. */
+const totalsData = (t) => ({
+  subtotal: t.subtotal, discount: t.discount, vatApplied: t.vatApplied, vatRate: t.vatRate, vatAmount: t.vatAmount, total: t.total,
+});
+
+/** The cost columns a quotation stores (Phase L4), so a list shows the margin without reading every row. */
+const costData = (rows, totals) => {
+  const { costTotal, costComplete } = costSummary(rows, totals);
+  return { costTotal, costComplete };
+};
+
+/** Payment stages as rows to write, in the order given. */
+const stageRows = (stages) => stages.map((st, sortOrder) => ({ label: st.label, basisPoints: st.basisPoints, trigger: st.trigger, sortOrder }));
+
+const FALLBACK_SCHEDULE = [
+  { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT' },
+  { label: 'Running bill', basisPoints: 4000, trigger: 'MILESTONE' },
+  { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+];
+
+/** What a new quotation starts with (Phase L4): the settings' contract type and schedule, the library's default terms. */
+async function contractDefaults() {
+  const [contractType, schedule, terms] = await Promise.all([
+    getSetting('quotation.defaultContractType', 'LUMP_SUM'),
+    getSetting('quotation.defaultPaymentSchedule', FALLBACK_SCHEDULE),
+    prisma.quotationTerms.findFirst({ where: { isDefault: true, isActive: true, deletedAt: null }, select: { body: true } }),
+  ]);
+  const valid = Array.isArray(schedule) && schedule.reduce((a, st) => a + Number(st.basisPoints || 0), 0) === 10000;
+  return {
+    contractType: CONTRACT_TYPES.includes(contractType) ? contractType : 'LUMP_SUM',
+    stages: valid ? schedule : FALLBACK_SCHEDULE,
+    terms: terms?.body ?? (await getSetting('finance.quotationTerms', null)),
+  };
+}
+
+/** The company as a document states it: the letterhead of the print, the customer's page and J2's PDFs. */
+async function letterhead() {
+  const keys = ['contact.companyName', 'contact.address', 'contact.city', 'contact.phonePrimary', 'contact.phoneSecondary',
+    'contact.email', 'finance.panVatNo', 'branding.logoId', 'branding.tagline'];
+  const [name, address, city, phone1, phone2, email, panVatNo, logoId, tagline] = await Promise.all(keys.map((k) => getSetting(k, null)));
+  const media = logoId ? await resolveMediaMap([logoId]) : {};
+  return {
+    companyName: name ?? env.appName, address, city, phones: [phone1, phone2].filter(Boolean), email,
+    panVatNo: panVatNo || null, logo: logoId ? media[logoId] ?? null : null, tagline,
+  };
+}
+
+/**
+ * What a quotation says as a document (Phase L4): each payment stage with its amount (money.js#paymentSchedule —
+ * they sum to the total), the total in words (en and ne), BS dates, the letterhead, and — stripped by the cost
+ * wall for anyone without costs:read — its margin.
+ */
+async function documentFields(q) {
+  const stages = q.stages ?? [];
+  return {
+    paymentStages: stages.length ? paymentSchedule(q, stages).map(({ quotationId: _q, ...st }) => st) : [],
+    totalInWords: { en: amountInWords(q.total, 'en'), ne: amountInWords(q.total, 'ne') },
+    dates: {
+      createdAtBs: q.createdAt ? formatBs(q.createdAt) : null,
+      validUntilBs: q.validUntil ? formatBs(q.validUntil) : null,
+      sentAtBs: q.sentAt ? formatBs(q.sentAt) : null,
+    },
+    letterhead: await letterhead(),
+    margin: q.costComplete ? margin(q.subtotal - q.discount, q.costTotal) : null,
+  };
+}
+
+/** The staff shape of a quotation: its BOQ numbered and summarised, and its document fields. */
+async function present(q) {
+  const decorated = await decorateBoq(q);
+  return { ...decorated, ...(await documentFields(q)) };
 }
 
 /**
@@ -81,13 +151,18 @@ const isExpired = (q, now = new Date()) => q.status === 'SENT' && q.validUntil !
  */
 async function markExpired(id) {
   assertTransition(QUOTATION_TRANSITIONS, 'SENT', 'EXPIRED', 'quotation');
-  return prisma.$transaction(async (tx) => {
-    const { count } = await tx.quotation.updateMany({ where: { id, status: 'SENT' }, data: { status: 'EXPIRED' } });
-    if (count) {
+  const count = await prisma.$transaction(async (tx) => {
+    const { count: moved } = await tx.quotation.updateMany({ where: { id, status: 'SENT' }, data: { status: 'EXPIRED' } });
+    if (moved) {
       await recordEvent('quotation.expired', { model: 'Quotation', recordId: id, before: { status: 'SENT' }, after: { status: 'EXPIRED' } }, tx);
     }
-    return count;
+    return moved;
   });
+  if (count) {
+    const q = await prisma.quotation.findUnique({ where: { id }, include: { customer: true, lead: { select: { assignedToId: true } } } });
+    await promptMarkLost(q, `${label(q)} for ${q.customer.name} expired unanswered`);
+  }
+  return count;
 }
 
 /**
@@ -112,7 +187,7 @@ async function moveStatus(tx, q, to, data = {}) {
   if (!count) throw conflict('This quotation changed a moment ago. Reload and try again.');
 }
 
-async function findQuotation(id, include = {}) {
+export async function findQuotation(id, include = {}) {
   const q = await prisma.quotation.findFirst({ where: { id, deletedAt: null }, include: { ...INCLUDE, ...include } });
   if (!q) throw notFound('Quotation');
   return q;
@@ -151,6 +226,8 @@ export async function listQuotations(query) {
     ...(status ? { status } : {}),
     ...(query.customerId ? { customerId: query.customerId } : {}),
     ...(query.leadId ? { leadId: query.leadId } : {}),
+    ...(query.kind ? { kind: query.kind } : {}),
+    ...(query.jobId ? { jobId: query.jobId } : {}),
     ...(created ? { createdAt: created } : {}),
     ...(q ? { OR: [{ number: { contains: q, mode: 'insensitive' } }, { customer: { name: { contains: q, mode: 'insensitive' } } }] } : {}),
   };
@@ -158,7 +235,9 @@ export async function listQuotations(query) {
     prisma.quotation.findMany({ where, orderBy, skip, take, include: INCLUDE }),
     prisma.quotation.count({ where }),
   ]);
-  return { items, meta: meta({ page, limit, total }) };
+  // The margin for the approval queue (Phase L4), from the stored cost; the cost wall strips it.
+  const withMargin = items.map((row) => ({ ...row, margin: row.costComplete ? margin(row.subtotal - row.discount, row.costTotal) : null }));
+  return { items: withMargin, meta: meta({ page, limit, total }) };
 }
 
 /**
@@ -187,7 +266,7 @@ export async function getQuotation(id) {
     // So the screen can say "someone else must approve this" without reading settings (MANAGER cannot).
     getSetting('quotation.makerChecker', true).then((v) => v !== false),
   ]);
-  return { ...q, versions, survey, messages, makerChecker };
+  return present({ ...q, versions, survey, messages, makerChecker });
 }
 
 /** The customer's own messages about a quotation — what the Send panel reports on. */
@@ -199,26 +278,45 @@ const CUSTOMER_TEMPLATES = ['quotation_sent', 'quotation_accepted', 'quotation_c
  * @param {import('@prisma/client').Prisma.TransactionClient} [client]  the caller's transaction
  *   (lead convert); without one the quotation gets a transaction of its own
  */
+/**
+ * A variation's customer and site come from its job (Phase L7). The job must still be open; a customer sent
+ * that is not the job's is 400. The lead is left out: a variation never moves a lead.
+ */
+async function variationTarget(jobId, input, client) {
+  const job = await client.job.findFirst({ where: { id: jobId, deletedAt: null }, select: { id: true, number: true, status: true, customerId: true, siteId: true } });
+  if (!job) throw notFound('Job');
+  if (['CANCELLED', 'VERIFIED'].includes(job.status)) {
+    throw new AppError(422, 'VARIATION_JOB_CLOSED', `Job ${job.number} is ${job.status.toLowerCase()}: a variation cannot change it now.`);
+  }
+  if (input.customerId && input.customerId !== job.customerId) throw badRequest('That job belongs to another customer');
+  return { kind: 'VARIATION', jobId, customerId: job.customerId, siteId: input.siteId ?? job.siteId, leadId: null };
+}
+
 export async function createQuotation(input, userId, client = prisma) {
-  const { items, discount = 0, vatApplied = true, ...rest } = input;
-  const totals = await buildTotals(items, { discount, vatApplied });
+  const { items = [], discount = 0, vatApplied = true, paymentStages, jobId, ...rest } = input;
+  // A variation order (Phase L7): kind VARIATION against a job, numbered VO-, omissions allowed, no schedule.
+  const variation = jobId ? await variationTarget(jobId, rest, client) : null;
+  if (variation) Object.assign(rest, variation);
+  const rows = await buildLines(items, { allowNegative: Boolean(variation) });
+  const totals = await totalsFor(rows, { discount: toPaisa(discount), vatApplied });
+  const defaults = await contractDefaults();
+  if (!rest.contractType) rest.contractType = defaults.contractType;
+  if (rest.terms === undefined) rest.terms = defaults.terms;
   // Submitting needs a validity date; a quotation built from a survey or a convert has none of its own.
   if (!rest.validUntil) rest.validUntil = await defaultValidUntil();
 
   const run = async (tx) => {
-    const number = await nextNumber(tx, 'QT');
+    const number = await nextNumber(tx, variation ? 'VO' : 'QT');
     const quotation = await tx.quotation.create({
       data: {
         ...rest,
         number,
         createdById: userId ?? null,
-        subtotal: totals.subtotal,
-        discount: totals.discount,
-        vatApplied: totals.vatApplied,
-        vatRate: totals.vatRate,
-        vatAmount: totals.vatAmount,
-        total: totals.total,
-        items: { create: totals.items },
+        ...totalsData(totals),
+        ...costData(rows, totals),
+        items: { create: rows },
+        // A variation is billed with the job's running and final bills (L8), never on a schedule of its own.
+        stages: { create: variation ? [] : stageRows(paymentStages ?? defaults.stages) },
       },
       include: INCLUDE,
     });
@@ -227,7 +325,7 @@ export async function createQuotation(input, userId, client = prisma) {
       recordId: quotation.id,
       after: { number, status: quotation.status, total: quotation.total, customerId: quotation.customerId, leadId: quotation.leadId },
     }, tx);
-    return quotation;
+    return present(quotation);
   };
   return client === prisma ? prisma.$transaction(run) : run(client);
 }
@@ -242,28 +340,149 @@ export async function updateQuotation(id, input) {
         : 'Create a revision to change it.'
     }`);
   }
-  const { items, discount, vatApplied, ...rest } = input;
+  const { items, discount, vatApplied, paymentStages, ...rest } = input;
 
-  if (!items) {
-    return prisma.quotation.update({ where: { id }, data: rest, include: INCLUDE });
-  }
-  const totals = await buildTotals(items, {
-    discount: discount ?? existing.discount / 100,
-    vatApplied: vatApplied ?? existing.vatApplied,
-  });
-  return prisma.$transaction(async (tx) => {
-    await tx.quotationItem.deleteMany({ where: { quotationId: id } });
-    return tx.quotation.update({
-      where: { id },
-      data: {
-        ...rest,
-        subtotal: totals.subtotal, discount: totals.discount, vatApplied: totals.vatApplied,
-        vatRate: totals.vatRate, vatAmount: totals.vatAmount, total: totals.total,
-        items: { create: totals.items },
-      },
-      include: INCLUDE,
+  // Rows sent back with their ids keep their frozen recipe and cost (buildLines). A discount or VAT change
+  // without rows re-totals the stored ones — the totals never go stale. Sent stages replace the schedule.
+  const data = { ...rest };
+  let rows = null;
+  if (items || discount !== undefined || vatApplied !== undefined) {
+    rows = items ? await buildLines(items, { existing: existing.items, allowNegative: existing.kind === 'VARIATION' }) : existing.items.map(storedRow);
+    const totals = await totalsFor(rows, {
+      discount: discount !== undefined ? toPaisa(discount) : existing.discount,
+      vatApplied: vatApplied ?? existing.vatApplied,
     });
+    Object.assign(data, totalsData(totals), costData(rows, totals));
+  }
+  return present(await prisma.$transaction(async (tx) => {
+    if (rows) {
+      await tx.quotationItem.deleteMany({ where: { quotationId: id } });
+      data.items = { create: rows };
+    }
+    if (paymentStages && existing.kind !== 'VARIATION') {
+      await tx.quotationPaymentStage.deleteMany({ where: { quotationId: id } });
+      data.stages = { create: stageRows(paymentStages) };
+    }
+    return tx.quotation.update({ where: { id }, data, include: INCLUDE });
+  }));
+}
+
+/** The contract fields a revision or a copy carries across (Phase L4). */
+const contractCopy = (q) => ({
+  contractType: q.contractType, estimatedDays: q.estimatedDays, exclusions: q.exclusions,
+  showMeasurements: q.showMeasurements, summaryOnly: q.summaryOnly,
+});
+
+/** A stored row as a row to write again: its own columns, without its id or its quotation. */
+const storedRow = ({ id: _id, quotationId: _q, ...row }) => ({ ...row, measurements: row.measurements ?? undefined, recipe: row.recipe ?? undefined });
+
+/**
+ * POST /admin/quotations/preview — the builder's rows through the same code as a save (`buildLines`,
+ * `totalsFor`), nothing written. `quotationId` keeps that draft's frozen recipes for rows sent with ids.
+ * Cost and margin are in the answer; the cost wall strips them for callers without costs:read.
+ */
+export async function previewQuotation({ quotationId, kind, items = [], paymentStages, discount = 0, discountPct, targetTotal, vatApplied = true }) {
+  const saved = quotationId ? await findQuotation(quotationId) : null;
+  const existing = saved?.items ?? [];
+  const rows = await buildLines(items, { existing, allowNegative: (saved?.kind ?? kind) === 'VARIATION' });
+  const totals = await totalsFor(rows, {
+    discount: toPaisa(discount), discountPct, targetTotal: targetTotal != null ? toPaisa(targetTotal) : undefined, vatApplied,
   });
+  const numbered = (await decorateBoq({ items: rows, ...totalsData(totals) })).items;
+  return {
+    items: numbered.map((row, index) => ({
+      index, rowType: row.rowType, number: row.number, netQty: row.netQty ?? null, qty: row.qty, amount: row.amount,
+      recipe: row.recipe ?? null, unitCost: row.unitCost ?? null, costAmount: row.costAmount ?? null,
+    })),
+    totals,
+    cost: costSummary(rows, totals),
+    paymentStages: paymentStages ? paymentSchedule(totals, paymentStages) : [],
+    totalInWords: { en: amountInWords(totals.total, 'en'), ne: amountInWords(totals.total, 'ne') },
+  };
+}
+
+/** GET /admin/quotations/:id/takeoff — materials in buying units with stock, labour days by trade. */
+export async function quotationTakeoff(id) {
+  const q = await findQuotation(id);
+  return takeoffFor(q.items);
+}
+
+/**
+ * POST /admin/quotations/:id/reprice — a DRAFT's library rows re-priced from the rate library as it is
+ * now: the rate and the frozen recipe and cost. `apply: false` previews. Any other status is 422.
+ */
+export async function repriceQuotation(id, { apply }) {
+  const q = await findQuotation(id);
+  if (q.status !== 'DRAFT') {
+    throw new AppError(422, 'QUOTATION_NOT_DRAFT', 'Only a draft is repriced. Revise it to price a new version.');
+  }
+  const numbered = (await decorateBoq(q)).items;
+  const libraryRows = numbered.filter((row) => row.rowType === 'ITEM' && row.rateCardItemId);
+  const library = await recipeSnapshots([...new Set(libraryRows.map((row) => row.rateCardItemId))]);
+  const changes = libraryRows
+    .map((row) => ({ row, now: library.get(row.rateCardItemId) }))
+    .filter(({ row, now }) => now && (now.rate !== row.rate || now.unitCost !== row.unitCost
+      || JSON.stringify(now.snapshot?.components ?? null) !== JSON.stringify(row.recipe?.components ?? null)));
+  const preview = changes.map(({ row, now }) => ({
+    id: row.id, number: row.number, description: row.description,
+    rate: row.rate, newRate: now.rate, unitCost: row.unitCost, newUnitCost: now.unitCost,
+  }));
+  if (!apply || !changes.length) return { rows: preview, applied: 0 };
+
+  const changed = new Map(changes.map(({ row, now }) => [row.id, now]));
+  const rows = q.items.map((row) => {
+    const now = changed.get(row.id);
+    const out = storedRow(row);
+    if (!now) return out;
+    return {
+      ...out, rate: now.rate, recipe: now.snapshot ?? undefined, unitCost: now.unitCost,
+      costAmount: now.unitCost == null ? null : lineAmount(row.qty, now.unitCost),
+    };
+  });
+  const totals = await totalsFor(rows, { discount: q.discount, vatApplied: q.vatApplied });
+  await prisma.$transaction(async (tx) => {
+    await tx.quotationItem.deleteMany({ where: { quotationId: id } });
+    await tx.quotation.update({ where: { id }, data: { ...totalsData(totals), ...costData(rows, totals), items: { create: rows } } });
+  });
+  return { rows: preview, applied: preview.length, quotation: await getQuotation(id) };
+}
+
+/**
+ * POST /admin/quotations/:id/copy — a new DRAFT (its own number, version 1) with this quotation's rows as
+ * they are — recipes and costs frozen as they were — its terms, discount and VAT choice, for the same
+ * customer or another. Not a revision: the source is untouched.
+ */
+export async function copyQuotation(id, { customerId, siteId, leadId } = {}, userId) {
+  const source = await findQuotation(id);
+  const rows = source.items.map(storedRow);
+  const totals = await totalsFor(rows, { discount: source.discount, vatApplied: source.vatApplied });
+  const created = await prisma.$transaction(async (tx) => {
+    const number = await nextNumber(tx, 'QT');
+    const copy = await tx.quotation.create({
+      data: {
+        number,
+        customerId: customerId ?? source.customerId,
+        siteId: customerId && customerId !== source.customerId ? (siteId ?? null) : (siteId ?? source.siteId),
+        leadId: leadId ?? (customerId && customerId !== source.customerId ? null : source.leadId),
+        validUntil: await defaultValidUntil(),
+        terms: source.terms,
+        internalNote: `Copied from ${label(source)}`,
+        createdById: userId ?? null,
+        ...contractCopy(source),
+        ...totalsData(totals),
+        ...costData(rows, totals),
+        items: { create: rows },
+        stages: { create: stageRows(source.stages) },
+      },
+    });
+    await recordEvent('quotation.created', {
+      model: 'Quotation', recordId: copy.id,
+      after: { number, status: copy.status, total: copy.total, customerId: copy.customerId, leadId: copy.leadId },
+      meta: { copiedFrom: source.id },
+    }, tx);
+    return copy;
+  });
+  return getQuotation(created.id);
 }
 
 // ── internal approval
@@ -274,9 +493,10 @@ export async function updateQuotation(id, input) {
  * the system's decision, and is recorded as such.
  */
 export async function submitQuotation(id, userId) {
-  const q = await findQuotation(id, { _count: { select: { items: true } } });
+  const q = await findQuotation(id);
   assertMove(q.status, 'PENDING_APPROVAL');
-  if (!q._count.items) throw new AppError(422, 'QUOTATION_INCOMPLETE', 'Add at least one line before submitting.');
+  const priced = await prisma.quotationItem.count({ where: { quotationId: id, rowType: 'ITEM', isOptional: false } });
+  if (!priced) throw new AppError(422, 'QUOTATION_INCOMPLETE', 'Add at least one priced line (not optional) before submitting.');
   const customer = await prisma.customer.findFirst({ where: { id: q.customerId, deletedAt: null }, select: { id: true } });
   if (!customer) throw new AppError(422, 'QUOTATION_INCOMPLETE', 'This quotation has no active customer.');
   const now = new Date();
@@ -285,7 +505,9 @@ export async function submitQuotation(id, userId) {
   }
 
   const threshold = Math.max(0, Math.round(Number(await getSetting('quotation.autoApproveBelow', 0)) || 0));
-  const auto = threshold > 0 && q.total < threshold;
+  // A small quotation approves itself — never on a low or unknown margin (Phase L4): a person looks at those.
+  // A variation that gives money back (a net omission, Phase L7) is a manager's decision too.
+  const auto = threshold > 0 && q.total > 0 && q.total < threshold && !(await marginCheck(q)).low;
 
   await prisma.$transaction(async (tx) => {
     await moveStatus(tx, q, 'PENDING_APPROVAL', {
@@ -320,19 +542,45 @@ export async function submitQuotation(id, userId) {
 }
 
 /** PENDING_APPROVAL → OFFICE_APPROVED. The maker never checks their own work while quotation.makerChecker is on. */
-export async function approveQuotation(id, { note } = {}, userId) {
+/**
+ * The margin gate (L-D4, Phase L4): low when the margin on the taxable amount is below
+ * `quotation.minMarginPct`, or when any totalled row's cost is unknown — an unknown cost is never taken
+ * as a healthy margin.
+ */
+async function marginCheck(q) {
+  const minMarginPct = Number(await getSetting('quotation.minMarginPct', 15));
+  // A variation that only omits work (Phase L7) earns nothing to guard: no margin gate.
+  if (q.subtotal - q.discount <= 0) return { low: false, marginPct: null, minMarginPct, costComplete: q.costComplete };
+  const m = q.costComplete ? margin(q.subtotal - q.discount, q.costTotal) : null;
+  const low = !q.costComplete || m?.pct == null || m.pct < minMarginPct;
+  return { low, marginPct: m?.pct ?? null, minMarginPct, costComplete: q.costComplete };
+}
+
+export async function approveQuotation(id, { note, acknowledgeLowMargin = false } = {}, userId) {
   const q = await findQuotation(id);
   assertMove(q.status, 'OFFICE_APPROVED');
   const makerChecker = (await getSetting('quotation.makerChecker', true)) !== false;
   if (makerChecker && q.createdById && q.createdById === userId) {
     throw new AppError(403, 'SELF_APPROVAL', 'You prepared this quotation, so another approver must approve it.');
   }
+  const check = await marginCheck(q);
+  if (check.low && !acknowledgeLowMargin) {
+    const { low: _low, ...details } = check;
+    throw new AppError(422, 'LOW_MARGIN', check.costComplete
+      ? `The margin is ${check.marginPct}% — below the ${check.minMarginPct}% minimum. Approve only if you mean to.`
+      : 'Some rows have no known cost, so the margin is unknown. Approve only if you mean to.', details);
+  }
+  const meta = {
+    ...(note ? { note } : {}),
+    ...(check.low ? { lowMargin: { marginPct: check.marginPct, minMarginPct: check.minMarginPct, costComplete: check.costComplete, acknowledged: true } } : {}),
+  };
   await prisma.$transaction(async (tx) => {
     await moveStatus(tx, q, 'OFFICE_APPROVED', {
       approvedById: userId, approvedAt: new Date(), approvalNote: note ?? null, autoApproved: false,
     });
     await recordEvent('quotation.office_approved', {
-      model: 'Quotation', recordId: id, before: { status: q.status }, after: { status: 'OFFICE_APPROVED' }, ...(note ? { meta: { note } } : {}),
+      model: 'Quotation', recordId: id, before: { status: q.status }, after: { status: 'OFFICE_APPROVED' },
+      ...(Object.keys(meta).length ? { meta } : {}),
     }, tx);
   });
   if (q.createdById !== userId) {
@@ -382,8 +630,44 @@ export async function pullBackQuotation(id, { note }) {
 
 // ── to the customer
 
+/**
+ * The customer now has a quotation, so the lead is QUOTED — forward only, through CONTACTED from
+ * NEW, never out of WON or LOST (those get a note) — and its owner follows up in
+ * `pipeline.quoteUnansweredDays`. A draft never moves the lead (Phase L1).
+ */
+async function leadQuoted(tx, q, actorId) {
+  if (!q.leadId) return;
+  const lead = await tx.lead.findFirst({ where: { id: q.leadId, deletedAt: null }, select: { id: true, status: true } });
+  if (!lead) return;
+  const note = `${label(q)} sent`;
+  if (['WON', 'LOST'].includes(lead.status)) {
+    await tx.leadActivity.create({ data: { leadId: lead.id, userId: actorId ?? null, type: 'note', summary: note } });
+    return;
+  }
+  if (lead.status === 'NEW') await transitionLead(tx, lead.id, 'CONTACTED', { actorId, note });
+  await transitionLead(tx, lead.id, 'QUOTED', { actorId, note });
+  const days = Number(await getSetting('pipeline.quoteUnansweredDays', 3));
+  await bookNextAction(tx, lead.id, { at: addDays(new Date(), days), type: 'FOLLOW_UP', note: `Follow up on ${label(q)}` });
+}
+
+/**
+ * After a decline or an expiry: ask the salesperson and the author whether the lead is lost. It is
+ * never marked lost automatically — they may revise, or the customer may still say yes.
+ */
+async function promptMarkLost(q, why, category) {
+  if (!q.leadId) return;
+  const lead = await prisma.lead.findFirst({ where: { id: q.leadId, deletedAt: null, status: { notIn: ['WON', 'LOST'] } }, select: { id: true } });
+  if (!lead) return;
+  await notifyUsers(salesRecipients(q, false), {
+    type: 'lead_mark_lost',
+    title: `${why} — mark the lead lost?`,
+    body: `Revise ${label(q)}, or record why the lead was lost.`,
+    link: adminLeadMarkLostPath(lead.id, category),
+  });
+}
+
 /** OFFICE_APPROVED → SENT, with the customer's link by SMS (and email when on file). */
-export async function sendQuotation(id) {
+export async function sendQuotation(id, userId) {
   const q = await findQuotation(id);
   assertMove(q.status, 'SENT');
   if (q.validUntil && q.validUntil < new Date()) {
@@ -394,6 +678,7 @@ export async function sendQuotation(id) {
   await prisma.$transaction(async (tx) => {
     await moveStatus(tx, q, 'SENT', { sentAt: new Date(), publicToken: token });
     await recordEvent('quotation.sent', { model: 'Quotation', recordId: id, before: { status: q.status }, after: { status: 'SENT' } }, tx);
+    await leadQuoted(tx, q, userId);
   });
 
   const vars = {
@@ -430,12 +715,14 @@ export async function reviseQuotation(id, userId) {
   const source = await findQuotation(id);
   assertMove(source.status, 'SUPERSEDED');
   const created = await prisma.$transaction(async (tx) => {
-    const number = await nextNumber(tx, 'QT');
+    const number = await nextNumber(tx, source.kind === 'VARIATION' ? 'VO' : 'QT');
     const copy = await tx.quotation.create({
       data: {
         number,
         version: source.version + 1,
         parentId: source.id,
+        kind: source.kind,
+        jobId: source.jobId,
         customerId: source.customerId,
         siteId: source.siteId,
         leadId: source.leadId,
@@ -445,9 +732,14 @@ export async function reviseQuotation(id, userId) {
         terms: source.terms, internalNote: source.internalNote,
         requestedChanges: source.status === 'CHANGES_REQUESTED' ? source.decisionNote : null,
         createdById: userId ?? null,
+        ...contractCopy(source),
+        costTotal: source.costTotal, costComplete: source.costComplete,
         items: {
-          create: source.items.map(({ id: _i, quotationId: _q, ...rest }) => rest),
+          // Rows, measurements and frozen recipes as they are (Phase L3).
+          create: source.items.map(storedRow),
         },
+        // The schedule and the contract carry across (Phase L4).
+        stages: { create: stageRows(source.stages) },
       },
     });
     await recordEvent('quotation.revised', {
@@ -482,10 +774,30 @@ async function replacementFor(q) {
 }
 
 /** What a customer may see: an allowlist, never the row. */
+/**
+ * The customer's BOQ: rows and section subtotals — never a cost or a recipe. Measurements come along when the
+ * quotation shows them (the annex); a section summary sends the SECTION rows alone.
+ */
+async function publicBoq(q) {
+  const { items, boq } = await decorateBoq(q);
+  const shown = q.summaryOnly ? items.filter((i) => i.rowType === 'SECTION') : items;
+  return {
+    items: shown.map((i) => ({
+      id: i.id, rowType: i.rowType, number: i.number, description: i.description, spec: i.spec, unit: i.unit,
+      qty: i.qty, rate: i.rate, amount: i.amount, isOptional: i.isOptional, isProvisional: i.isProvisional, sortOrder: i.sortOrder,
+      ...(q.showMeasurements && i.measurements ? { measurements: i.measurements } : {}),
+    })),
+    boq: { sections: boq.sections, optionalTotal: boq.optionalTotal },
+  };
+}
+
 async function publicView(q) {
   return {
     number: q.number,
     version: q.version,
+    // A change to a running job (Phase L7): the page says so.
+    kind: q.kind,
+    job: q.kind === 'VARIATION' && q.job ? { number: q.job.number } : null,
     status: q.status,
     validUntil: q.validUntil,
     subtotal: q.subtotal,
@@ -502,24 +814,42 @@ async function publicView(q) {
     createdAt: q.createdAt,
     customer: { name: q.customer.name },
     site: q.site ? { label: q.site.label, address: q.site.address } : null,
-    items: q.items.map((i) => ({
-      id: i.id, description: i.description, unit: i.unit, qty: i.qty, rate: i.rate, amount: i.amount, sortOrder: i.sortOrder,
-    })),
+    // An allowlist: never a cost or a recipe (Phases L3, L4).
+    ...(await publicBoq(q)),
+    contractType: q.contractType,
+    estimatedDays: q.estimatedDays,
+    exclusions: q.exclusions,
+    summaryOnly: q.summaryOnly,
+    ...(({ paymentStages, totalInWords, dates, letterhead: head }) => ({
+      paymentStages: paymentStages.map(({ label: l, basisPoints, trigger, taxable, vat, total }) => ({ label: l, basisPoints, trigger, taxable, vat, total })),
+      totalInWords,
+      dates: { createdAtBs: dates.createdAtBs, validUntilBs: dates.validUntilBs },
+      letterhead: head,
+    }))(await documentFields(q)),
     replaced: await replacementFor(q),
     actions: q.status === 'SENT' ? [...QUOTATION_DECISIONS] : [],
+    // Once accepted (Phase L6): the advance to pay, and the link to its invoice.
+    advance: q.kind !== 'VARIATION' && ['APPROVED', 'CONVERTED'].includes(q.status) ? await advanceFor(q.id) : null,
   };
 }
 
 const PUBLIC_INCLUDE = {
   customer: { select: { name: true } },
+  job: { select: { number: true } },
   site: { select: { label: true, address: true } },
   items: { orderBy: { sortOrder: 'asc' } },
+  stages: { orderBy: { sortOrder: 'asc' } },
 };
 
 /** Customer-facing view resolved by public token — no auth. */
 export async function getByPublicToken(token) {
   const q = await prisma.quotation.findFirst({ where: { publicToken: token, deletedAt: null }, include: PUBLIC_INCLUDE });
   if (!q) throw notFound('Quotation');
+  // The customer opened it (Phase L4) — the send panel's "Opened 2×". A page view is not a change to audit,
+  // so it is one raw statement, outside the audit extension. The column is a timestamp without a zone that
+  // holds UTC, and the database session may run in Kathmandu time — NOW() or a bound Date would both land as
+  // Kathmandu wall-clock time — so the instant is converted to UTC in the statement.
+  await prisma.$executeRaw`UPDATE "Quotation" SET "viewCount" = "viewCount" + 1, "firstViewedAt" = COALESCE("firstViewedAt", NOW() AT TIME ZONE 'UTC') WHERE "id" = ${q.id}`;
   if (isExpired(q)) {
     await markExpired(q.id);
     q.status = 'EXPIRED';
@@ -575,7 +905,7 @@ async function leadNote(tx, q, summary) {
  * - NEW passes through CONTACTED first (the customer was plainly contacted);
  * - a lead already WON or LOST keeps its status and gets a note instead.
  */
-async function winLeadOnAcceptance(tx, q, summary) {
+export async function winLeadOnAcceptance(tx, q, summary) {
   const lead = await tx.lead.findFirst({ where: { id: q.leadId, deletedAt: null }, select: { id: true, status: true } });
   if (!lead) return;
   if (lead.status === 'WON' || lead.status === 'LOST') {
@@ -590,7 +920,7 @@ async function winLeadOnAcceptance(tx, q, summary) {
 }
 
 /** Earlier versions' ids too: a survey points at the version it was first priced into. */
-async function lineageIds(q) {
+export async function lineageIds(q) {
   const ids = [q.id];
   for (let cur = q, i = 0; cur.parentId && i < 50; i += 1) {
     cur = await prisma.quotation.findUnique({ where: { id: cur.parentId }, select: { id: true, parentId: true } });
@@ -600,37 +930,6 @@ async function lineageIds(q) {
   return ids;
 }
 
-/**
- * The work order an accepted quotation becomes: unscheduled, unassigned, titled after
- * the service, with that service's checklist when it has a template. No mapping from a
- * service to a job type exists, so it is REPAIR.
- */
-async function jobPlanFor(q) {
-  const survey = await prisma.siteSurvey.findFirst({
-    where: { quotationId: { in: await lineageIds(q) }, deletedAt: null },
-    select: { urgency: true, service: { select: { id: true, name: true } } },
-  });
-  const lead = q.leadId
-    ? await prisma.lead.findFirst({ where: { id: q.leadId }, select: { service: { select: { id: true, name: true } } } })
-    : null;
-  const service = survey?.service ?? lead?.service ?? null;
-  const template = service
-    ? await prisma.jobTemplate.findFirst({
-      where: { serviceId: service.id, isActive: true, deletedAt: null },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    })
-    : null;
-  const what = service?.name ?? q.items[0]?.description ?? 'Work';
-  return {
-    type: 'REPAIR',
-    title: `${what} — ${q.number}`.slice(0, 200),
-    description: `Accepted by the customer (${label(q)}, ${npr(q.total)}). Schedule and assign.`,
-    priority: survey?.urgency ?? 'NORMAL',
-    ...(template ? { templateId: template.id } : {}),
-  };
-}
-
 /** The salesperson and the quotation's author — the people who answer the customer. */
 const salesRecipients = (q, email = true) => [
   { userId: q.lead?.assignedToId, email },
@@ -638,29 +937,31 @@ const salesRecipients = (q, email = true) => [
 ];
 
 /**
- * Customer accepts (D3). One transaction: SENT → APPROVED → CONVERTED, the lead WON,
- * one DRAFT job. Then, once each: the customer (SMS + email in their language), the
- * salesperson and the author, every dispatcher (linking the job), and the manager who
- * approved it (not when the system did).
+ * Customer accepts (D3). One transaction — the hand-off (Phase L6, `handoff.service.js`): SENT → APPROVED, the
+ * lead WON, the job with its BOQ lines and requirements, the ADVANCE invoice for the ON_ACCEPT stage, and
+ * APPROVED → CONVERTED. Then, once each: the customer (SMS + email in their language, and the advance they are
+ * asked for), the salesperson and the author, every dispatcher (linking the job), and the manager who approved
+ * it (not when the system did).
  * @param {string} id
  * @param {{ note?: string, ip?: string|null, userAgent?: string|null }} answer
  */
 export async function acceptQuotation(id, answer = {}) {
   const q = await openForAnswer(id);
-  const plan = await jobPlanFor(q);
+  const variation = q.kind === 'VARIATION';
+  // The library, the take-off and the service are read before the transaction opens.
+  const plan = variation ? await variationPlan(q) : await handOffPlan(q);
   const summary = `Customer accepted ${label(q)} · ${npr(q.total)}`;
 
-  const job = await prisma.$transaction(async (tx) => {
+  const { job, advance, added } = await prisma.$transaction(async (tx) => {
     await claimAnswer(tx, q, 'APPROVED', answer);
     await recordEvent('quotation.customer_approved', {
       model: 'Quotation', recordId: q.id, before: { status: 'SENT' }, after: { status: 'APPROVED' },
       ...(answer.note ? { meta: { note: answer.note } } : {}),
     }, tx);
+    // A variation joins its job (Phase L7): no new job, no lead, no advance.
+    if (variation) return applyVariation(tx, q, plan);
     if (q.leadId) await winLeadOnAcceptance(tx, q, summary);
-    // createJob asserts APPROVED → CONVERTED and marks it, guarded, inside this transaction.
-    return createJob({
-      ...plan, customerId: q.customerId, siteId: q.siteId, leadId: q.leadId, quotationId: q.id,
-    }, undefined, tx);
+    return handOff(tx, q, plan);
   }, { timeout: 20_000 });
 
   const vars = {
@@ -682,6 +983,19 @@ export async function acceptQuotation(id, answer = {}) {
     });
   }
 
+  if (advance) await announceAdvance(advance, q);
+  if (variation) {
+    await announceVariation(q, job, added);
+    await notifyUsers([...salesRecipients(q), ...(q.autoApproved ? [] : [{ userId: q.approvedById }])], {
+      type: 'quotation_accepted',
+      title: `${q.customer.name} accepted variation ${label(q)}`,
+      body: `${npr(q.total)} · ${added} line(s) added to job ${job.number}`,
+      link: adminQuotationPath(q.id),
+    });
+    const row = await prisma.quotation.findUnique({ where: { id: q.id }, include: PUBLIC_INCLUDE });
+    return { ...(await publicView(row)), job: { id: job.id, number: job.number } };
+  }
+
   const dispatchers = await userIdsWithRoles(['DISPATCHER']);
   await notifyUsers([
     ...salesRecipients(q),
@@ -691,7 +1005,9 @@ export async function acceptQuotation(id, answer = {}) {
     type: 'quotation_accepted',
     templateKey: 'quotation_accepted_staff',
     title: `${q.customer.name} accepted ${label(q)}`,
-    body: `${npr(q.total)} · job ${job.number} is waiting to be scheduled`,
+    body: advance
+      ? `${npr(q.total)} · job ${job.number} waits for the advance (${npr(advance.total)}, invoice ${advance.number})`
+      : `${npr(q.total)} · job ${job.number} is waiting to be scheduled`,
     link: adminQuotationPath(q.id),
     vars,
     related: { model: 'Quotation', id: q.id },
@@ -736,9 +1052,11 @@ export async function requestQuotationChanges(id, answer) {
 /** Customer declines: SENT → REJECTED. The lead is not marked LOST — sales decides that. */
 export async function declineQuotation(id, answer = {}) {
   const q = await openForAnswer(id);
-  const { note } = answer;
+  const { note, category } = answer;
   await prisma.$transaction(async (tx) => {
     await claimAnswer(tx, q, 'REJECTED', answer);
+    // Why they said no (Phase L4): a lost-lead category the "Mark lost?" prompt starts from.
+    if (category) await tx.quotation.update({ where: { id: q.id }, data: { declineCategory: category } });
     await recordEvent('quotation.customer_rejected', {
       model: 'Quotation', recordId: q.id, before: { status: 'SENT' }, after: { status: 'REJECTED' }, ...(note ? { meta: { note } } : {}),
     }, tx);
@@ -753,6 +1071,7 @@ export async function declineQuotation(id, answer = {}) {
     link: adminQuotationPath(q.id),
     related: { model: 'Quotation', id: q.id },
   });
+  await promptMarkLost(q, `${q.customer.name} declined ${label(q)}`, category);
 
   return publicView(await prisma.quotation.findUnique({ where: { id: q.id }, include: PUBLIC_INCLUDE }));
 }
@@ -768,10 +1087,12 @@ const ANSWERS = {
  * functions above, which a signed-in customer account (Phase K) calls directly.
  * @param {{ ip?: string|null, userAgent?: string|null }} [client]
  */
-export async function decideByToken(token, { decision, note }, client = {}) {
+export async function decideByToken(token, { decision, note, category }, client = {}) {
   const q = await prisma.quotation.findFirst({ where: { publicToken: token, deletedAt: null }, select: { id: true } });
   if (!q) throw notFound('Quotation');
-  return ANSWERS[decision](q.id, { note, ip: client.ip ?? null, userAgent: client.userAgent ?? null });
+  return ANSWERS[decision](q.id, {
+    note, ip: client.ip ?? null, userAgent: client.userAgent ?? null, ...(decision === 'reject' && category ? { category } : {}),
+  });
 }
 
 /**

@@ -1,4 +1,4 @@
-import { fromKathmanduParts, toKathmanduParts } from '@/helpers/format';
+import { formatDateTime, fromKathmanduParts, toKathmanduParts } from '@/helpers/format';
 
 /**
  * The dispatch board's rules, without a DOM: Kathmandu days and hours, where a dropped job
@@ -246,3 +246,36 @@ export const ktmHour = (instant = new Date()) => Number(toKathmanduParts(new Dat
 
 /** Saturday — the day off in Nepal. */
 export const isDayOff = (day) => new Date(`${day}T00:00:00Z`).getUTCDay() === 6;
+
+/** An inspection still waiting on the customer: booked, nobody on the way yet (Phase L5). */
+const VISIT_AWAITING = ['DRAFT', 'SCHEDULED', 'ASSIGNED'];
+
+/**
+ * The customer's answer from the /visit/:token page, as an inspection card shows it (Phase L5):
+ *
+ * - `reschedule`  — they asked for another time: loud, even on a card with no time (the office may have taken it off)
+ * - `unconfirmed` — booked, not confirmed yet: quiet
+ * - `confirmed`   — a small tick
+ *
+ * Null for any other kind of job, one under way or closed, or an inspection with no time yet and no request.
+ * `title` is the hover text: when they answered, their note, the reminder.
+ *
+ * @param {{ type: string, status: string, scheduledStart?: string|null, visitAnswer?: string|null,
+ *   customerConfirmedAt?: string|null, visitAnsweredAt?: string|null, visitAnswerNote?: string|null,
+ *   visitReminderSentAt?: string|null }} job
+ * @returns {{ kind: 'reschedule'|'unconfirmed'|'confirmed', label: string, title: string }|null}
+ */
+export function visitFlag(job) {
+  if (job?.type !== 'INSPECTION' || !VISIT_AWAITING.includes(job.status)) return null;
+  const when = (iso) => (iso ? ` · ${formatDateTime(iso)}` : '');
+  if (job.visitAnswer === 'RESCHEDULE_REQUESTED') {
+    const note = job.visitAnswerNote ? ` — “${job.visitAnswerNote}”` : '';
+    return { kind: 'reschedule', label: 'Wants another time', title: `The customer asked for another time${when(job.visitAnsweredAt)}${note}` };
+  }
+  if (!job.scheduledStart) return null;
+  if (job.customerConfirmedAt || job.visitAnswer === 'CONFIRMED') {
+    return { kind: 'confirmed', label: 'Confirmed', title: `The customer confirmed this visit${when(job.customerConfirmedAt ?? job.visitAnsweredAt)}` };
+  }
+  const reminder = job.visitReminderSentAt ? ` · reminder sent ${formatDateTime(job.visitReminderSentAt)}` : '';
+  return { kind: 'unconfirmed', label: 'Not confirmed', title: `The customer has not confirmed this visit yet${reminder}` };
+}

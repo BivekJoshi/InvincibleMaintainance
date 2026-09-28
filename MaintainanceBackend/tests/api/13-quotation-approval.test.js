@@ -27,13 +27,20 @@ beforeAll(async () => {
   const users = await prisma.user.findMany({ where: { email: { in: Object.values(USERS) } } });
   ids = Object.fromEntries(Object.entries(USERS).map(([role, email]) => [role, users.find((u) => u.email === email)?.id]));
   expectStatus(await setSettings({ 'quotation.autoApproveBelow': 0, 'quotation.makerChecker': true }), 200);
+  crystalline = await prisma.material.findUnique({ where: { code: 'WP-CRYST' } });
 });
 
 afterAll(async () => {
   await setSettings({ 'quotation.autoApproveBelow': 0, 'quotation.makerChecker': true });
 });
 
-/** A customer, a lead assigned to SALES and a DRAFT quotation for them, all created by SALES. */
+/**
+ * A customer, a lead assigned to SALES and a DRAFT quotation for them, all created by SALES. Its line is a
+ * MATERIAL row priced from WP-CRYST (purchase Rs 450), so its cost is known and — at the default Rs 1,000 —
+ * its margin is healthy: the approval tests here are about approval, not the Phase L4 margin gate.
+ */
+let crystalline;
+
 async function draft({
   locale = 'en', email = true, rate = 1000, qty = 2, validUntil = daysFromNow(15), client = sales, leadStatus, serviceId,
 } = {}) {
@@ -49,14 +56,14 @@ async function draft({
   await prisma.lead.update({ where: { id: lead.id }, data: { customerId: customer.id } });
   for (const status of leadStatus ?? []) {
     expectStatus(await sales.patch(`/admin/leads/${lead.id}/status`).send({
-      status, ...(status === 'LOST' ? { lostReason: 'Chose someone else' } : {}),
+      status, ...(status === 'LOST' ? { lostCategory: 'COMPETITOR', lostReason: 'Chose someone else' } : {}),
     }), 200);
   }
   const quotation = expectStatus(await client.post('/admin/quotations').send({
     customerId: customer.id,
     leadId: lead.id,
     ...(validUntil ? { validUntil: validUntil.toISOString() } : {}),
-    items: [{ description: 'Crack filling', unit: 'rft', qty, rate }],
+    items: [{ description: 'Crack filling', kind: 'MATERIAL', materialId: crystalline.id, unit: 'rft', qty, rate }],
   }), 201).data;
   return { customer, lead, quotation };
 }
@@ -238,7 +245,9 @@ describe('send', () => {
     const requestId = rid();
     const sent = await approveAndSend(quotation.id, { requestId });
     expect(sent.status).toBe('SENT');
-    expect(await eventNames(requestId)).toEqual(['quotation.sent']);
+    // Sending is what makes the lead QUOTED (Phase L1): a NEW lead steps through CONTACTED.
+    expect(await eventNames(requestId)).toEqual(['quotation.sent', 'lead.status_changed', 'lead.status_changed']);
+    expect((await prisma.lead.findFirst({ where: { quotations: { some: { id: quotation.id } } } })).status).toBe('QUOTED');
   });
 
   it('refuses an approved quotation whose valid-until date has passed meanwhile', async () => {
@@ -351,9 +360,9 @@ describe('the full loop: changes requested, revised, re-approved, accepted', () 
     expect(row.decidedIp).toBeTruthy();
     expect(row.decidedUserAgent).toBeTruthy();
 
-    // The lead stays where it was, with the message on its timeline.
+    // The lead stays QUOTED — where sending put it — with the message on its timeline.
     const lead = await prisma.lead.findUnique({ where: { id: ctx.lead.id } });
-    expect(lead.status).toBe(ctx.lead.status);
+    expect(lead.status).toBe('QUOTED');
     const activity = await prisma.leadActivity.findFirst({ where: { leadId: ctx.lead.id, summary: { startsWith: 'Customer asked for changes' } } });
     expect(activity.summary).toContain(note);
 
@@ -575,7 +584,10 @@ describe('decline', () => {
     const body = expectStatus(await decide(publicToken, { decision: 'reject', note: 'Too expensive for now' }, requestId), 200);
     expect(body.data).toMatchObject({ status: 'REJECTED', decisionNote: 'Too expensive for now' });
     expect(await eventNames(requestId)).toEqual(['quotation.customer_rejected']);
-    expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('CONTACTED');
+    expect((await prisma.lead.findUnique({ where: { id: lead.id } })).status).toBe('QUOTED');
+    // Sales is asked — never told — whether the lead is lost (Phase L1).
+    const markLost = await prisma.notification.findMany({ where: { type: 'lead_mark_lost', link: `/admin/leads/${lead.id}?markLost=1` } });
+    expect(markLost.map((n) => n.userId)).toEqual([ids.SALES]);
     const activity = await prisma.leadActivity.findFirst({ where: { leadId: lead.id, summary: { startsWith: 'Customer declined' } } });
     expect(activity.summary).toContain('Too expensive for now');
     const notes = await prisma.notification.findMany({ where: { type: 'quotation_rejected', link: `/admin/quotations/${quotation.id}` } });

@@ -26,6 +26,7 @@ function api() {
     if (path === '/admin/customers/c1' && method === 'PUT') return json({ data: { ...CUSTOMER, ...body } });
     if (path === '/admin/customers/c1') return json({ data: CUSTOMER });
     if (path === '/admin/customers/c1/sites' && method === 'POST') return json({ data: { ...body, id: 's2' } }, 201);
+    if (path === '/admin/customers/c1/sites/s1' && method === 'PUT') return json({ data: { ...CUSTOMER.sites[0], ...body } });
     if (path === '/admin/customers/c1/sites') return json({ data: CUSTOMER.sites });
     if (path === '/admin/technicians' || path === '/admin/job-templates') return page([]);
     if (path === '/admin/quotations') return page([{ id: 'q1', number: 'QT-2083-0001', status: 'SENT', total: 282557, createdAt: '2026-09-01T00:00:00Z' }]);
@@ -176,5 +177,56 @@ describe('customer page shortcuts', () => {
     renderDetail('SALES');
     await screen.findByRole('heading', { name: 'Himal Traders' });
     expect(screen.queryByRole('button', { name: /New job/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('a site’s contact and landmark (Phase L5)', () => {
+  it('saves the caretaker (Devanagari, the number normalised) and the landmark, and shows them in the list', async () => {
+    const user = userEvent.setup();
+    const calls = api();
+    renderDetail('SALES', 'sites');
+    await user.click(await screen.findByRole('button', { name: /Add site/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add site' });
+    expect(within(sheet).getByText('The caretaker, when the owner is abroad')).toBeInTheDocument();
+    await user.type(within(sheet).getByLabelText(/^Name/), 'Parents’ house');
+    await user.type(within(sheet).getByLabelText(/^Address/), 'Sanepa, Lalitpur');
+    await user.type(within(sheet).getByLabelText(/^Site contact phone/), '98412345');
+    await user.click(within(sheet).getByRole('button', { name: 'Add site' }));
+    expect(await within(sheet).findByText(/Enter a valid Nepali number/)).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+
+    await user.clear(within(sheet).getByLabelText(/^Site contact phone/));
+    await user.type(within(sheet).getByLabelText(/^Site contact phone/), '+977 9841234567');
+    await user.type(within(sheet).getByLabelText(/^Site contact$/), 'हरि बहादुर');
+    await user.type(within(sheet).getByLabelText(/^Landmark/), 'Opposite the Bhatbhateni, blue gate');
+    await user.click(within(sheet).getByRole('button', { name: 'Add site' }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/admin/customers/c1/sites')?.body).toMatchObject({
+      label: 'Parents’ house', address: 'Sanepa, Lalitpur',
+      contactName: 'हरि बहादुर', contactPhone: '9841234567', landmark: 'Opposite the Bhatbhateni, blue gate',
+    }));
+  }, 15_000);
+
+  it('lists them on the site, and clears one emptied on edit', async () => {
+    const user = userEvent.setup();
+    const site = { ...CUSTOMER.sites[0], contactName: 'हरि बहादुर', contactPhone: '01-5407720', landmark: 'Beside the Nabil Bank' };
+    const calls = mockApi(({ method, path, body }) => {
+      if (path === '/admin/customers/c1') return json({ data: { ...CUSTOMER, sites: [site] } });
+      if (path === '/admin/customers/c1/sites' && method === 'GET') return json({ data: [site] });
+      if (path === '/admin/customers/c1/sites/s1' && method === 'PUT') return json({ data: { ...site, ...body } });
+      if (path === '/admin/technicians' || path === '/admin/job-templates') return page([]);
+      return undefined;
+    });
+    renderDetail('SALES', 'sites');
+    expect(await screen.findByText('हरि बहादुर · 01-5407720')).toBeInTheDocument();
+    expect(screen.getByText('Beside the Nabil Bank')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Office'));
+    const sheet = await screen.findByRole('dialog', { name: 'Edit Office' });
+    expect(within(sheet).getByLabelText(/^Site contact$/)).toHaveValue('हरि बहादुर');
+    await user.clear(within(sheet).getByLabelText(/^Landmark/));
+    await user.click(within(sheet).getByRole('button', { name: 'Save site' }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toMatchObject({
+      contactName: 'हरि बहादुर', contactPhone: '01-5407720', landmark: null,
+    }));
   });
 });

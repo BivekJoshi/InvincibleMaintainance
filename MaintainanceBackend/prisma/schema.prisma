@@ -56,6 +56,8 @@ model User {
   submittedQuotes  Quotation[]      @relation("QuotationSubmitter")
   approvedQuotes   Quotation[]      @relation("QuotationApprover")
   createdJobs      Job[]            @relation("JobCreator")
+  advanceOverrides Job[]            @relation("JobAdvanceOverride")
+  diaries          SiteDiary[]      @relation("DiaryAuthor")
   jobEvents        JobStatusEvent[]
   submittedSurveys SiteSurvey[]     @relation("SurveySubmitter")
   reviewedSurveys  SiteSurvey[]     @relation("SurveyReviewer")
@@ -256,6 +258,8 @@ model Service {
   priceFrom       Int?
   priceTo         Int?
   priceUnit       String?
+  /// What kind of job an accepted quotation for this service becomes (Phase L6); REPAIR until set.
+  jobType         JobType   @default(REPAIR)
   warrantyDays    Int?
   isFeatured      Boolean   @default(false)
   sortOrder       Int       @default(0)
@@ -267,12 +271,13 @@ model Service {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  category     ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  leads        Lead[]
-  jobTemplates JobTemplate[]
-  surveys      SiteSurvey[]
-  surveyItems  SurveyItem[]
-  projects     Project[]
+  category            ServiceCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  leads               Lead[]
+  jobTemplates        JobTemplate[]
+  surveys             SiteSurvey[]
+  surveyItems         SurveyItem[]
+  inspectionTemplates InspectionTemplate[]
+  projects            Project[]
 
   @@index([isActive, sortOrder])
   @@index([categoryId])
@@ -549,7 +554,7 @@ enum Priority {
 }
 
 model Lead {
-  id              String     @id @default(cuid())
+  id              String        @id @default(cuid())
   name            String
   phone           String
   altPhone        String?
@@ -562,26 +567,41 @@ model Lead {
   estimatePayload Json?
   preferredAt     DateTime?
   preferredSlot   String?
-  source          String     @default("web_form")
+  source          String        @default("web_form")
   sourcePage      String?
   utmSource       String?
   utmMedium       String?
   utmCampaign     String?
-  status          LeadStatus @default(NEW)
-  priority        Priority   @default(NORMAL)
+  status          LeadStatus    @default(NEW)
+  priority        Priority      @default(NORMAL)
   assignedToId    String?
   slaDueAt        DateTime?
-  slaBreached     Boolean    @default(false)
+  slaBreached     Boolean       @default(false)
   firstResponseAt DateTime?
   closedAt        DateTime?
   lostReason      String?
+  /// Required with LOST (Phase L1); lostReason stays as the free-text detail.
+  lostCategory    LostCategory?
+  /// The status the lead was in when it was lost — the lost report's "stage".
+  lostAtStage     LeadStatus?
+  /// What the owner does next, and when. Open leads always carry one; WON/LOST clear it.
+  nextActionAt    DateTime?
+  /// CALL | BOOK_VISIT | VISIT | SEND_QUOTE | FOLLOW_UP (NEXT_ACTION_TYPES)
+  nextActionType  String?
+  nextActionNote  String?
+  /// When the lead entered its current status — "4d in stage", and the stale reminders.
+  stageEnteredAt  DateTime      @default(now())
+  /// Every logged contact attempt, answered or not.
+  contactAttempts Int           @default(0)
+  /// { propertyType, floors, buildingAgeYears, budgetBand, decisionMaker, note } — zod-checked (leadQualification).
+  qualification   Json?
   customerId      String?
   /// en | ne — the language customer SMS and email use (the site's language when they enquired)
-  preferredLocale String     @default("en")
+  preferredLocale String        @default("en")
   ip              String?
   userAgent       String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   deletedAt       DateTime?
 
   service    Service?       @relation(fields: [serviceId], references: [id], onDelete: SetNull)
@@ -598,6 +618,21 @@ model Lead {
   @@index([phone])
   @@index([slaDueAt, firstResponseAt])
   @@index([assignedToId])
+  @@index([nextActionAt])
+}
+
+/// Why a lead was lost (LOST_CATEGORIES).
+enum LostCategory {
+  PRICE
+  COMPETITOR
+  UNREACHABLE
+  POSTPONED
+  BUDGET
+  OWN_LABOUR
+  OUT_OF_SCOPE
+  OUT_OF_AREA
+  DUPLICATE_SPAM
+  OTHER
 }
 
 model LeadNote {
@@ -619,6 +654,8 @@ model LeadActivity {
   userId    String?
   type      String
   summary   String
+  /// What a contact attempt came to (LEAD_OUTCOMES), when staff chose one.
+  outcome   String?
   meta      Json?
   createdAt DateTime @default(now())
 
@@ -659,18 +696,23 @@ model Customer {
 }
 
 model CustomerSite {
-  id          String    @id @default(cuid())
-  customerId  String
-  label       String
-  address     String
-  area        String?
-  lat         Float?
-  lng         Float?
-  accessNotes String?
-  isPrimary   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id           String    @id @default(cuid())
+  customerId   String
+  label        String
+  address      String
+  area         String?
+  lat          Float?
+  lng          Float?
+  accessNotes  String?
+  /// Who opens the door when it is not the customer — the caretaker while the owner is abroad (Phase L5).
+  contactName  String?
+  contactPhone String?
+  /// "Opposite the Bhatbhateni, the blue gate" — how the surveyor finds it.
+  landmark     String?
+  isPrimary    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
   jobs       Job[]
@@ -681,6 +723,20 @@ model CustomerSite {
   @@index([customerId])
 }
 
+/// DERIVED: the rate comes from the recipe; MANUAL: typed, and a recipe (if any) only costs it.
+enum RateMode {
+  MANUAL
+  DERIVED
+}
+
+enum RecipeComponentKind {
+  MATERIAL
+  LABOUR
+  EQUIPMENT
+  OTHER
+}
+
+/// The rate library (Phase L2): a selling rate per unit, and the recipe behind it (L-D1).
 model RateCardItem {
   id          String    @id @default(cuid())
   code        String    @unique
@@ -688,15 +744,70 @@ model RateCardItem {
   description String?
   category    String?
   unit        String
+  /// The selling rate (paisa). DERIVED items change it only through a reprice.
   rate        Int
+  rateMode    RateMode  @default(MANUAL)
+  /// The recipe is written for this many units of work — DoR norms are "per 10 sq.m".
+  recipeQty   Float     @default(1)
+  /// null = the setting (quotation.defaultOverheadPct / defaultProfitPct / sellRateRoundTo).
+  overheadPct Float?
+  profitPct   Float?
+  /// Paisa; the derived rate is rounded UP to a multiple of it.
+  roundTo     Int?
+  /// The unit cost (paisa) when the rate was last set — margins show today's cost next to it.
+  unitCost    Int?
   isActive    Boolean   @default(true)
   sortOrder   Int       @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
+  components     RateCardComponent[]
   quotationItems QuotationItem[]
   surveyItems    SurveyItem[]
+
+  @@index([isActive, sortOrder])
+}
+
+/// One line of a recipe: a material (in its own unit), a trade's man-days, or equipment / other cost.
+model RateCardComponent {
+  id             String              @id @default(cuid())
+  rateCardItemId String
+  kind           RecipeComponentKind
+  materialId     String?
+  tradeId        String?
+  description    String?
+  unit           String
+  qty            Float
+  wastagePct     Float               @default(0)
+  /// Paisa per unit — EQUIPMENT and OTHER only; a material's is its purchaseRate, labour's the day wage.
+  cost           Int?
+  sortOrder      Int                 @default(0)
+
+  rateCardItem RateCardItem @relation(fields: [rateCardItemId], references: [id], onDelete: Cascade)
+  material     Material?    @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  trade        Trade?       @relation(fields: [tradeId], references: [id], onDelete: Restrict)
+
+  @@index([rateCardItemId, sortOrder])
+  @@index([materialId])
+  @@index([tradeId])
+}
+
+/// A trade and what a day of it costs (Phase L2) — mason, helper, painter… Wages are cost: costs:read only.
+model Trade {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  name      String
+  /// Paisa per man-day.
+  dayWage   Int       @default(0)
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  components   RateCardComponent[]
+  requirements JobRequirement[]
 
   @@index([isActive, sortOrder])
 }
@@ -715,11 +826,20 @@ enum QuotationStatus {
   CONVERTED
 }
 
+/// A quotation for new work, or a variation order against a running job (Phase L7).
+enum QuotationKind {
+  QUOTATION
+  VARIATION
+}
+
 model Quotation {
   id               String          @id @default(cuid())
   number           String          @unique
   version          Int             @default(1)
   parentId         String?
+  /// VARIATION: a change to job `jobId` — its lines may be negative (omissions); accepting it adds job lines.
+  kind             QuotationKind   @default(QUOTATION)
+  jobId            String?
   customerId       String
   siteId           String?
   leadId           String?
@@ -733,6 +853,24 @@ model Quotation {
   total            Int             @default(0)
   terms            String?
   internalNote     String?
+  /// How the final bill is worked out (L-D2, Phase L4).
+  contractType     ContractType    @default(LUMP_SUM)
+  /// The work's duration in days, as promised to the customer.
+  estimatedDays    Float?
+  /// What the price does not include ("water and electricity by the owner").
+  exclusions       String?
+  /// The customer's page: the measurements annex, and item rows or section subtotals only.
+  showMeasurements Boolean         @default(true)
+  summaryOnly      Boolean         @default(false)
+  /// What the totalled rows cost (paisa), stored at each save so lists show the margin cheaply — costs:read only.
+  costTotal        Int?
+  /// true only when every totalled row's cost is known.
+  costComplete     Boolean         @default(false)
+  /// When the customer first opened the link, and how often they have.
+  firstViewedAt    DateTime?
+  viewCount        Int             @default(0)
+  /// The customer's reason when they declined (a lost-lead category).
+  declineCategory  LostCategory?
   publicToken      String?         @unique
   submittedAt      DateTime?
   submittedById    String?
@@ -758,18 +896,20 @@ model Quotation {
   updatedAt        DateTime        @updatedAt
   deletedAt        DateTime?
 
-  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  site         CustomerSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  lead         Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  createdBy    User?           @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  submittedBy  User?           @relation("QuotationSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
-  approvedBy   User?           @relation("QuotationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  parent       Quotation?      @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
-  revisions    Quotation[]     @relation("QuotationVersions")
-  supersededBy Quotation?      @relation("QuotationSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
-  supersedes   Quotation[]     @relation("QuotationSupersession")
+  customer     Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site         CustomerSite?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead         Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdBy    User?                   @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  submittedBy  User?                   @relation("QuotationSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  approvedBy   User?                   @relation("QuotationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  parent       Quotation?              @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
+  revisions    Quotation[]             @relation("QuotationVersions")
+  supersededBy Quotation?              @relation("QuotationSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   Quotation[]             @relation("QuotationSupersession")
   items        QuotationItem[]
-  jobs         Job[]
+  stages       QuotationPaymentStage[]
+  jobs         Job[]                   @relation("JobQuotation")
+  job          Job?                    @relation("JobVariations", fields: [jobId], references: [id], onDelete: SetNull)
   invoices     Invoice[]
   survey       SiteSurvey?
 
@@ -777,21 +917,98 @@ model Quotation {
   @@index([customerId])
   @@index([parentId])
   @@index([leadId])
+  @@index([jobId])
 }
 
+/// How the final bill is worked out (L-D2).
+enum ContractType {
+  LUMP_SUM
+  ITEM_RATE
+}
+
+/// When a payment stage falls due (L-D3).
+enum PaymentTrigger {
+  ON_ACCEPT
+  MILESTONE
+  ON_COMPLETION
+}
+
+/// One stage of a quotation's payment schedule (Phase L4): its share in basis points (the stages sum to 10000).
+/// Amounts are computed (money.js#paymentSchedule), never stored.
+model QuotationPaymentStage {
+  id          String         @id @default(cuid())
+  quotationId String
+  label       String
+  basisPoints Int
+  trigger     PaymentTrigger
+  sortOrder   Int            @default(0)
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  invoice   Invoice?
+
+  @@index([quotationId, sortOrder])
+}
+
+/// The terms library (Phase L4): reusable terms a quotation starts from. One is the default. The manager's.
+model QuotationTerms {
+  id        String    @id @default(cuid())
+  title     String
+  body      String
+  /// The Nepali text, for a customer who reads Nepali.
+  bodyNe    String?
+  isDefault Boolean   @default(false)
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([isActive, sortOrder])
+}
+
+/// A BOQ row (Phase L3): a priced ITEM, a SECTION heading, or a NOTE. Numbering and section subtotals are computed.
+enum QuotationRowType {
+  ITEM
+  SECTION
+  NOTE
+}
+
+/// One row of a quotation's bill of quantities. Rates and amounts in paisa; SECTION and NOTE rows carry no money.
 model QuotationItem {
-  id             String  @id @default(cuid())
+  id             String           @id @default(cuid())
   quotationId    String
+  rowType        QuotationRowType @default(ITEM)
   rateCardItemId String?
+  materialId     String?
+  kind           SurveyItemKind?
+  /// A SECTION's title and a NOTE's text too.
   description    String
+  /// The long specification printed under the line.
+  spec           String?
   unit           String?
-  qty            Float   @default(1)
+  /// Measurement-book rows { area, description, nos, l, b, h, deduct }; when present they give netQty.
+  measurements   Json?
+  /// The quantity before wastage (measured or typed).
+  netQty         Float?
+  wastagePct     Float            @default(0)
+  /// The billed quantity: netQty with its wastage.
+  qty            Float            @default(1)
   rate           Int
   amount         Int
-  sortOrder      Int     @default(0)
+  /// Shown and priced, never totalled.
+  isOptional     Boolean          @default(false)
+  /// A provisional sum or quantity, settled by measurement (Phase L8).
+  isProvisional  Boolean          @default(false)
+  /// The recipe as it was when the row was priced (versioned JSON, rateLibrary snapshot) — a library change never reaches it.
+  recipe         Json?
+  /// Paisa per unit and for the line — costs:read only; null = unknown, never zero.
+  unitCost       Int?
+  costAmount     Int?
+  sortOrder      Int              @default(0)
 
   quotation    Quotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   rateCardItem RateCardItem? @relation(fields: [rateCardItemId], references: [id], onDelete: SetNull)
+  material     Material?     @relation(fields: [materialId], references: [id], onDelete: SetNull)
 
   @@index([quotationId, sortOrder])
 }
@@ -855,55 +1072,87 @@ model JobTemplate {
   service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 }
 
-model Job {
-  id               String    @id @default(cuid())
-  number           String    @unique
-  type             JobType   @default(REPAIR)
-  customerId       String
-  siteId           String?
-  leadId           String?
-  quotationId      String?
-  parentJobId      String?
-  title            String
-  description      String?
-  priority         Priority  @default(NORMAL)
-  status           JobStatus @default(DRAFT)
-  scheduledStart   DateTime?
-  scheduledEnd     DateTime?
-  actualStart      DateTime?
-  actualEnd        DateTime?
-  holdReason       String?
-  cancelReason     String?
-  completionNote   String?
-  signatureId      String?
-  customerRating   Int?
-  customerFeedback String?
-  isBillable       Boolean   @default(true)
-  invoicedAt       DateTime?
-  createdById      String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
+/// The customer's answer on the /visit/:token page (Phase L5).
+enum VisitAnswer {
+  CONFIRMED
+  RESCHEDULE_REQUESTED
+}
 
-  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  site         CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  lead         Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  quotation    Quotation?       @relation(fields: [quotationId], references: [id], onDelete: SetNull)
-  createdBy    User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  parentJob    Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
-  childJobs    Job[]            @relation("JobRework")
-  tasks        JobTask[]
-  assignments  JobAssignment[]
-  events       JobStatusEvent[]
-  photos       JobPhoto[]
-  timeLogs     TimeLog[]
-  materials    JobMaterial[]
-  invoiceItems InvoiceItem[]
-  expenses     Expense[]
-  warranty     Warranty?
-  amcVisit     AmcVisit?
-  survey       SiteSurvey?
-  project      Project?
+model Job {
+  id                    String       @id @default(cuid())
+  number                String       @unique
+  type                  JobType      @default(REPAIR)
+  customerId            String
+  siteId                String?
+  leadId                String?
+  quotationId           String?
+  parentJobId           String?
+  title                 String
+  description           String?
+  priority              Priority     @default(NORMAL)
+  status                JobStatus    @default(DRAFT)
+  scheduledStart        DateTime?
+  scheduledEnd          DateTime?
+  actualStart           DateTime?
+  actualEnd             DateTime?
+  holdReason            String?
+  cancelReason          String?
+  completionNote        String?
+  signatureId           String?
+  customerRating        Int?
+  customerFeedback      String?
+  isBillable            Boolean      @default(true)
+  invoicedAt            DateTime?
+  /// An INSPECTION job's /visit/:token link (Phase L5): the customer confirms the window or asks for
+  /// another time, with no login. The latest answer wins; a new window clears it.
+  visitToken            String?      @unique
+  visitAnswer           VisitAnswer?
+  visitAnswerNote       String?
+  visitAnsweredAt       DateTime?
+  visitAnswerIp         String?
+  customerConfirmedAt   DateTime?
+  /// The `visits:remind` SMS for the current window went (once — compare-and-swap on this column).
+  visitReminderSentAt   DateTime?
+  /// The work's planned length in days — the quotation's estimate (Phase L6). A schedule without an end uses it.
+  plannedDays           Float?
+  /// The ADVANCE invoice the job waits for (L-D3): until it is PAID (or overridden) it cannot be scheduled.
+  advanceInvoiceId      String?      @unique
+  advanceOverrideById   String?
+  advanceOverrideReason String?
+  advanceOverriddenAt   DateTime?
+  createdById           String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  deletedAt             DateTime?
+
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site              CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead              Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  quotation         Quotation?       @relation("JobQuotation", fields: [quotationId], references: [id], onDelete: SetNull)
+  createdBy         User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  advanceInvoice    Invoice?         @relation("JobAdvanceInvoice", fields: [advanceInvoiceId], references: [id], onDelete: SetNull)
+  advanceOverrideBy User?            @relation("JobAdvanceOverride", fields: [advanceOverrideById], references: [id], onDelete: SetNull)
+  invoices          Invoice[]        @relation("JobInvoices")
+  lines             JobLine[]
+  requirements      JobRequirement[]
+  /// Variation orders against this job (Phase L7): quotations of kind VARIATION.
+  variations        Quotation[]      @relation("JobVariations")
+  diaries           SiteDiary[]
+  purchaseLists     PurchaseList[]
+  parentJob         Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
+  childJobs         Job[]            @relation("JobRework")
+  tasks             JobTask[]
+  assignments       JobAssignment[]
+  events            JobStatusEvent[]
+  photos            JobPhoto[]
+  timeLogs          TimeLog[]
+  materials         JobMaterial[]
+  invoiceItems      InvoiceItem[]
+  expenses          Expense[]
+  warranty          Warranty?
+  amcVisit          AmcVisit?
+  survey            SiteSurvey?
+  project           Project?
 
   @@index([status, scheduledStart])
   @@index([customerId])
@@ -923,6 +1172,118 @@ model JobTask {
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId, sortOrder])
+}
+
+/// Where a job line came from: the accepted quotation, or an accepted variation (Phase L7).
+enum JobLineSource {
+  QUOTATION
+  VARIATION
+}
+
+enum JobRequirementKind {
+  MATERIAL
+  LABOUR
+}
+
+/// The job's bill of quantities (Phase L6): the accepted quotation's non-optional rows, then variations (L7).
+/// progressPct and measuredQty are filled on site (L7) and at close-out (L8). One row per quotation row.
+model JobLine {
+  id              String          @id @default(cuid())
+  jobId           String
+  source          JobLineSource   @default(QUOTATION)
+  quotationItemId String?
+  /// The BOQ number (A.1) and section title the row had on the quotation.
+  number          String?
+  section         String?
+  kind            SurveyItemKind?
+  description     String
+  unit            String?
+  quotedQty       Float
+  /// Paisa per unit, as accepted.
+  rate            Int
+  measurements    Json?
+  measuredQty     Float?
+  progressPct     Float           @default(0)
+  isProvisional   Boolean         @default(false)
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, quotationItemId])
+  @@index([jobId, sortOrder])
+}
+
+/// What the job needs (Phase L6), from the take-off: material in its unit and packs, labour days by trade.
+/// Quantities only — no rate, no cost (L-D4).
+model JobRequirement {
+  id          String             @id @default(cuid())
+  jobId       String
+  kind        JobRequirementKind
+  materialId  String?
+  tradeId     String?
+  description String
+  unit        String?
+  qty         Float
+  packs       Int?
+  source      JobLineSource      @default(QUOTATION)
+  createdAt   DateTime           @default(now())
+
+  job      Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  material Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  trade    Trade?    @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+
+  @@index([jobId, kind])
+}
+
+enum DiaryWeather {
+  SUNNY
+  CLOUDY
+  RAIN
+  HEAVY_RAIN
+  COLD
+}
+
+/// Why site hours were lost (Phase L7) — the reasons a Kathmandu site stops.
+enum LostTimeReason {
+  RAIN
+  LATE_MATERIAL
+  CUSTOMER
+  BANDH
+  FESTIVAL
+  OTHER
+}
+
+/// The foreman's day on site (Phase L7): one entry per job per Kathmandu day, filed from a phone, offline.
+/// Daily-wage labour are not app users, so headcount is per trade. No money anywhere (D1).
+model SiteDiary {
+  id            String          @id @default(cuid())
+  jobId         String
+  /// The Kathmandu calendar day, YYYY-MM-DD.
+  day           String
+  weather       DiaryWeather?
+  /// [{ tradeId, count }]
+  headcount     Json
+  /// [{ jobLineId, progressPct }] — the latest day sets each JobLine.progressPct.
+  progress      Json
+  /// [{ materialId?, description, qty, unit?, challanNo? }] — deliveries; they do not move stock.
+  received      Json
+  issues        String?
+  lostHours     Float           @default(0)
+  lostReason    LostTimeReason?
+  /// Media ids of the day's photos (JobPhoto rows through the upload queue).
+  photoMediaIds Json
+  note          String?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  job       Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("DiaryAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([jobId, day])
 }
 
 model JobAssignment {
@@ -964,6 +1325,8 @@ model JobPhoto {
   mediaId   String
   kind      String
   caption   String?
+  /// The room or part of the site it shows ("Bedroom 1", "Roof") — the review groups by it (Phase L5).
+  area      String?
   createdAt DateTime @default(now())
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -1078,19 +1441,23 @@ model SiteSurvey {
 // readings, so both a numeric and a text column — not a Json blob, because `value`
 // is what the review screen thresholds on and what reports group by.
 model SurveyReading {
-  id        String   @id @default(cuid())
-  surveyId  String
-  label     String
-  metric    String
-  value     Float?
-  unit      String?
-  textValue String?
-  location  String?
-  mediaId   String?
-  lat       Float?
-  lng       Float?
-  takenAt   DateTime @default(now())
-  sortOrder Int      @default(0)
+  id          String   @id @default(cuid())
+  surveyId    String
+  label       String
+  metric      String
+  value       Float?
+  unit        String?
+  textValue   String?
+  location    String?
+  mediaId     String?
+  lat         Float?
+  lng         Float?
+  /// The inspection-template question this answers (Phase L5); null for a free reading.
+  questionKey String?
+  /// The answer crossed the question's flag (a moisture reading above 20 %). Computed by the server.
+  flagged     Boolean  @default(false)
+  takenAt     DateTime @default(now())
+  sortOrder   Int      @default(0)
 
   survey SiteSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
@@ -1107,6 +1474,9 @@ model SurveyItem {
   description    String
   unit           String
   qty            Float
+  /// The measurement sheet, rows `{ area, description, nos, l, b, h, deduct }` (Phase L5). When present,
+  /// `qty` is derived from it on the server (quantity.js#measurementQty).
+  measurements   Json?
   wastagePct     Float          @default(0)
   isOptional     Boolean        @default(false)
   note           String?
@@ -1123,7 +1493,74 @@ model SurveyItem {
   @@index([rateCardItemId])
 }
 
+/// A service's site checklist (Phase L5): the questions the surveyor answers on the site, each a
+/// SurveyReading keyed by `questionKey`. `serviceId` null is the general checklist, used when the
+/// survey's service has none. `questions` is zod-checked (schemas/survey.js#inspectionQuestions).
+model InspectionTemplate {
+  id        String    @id @default(cuid())
+  serviceId String?
+  name      String
+  questions Json
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([serviceId, isActive])
+}
+
 // ═══════════════════════════ Materials
+
+/// DRAFT → ORDERED → RECEIVED (Phase L7), or CANCELLED before it arrives.
+enum PurchaseListStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+/// What to buy for a job (Phase L7) — raised from its shortfall; receiving it writes PURCHASE stock movements.
+model PurchaseList {
+  id           String             @id @default(cuid())
+  number       String             @unique
+  jobId        String?
+  supplierId   String?
+  status       PurchaseListStatus @default(DRAFT)
+  orderedAt    DateTime?
+  receivedAt   DateTime?
+  cancelReason String?
+  note         String?
+  createdById  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  deletedAt    DateTime?
+
+  job      Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  supplier Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  items    PurchaseListItem[]
+
+  @@index([status, createdAt])
+  @@index([jobId])
+}
+
+model PurchaseListItem {
+  id          String  @id @default(cuid())
+  listId      String
+  materialId  String
+  qty         Float
+  packs       Int?
+  receivedQty Float?
+  note        String?
+  sortOrder   Int     @default(0)
+
+  list     PurchaseList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  material Material     @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([listId])
+}
 
 model Supplier {
   id        String    @id @default(cuid())
@@ -1137,7 +1574,9 @@ model Supplier {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  materials Material[]
+  materials     Material[]
+  movements     StockMovement[]
+  purchaseLists PurchaseList[]
 }
 
 model MaterialCategory {
@@ -1161,6 +1600,10 @@ model Material {
   unit         String
   purchaseRate Int       @default(0)
   sellRate     Int       @default(0)
+  /// How it is bought: 50 (kg) a bag, 1 when the unit already is the pack. The take-off rounds up to packs.
+  packSize     Float?
+  /// "bag", "20 L tin", "box of 8"
+  packLabel    String?
   reorderLevel Float     @default(0)
   isActive     Boolean   @default(true)
   sortOrder    Int       @default(0)
@@ -1168,11 +1611,15 @@ model Material {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  category     MaterialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  supplier     Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  movements    StockMovement[]
-  jobMaterials JobMaterial[]
-  surveyItems  SurveyItem[]
+  category        MaterialCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  supplier        Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  movements       StockMovement[]
+  jobMaterials    JobMaterial[]
+  surveyItems     SurveyItem[]
+  recipeLines     RateCardComponent[]
+  quotationItems  QuotationItem[]
+  jobRequirements JobRequirement[]
+  purchaseItems   PurchaseListItem[]
 
   @@index([isActive, sortOrder])
 }
@@ -1185,11 +1632,14 @@ model StockMovement {
   rate       Int?
   jobId      String?
   reference  String?
+  /// Who the stock was bought from — a purchase list received (Phase L7).
+  supplierId String?
   note       String?
   actorId    String?
   createdAt  DateTime @default(now())
 
-  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  material Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   @@index([materialId, createdAt])
   @@index([jobId])
@@ -1221,37 +1671,55 @@ enum InvoiceStatus {
   VOID
 }
 
-model Invoice {
-  id          String        @id @default(cuid())
-  number      String        @unique
-  customerId  String
-  quotationId String?
-  status      InvoiceStatus @default(DRAFT)
-  issuedAt    DateTime      @default(now())
-  dueDate     DateTime?
-  subtotal    Int           @default(0)
-  discount    Int           @default(0)
-  vatApplied  Boolean       @default(true)
-  vatRate     Int           @default(13)
-  vatAmount   Int           @default(0)
-  total       Int           @default(0)
-  paidAmount  Int           @default(0)
-  note        String?
-  terms       String?
-  publicToken String?       @unique
-  sentAt      DateTime?
-  voidReason  String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  deletedAt   DateTime?
+/// What an invoice bills (Phase L6): an ordinary invoice, the advance on acceptance, a running (stage) bill
+/// or the final bill (L8).
+enum InvoiceKind {
+  STANDARD
+  ADVANCE
+  RUNNING
+  FINAL
+}
 
-  customer  Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  quotation Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
-  items     InvoiceItem[]
-  payments  Payment[]
+model Invoice {
+  id             String        @id @default(cuid())
+  number         String        @unique
+  customerId     String
+  quotationId    String?
+  kind           InvoiceKind   @default(STANDARD)
+  /// The job a stage bill belongs to (Phase L6).
+  jobId          String?
+  /// The payment-schedule stage it bills — once: unique.
+  paymentStageId String?       @unique
+  status         InvoiceStatus @default(DRAFT)
+  issuedAt       DateTime      @default(now())
+  dueDate        DateTime?
+  subtotal       Int           @default(0)
+  discount       Int           @default(0)
+  vatApplied     Boolean       @default(true)
+  vatRate        Int           @default(13)
+  vatAmount      Int           @default(0)
+  total          Int           @default(0)
+  paidAmount     Int           @default(0)
+  note           String?
+  terms          String?
+  publicToken    String?       @unique
+  sentAt         DateTime?
+  voidReason     String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  customer     Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  quotation    Quotation?             @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  job          Job?                   @relation("JobInvoices", fields: [jobId], references: [id], onDelete: SetNull)
+  paymentStage QuotationPaymentStage? @relation(fields: [paymentStageId], references: [id], onDelete: SetNull)
+  advanceFor   Job?                   @relation("JobAdvanceInvoice")
+  items        InvoiceItem[]
+  payments     Payment[]
 
   @@index([status, dueDate])
   @@index([customerId])
+  @@index([jobId])
 }
 
 model InvoiceItem {
@@ -1458,6 +1926,8 @@ model Notification {
   body      String?
   link      String?
   readAt    DateTime?
+  /// A reminder's identity, e.g. `stale:quote_unanswered:<id>:<day>:<userId>` — a second cron run sends nothing.
+  dedupeKey String?   @unique
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

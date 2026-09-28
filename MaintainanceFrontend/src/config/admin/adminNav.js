@@ -1,9 +1,15 @@
 import {
-  Blocks, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
+  Blocks, BookText, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, ClipboardPen, FolderTree, Hammer, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
   HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, LogIn,
   MessageSquareQuote, MessageSquareText, Newspaper, Package, Receipt, Ruler, ScrollText, Send, Settings, ShieldCheck,
   Sparkles, Tag, Tags, Timer, UserCog, Users, Wallet, Wrench,
 } from 'lucide-react';
+// Finance and reports (Phase I).
+import { Banknote, BarChart3, Gauge, Landmark, Percent } from 'lucide-react';
+// Aftercare (Phase I).
+import { BellRing, RefreshCw, ShieldAlert } from 'lucide-react';
+// Execution (Phase L7).
+import { ShoppingCart } from 'lucide-react';
 import { can } from '@/helpers/permissions';
 
 /**
@@ -35,7 +41,7 @@ import { can } from '@/helpers/permissions';
  */
 export const NAV_TABS = [
   { key: 'home', label: 'Home', icon: Home, hint: 'Daily work: sales, jobs, finance' },
-  { key: 'helpers', label: 'Helpers', icon: LifeBuoy, hint: 'Rate card, templates, materials, page blocks' },
+  { key: 'helpers', label: 'Helpers', icon: LifeBuoy, hint: 'Rate library, templates, materials, page blocks' },
   { key: 'others', label: 'Others', icon: Globe, hint: 'Website content and blog' },
   { key: 'settings', label: 'Settings', icon: Settings, hint: 'Users, roles, audit and settings' },
 ];
@@ -70,6 +76,10 @@ export const ADMIN_NAV = [
       { to: '/admin/dispatch', label: 'Dispatch board', icon: CalendarDays, capability: 'jobs:dispatch', editLabel: 'Board' },
       { to: '/admin/technicians', label: 'Technicians', icon: HardHat, capability: 'technicians:read', editLabel: 'Edit' },
       { to: '/admin/stock', label: 'Stock', icon: Boxes, capability: 'materials:read' },
+      // What to buy, for a job's shortfall or the store (Phase L7): read with materials:read, moved with materials:write.
+      { to: '/admin/purchase-lists', label: 'Purchase lists', icon: ShoppingCart, capability: 'materials:read', editLabel: 'Details' },
+      // A service's site checklist (Phase L5): read with surveys:read, changed with surveys:write.
+      { to: '/admin/inspection-templates', label: 'Inspection templates', icon: ClipboardPen, capability: 'surveys:read', editLabel: 'Edit' },
     ],
   },
   {
@@ -77,8 +87,11 @@ export const ADMIN_NAV = [
     label: 'Finance',
     tab: 'home',
     items: [
-      { to: '/admin/invoices', label: 'Invoices', icon: Receipt, capability: 'invoices:read', soon: true },
-      { to: '/admin/expenses', label: 'Expenses', icon: Wallet, capability: 'expenses:read', soon: true },
+      { to: '/admin/invoices', label: 'Invoices', icon: Receipt, capability: 'invoices:read' },
+      { to: '/admin/finance/payments', label: 'Payments', icon: Banknote, capability: 'payments:read' },
+      // A registry entry with its own address (its basePath).
+      { to: '/admin/expenses', label: 'Expenses', icon: Wallet, capability: 'expenses:read', editLabel: 'Edit' },
+      { to: '/admin/finance/reports', label: 'Finance reports', icon: Landmark, capability: 'reports:finance' },
     ],
   },
   {
@@ -86,7 +99,23 @@ export const ADMIN_NAV = [
     label: 'Aftercare',
     tab: 'home',
     items: [
-      { to: '/admin/warranties', label: 'Warranty & AMC', icon: ShieldCheck, capability: 'jobs:read', soon: true },
+      // Phase I: read by SALES, MANAGER and DISPATCHER; DISPATCHER (and ADMIN) writes. ACCOUNTANT holds none.
+      { to: '/admin/warranties', label: 'Warranties', icon: ShieldCheck, capability: 'warranties:read' },
+      { to: '/admin/warranty-claims', label: 'Warranty claims', icon: ShieldAlert, capability: 'warranties:read' },
+      { to: '/admin/amc-contracts', label: 'AMC contracts', icon: RefreshCw, capability: 'amc:read' },
+      { to: '/admin/service-reminders', label: 'Service reminders', icon: BellRing, capability: 'reminders:read' },
+    ],
+  },
+  {
+    // The sales and operations reports (Phase I10): one screen per audience, each behind its own capability. Lost
+    // leads (Phase L1) is a tab of Sales reports; job margin sits behind the money wall (costs:read).
+    key: 'reports',
+    label: 'Reports',
+    tab: 'home',
+    items: [
+      { to: '/admin/reports/sales', label: 'Sales reports', icon: BarChart3, capability: 'reports:sales' },
+      { to: '/admin/reports/operations', label: 'Operations reports', icon: Gauge, capability: 'reports:ops' },
+      { to: '/admin/reports/job-margin', label: 'Job margin', icon: Percent, capability: 'costs:read' },
     ],
   },
   {
@@ -95,7 +124,9 @@ export const ADMIN_NAV = [
     label: 'Catalog',
     tab: 'helpers',
     items: [
-      { to: '/admin/rate-card', label: 'Rate card', icon: Ruler, capability: 'quotations:read', editLabel: 'Edit' },
+      { to: '/admin/rate-card', label: 'Rate library', icon: Ruler, capability: 'rates:read', editLabel: 'Edit' },
+      { to: '/admin/trades', label: 'Trades & wages', icon: Hammer, capability: 'rates:read', editLabel: 'Edit' },
+      { to: '/admin/quotation-terms', label: 'Terms library', icon: BookText, capability: 'rates:read', editLabel: 'Edit' },
       { to: '/admin/job-templates', label: 'Job templates', icon: ClipboardList, capability: 'jobs:read', editLabel: 'Edit' },
       { to: '/admin/materials', label: 'Materials', icon: Package, capability: 'materials:read', editLabel: 'Edit' },
       { to: '/admin/material-categories', label: 'Material categories', icon: FolderTree, capability: 'materials:read', editLabel: 'Edit' },

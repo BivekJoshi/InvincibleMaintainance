@@ -10,6 +10,7 @@ import { useJobActions } from '@/hooks/useJobActions';
 import { PageHeader } from '@/components/common/PageHeader';
 import { CustomTable } from '@/components/common/CustomTable/CustomTable';
 import { JobFormSheet } from '@/components/jobs/JobFormSheet';
+import { AwaitingAdvanceChip } from '@/components/jobs/AwaitingAdvanceChip';
 import { PriorityBadge, StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageTransition } from '@/three/motion/motionKit';
@@ -60,8 +61,10 @@ const columns = [
       <div className="flex flex-wrap items-center gap-1.5">
         <StatusBadge status={r.status} label={JOB_STATUS_LABELS[r.status]} />
         <PriorityBadge priority={r.priority} />
+        <AwaitingAdvanceChip job={r} />
       </div>
     ),
+    exportValue: (r) => `${JOB_STATUS_LABELS[r.status] ?? r.status}${r.awaitingAdvance ? ' · Awaiting advance' : ''}`,
   },
   {
     key: 'scheduledStart', header: 'When', sortable: true,

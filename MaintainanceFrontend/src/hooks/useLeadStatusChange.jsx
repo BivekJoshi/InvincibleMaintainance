@@ -8,14 +8,18 @@ import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 
 /**
  * Moves a lead through the state machine — the one way the screens change a status
- * (`PATCH /admin/leads/:id/status`). LOST first asks why.
+ * (`PATCH /admin/leads/:id/status`). LOST first asks why: a category (required) and the words.
  *
  *   const [changeStatus, statusDialog] = useLeadStatusChange();
  *   const moved = await changeStatus(lead, 'CONTACTED');   // true, or false if refused or cancelled
+ *   await changeStatus(lead, 'LOST', { lostCategory: 'PRICE' });   // the lost dialog starts on that category
+ *
+ * The third argument pre-fills the lost dialog (Phase L4: a declined quotation's "Mark lost?" link carries the
+ * customer's reason as `?category=`); the person still confirms it.
  *
  * A refused move toasts the API's reason; the caller only has to undo what it showed.
  *
- * @returns {[(lead: object, to: string) => Promise<boolean>, import('react').ReactElement]}
+ * @returns {[(lead: object, to: string, prefill?: { lostCategory?: string }) => Promise<boolean>, import('react').ReactElement]}
  */
 export function useLeadStatusChange() {
   const dispatch = useDispatch();
@@ -34,12 +38,12 @@ export function useLeadStatusChange() {
     }
   }, [dispatch, setStatus]);
 
-  const changeStatus = useCallback((lead, to) => {
+  const changeStatus = useCallback((lead, to, prefill = {}) => {
     if (!needsReason(to)) return send(lead, to);
     settle.current?.(false);
     return new Promise((resolve) => {
       settle.current = resolve;
-      setAsking(lead);
+      setAsking({ lead, lostCategory: prefill.lostCategory });
     });
   }, [send]);
 
@@ -54,11 +58,12 @@ export function useLeadStatusChange() {
     <LostReasonDialog
       open={Boolean(asking)}
       onOpenChange={close}
-      leadName={asking?.name}
-      onSubmit={async (lostReason) => {
-        const lead = asking;
+      leadName={asking?.lead.name}
+      defaultCategory={asking?.lostCategory}
+      onSubmit={async (why) => {
+        const { lead } = asking;
         // A refusal throws: the dialog stays open with the API's message.
-        await setStatus({ id: lead.id, status: 'LOST', lostReason }).unwrap();
+        await setStatus({ id: lead.id, status: 'LOST', ...why }).unwrap();
         dispatch(toastSuccess(`${lead.name} marked as lost`));
         settle.current?.(true);
         settle.current = null;

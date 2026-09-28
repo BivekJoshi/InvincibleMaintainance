@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { validate } from '../middleware/validate.js';
 import { uploadImages } from '../middleware/upload.js';
-import { decisionLimiter, leadLimiter, publicUploadLimiter } from '../middleware/rateLimit.js';
+import { decisionLimiter, leadLimiter, publicUploadLimiter, visitLimiter } from '../middleware/rateLimit.js';
 import { cached } from '../services/cache.service.js';
 import { ok, created } from '../utils/response.js';
 import * as pub from '../services/public.service.js';
@@ -14,7 +14,8 @@ import * as warranty from '../services/warranty.service.js';
 import { estimate } from '../services/estimate.service.js';
 import { surveyAvailability } from '../services/availability.service.js';
 import { publicLeadSchema, estimateSchema, quotationDecisionSchema } from '../shared/schemas/crm.js';
-import { warrantyClaimSchema } from '../shared/schemas/ops.js';
+import { visitResponseSchema, warrantyClaimSchema } from '../shared/schemas/ops.js';
+import * as visits from '../services/visit.service.js';
 import { slugParam, tokenParam } from '../shared/schemas/common.js';
 
 const router = Router();
@@ -62,6 +63,11 @@ router.get('/quotations/:token', validate({ params: tokenParam }), asyncHandler(
 // Accept · Ask for changes · Decline. No login and no OTP (decision D4); the IP and user agent are kept.
 router.post('/quotations/:token/decide', decisionLimiter, validate({ params: tokenParam, body: quotationDecisionSchema }), asyncHandler(async (req, res) =>
   ok(res, await quotations.decideByToken(req.params.token, req.body, { ip: req.ip, userAgent: req.get('user-agent') }))));
+
+// The site visit (Phase L5): Confirm · Need another time, no login; the time and IP are kept.
+router.get('/visits/:token', validate({ params: tokenParam }), asyncHandler(async (req, res) => ok(res, await visits.getVisitByToken(req.params.token))));
+router.post('/visits/:token/respond', visitLimiter, validate({ params: tokenParam, body: visitResponseSchema }), asyncHandler(async (req, res) =>
+  ok(res, await visits.respondToVisit(req.params.token, req.body, { ip: req.ip }))));
 
 router.get('/invoices/:token', validate({ params: tokenParam }), asyncHandler(async (req, res) => ok(res, await invoices.getByPublicToken(req.params.token))));
 

@@ -19,6 +19,13 @@ export const materials = makeCrud({
  * Stock is always DERIVED from movements — never a mutable column that can drift.
  * @returns {Promise<Record<string, number>>} materialId -> balance
  */
+/** The field app's material list (GET /tech/materials): what can be logged on a job — never a rate. */
+export const fieldMaterials = () => prisma.material.findMany({
+  where: { isActive: true, deletedAt: null },
+  select: { id: true, code: true, name: true, unit: true },
+  orderBy: { name: 'asc' },
+});
+
 export async function stockBalances(materialIds) {
   const grouped = await prisma.stockMovement.groupBy({
     by: ['materialId'],

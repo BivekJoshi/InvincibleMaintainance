@@ -18,8 +18,17 @@ F1 Quotation approval & customer response — backend
 F2 Quotation screens + first end-to-end test
 G  Audit, logs & platform screens
 H1 Operations — back office
+L0 Hotfixes: double billing, /tech money leak, survey photos
+L1 Lead follow-through (next actions, outcomes, stale reminders, lost reasons)
+L2 Foundations, rate library & money wall (costs:read)
+L3 The BOQ builder
+L4 Terms & the customer document (payment schedule, print, .xlsx)
 H2 Operations — field app
+L5 Site-visit kit                    needs H2's photo upload queue
 I  Finance & aftercare screens
+L6 Won → hand-off (job lines, advance invoice + gate)   needs I's payment screen
+L7 Execution (site diary, progress, purchases, variations)
+L8 Close-out & final bill
 J1 Nepali UI (field app, site, customer pages)
 J2 Reliability & PDFs
 J3 Security, backups & deploy        → production launch
@@ -68,6 +77,24 @@ All open decisions are answered and written into the prompts and `docs/ADMIN-PLA
 - **Code structure** — inline route handler = controller; Prisma out of routes (Phase A amends CLAUDE.md).
 
 Change a decision by editing ADMIN-PLAN §4 **and** the prompt that uses it before running that phase.
+
+## Decisions (recorded 2026-09-26)
+
+Phase L (pipeline stages that work like a site team). The decisions are written into `docs/ADMIN-PLAN.md` §4 and
+the `PHASE-L*` prompts:
+
+- **L-D1 Rate build-up**: recipe rates. A rate-library item holds what one unit needs: materials with
+  wastage, labour man-days by trade, equipment and other costs, overhead % and profit %. Quantity × recipe
+  gives the material take-off and labour days. The recipe is snapshotted onto the quotation line (L2, L3).
+- **L-D2 Final bill**: chosen per quotation. `LUMP_SUM` is the quote ± customer-approved variations.
+  `ITEM_RATE` means the engineer measures the finished work, and the bill is measured qty × quoted rate (L4,
+  L8).
+- **L-D3 Advance**: the quotation carries a payment schedule, defaulted from a setting (50 · 40 · 10). On
+  Accept, the advance invoice is created automatically. The job cannot be scheduled until it is paid. A
+  MANAGER or ADMIN may override, and the override is audited (L4, L6).
+- **L-D4 Cost visibility**: only MANAGER and ADMIN see cost and margin, through the new `costs:read`
+  capability. SALES builds with sell rates. Approval warns below a minimum-margin setting. The surveyor
+  still never sees any rate (D1 money wall) (L2, L4).
 
 ## How each session works
 

@@ -15,18 +15,25 @@ export const PERMISSIONS = {
   // *:history reads a record's own audit trail (who changed what). The people who work
   // a record hold it; a reader does not — a dispatcher reads a lead to plan a visit, not
   // its trail. EDITOR reads a CMS record's trail with cms:read.
+  // rates:read — the rate library, to price with (Phase L2). Writing it needs rates:write,
+  // because a recipe carries cost; SALES quotes with selling rates and never sees cost.
   SALES: [
     'leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history',
     'quotations:read', 'quotations:write', 'quotations:history', 'jobs:read', 'services:read',
-    'surveys:read', 'surveys:write', 'technicians:read',
+    'surveys:read', 'surveys:write', 'technicians:read', 'rates:read',
+    'warranties:read', 'amc:read', 'reminders:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
   // Sales plus the internal approval of quotations (Phase F). quotations:approve is
-  // held here and by ADMIN ('*') only.
+  // held here and by ADMIN ('*') only. The money wall (L-D4, Phase L2): costs:read — cost,
+  // margin, recipe cost, trade wages, job costing — is held here and by ADMIN only; so are
+  // the rate library's writes and the advance override (enforced from L6).
   MANAGER: [
     'leads:read', 'leads:write', 'leads:history', 'customers:read', 'customers:write', 'customers:history',
     'quotations:read', 'quotations:write', 'quotations:history', 'quotations:approve', 'jobs:read', 'services:read',
-    'surveys:read', 'surveys:write', 'technicians:read',
+    'surveys:read', 'surveys:write', 'technicians:read', 'rates:read', 'rates:write', 'costs:read',
+    'jobs:advance-override',
+    'warranties:read', 'amc:read', 'reminders:read',
     'media:read', 'dashboard:read', 'reports:sales',
   ],
   DISPATCHER: [
@@ -34,6 +41,9 @@ export const PERMISSIONS = {
     'materials:read', 'materials:write', 'customers:read', 'leads:read',
     // services:read: a job template belongs to a service (Phase H1).
     'surveys:read', 'services:read',
+    // Aftercare (Phase I, replacing aftercare.routes.js's role lists): dispatch decides claims — an accepted
+    // one is a job to schedule — and runs AMC contracts and service reminders. Sales reads them.
+    'warranties:read', 'warranties:write', 'amc:read', 'amc:write', 'reminders:read', 'reminders:write',
     'media:read', 'media:write', 'dashboard:read', 'reports:ops',
   ],
   TECHNICIAN: ['jobs:own', 'media:write', 'dashboard:read'],
@@ -44,7 +54,7 @@ export const PERMISSIONS = {
   ACCOUNTANT: [
     'invoices:read', 'invoices:write', 'invoices:history', 'payments:read', 'payments:write',
     'expenses:read', 'expenses:write', 'customers:read', 'jobs:read',
-    'quotations:read', 'dashboard:read', 'reports:finance',
+    'quotations:read', 'rates:read', 'dashboard:read', 'reports:finance',
   ],
 };
 

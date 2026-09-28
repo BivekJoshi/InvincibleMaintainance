@@ -6,6 +6,8 @@ import { cn } from "@/helpers/utils"
 const Progress = React.forwardRef(({ className, value, ...props }, ref) => (
   <ProgressPrimitive.Root
     ref={ref}
+    // Passed on, so the bar says its value to a screen reader (aria-valuenow) — the generated file dropped it.
+    value={value}
     className={cn(
       "relative h-2 w-full overflow-hidden rounded-full bg-primary/20",
       className

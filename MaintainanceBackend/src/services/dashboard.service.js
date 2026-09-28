@@ -238,7 +238,8 @@ export async function dashboard(role) {
       _sum: { total: true, paidAmount: true }, _count: { _all: true },
     }),
     prisma.warranty.count({ where: { status: 'ACTIVE', endsAt: { gte: new Date() } } }),
-    prisma.amcContract.count({ where: { deletedAt: null, status: 'active', endDate: { lte: addDays(new Date(), 60) } } }),
+    // The same set the contracts list's renewals-due tab shows (renewalsDays=60): still running, ending within 60 days.
+    prisma.amcContract.count({ where: { deletedAt: null, status: 'active', endDate: { gte: new Date(), lte: addDays(new Date(), 60) } } }),
     prisma.quotation.count({ where: { deletedAt: null, status: 'PENDING_APPROVAL' } }),
     prisma.quotation.count({ where: { deletedAt: null, status: 'CHANGES_REQUESTED' } }),
     prisma.quotation.count({ where: { deletedAt: null, status: 'SENT' } }),

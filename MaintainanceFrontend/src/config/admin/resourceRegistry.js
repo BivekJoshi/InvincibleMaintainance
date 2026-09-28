@@ -4,6 +4,8 @@ import { heroSlides } from './resources/heroSlides';
 import { serviceCategories } from './resources/serviceCategories';
 import { services } from './resources/services';
 import { rateCard } from './resources/rateCard';
+import { trades } from './resources/trades';
+import { quotationTerms } from './resources/quotationTerms';
 import { projects } from './resources/projects';
 import { offers } from './resources/offers';
 import { pricingPlans } from './resources/pricingPlans';
@@ -20,10 +22,14 @@ import { jobTemplates } from './resources/jobTemplates';
 import { materials } from './resources/materials';
 import { materialCategories } from './resources/materialCategories';
 import { suppliers } from './resources/suppliers';
+import { inspectionTemplates } from './resources/inspectionTemplates';
+import { expenses } from './resources/expenses';
+import { purchaseLists } from './resources/purchaseLists';
 
 /**
- * Every registry resource — the CMS, the rate card and, since Phase H1, the operations lists
- * (technicians, job templates, materials, material categories, suppliers) — the back office manages
+ * Every registry resource — the CMS, the rate library and its trades (Phase L2), the terms library (Phase L4), the inspection
+ * templates (Phase L5) and, since Phase H1, the operations lists (technicians, job templates, materials, material categories,
+ * suppliers) — the back office manages
  * through the generic pages
  * (`pages/admin/ResourceListPage`, `ResourceEditPage`). One file per resource under
  * `resources/`; register it here and give it a nav item in `adminNav.js`.
@@ -46,7 +52,8 @@ import { suppliers } from './resources/suppliers';
  * @property {string} [writeCapability] needed to create, edit, reorder, toggle and delete (default `cms:write`)
  * @property {string} [historyCapability] needed for the edit page's History tab (`GET <path>/:id/history`);
  *                                    default `capability` — the API guards a CMS record's trail with `cms:read`
- * @property {object[]} columns       CustomTable columns; the page appends the Active switch
+ * @property {object[]} columns       CustomTable columns; the page appends the Active switch. A column's own
+ *                                    `capability` shows it only to a user holding it (the rate library's Cost)
  * @property {object[]} [filters]     CustomTable filters
  * @property {object[]} fields        ResourceForm fields
  * @property {import('zod').ZodTypeAny | ((ctx: SchemaContext) => import('zod').ZodTypeAny)} schema
@@ -60,6 +67,7 @@ import { suppliers } from './resources/suppliers';
  * @property {{ value: string, label: string, component: import('react').ComponentType<{ record: object, canWrite: boolean }> }[]} [tabs]
  *                                    panels beside the form on an existing record (a project's Gallery)
  * @property {(record: object) => RowAction[]} [rowActions] extra list actions that call a `cmsApi` mutation
+ * @property {BulkAction[]} [bulkActions] extra actions on the selected rows (the rate library's "Update to derived rate")
  * @property {object} [defaultValues] a new record, in API shape
  * @property {boolean} [sortable]     offers Reorder (`PATCH /reorder`); false when the site orders by another column
  * @property {string[]} [translatable] field names with a Nepali tab
@@ -71,6 +79,18 @@ import { suppliers } from './resources/suppliers';
  *
  * @property {string} [activeField] the boolean the list's switch and Hide/Show act on (default `isActive`); the
  *                                    API's `PATCH /:id/toggle` flips the same column (technicians: `isAvailable`)
+ * @property {boolean} [toggle]      false: no on/off switch and no Hide/Show — the model has no such column and the
+ *                                    API mounts no toggle (expenses, Phase I)
+ * @property {(meta: object, ctx: { inTrash: boolean }) => import('react').ReactNode} [footer]  under the list: the
+ *                                    server's figures for it (the expenses' `meta.totals.total`)
+ * @property {() => [(record: object) => RecordAction[], import('react').ReactNode]} [useRecordActions]  a hook: the
+ *                                    moves a record's state allows (a purchase list's Mark ordered · Receive · Cancel,
+ *                                    Phase L7) and the dialogs they open. The list offers them in a row's menu, the edit
+ *                                    page as buttons in its header (a disabled one says why)
+ * @property {(record: object) => string|null} [readOnlyReason]  why a saved record's form is read only in its state
+ *                                    (a purchase list past DRAFT) — the page says so; null when it can be edited
+ * @property {(record: object) => boolean} [deletable]  whether Delete is offered for a record (only a draft purchase
+ *                                    list); default every record
  *
  * Field specs may also say `lockedOnEdit: true`: editable on a new record, read-only once saved
  * (a content block's key, which the site looks blocks up by), and `capability`: shown only to a user
@@ -85,6 +105,24 @@ import { suppliers } from './resources/suppliers';
  * @property {string} endpoint       a `cmsApi` mutation, e.g. 'approveTestimonial'
  * @property {object} arg            its argument
  * @property {string} done           the success toast
+ *
+ * @typedef {object} RecordAction
+ * @property {string} key
+ * @property {string} label
+ * @property {import('react').ElementType} [icon]
+ * @property {boolean} [primary]     the move the record waits for — a solid button on its page
+ * @property {boolean} [destructive]
+ * @property {string} [disabledReason]  shown instead of running
+ * @property {() => void} onSelect
+ *
+ * @typedef {object} BulkAction
+ * @property {string} label
+ * @property {import('react').ElementType} [icon]
+ * @property {string} [capability]   hidden without it
+ * @property {(rows: object[], helpers: { dispatch: Function, confirm: (options: object) => Promise<boolean> }) =>
+ *   Promise<{ title: string, description?: string, variant?: string } | null>} run
+ *   does the work — it may ask first with `confirm` — and resolves the toast to show, or null when the
+ *   person said no; a rejection is shown as the API's error
  *
  * @typedef {object} ActiveCopy
  * @property {string} column       the switch column's header
@@ -113,8 +151,8 @@ const WEBSITE_COPY = {
 export const RESOURCES = Object.fromEntries(
   [
     serviceCategories, services, heroSlides, projects, offers, pricingPlans, testimonials, faqs, galleryImages,
-    features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard,
-    technicians, jobTemplates, materials, materialCategories, suppliers,
+    features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard, trades, quotationTerms,
+    technicians, jobTemplates, materials, materialCategories, suppliers, inspectionTemplates, expenses, purchaseLists,
   ].map((entry) => [entry.resource, entry]),
 );
 

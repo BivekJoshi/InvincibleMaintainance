@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ArrowLeft, Mail, MessageCircle, Phone, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, FilePlus2, Mail, MessageCircle, Phone, Plus, Trash2 } from 'lucide-react';
 import { useDeleteCustomerMutation, useGetCustomerQuery, useUpdateCustomerMutation } from '@/api/customersApi';
 import { RecordHeader } from '@/components/common/RecordHeader';
 import { CustomerAvatar } from '@/components/customers/CustomerAvatar';
@@ -23,6 +23,7 @@ import { PREFERRED_LOCALE_OPTIONS } from '@/config/constants';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { relativeTime, titleCase } from '@/helpers/format';
 import { JobFormSheet } from '@/components/jobs/JobFormSheet';
+import { NewQuotationSheet } from '@/components/quotations/NewQuotationSheet';
 import { whatsappHref } from '@/helpers/contact';
 import { cn } from '@/helpers/utils';
 import { CustomerSitesTab } from './sections/CustomerSitesTab';
@@ -46,6 +47,7 @@ export default function CustomerDetailPage() {
   const [deleteCustomer] = useDeleteCustomerMutation();
   const [confirm, confirmDialog] = useConfirm();
   const [newJob, setNewJob] = useState(false);
+  const [newQuotation, setNewQuotation] = useState(false);
 
   const recordTabs = CUSTOMER_RECORD_TABS.filter((t) => t.allowed({ can, role }));
   const tabs = [
@@ -113,6 +115,7 @@ export default function CustomerDetailPage() {
         actions={(
           <>
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin/customers')}><ArrowLeft /> Customers</Button>
+            {can('quotations:write') ? <Button size="sm" variant="outline" onClick={() => setNewQuotation(true)}><FilePlus2 /> New quotation</Button> : null}
             {can('jobs:write') ? <Button size="sm" onClick={() => setNewJob(true)}><Plus /> New job</Button> : null}
             {canWrite ? (
               <Button variant="ghost" size="icon" onClick={onDelete} aria-label="Delete customer"><Trash2 className="text-destructive" /></Button>
@@ -200,6 +203,14 @@ export default function CustomerDetailPage() {
           onOpenChange={setNewJob}
           defaults={{ customerId: customer.id, siteId: customer.sites?.find((s) => s.isPrimary)?.id }}
           onCreated={(job) => navigate(`/admin/jobs/${job.id}`)}
+        />
+      ) : null}
+      {newQuotation ? (
+        <NewQuotationSheet
+          open
+          onOpenChange={setNewQuotation}
+          customerId={customer.id}
+          siteId={customer.sites?.find((s) => s.isPrimary)?.id}
         />
       ) : null}
       {confirmDialog}

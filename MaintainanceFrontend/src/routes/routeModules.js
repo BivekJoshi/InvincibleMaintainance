@@ -34,6 +34,7 @@ export const ProjectDetailPage = route(() => import('@/pages/public/ProjectDetai
 export const QuotationPublicPage = route(() => import('@/pages/public/QuotationPublicPage/QuotationPublicPage'));
 export const InvoicePublicPage = route(() => import('@/pages/public/InvoicePublicPage/InvoicePublicPage'));
 export const WarrantyPublicPage = route(() => import('@/pages/public/WarrantyPublicPage/WarrantyPublicPage'));
+export const VisitPublicPage = route(() => import('@/pages/public/VisitPublicPage/VisitPublicPage'));
 export const BlogPage = route(() => import('@/pages/public/BlogPage/BlogPage'));
 export const BlogPostPage = route(() => import('@/pages/public/BlogPostPage/BlogPostPage'));
 export const GenericPage = route(() => import('@/pages/public/GenericPage/GenericPage'));
@@ -53,6 +54,7 @@ export const SurveysPage = route(() => import('@/pages/admin/SurveysPage'));
 export const SurveyReviewPage = route(() => import('@/pages/admin/SurveyReviewPage'));
 export const QuotationsPage = route(() => import('@/pages/admin/QuotationsPage'));
 export const QuotationBuilderPage = route(() => import('@/pages/admin/QuotationBuilderPage/QuotationBuilderPage'));
+export const QuotationPrintPage = route(() => import('@/pages/admin/QuotationPrintPage'));
 export const ResourceListPage = route(() => import('@/pages/admin/ResourceListPage'));
 export const ResourceEditPage = route(() => import('@/pages/admin/ResourceEditPage'));
 export const HomeComposerPage = route(() => import('@/pages/admin/HomeComposerPage'));
@@ -69,12 +71,28 @@ export const JobDetailPage = route(() => import('@/pages/admin/JobDetailPage/Job
 export const DispatchBoardPage = route(() => import('@/pages/admin/DispatchBoardPage/DispatchBoardPage'));
 export const StockPage = route(() => import('@/pages/admin/StockPage'));
 export const MessageTemplateEditPage = route(() => import('@/pages/admin/MessageTemplateEditPage/MessageTemplateEditPage'));
+// Finance and reports (Phase I)
+export const InvoicesPage = route(() => import('@/pages/admin/InvoicesPage'));
+export const InvoiceDetailPage = route(() => import('@/pages/admin/InvoiceDetailPage/InvoiceDetailPage'));
+export const InvoicePrintPage = route(() => import('@/pages/admin/InvoicePrintPage'));
+export const PaymentsPage = route(() => import('@/pages/admin/PaymentsPage'));
+export const FinanceReportsPage = route(() => import('@/pages/admin/FinanceReportsPage/FinanceReportsPage'));
+export const ReportsPage = route(() => import('@/pages/admin/ReportsPage/ReportsPage'));
+// Aftercare (Phase I)
+export const WarrantiesPage = route(() => import('@/pages/admin/WarrantiesPage'));
+export const WarrantyDetailPage = route(() => import('@/pages/admin/WarrantyDetailPage'));
+export const WarrantyClaimsPage = route(() => import('@/pages/admin/WarrantyClaimsPage'));
+export const AmcContractsPage = route(() => import('@/pages/admin/AmcContractsPage'));
+export const AmcContractDetailPage = route(() => import('@/pages/admin/AmcContractDetailPage'));
+export const ServiceRemindersPage = route(() => import('@/pages/admin/ServiceRemindersPage'));
 
 // Field app
 export const TechTodayPage = route(() => import('@/pages/tech/TechTodayPage'));
 export const SurveyListPage = route(() => import('@/pages/tech/SurveyListPage'));
-export const SurveyFormPage = route(() => import('@/pages/tech/SurveyFormPage'));
-export const TechJobPage = route(() => import('@/pages/tech/TechJobPage'));
+export const SurveyFormPage = route(() => import('@/pages/tech/SurveyFormPage/SurveyFormPage'));
+export const TechJobPage = route(() => import('@/pages/tech/TechJobPage/TechJobPage'));
+export const TechHistoryPage = route(() => import('@/pages/tech/TechHistoryPage'));
+export const SiteDiaryPage = route(() => import('@/pages/tech/SiteDiaryPage/SiteDiaryPage'));
 
 export const NotFoundPage = route(() => import('@/pages/NotFoundPage'));
 
@@ -89,8 +107,10 @@ const GROUPS = {
     LeadsPage, LeadDetailPage, LeadBoardPage, CustomersPage, CustomerDetailPage, SlaBoardPage, SurveysPage, QuotationsPage, ResourceListPage, ResourceEditPage,
     HomeComposerPage, MediaLibraryPage, SettingsPage, UsersPage, AuditLogPage, MessageLogsPage,
     JobsPage, JobDetailPage, DispatchBoardPage, StockPage,
+    InvoicesPage, InvoiceDetailPage, PaymentsPage, ReportsPage,
+    WarrantiesPage, WarrantyClaimsPage, AmcContractsPage,
   ],
-  tech: [TechJobPage, SurveyListPage, SurveyFormPage],
+  tech: [TechJobPage, TechHistoryPage, SurveyListPage, SurveyFormPage, SiteDiaryPage],
 };
 
 /** Where the site nav's paths live, for preloading a link under the pointer. */

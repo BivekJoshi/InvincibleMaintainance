@@ -61,6 +61,19 @@ pino-http (genReqId → X-Request-Id, redacted request line)
 - **`services/cache.js`** — Redis get/set with tag-based invalidation; publishing any CMS record
   busts the `public:*` tags it touches.
 - **`services/sla.js`** — schedules warn/breach jobs on lead creation, cancels them on first response.
+- **`services/pipeline.service.js`** (Phase L1) — the clocks after the first response. `leads:followups`
+  (every 15 min) tells an owner when a lead's next action falls due, and from `pipeline.digestHour` sends
+  one digest per salesperson per Kathmandu day (the scheduler runs intervals, not clock times, so "09:00"
+  is the first run after the hour). `pipeline:stale` (hourly) reminds about quiet contacted leads, visits
+  without surveys, unquoted surveys, waiting approvals, and unanswered or expiring quotations — once per
+  day while each holds. Every reminder carries `Notification.dedupeKey` (`<rule>:<record>:<day>:<userId>`,
+  unique; inserted with `skipDuplicates`), so a second run or a second instance sends nothing.
+- **`services/visit.service.js`** (Phase L5) — the site visit as the customer sees it. A booked INSPECTION job
+  sends `visit_booked` (window, surveyor, `/visit/:token`) to the customer and the site contact; the public
+  page takes Confirm · Need another time (latest answer wins, IP and time kept; a new window clears it).
+  `visits:remind` (every 15 min, from `visits.reminderHour` 17:00 Kathmandu) reminds tomorrow's visits once:
+  the job's `visitReminderSentAt` is claimed compare-and-swap before the SMS goes — an SMS has no
+  `Notification` row to carry a dedupeKey, so the claim is on the job, and a new window clears it.
 
 ## State machines
 
@@ -69,6 +82,9 @@ service layer — never by trusting a status string from the client.
 
 ```
 Lead      NEW → CONTACTED → INSPECTION_SCHEDULED → QUOTED → WON | LOST ;  LOST → CONTACTED
+          QUOTED = the customer HAS a quotation: sendQuotation moves the lead (a draft never does).
+          LOST carries lostCategory (required) and lostAtStage; every move restarts stageEnteredAt;
+          WON/LOST clear the next action. A decline or an expiry only asks sales "mark lost?".
 Quotation DRAFT → PENDING_APPROVAL → OFFICE_APPROVED → SENT → APPROVED → CONVERTED
           PENDING_APPROVAL | OFFICE_APPROVED → DRAFT (send back · pull back)
           SENT → CHANGES_REQUESTED | REJECTED | EXPIRED
@@ -76,6 +92,7 @@ Quotation DRAFT → PENDING_APPROVAL → OFFICE_APPROVED → SENT → APPROVED �
 Job       DRAFT → SCHEDULED → ASSIGNED → EN_ROUTE → IN_PROGRESS ⇄ ON_HOLD
                 → COMPLETED → VERIFIED ;  any → CANCELLED
 Invoice   DRAFT → SENT → PARTIAL → PAID ;  SENT|PARTIAL → OVERDUE ;  any → VOID
+Purchase  DRAFT → ORDERED → RECEIVED ;  DRAFT|ORDERED → CANCELLED   (list; Phase L7 — RECEIVED writes PURCHASE stock)
           voiding a payment walks it back:  PAID → PARTIAL | SENT | OVERDUE ;  PARTIAL → SENT
 ```
 
@@ -101,6 +118,39 @@ Every quotation move is a guarded `updateMany` on the status just read (`quotati
 has is refused. The customer's three answers are service functions (`acceptQuotation`,
 `requestQuotationChanges`, `declineQuotation`), not route code, so a customer account (Phase K) reuses them.
 Notifications go to named people once each (`notify.service.js#notifyUsers`), after the commit.
+
+**Won → hand-off (Phase L6, `services/handoff.service.js`).** Accept (and a staff convert-to-job) is one transaction:
+
+1. SENT → APPROVED, guarded (`claimAnswer`) — a double tap or a replayed decide claims nothing and stops here;
+2. the lead → WON (`transitionLead`; a staff convert wins it too);
+3. the job — typed from the service's `jobType`, `plannedDays` from the estimate — whose creation claims
+   APPROVED → CONVERTED, guarded (`markConverted`): the second guard;
+4. `JobLine`s from the non-optional BOQ rows — unique `(jobId, quotationItemId)`;
+5. `JobRequirement`s from the take-off — material packs and labour days by trade, no rates (L-D4);
+6. the ADVANCE invoice for the ON_ACCEPT stage — `paymentStageId` unique (a stage is billed once), and
+   `Job.advanceInvoiceId` unique — its total the stage's to the paisa (`money.js#stageDocument` uses the
+   schedule's own VAT split, never VAT recomputed on the part).
+
+The library, the templates and the take-off are read before the transaction (`handOffPlan`). After it commits the
+customer is asked for the advance (`advance_due`, SMS in their language and email) and the dispatchers are told.
+
+**The advance gate (L-D3).** `job.service.js#assertAdvanceCleared` runs in `scheduleJob`, `assignTechnicians`,
+`changeStatus` (every move but CANCELLED and ON_HOLD) and `completeJob`: while the job's advance invoice is neither
+PAID nor VOID, there is no override and `job.advanceGate` is on, it answers 422 `ADVANCE_UNPAID`. A MANAGER or
+ADMIN may override with a reason (`job.advance_overridden`). Paying the advance in full tells the dispatchers.
+
+**Variations (Phase L7).** A variation order is a quotation of kind VARIATION against a job, so it travels the
+quotation machine unchanged — DRAFT → PENDING_APPROVAL → OFFICE_APPROVED → SENT → APPROVED → CONVERTED, with the
+maker-checker, the margin gate and the customer's link. Only it may carry negative rows (omissions; `lineAmount`
+and `documentTotals` round negatives away from zero, and a net-negative total takes no discount and never
+auto-approves). Accepting it runs `handoff.service.js#applyVariation` in the accept transaction instead of the
+hand-off: its rows join the job as VARIATION lines and its take-off as VARIATION requirements, APPROVED →
+CONVERTED guarded — no new job, no lead, no advance.
+
+**Billing a job billed in stages.** `invoice.service.js#createFromJob` on a quoted job that has stage bills (the
+advance; running bills from L8) makes a FINAL invoice: the quotation's lines less one line per stage bill, with the
+VAT left over (`money.js#finalBillDocument` on `finalBillTotals`), so the stage bills and the final add up to the
+quotation to the paisa, VAT included.
 
 Every lead status change goes through `lead.service.js#transitionLead(tx, leadId, to, opts)`, which
 asserts the transition, stamps `closedAt` and writes the `status_change` timeline entry inside the
@@ -146,16 +196,76 @@ links — ip and user agent say who), `system` (tasks, and scripts with no conte
 
 ## Offline strategy (technician PWA)
 
-- Service worker caches the app shell and today's job payloads.
-- Mutations are appended to an IndexedDB queue with a client-generated `idempotencyKey`.
-- `POST /tech/sync` replays them; the server dedupes on the key, so a double-send is harmless.
-- Photos upload separately, append-only, so they never conflict.
+As built in Phase H2 (2026-09-27):
+- **The service worker** (`public/sw.js`, production only) caches the app shell (`/`, `index.html`, the
+  manifest) and same-origin static files cache-first as they are fetched (`/uploads` included); it never
+  caches `/api/`, and a navigation falls back to the cached `index.html`. Job payloads are NOT cached by the
+  worker: the screens work offline within a running session from RTK Query's cache (the materials list is kept
+  12 hours). The access token lives in memory, so a reload without signal signs the technician out; the queue
+  survives in IndexedDB and syncs after the next sign-in.
+- **The mutation queue** (`helpers/offlineQueue.js` on IndexedDB, `hooks/useOfflineQueue.js` the engine): job
+  status, checklist ticks, timer start/stop, materials and completion go through it even online (flushed at
+  once), with a client `idempotencyKey`, strictly in the order the technician acted (same-millisecond taps and a
+  clock set back included). The screen shows each change at once from the queue. `POST /tech/sync` replays it;
+  the server applies each key once and keeps the tapped time for timers. A terminal refusal
+  (`INVALID_TRANSITION`, `INVALID_MUTATION`) is dropped with a visible note; network errors keep everything;
+  other failures retry up to 5 times.
+- **The upload queue** (`helpers/uploadQueue.js`): every picture is compressed (`helpers/compressImage.js`,
+  longest edge ≤ 1600 px, JPEG 0.8, never upscaled) and queued, shown as "Waiting to upload", and sent in order
+  when there is signal. Photos are append-only, so they never conflict.
+- **Signature → completion:** the signature waits in the upload queue carrying the completion; the `complete`
+  mutation is queued only once the upload has its media id, under a fixed key, so it replays after every tick
+  made before it and happens once (the API also refuses a second completion).
+- One sync at a time: mutations, then photos, then mutations again. The header shows Offline / Syncing / the
+  pending count with "Sync now". The queue belongs to the device, not the user — a follow-up is to scope it per
+  signed-in user.
 - Conflicts on scalar fields resolve last-write-wins, with every attempt recorded in `JobStatusEvent`.
+
+The site diary, as built in Phase L7 (2026-09-28): one entry per job per Kathmandu day, saved through the queue as
+`diary_save` — `{ jobId, payload: { day, …the whole entry } }`, a full replace keyed on job + day, so a replay or a
+second save of the same day lands on one row (`SiteDiary @@unique([jobId, day])`); the phone supersedes a waiting
+save for the same day. Its photos are the job's DURING uploads, named in the queue entry's `meta.photoUploadIds` (never sent); the
+engine holds the day until each is up, then sends it with `photoMediaIds` (a refused photo is left out). A diary day
+is its own record in the queue (`diary:<jobId>:<day>`), so a held day never holds the job's status changes, ticks or
+materials. Each line's progress is the latest day's that mentions it, so a
+late entry for an older day never rolls progress back.
+
+The survey stepper, as built in Phase L5 (2026-09-27):
+- **Every write is a `survey_draft`**, online or not — a full replace of the survey's fields, its readings
+  (checklist answers carry `questionKey`; the server works out `flagged`), its items with their `measurements`
+  rows as plain numbers (the phone turns 12'6" into 12.5; the server derives the quantity) and `sitePin`. It saves
+  1.2 s after the last tap, on every step change and when the screen closes; a newer draft replaces one still
+  waiting, and the form as typed rides in the queue entry's `meta`, so the stepper reopens where it was.
+- **A checklist photo is an ordinary upload** (with its kind — ISSUE or SKETCH — and room). Its reading carries
+  the upload's `photoUploadId`; the sync engine swaps that for the uploaded picture's `mediaId` before sending,
+  and holds that survey's later entries (its save, its submit) until the picture is up, so a submit never
+  overtakes the save it depends on.
+- **`survey_submit` is queued after the last draft.** The phone checks the checklist first with the server's rule;
+  a server refusal `SURVEY_INCOMPLETE` comes back through `/tech/sync` with its `details` and is terminal: the
+  stepper jumps to the checklist and marks each missing answer or photo.
 
 ## Security
 
 - Argon2id passwords; access tokens in memory only (never `localStorage`); refresh in httpOnly cookie.
 - RBAC enforced server-side on every admin route; UI hiding is cosmetic.
+- **Money wall (D1).** Field staff never see a price, a cost, a total or a colleague's pay: every `/tech` response
+  passes `utils/moneyWall.js#fieldSafe`, which drops money-named keys at any depth, and an API test scans every
+  field response for them.
+- **Cost wall (L-D4, Phase L2).** Office staff see selling rates; what work *costs* and its margin — recipe
+  cost, purchase rates and wages in the rate library, job costing, the job-margin report — is `costs:read`
+  (MANAGER, ADMIN). Services pass their results through `moneyWall.js#stripCosts(obj, { role })`, driven by
+  one exported `COST_KEYS` list, and the record history of cost-bearing models (rate library, trades) is
+  masked the same way. The client never sends a cost: the server prices recipes from the library.
+  Quotation rows (Phase L3) carry a frozen recipe and cost: the `/admin/quotations*`, `/admin/leads*` and
+  `/admin/surveys*` routes run the cost wall as path-scoped middleware (`middleware/costWall.js` — never
+  router-wide, since several routers share `/admin`), and the public quotation view is an allowlist
+  (`quotation.service.js#publicView`) — sell rates, totals, sections, measurements, the schedule and the words,
+  and a key-scan test (23-quotation-document) proving no cost, margin, recipe or pay key. The customer's Excel
+  copy has no Cost sheet. Approval has a margin gate (`quotation.minMarginPct`; unknown cost counts as low).
+- **Rate library (L-D1).** A rate is a recipe at a moment's prices: `money.js#recipeCost` → `sellRate`
+  (rounded up). Price changes flag items `outOfDate`; rates move only through a reprice (preview → apply,
+  `rate_card.repriced`). Quantities (measurements, wastage, packs, take-offs) live in `utils/quantity.js`,
+  money in `utils/money.js`, and neither rounds the other's numbers.
 - Public token links (quotation, warranty) are random 32-byte, single-purpose, expiring, scoped to one record.
 - Uploads validated by magic bytes, not extension; EXIF stripped; private media served via signed URLs.
 - CSP, HSTS, no inline scripts. Turnstile + honeypot + timing + IP rate limit on all public POSTs.

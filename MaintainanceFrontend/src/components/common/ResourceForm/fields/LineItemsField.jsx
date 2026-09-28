@@ -1,171 +1,286 @@
+import { useCallback, useMemo, useState } from 'react';
 import { useController } from 'react-hook-form';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { formatNpr, paisaToRupees, parseRupees, rupeesToPaisa } from '@/helpers/format';
+import { FileText, Library, ListTree, Ruler } from 'lucide-react';
+import { EditableGrid } from '@/components/common/EditableGrid/EditableGrid';
+import { pastedBoqRows } from '@/components/common/EditableGrid/gridPaste';
+import { RateLibrarySearch } from '@/components/rateLibrary/RateLibrarySearch';
 import { UNITS } from '@/config/constants';
+import {
+  blankBoqRow, boqNumbers, duplicateBoqRow, isBlankBoqRow, newRowKey, signedQtyOf,
+} from '@/helpers/boq';
+import { formatRupees, formatSignedNpr as formatNpr } from '@/helpers/format';
+import { formatQty, isBlankMeasurement, measurementTotal } from '@/helpers/measurements';
+import { cn } from '@/helpers/utils';
 import { FormField } from '../FormField';
+import { useFormMode } from '../formMode';
+import { cellMessages } from './cellMessages';
+import { DetailsDrawer, MeasurementDrawer, RecipeDrawer } from './LineItemsDrawers';
 
-const blankLine = () => ({ rateCardItemId: null, description: '', unit: 'lump', qty: 1, rate: '' });
+const isItem = (row) => (row?.rowType ?? 'ITEM') === 'ITEM';
+const hasSheet = (row) => (row?.measurements ?? []).some((m) => !isBlankMeasurement(m));
+const KIND_OF = { SECTION: 'section', NOTE: 'note' };
+const rowKind = (row) => KIND_OF[row?.rowType] ?? 'item';
+const getRowKey = (row) => row._key;
+const rowHeight = (row) => (row.spec ? 52 : 36);
+const makeRow = (kind) => blankBoqRow(kind === 'section' ? 'SECTION' : kind === 'note' ? 'NOTE' : 'ITEM');
+const pasteRows = (text) => pastedBoqRows(text).map((r) => ({ ...blankBoqRow(r.rowType), ...r, _key: newRowKey() }));
+const moneyCell = (v) => (typeof v === 'number' ? formatRupees(v) : v ?? '');
+const qtyCell = (v) => (typeof v === 'number' ? formatQty(v) : v ?? '');
+/** A variation's quantity (Phase L7): an omission is below zero, written "−12" on the destructive tone. */
+const signedQtyCell = (v) => (typeof v === 'number' && v < 0
+  ? <span className="text-destructive" title="Omission — taken off the job">−{formatQty(-v)}</span>
+  : qtyCell(v));
+/** Typed into a variation's Qty: "-12", "−12" or "- 12" is an omission; anything unreadable stays as typed, for the schema. */
+const parseSignedQty = (text) => {
+  const n = signedQtyOf(text);
+  return n === undefined ? '' : Number.isFinite(n) ? n : String(text ?? '').trim();
+};
+function Badge({ children, tone = 'muted' }) {
+  return (
+    <span className={cn(
+      'shrink-0 rounded px-1 py-px text-[10px] font-semibold not-italic uppercase tracking-wide',
+      tone === 'warning' ? 'surface-warning' : 'bg-muted text-muted-foreground',
+    )}
+    >
+      {children}
+    </span>
+  );
+}
 
 /**
- * `{ type: 'lineItems', rateCard?, maxItems? }` — a priced document's lines: description, a
- * rate-card item, unit, quantity and a rate in **rupees**. The record's paisa rates are
- * converted on the way in (`formValues.js`); requests send rupees and the API computes every
- * total, so the amounts here are a preview until it saves. `rateCard` is the rate-card rows
- * (paisa); picking one fills the line and leaves every cell editable. A row left completely
- * empty is dropped by the schema.
+ * The BOQ's columns. Kept static: what varies per row comes through the row and its server figures (`meta`). `signed`
+ * (a VARIATION, Phase L7): the Qty cell takes a quantity below zero — an omission.
+ */
+function boqColumns(openSheet, { signed = false } = {}) {
+  return [
+    {
+      key: 'description', header: 'Description', grow: 3, minWidth: 240, editor: 'text', maxLength: 500, wrap: true,
+      span: (row) => (row.rowType === 'SECTION' ? 5 : row.rowType === 'NOTE' ? 6 : 1),
+      placeholder: (row) => (row.rowType === 'SECTION' ? 'Section title' : row.rowType === 'NOTE' ? 'A note for the customer' : 'What the customer is paying for'),
+      label: (row, i) => `${row.rowType === 'SECTION' ? 'Section title' : row.rowType === 'NOTE' ? 'Note' : 'Description'}, row ${i + 1}`,
+      format: (value, row) => (
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className="flex min-w-0 items-center gap-1.5">
+            {row.rateCardItemId ? <Library className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="From the rate library" /> : null}
+            <span className={cn('truncate', row.rowType === 'SECTION' && 'uppercase tracking-wide')}>{value}</span>
+            {row.isOptional ? <Badge tone="warning">Optional</Badge> : null}
+            {row.isProvisional ? <Badge>Provisional</Badge> : null}
+          </span>
+          {row.spec ? <span className="truncate text-xs font-normal text-muted-foreground">{row.spec}</span> : null}
+        </span>
+      ),
+    },
+    { key: 'unit', header: 'Unit', width: 84, editor: 'text', suggestions: UNITS, maxLength: 20, label: (_r, i) => `Unit, row ${i + 1}` },
+    {
+      key: 'qty', header: 'Qty', width: 104, editor: 'number', align: 'right', label: (_r, i) => `Quantity, row ${i + 1}`,
+      ...(signed ? { parse: parseSignedQty } : {}),
+      editable: (row) => !hasSheet(row),
+      onActivate: (row) => { if (hasSheet(row)) openSheet(row); },
+      format: (value, row, { meta }) => (hasSheet(row) ? (
+        <span className="inline-flex items-center gap-1" title="Measured — Enter opens the sheet">
+          <Ruler className="h-3.5 w-3.5 text-primary" aria-label="Measured" />
+          <span data-amount className={meta?.netQty == null ? 'italic text-muted-foreground' : undefined}>
+            {formatQty(meta?.netQty ?? measurementTotal(row.measurements))}
+          </span>
+        </span>
+      ) : signed ? signedQtyCell(value) : qtyCell(value)),
+    },
+    { key: 'wastagePct', header: 'Waste %', width: 76, editor: 'number', align: 'right', label: (_r, i) => `Wastage %, row ${i + 1}`, format: qtyCell },
+    { key: 'rate', header: 'Rate (Rs)', width: 118, editor: 'money', align: 'right', label: (_r, i) => `Rate, row ${i + 1}`, format: moneyCell },
+    {
+      key: 'amount', header: 'Amount', width: 132, align: 'right', get: () => null,
+      format: (_v, row, { meta }) => {
+        if (row.rowType === 'SECTION') return meta?.subtotal != null ? <span data-amount>{formatNpr(meta.subtotal)}</span> : '';
+        if (row.rowType === 'NOTE') return '';
+        if (meta?.amount == null) return <span className="text-muted-foreground">—</span>;
+        return (
+          <span data-amount className={row.isOptional ? 'text-muted-foreground' : undefined} title={row.isOptional ? 'Optional — not in the total' : undefined}>
+            {row.isOptional ? `(${formatNpr(meta.amount)})` : formatNpr(meta.amount)}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'isOptional', header: 'Optional', width: 72, editor: 'boolean', align: 'center', hidden: (row) => !isItem(row),
+      label: (_r, i) => `Optional, row ${i + 1}`,
+    },
+  ];
+}
+
+/**
+ * An invoice's lines (Phase I, `variant: 'invoice'`): description, unit, quantity, rate in rupees and the server's
+ * amount. No sections, notes, wastage or measurement sheets — an invoice line is a plain priced row.
+ */
+const INVOICE_COLUMNS = [
+  {
+    key: 'description', header: 'Description', grow: 3, minWidth: 240, editor: 'text', maxLength: 500, wrap: true,
+    placeholder: 'What the customer is paying for', label: (_r, i) => `Description, line ${i + 1}`,
+  },
+  { key: 'unit', header: 'Unit', width: 84, editor: 'text', suggestions: UNITS, maxLength: 20, label: (_r, i) => `Unit, line ${i + 1}` },
+  { key: 'qty', header: 'Qty', width: 104, editor: 'number', align: 'right', label: (_r, i) => `Quantity, line ${i + 1}`, format: qtyCell },
+  { key: 'rate', header: 'Rate (Rs)', width: 118, editor: 'money', align: 'right', label: (_r, i) => `Rate, line ${i + 1}`, format: moneyCell },
+  {
+    key: 'amount', header: 'Amount', width: 132, align: 'right', get: () => null,
+    format: (_v, _row, { meta }) => (meta?.amount == null
+      ? <span className="text-muted-foreground" title="Worked out by the server when you save">—</span>
+      : <span data-amount>{formatNpr(meta.amount)}</span>),
+  },
+];
+const makeInvoiceRow = () => blankBoqRow('ITEM');
+/** Pasted rows as invoice lines: a text-only row (a heading in the spreadsheet) is not a line. */
+const pasteInvoiceRows = (text) => pastedBoqRows(text)
+  .filter((r) => (r.rowType ?? 'ITEM') === 'ITEM')
+  .map((r) => ({ ...blankBoqRow('ITEM'), ...r, _key: newRowKey() }));
+
+/**
+ * `{ type: 'lineItems', figures?, stale?, costCapability?, search?, maxItems?, gridLabel?, variant? }` — a quotation's bill of
+ * quantities (Phase L3), on the kit's EditableGrid: ITEM, SECTION and NOTE rows, rates in **rupees**, a quantity
+ * typed or measured, wastage %, optional. The value is the builder's rows (`helpers/boq.js#toBoqRows`); the schema
+ * turns them into the request's.
+ *
+ * The client adds up nothing. Numbers (A, A.1) follow the rows as the API numbers them; every **amount**,
+ * section subtotal and measured quantity is the server's — `figures`, a Map of row key → the saved rows' or the
+ * live preview's figures, which the builder passes in (`stale` dims them while a new preview is on its way).
+ *
+ * Rows: `/` searches the rate library (`RateLibrarySearch`), a paste from Excel adds rows, and each row's
+ * actions open its **measurement sheet** (Ctrl+M), its frozen **recipe** (cost only for `costCapability`) and
+ * its **details** (specification, kind, optional, provisional).
+ *
+ * `variant: 'invoice'` (Phase I) is an invoice's lines instead: description, unit, qty, rate and the server's amount
+ * (`figures` by row key — the saved lines'; a changed line shows "—" until it is saved), items only, no library, no
+ * drawers. A row's `jobId` rides along untouched.
+ *
+ * `signedQty: true` (Phase L7) is a variation's BOQ: its Qty cell takes a quantity below zero — an omission, written
+ * "−12" — and nothing else changes. Only a VARIATION may carry one (the schema and the API both refuse it elsewhere).
  */
 export function LineItemsField({ field, id }) {
   const { field: input, fieldState } = useController({ name: field.name });
-  const rows = Array.isArray(input.value) ? input.value : [];
-  const rateCard = field.rateCard ?? [];
-  const disabled = field.disabled;
-  const full = field.maxItems != null && rows.length >= field.maxItems;
+  const { readOnly: formReadOnly } = useFormMode();
+  const readOnly = Boolean(field.disabled || formReadOnly);
+  const rows = useMemo(() => (Array.isArray(input.value) ? input.value : []), [input.value]);
+  const numbers = useMemo(() => boqNumbers(rows), [rows]);
+  const [drawer, setDrawer] = useState(null); // { kind: 'measure'|'recipe'|'details', key }
+  const { figures } = field;
 
-  const update = (next) => { input.onChange(next); input.onBlur(); };
-  const setCell = (i, patch) => input.onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const move = (from, to) => {
-    const next = [...rows];
-    const [row] = next.splice(from, 1);
-    next.splice(to, 0, row);
-    update(next);
+  const update = (next) => {
+    input.onChange(next);
+    input.onBlur();
   };
-  const applyRateCard = (i, itemId) => {
-    const item = rateCard.find((r) => r.id === itemId);
-    if (!item) return setCell(i, { rateCardItemId: null });
-    return setCell(i, {
-      rateCardItemId: item.id,
-      description: rows[i].description || item.name,
-      unit: item.unit,
-      rate: paisaToRupees(item.rate),
-    });
-  };
+  const patchRow = (key, patch) => update(rows.map((r) => (r._key === key ? { ...r, ...patch } : r)));
 
-  const amount = (l) => Math.round(Number(l.qty || 0) * rupeesToPaisa(parseRupees(String(l.rate ?? '')) ?? 0));
-  const subtotal = rows.reduce((t, l) => t + amount(l), 0);
-  const errorOf = (i, name) => fieldState.error?.[i]?.[name]?.message;
-  const listError = fieldState.error?.message ?? fieldState.error?.root?.message;
+  const invoice = field.variant === 'invoice';
+  const signed = Boolean(field.signedQty);
+  const columns = useMemo(
+    () => (invoice ? INVOICE_COLUMNS : boqColumns((row) => setDrawer({ kind: 'measure', key: row._key }), { signed })),
+    [invoice, signed],
+  );
+  const error = fieldState.error;
+  const listError = error?.message ?? error?.root?.message;
+  const rowErrors = useCallback((i) => cellMessages(error?.[i], { measurements: 'qty' }), [error]);
+  // While a newer preview is on its way a measured row shows its own sheet's total, not the last answer's.
+  const { stale } = field;
+  const rowMeta = useCallback((row) => {
+    const fig = figures?.get(row._key);
+    return stale && hasSheet(row) ? { ...fig, netQty: undefined } : fig;
+  }, [figures, stale]);
+
+  const rowActions = useCallback((row) => {
+    const open = (kind) => () => setDrawer({ kind, key: row._key });
+    if (!isItem(row)) return [{ label: 'Details…', icon: FileText, readOnly: true, onSelect: open('details') }];
+    const recipe = figures?.get(row._key)?.recipe ?? row.recipe;
+    return [
+      { label: 'Measurement sheet…', icon: Ruler, shortcut: 'Ctrl+M', readOnly: true, onSelect: open('measure') },
+      { label: 'Recipe…', icon: ListTree, readOnly: true, disabled: !recipe && !row.rateCardItemId, onSelect: open('recipe') },
+      { label: 'Details…', icon: FileText, readOnly: true, onSelect: open('details') },
+    ];
+  }, [figures]);
+
+  const shortcuts = useMemo(() => [{
+    keys: 'Ctrl+M',
+    does: 'Open the row’s measurement sheet',
+    readOnly: true,
+    match: (e) => (e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M'),
+    run: (i) => {
+      const row = input.value?.[i];
+      if (row && isItem(row)) setDrawer({ kind: 'measure', key: row._key });
+    },
+  }], [input.value]);
+
+  const search = useMemo(() => (field.search === false || invoice ? undefined : {
+    label: 'From the library',
+    focusKey: 'qty',
+    render: (p) => <RateLibrarySearch {...p} />,
+  }), [field.search, invoice]);
+
+  const openRow = drawer ? rows.find((r) => r._key === drawer.key) : null;
+  const openIndex = openRow ? rows.indexOf(openRow) : -1;
+  const close = () => setDrawer(null);
 
   return (
     <FormField id={id} field={field} error={listError ? { message: listError } : undefined} as="fieldset">
       {() => (
-        <div className="space-y-3">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[220px]">Description</TableHead>
-                  <TableHead className="w-[160px]">Rate card</TableHead>
-                  <TableHead className="w-[110px]">Unit</TableHead>
-                  <TableHead className="w-[100px] text-right">Qty</TableHead>
-                  <TableHead className="w-[130px] text-right">Rate (Rs)</TableHead>
-                  <TableHead className="w-[130px] text-right">Amount</TableHead>
-                  {disabled ? null : <TableHead className="w-[108px]"><span className="sr-only">Move or remove</span></TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((line, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="align-top">
-                      <Input
-                        ref={i === 0 ? input.ref : undefined}
-                        value={line.description ?? ''}
-                        onChange={(e) => setCell(i, { description: e.target.value })}
-                        onBlur={input.onBlur}
-                        placeholder="What the customer is paying for"
-                        className="h-8"
-                        disabled={disabled}
-                        maxLength={500}
-                        aria-label={`Description for line ${i + 1}`}
-                        aria-invalid={errorOf(i, 'description') ? true : undefined}
-                      />
-                      {errorOf(i, 'description') ? <p className="mt-1 text-xs font-medium text-destructive">{errorOf(i, 'description')}</p> : null}
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Select value={line.rateCardItemId ?? 'none'} onValueChange={(v) => applyRateCard(i, v === 'none' ? null : v)} disabled={disabled}>
-                        <SelectTrigger className="h-8" aria-label={`Rate card item for line ${i + 1}`}><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Custom line</SelectItem>
-                          {/* A retired rate is not offered again, but a line that already uses it still shows it. */}
-                          {rateCard.filter((r) => r.isActive !== false || r.id === line.rateCardItemId).map((r) => (
-                            <SelectItem key={r.id} value={r.id}>{r.code} · {r.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Select value={line.unit || 'lump'} onValueChange={(v) => setCell(i, { unit: v })} disabled={disabled}>
-                        <SelectTrigger className="h-8" aria-label={`Unit for line ${i + 1}`}><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {[...new Set([...UNITS, line.unit || 'lump'])].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Input
-                        type="number" min="0" step="0.001" inputMode="decimal"
-                        value={line.qty ?? ''}
-                        onChange={(e) => setCell(i, { qty: e.target.value })}
-                        onBlur={input.onBlur}
-                        className="h-8 text-right tabular-nums"
-                        disabled={disabled}
-                        aria-label={`Quantity for line ${i + 1}`}
-                        aria-invalid={errorOf(i, 'qty') ? true : undefined}
-                      />
-                      {errorOf(i, 'qty') ? <p className="mt-1 text-xs font-medium text-destructive">{errorOf(i, 'qty')}</p> : null}
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Input
-                        inputMode="decimal"
-                        value={line.rate ?? ''}
-                        onChange={(e) => setCell(i, { rate: e.target.value })}
-                        onBlur={input.onBlur}
-                        className="h-8 text-right tabular-nums"
-                        disabled={disabled}
-                        aria-label={`Rate for line ${i + 1}`}
-                        aria-invalid={errorOf(i, 'rate') ? true : undefined}
-                      />
-                      {errorOf(i, 'rate') ? <p className="mt-1 text-xs font-medium text-destructive">{errorOf(i, 'rate')}</p> : null}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-right align-top font-medium tabular-nums">
-                      <span className="inline-block pt-1.5">{formatNpr(amount(line))}</span>
-                    </TableCell>
-                    {disabled ? null : (
-                      <TableCell className="align-top">
-                        <div className="flex">
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={i === 0} onClick={() => move(i, i - 1)} aria-label={`Move line ${i + 1} up`}>
-                            <ArrowUp aria-hidden />
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={i === rows.length - 1} onClick={() => move(i, i + 1)} aria-label={`Move line ${i + 1} down`}>
-                            <ArrowDown aria-hidden />
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={rows.length === 1} onClick={() => update(rows.filter((_, j) => j !== i))} aria-label={`Remove line ${i + 1}`}>
-                            <Trash2 aria-hidden />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            {disabled ? <span /> : (
-              <Button type="button" variant="outline" size="sm" disabled={full} onClick={() => update([...rows, blankLine()])}>
-                <Plus aria-hidden /> Add line
-              </Button>
+        <>
+          <EditableGrid
+            ariaLabel={field.gridLabel ?? field.label ?? 'Bill of quantities'}
+            columns={columns}
+            rows={rows}
+            onChange={update}
+            getRowKey={getRowKey}
+            numbers={numbers}
+            rowKind={rowKind}
+            makeRow={invoice ? makeInvoiceRow : makeRow}
+            kinds={invoice ? ['item'] : ['item', 'section', 'note']}
+            duplicateRow={duplicateBoqRow}
+            isBlankRow={isBlankBoqRow}
+            paste={invoice ? pasteInvoiceRows : pasteRows}
+            search={search}
+            rowActions={invoice ? undefined : rowActions}
+            shortcuts={invoice ? [] : shortcuts}
+            rowMeta={rowMeta}
+            rowErrors={rowErrors}
+            rowHeight={rowHeight}
+            readOnly={readOnly}
+            maxRows={field.maxItems ?? 500}
+            focusRef={input.ref}
+            maxHeight="36rem"
+            className={field.stale ? '[&_[data-amount]]:opacity-50' : undefined}
+            emptyText={invoice
+              ? 'No lines yet. Type to start, or paste rows from Excel.'
+              : 'No rows yet. Type to start, press / for the rate library, Ctrl+Shift+Enter for a section, or paste rows from Excel.'}
+            addLabels={invoice ? { item: 'Add line' } : { item: 'Add row', section: 'Add section', note: 'Add note' }}
+            footer={(
+              <p className="text-xs text-muted-foreground">
+                {invoice
+                  ? 'Amounts are the server’s: a changed line shows its amount once saved.'
+                  : `Amounts are the server’s${field.stale ? ' — updating…' : '.'} An optional row shows its amount in brackets and is not in the total.`}
+              </p>
             )}
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Subtotal (preview)</p>
-              <p className="text-lg font-semibold tabular-nums">{formatNpr(subtotal)}</p>
-            </div>
-          </div>
-        </div>
+          />
+          {drawer?.kind === 'measure' && openRow ? (
+            <MeasurementDrawer
+              row={openRow}
+              number={numbers[openIndex]}
+              readOnly={readOnly}
+              onClose={close}
+              onApply={(measurements) => patchRow(openRow._key, measurements.length
+                ? { measurements, qty: '' }
+                : { measurements: null, qty: figures?.get(openRow._key)?.netQty ?? (hasSheet(openRow) ? measurementTotal(openRow.measurements) : openRow.qty) })}
+            />
+          ) : null}
+          {drawer?.kind === 'details' && openRow ? (
+            <DetailsDrawer row={openRow} number={numbers[openIndex]} readOnly={readOnly} onClose={close} onApply={(patch) => patchRow(openRow._key, patch)} />
+          ) : null}
+          {drawer?.kind === 'recipe' && openRow ? (
+            <RecipeDrawer
+              row={openRow}
+              number={numbers[openIndex]}
+              recipe={figures?.get(openRow._key)?.recipe ?? openRow.recipe ?? null}
+              billedQty={figures?.get(openRow._key)?.qty}
+              costCapability={field.costCapability}
+              onClose={close}
+            />
+          ) : null}
+        </>
       )}
     </FormField>
   );

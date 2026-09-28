@@ -46,6 +46,19 @@ export const SETTINGS = [
   { group: 'sla', key: 'sla.leadResponseMinutes', label: 'Lead response SLA (minutes)', type: 'number', value: 120, hint: 'The site publicly promises a 2-hour response.', sortOrder: 0 },
   { group: 'sla', key: 'sla.warnBeforeMinutes', label: 'Warn this many minutes before breach', type: 'number', value: 30, sortOrder: 1 },
   { group: 'sla', key: 'sla.autoAssign', label: 'Auto-assign new leads round-robin', type: 'boolean', value: true, sortOrder: 2 },
+  { group: 'sla', key: 'pipeline.noAnswerRetryMinutes', label: 'After "No answer", call again in (minutes)', type: 'number', value: 120, sortOrder: 3,
+    hint: 'The next call a No answer outcome books, unless the salesperson picks a time.' },
+  { group: 'sla', key: 'pipeline.priceShoppingFollowUpDays', label: 'Follow up a price shopper after (days)', type: 'number', value: 3, sortOrder: 4 },
+  { group: 'sla', key: 'pipeline.digestHour', label: 'Morning follow-up digest at (hour, Kathmandu)', type: 'number', value: 9, sortOrder: 5,
+    hint: 'Each salesperson gets one digest a day of what is due and overdue, from this hour.' },
+  { group: 'sla', key: 'pipeline.contactedQuietDays', label: 'Remind when a contacted lead is quiet for (days)', type: 'number', value: 3, sortOrder: 6 },
+  { group: 'sla', key: 'pipeline.surveyUnquotedHours', label: 'Remind when a survey has no quotation after (hours)', type: 'number', value: 48, sortOrder: 7 },
+  { group: 'sla', key: 'pipeline.approvalWaitingHours', label: 'Remind approvers when a quotation waits (hours)', type: 'number', value: 24, sortOrder: 8 },
+  { group: 'sla', key: 'pipeline.quoteUnansweredDays', label: 'Follow up a sent quotation after (days)', type: 'number', value: 3, sortOrder: 9,
+    hint: 'Sending a quotation books this follow-up, and the reminder repeats daily while it stays unanswered.' },
+  { group: 'sla', key: 'pipeline.quoteExpiringDays', label: 'Warn this many days before a quotation lapses', type: 'number', value: 2, sortOrder: 10 },
+  { group: 'sla', key: 'visits.reminderHour', label: 'Remind customers of tomorrow\'s site visit at (hour, Kathmandu)', type: 'number', value: 17, sortOrder: 11,
+    hint: 'The customer and the site contact get one reminder SMS with the window and the confirm link.' },
 
   { group: 'finance', key: 'finance.vatRate', label: 'VAT rate (%)', type: 'number', value: 13, sortOrder: 0 },
   { group: 'finance', key: 'finance.paymentTermDays', label: 'Default payment term (days)', type: 'number', value: 15, sortOrder: 1 },
@@ -58,6 +71,36 @@ export const SETTINGS = [
     hint: 'When on, whoever prepared a quotation cannot approve it; another manager or admin must.' },
   { group: 'finance', key: 'quotation.autoApproveBelow', label: 'Approve quotations automatically below (paisa)', type: 'number', value: 0, sortOrder: 7,
     hint: 'In paisa (NPR × 100): 500000 means NPR 5,000. Quotations whose total is below it skip manager approval, revisions included. 0 turns this off.' },
+  { group: 'finance', key: 'finance.labourRateCode', label: 'Rate-card item that bills logged labour', type: 'string', value: 'LABOUR-SKILL', sortOrder: 8,
+    hint: 'A job without a quotation bills its logged time at this rate-card item (priced per hour) — never at a technician\'s own hourly rate, which is a cost.' },
+  { group: 'finance', key: 'quotation.minMarginPct', label: 'Warn approvers below this margin (%)', type: 'number', value: 15, sortOrder: 9,
+    hint: 'Margin on the selling price. Approving a quotation below it (or with a cost unknown) asks for a confirmation (Phase L4).' },
+  { group: 'finance', key: 'quotation.defaultOverheadPct', label: 'Default overhead on a recipe (%)', type: 'number', value: 10, sortOrder: 10,
+    hint: 'Office, transport and supervision, added to a recipe\'s direct cost when the item names none.' },
+  { group: 'finance', key: 'quotation.defaultProfitPct', label: 'Default profit on a recipe (%)', type: 'number', value: 10, sortOrder: 11,
+    hint: 'Added on top of cost + overhead to give a derived selling rate, when the item names none.' },
+  { group: 'finance', key: 'quotation.sellRateRoundTo', label: 'Round derived rates up to (paisa)', type: 'number', value: 100, sortOrder: 12,
+    hint: 'In paisa: 100 rounds a derived rate UP to the next rupee, 500 to the next Rs 5. Rounding up never eats margin.' },
+  { group: 'finance', key: 'quotation.defaultContractType', label: 'Default contract type', type: 'string', value: 'LUMP_SUM', sortOrder: 13,
+    hint: 'LUMP_SUM (the quoted price, plus approved variations) or ITEM_RATE (measured work × the quoted rates). Chosen per quotation from Phase L4.' },
+  { group: 'finance', key: 'quotation.defaultPaymentSchedule', label: 'Default payment schedule', type: 'json', sortOrder: 14,
+    value: [
+      { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT' },
+      { label: 'Running bill', basisPoints: 4000, trigger: 'MILESTONE' },
+      { label: 'On completion', basisPoints: 1000, trigger: 'ON_COMPLETION' },
+    ],
+    hint: 'Stages in basis points (5000 = 50%), summing to 10000. The ON_ACCEPT stage is the advance invoiced when a customer accepts (Phase L6).' },
+  { group: 'finance', key: 'job.advanceGate', label: 'Hold scheduling until the advance is paid', type: 'boolean', value: true, sortOrder: 15,
+    hint: 'A job from an accepted quotation cannot be scheduled before its advance invoice is paid; a manager may override with a reason (Phase L6).' },
+  { group: 'finance', key: 'finance.advanceDueDays', label: 'Advance invoices are due in (days)', type: 'number', value: 7, sortOrder: 16 },
+  // Where a customer pays the advance (Phase L6): printed in the advance_due SMS and email. Illustrative — set your own.
+  { group: 'finance', key: 'finance.bankAccount', label: 'Bank account for advances (shown to the customer)', type: 'string', sortOrder: 17,
+    value: 'Nabil Bank, Baneshwor · A/C 0101017500123 · Ghar Jatan Pvt. Ltd.',
+    hint: 'Bank, branch, account number and account name, as the customer should type them. Leave empty to leave it out.' },
+  { group: 'finance', key: 'job.workdayHours', label: 'Working hours in a site day', type: 'number', value: 8, sortOrder: 19,
+    hint: 'Turns the site diary\'s headcount into labour days: a day that lost 4 of 8 hours counts half (Phase L7).' },
+  { group: 'finance', key: 'finance.fonepayNumber', label: 'Fonepay number for advances', type: 'string', sortOrder: 18, value: '9801234567',
+    hint: 'The number or merchant ID a customer pays by Fonepay QR. Leave empty to leave it out.' },
   { group: 'finance', key: 'finance.invoiceTerms', label: 'Default invoice terms', type: 'richtext', sortOrder: 4,
     value: 'Payment is due within 15 days. Please quote the invoice number with your transfer.' },
 
@@ -280,17 +323,58 @@ export const RATE_CARD = [
 ];
 
 export const MATERIALS = [
-  { code: 'CEM-OPC', name: 'OPC Cement 50kg', category: 'Cement & Aggregate', unit: 'bag', purchaseRate: 890, sellRate: 980, reorderLevel: 20, opening: 120 },
+  { code: 'CEM-OPC', name: 'OPC Cement 50kg', category: 'Cement & Aggregate', unit: 'bag', purchaseRate: 890, sellRate: 980, reorderLevel: 20, opening: 120, packSize: 1, packLabel: '50 kg bag' },
   { code: 'SAND-RIV', name: 'River sand', category: 'Cement & Aggregate', unit: 'kg', purchaseRate: 3, sellRate: 4, reorderLevel: 500, opening: 4000 },
-  { code: 'WP-ACRYL', name: 'Acrylic waterproof coating', category: 'Waterproofing', unit: 'litre', purchaseRate: 620, sellRate: 780, reorderLevel: 15, opening: 60 },
-  { code: 'WP-CRYST', name: 'Crystalline damp-proof compound', category: 'Waterproofing', unit: 'kg', purchaseRate: 450, sellRate: 590, reorderLevel: 20, opening: 80 },
-  { code: 'EPOXY-INJ', name: 'Epoxy injection resin', category: 'Repair Chemicals', unit: 'litre', purchaseRate: 1850, sellRate: 2400, reorderLevel: 5, opening: 18 },
-  { code: 'PAINT-EMUL', name: 'Interior emulsion paint', category: 'Paint', unit: 'litre', purchaseRate: 480, sellRate: 620, reorderLevel: 25, opening: 90 },
-  { code: 'PUTTY-WALL', name: 'Wall putty', category: 'Paint', unit: 'kg', purchaseRate: 42, sellRate: 58, reorderLevel: 100, opening: 350 },
+  { code: 'WP-ACRYL', name: 'Acrylic waterproof coating', category: 'Waterproofing', unit: 'litre', purchaseRate: 620, sellRate: 780, reorderLevel: 15, opening: 60, packSize: 20, packLabel: '20 L drum' },
+  { code: 'WP-CRYST', name: 'Crystalline damp-proof compound', category: 'Waterproofing', unit: 'kg', purchaseRate: 450, sellRate: 590, reorderLevel: 20, opening: 80, packSize: 25, packLabel: '25 kg bag' },
+  { code: 'EPOXY-INJ', name: 'Epoxy injection resin', category: 'Repair Chemicals', unit: 'litre', purchaseRate: 1850, sellRate: 2400, reorderLevel: 5, opening: 18, packSize: 5, packLabel: '5 L can' },
+  { code: 'PAINT-EMUL', name: 'Interior emulsion paint', category: 'Paint', unit: 'litre', purchaseRate: 480, sellRate: 620, reorderLevel: 25, opening: 90, packSize: 20, packLabel: '20 L tin' },
+  { code: 'PUTTY-WALL', name: 'Wall putty', category: 'Paint', unit: 'kg', purchaseRate: 42, sellRate: 58, reorderLevel: 100, opening: 350, packSize: 40, packLabel: '40 kg bag' },
+  { code: 'TILE-VIT', name: 'Vitrified floor tile 2×2 ft', category: 'Tiles', unit: 'sq.ft', purchaseRate: 95, sellRate: 125, reorderLevel: 100, opening: 480, packSize: 16, packLabel: 'box of 4 (16 sq.ft)' },
+  { code: 'TILE-ADH', name: 'Tile adhesive', category: 'Tiles', unit: 'kg', purchaseRate: 38, sellRate: 52, reorderLevel: 100, opening: 400, packSize: 20, packLabel: '20 kg bag' },
   { code: 'CPVC-20', name: 'CPVC pipe 20mm', category: 'Plumbing', unit: 'rft', purchaseRate: 78, sellRate: 105, reorderLevel: 100, opening: 400 },
   { code: 'WIRE-2.5', name: 'Copper wire 2.5 sq.mm', category: 'Electrical', unit: 'rft', purchaseRate: 32, sellRate: 45, reorderLevel: 200, opening: 900 },
   { code: 'PLY-MARINE', name: 'Marine plywood 19mm', category: 'Carpentry', unit: 'sq.ft', purchaseRate: 165, sellRate: 220, reorderLevel: 50, opening: 200 },
 ];
+
+/**
+ * Trades and day wages (Phase L2) — ILLUSTRATIVE Kathmandu-valley figures for the demo, in rupees per
+ * man-day, not researched market rates: set your own on the Trades & wages screen. Wages are cost —
+ * only costs:read (MANAGER, ADMIN) sees them.
+ */
+export const TRADES = [
+  { code: 'MASON', name: 'Mason (dakarmi)', dayWage: 1500, sortOrder: 0 },
+  { code: 'HELPER', name: 'Helper (jyami)', dayWage: 1000, sortOrder: 1 },
+  { code: 'PAINTER', name: 'Painter', dayWage: 1400, sortOrder: 2 },
+  { code: 'TILE-FITTER', name: 'Tile fitter', dayWage: 1600, sortOrder: 3 },
+  { code: 'WP-APPLICATOR', name: 'Waterproofing applicator', dayWage: 1500, sortOrder: 4 },
+];
+
+/**
+ * Demo recipes (Phase L2, L-D1), each for 100 sq.ft of work, quantities in each material's own unit (no
+ * unit conversion yet). DoR-style norms simplified for the demo — review them before quoting real work.
+ * Three stay MANUAL (their seeded rate is kept; the recipe costs them for the margin); PAINT-INT is
+ * DERIVED and left at its old rate, so the library shows an "Out of date" item to reprice.
+ * Component: [kind, material or trade code | description, qty, wastage %, cost (Rs, equipment/other)]
+ */
+export const RECIPES = {
+  'PLASTER-INT': { rateMode: 'MANUAL', recipeQty: 100, components: [
+    ['MATERIAL', 'CEM-OPC', 0.9, 2], ['MATERIAL', 'SAND-RIV', 175, 5],
+    ['LABOUR', 'MASON', 1.2], ['LABOUR', 'HELPER', 1.2], ['OTHER', 'Scaffolding and curing water', 1, 0, 150],
+  ] },
+  'PAINT-INT': { rateMode: 'DERIVED', recipeQty: 100, components: [
+    ['MATERIAL', 'PAINT-EMUL', 2, 5], ['LABOUR', 'PAINTER', 0.6], ['LABOUR', 'HELPER', 0.3],
+    ['OTHER', 'Masking tape, sandpaper, rollers', 1, 0, 60],
+  ] },
+  'TILE-FLOOR': { rateMode: 'MANUAL', recipeQty: 100, components: [
+    ['MATERIAL', 'TILE-VIT', 100, 8], ['MATERIAL', 'TILE-ADH', 42, 5],
+    ['LABOUR', 'TILE-FITTER', 1], ['LABOUR', 'HELPER', 1], ['EQUIPMENT', 'Tile cutter hire', 1, 0, 150],
+  ] },
+  'SEEP-CHEM': { rateMode: 'MANUAL', recipeQty: 100, components: [
+    ['MATERIAL', 'WP-CRYST', 12, 10], ['LABOUR', 'WP-APPLICATOR', 0.8], ['LABOUR', 'HELPER', 0.8],
+    ['EQUIPMENT', 'Chipping hammer and mixer hire', 1, 0, 200],
+  ] },
+};
 
 export const TESTIMONIALS = [
   { quote: 'Our bedroom wall was damp for three monsoons and two painters could not fix it. Ghar Jatan found the leak was coming from the neighbour\'s terrace outlet, not our wall at all. Fixed in two days and it stayed dry all season.', author: 'Sunita Shrestha', location: 'Jhamsikhel, Lalitpur', rating: 5, locale: 'en', sortOrder: 0 },
@@ -420,6 +504,22 @@ export const MESSAGE_TEMPLATES = [
   { key: 'survey_returned', channel: 'sms', locale: 'en', body: 'Survey {{number}} was sent back: {{note}} - {{appName}}' },
   { key: 'job_scheduled', channel: 'sms', locale: 'en', body: 'Hi {{customerName}}, job {{number}} is booked for {{date}}, {{time}}. We will call before we come. - {{appName}}' },
   { key: 'job_scheduled', channel: 'sms', locale: 'ne', body: 'नमस्ते {{customerName}}, काम {{number}} को लागि {{date}}, {{time}} मा समय मिलाइएको छ। आउनुअघि फोन गर्नेछौं। - {{appName}}' },
+  // Phase L5: the site visit — booked (and re-booked in a new window), and the reminder the evening before.
+  { key: 'visit_booked', channel: 'sms', locale: 'en',
+    body: 'Hi {{name}}, your site visit {{number}} is booked for {{date}}, {{window}}. {{surveyor}} will come. Confirm or ask for another time: {{link}} - {{appName}}' },
+  { key: 'visit_booked', channel: 'sms', locale: 'ne',
+    body: 'नमस्ते {{name}}, तपाईंको साइट निरीक्षण {{number}} {{date}}, {{window}} मा तय भएको छ। {{surveyor}} आउनुहुनेछ। पुष्टि गर्न वा अर्को समय माग्न: {{link}} - {{appName}}' },
+  { key: 'visit_reminder', channel: 'sms', locale: 'en',
+    body: 'Hi {{name}}, a reminder: {{surveyor}} visits tomorrow, {{date}}, {{window}} ({{number}}). Confirm or ask for another time: {{link}} - {{appName}}' },
+  { key: 'visit_reminder', channel: 'sms', locale: 'ne',
+    body: 'नमस्ते {{name}}, सम्झना: {{surveyor}} भोलि {{date}}, {{window}} मा आउनुहुनेछ ({{number}})। पुष्टि गर्न वा अर्को समय माग्न: {{link}} - {{appName}}' },
+  // Phase L6: the advance asked for on acceptance (L-D3); the job waits for it.
+  { key: 'advance_due', channel: 'sms', locale: 'en',
+    body: 'Thank you {{customerName}}. To start the work on {{quotation}}, please pay the advance of {{amount}} by {{dueDate}}: {{link}} {{payTo}} - {{appName}}' },
+  { key: 'advance_due', channel: 'sms', locale: 'ne',
+    body: 'धन्यवाद {{customerName}}। {{quotation}} को काम सुरु गर्न {{dueDate}} भित्र {{amount}} अग्रिम भुक्तानी गर्नुहोस्: {{link}} {{payTo}} - {{appName}}' },
+  { key: 'advance_due', channel: 'email', locale: 'en', subject: 'Advance for quotation {{quotation}} — {{amount}}',
+    body: 'Dear {{customerName}},\n\nThank you for accepting quotation {{quotation}}. To start the work, please pay the advance of {{amount}} by {{dueDate}}.\n\nInvoice {{number}}: {{link}}\n{{payTo}}\n\nWe will call you to fix the dates once it is in.\n\n{{appName}}' },
   { key: 'job_en_route', channel: 'sms', locale: 'en', body: 'Hi {{customerName}}, our technician is on the way for job {{number}}. - {{appName}}' },
   { key: 'job_en_route', channel: 'sms', locale: 'ne', body: 'नमस्ते {{customerName}}, काम {{number}} का लागि हाम्रो प्राविधिक बाटोमा हुनुहुन्छ। - {{appName}}' },
   { key: 'job_completed', channel: 'sms', locale: 'en', body: 'Job {{number}} is complete. Your work carries a {{warrantyDays}}-day warranty: {{warrantyLink}} - {{appName}}' },
@@ -475,3 +575,43 @@ export const JOB_TEMPLATES = [
     ],
   },
 ];
+
+/**
+ * Site checklists (Phase L5): what the surveyor answers on the site, per service. The damp one is how an
+ * engineer reads a wet wall — a high reading low down and a lower one higher up with salt is rising damp;
+ * a wet room behind the wall is a plumbing or lateral source. Flags put the answers the office must see first.
+ */
+export const INSPECTION_TEMPLATES = [
+  {
+    service: 'seepage-and-damp-treatment', name: 'Seepage & damp — site checklist', sortOrder: 0,
+    questions: [
+      { key: 'moisture_low', label: 'Moisture 300 mm above the floor', labelNe: 'भुइँबाट ३०० मिमि माथि चिस्यान', type: 'NUMBER', unit: '%', metric: 'moisture', flag: { above: 20 }, required: true, photoRequired: true },
+      { key: 'moisture_high', label: 'Moisture 1 m above the floor', labelNe: 'भुइँबाट १ मिटर माथि चिस्यान', type: 'NUMBER', unit: '%', metric: 'moisture', flag: { above: 16 }, required: true, photoRequired: false },
+      { key: 'salt', label: 'Salt deposits (white bloom)', labelNe: 'नुनिलो दाग (सेतो धुलो)', type: 'CHOICE', options: ['None', 'Light', 'Heavy'], flag: { values: ['Heavy'] }, required: true, photoRequired: true },
+      { key: 'dpc_visible', label: 'Damp-proof course visible at the plinth?', labelNe: 'प्लिन्थमा डीपीसी देखिन्छ?', type: 'YES_NO', flag: { equals: 'no' }, required: true, photoRequired: false },
+      { key: 'water_source', label: 'Likely source of the water', labelNe: 'पानी कहाँबाट आएको हुन सक्छ', type: 'CHOICE', options: ['Rising damp', 'Roof or terrace', 'Plumbing leak', 'Neighbour\'s wall', 'Rain through the wall', 'Not sure'], required: true, photoRequired: false },
+      { key: 'wet_room_behind', label: 'Bathroom or kitchen on the other side?', labelNe: 'भित्ताको अर्को पट्टि बाथरुम वा भान्सा छ?', type: 'YES_NO', flag: { equals: 'yes' }, required: false, photoRequired: false },
+      { key: 'hollow_plaster', label: 'Plaster sounds hollow when tapped?', labelNe: 'ठोक्दा प्लास्टर खोक्रो आवाज आउँछ?', type: 'YES_NO', flag: { equals: 'yes' }, required: false, photoRequired: false },
+      { key: 'customer_story', label: 'When it started, and whether it is worse after rain', labelNe: 'कहिलेदेखि सुरु भयो, पानी परेपछि बढ्छ कि', type: 'TEXT', required: false, photoRequired: false },
+    ],
+  },
+];
+
+/**
+ * The job an accepted quotation for each service becomes (Phase L6, Service.jobType), by service name. A service
+ * not listed stays REPAIR.
+ */
+export const SERVICE_JOB_TYPES = {
+  'Modular Kitchen Design & Fitting': 'INSTALLATION',
+  'Interior Design & Furnishing': 'RENOVATION',
+  'House Renovation & Remodelling': 'RENOVATION',
+  'Pre-Engineered Steel Buildings': 'INSTALLATION',
+  'Plastering & Wall Finishing': 'RENOVATION',
+  'Tile & Marble Laying': 'RENOVATION',
+  'Painting & Texture Work': 'RENOVATION',
+  'False Ceiling Installation': 'INSTALLATION',
+  'Aluminium & uPVC Windows': 'INSTALLATION',
+  'Grill & Railing Fabrication': 'INSTALLATION',
+  'Boundary Wall & Gate Work': 'RENOVATION',
+  'Demolition & Debris Removal': 'RENOVATION',
+};

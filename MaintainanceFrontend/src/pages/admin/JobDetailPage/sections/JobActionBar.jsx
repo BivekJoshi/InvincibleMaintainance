@@ -6,14 +6,19 @@ import {
 
 /**
  * The job's state-driven buttons (`helpers/jobActions`). A disabled one says why beside the bar,
- * so the dispatcher is never left guessing; cancel and delete sit in the "More" menu.
+ * so the dispatcher is never left guessing — buttons held for the same reason share one line (the advance
+ * gate holds Schedule and Assign at once); cancel and delete sit in the "More" menu.
  *
  * @param {{ actions: import('@/helpers/jobActions').JobAction[], onRun: (action: object) => void }} props
  */
 export function JobActionBar({ actions, onRun }) {
   const shown = actions.filter((a) => !a.destructive);
   const more = actions.filter((a) => a.destructive);
-  const reasons = shown.filter((a) => a.disabledReason);
+  // One line per reason: the advance gate disables several buttons for the same reason (Phase L6).
+  const reasons = [...shown.filter((a) => a.disabledReason).reduce((byReason, a) => {
+    byReason.set(a.disabledReason, [...(byReason.get(a.disabledReason) ?? []), a.label]);
+    return byReason;
+  }, new Map())];
   if (!actions.length) return null;
 
   return (
@@ -46,8 +51,8 @@ export function JobActionBar({ actions, onRun }) {
           </DropdownMenu>
         ) : null}
       </div>
-      {reasons.map((a) => (
-        <p key={`${a.key}-reason`} className="text-xs text-muted-foreground">{a.label}: {a.disabledReason.toLowerCase()}.</p>
+      {reasons.map(([reason, labels]) => (
+        <p key={reason} className="text-xs text-muted-foreground">{labels.join(', ')}: {reason.charAt(0).toLowerCase()}{reason.slice(1)}.</p>
       ))}
     </div>
   );

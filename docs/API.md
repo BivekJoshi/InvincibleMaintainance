@@ -69,13 +69,24 @@ GET  /public/quotations/:token        customer views a quotation — an allowlis
                                         vatApplied, vatRate, vatAmount, total, terms, sentAt, decidedAt,
                                         decisionNote (their own answer), requestedChanges (the change
                                         request this version answers), createdAt, customer { name },
-                                        site { label, address } | null, items[] { id, description, unit,
-                                        qty, rate, amount, sortOrder },
+                                        site { label, address } | null, items[] { id, rowType, number,
+                                        description, spec, unit, qty, rate, amount, isOptional,
+                                        isProvisional, sortOrder, measurements? (when showMeasurements) } —
+                                        SECTION rows only when summaryOnly; never a cost or a recipe —,
+                                        boq { sections, optionalTotal }, contractType, estimatedDays,
+                                        exclusions, summaryOnly, paymentStages [{ label, basisPoints, trigger,
+                                        taxable, vat, total }], totalInWords { en, ne }, dates { createdAtBs,
+                                        validUntilBs }, letterhead (Phase L4). Each GET stamps firstViewedAt and
+                                        adds one to viewCount (one raw statement — a view is not audited).
+                                        A key-scan test proves no cost, margin, recipe or pay key,
                                         replaced: { token } of the newest version when it is SENT, else null,
                                         actions: ['approve','request_changes','reject'] while SENT, else [] }
                                       A SENT quotation past validUntil is moved to EXPIRED on open.
 POST /public/quotations/:token/decide decisionLimiter (20 per IP per 15 min) · no login, no OTP (D4)
-                                      { decision: approve | request_changes | reject, note? }
+                                      { decision: approve | request_changes | reject, note?, category? }
+                                      category (reject only): a lost-lead category — stored as the
+                                      quotation's declineCategory and carried by the "mark lost?" link
+                                      (/admin/leads/:id?markLost=1&category=…)
                                       note: request_changes 5–1000 chars (required); reject optional
                                       (≤1000); approve ignores it. IP and user agent are recorded.
                                       Only a SENT quotation within validUntil takes an answer:
@@ -85,20 +96,47 @@ POST /public/quotations/:token/decide decisionLimiter (20 per IP per 15 min) · 
                                         422 QUOTATION_REPLACED  a newer version superseded it
                                         422 QUOTATION_NOT_OPEN  any other status
                                       -> 200 the public view above.
-                                      approve — ONE transaction: SENT → APPROVED → CONVERTED, the lead → WON
-                                        through the state machine (NEW via CONTACTED; the timeline entry reads
-                                        "Customer accepted QT-… vN · NPR …"; a lead already WON or LOST keeps its
-                                        status and gets a note — the lead never fails the acceptance), and one
-                                        job: DRAFT, unscheduled, unassigned, type REPAIR, titled
-                                        "<service> — <number>" (the survey's service, else the lead's, else the
-                                        first line), the service's job-template checklist, priority from the
-                                        survey's urgency. The answer is claimed with a guarded update, so a
-                                        double tap creates exactly one job. Response adds job { id, number }.
+                                      approve — ONE transaction, the hand-off (Phase L6, handoff.service.js):
+                                        1. SENT → APPROVED, claimed with a guarded update (a double tap or a
+                                           replay claims nothing: 422, and nothing below happens twice);
+                                        2. the lead → WON through the state machine (NEW via CONTACTED; the
+                                           timeline entry reads "Customer accepted QT-… vN · NPR …"; a lead
+                                           already WON or LOST keeps its status and gets a note);
+                                        3. one job: DRAFT, unscheduled, unassigned, typed from the service's
+                                           jobType (the survey's service, else the lead's; REPAIR without
+                                           one), plannedDays = the quotation's estimatedDays, titled
+                                           "<service> — <number>", the service's job-template checklist,
+                                           priority from the survey's urgency — which claims APPROVED →
+                                           CONVERTED (guarded) as it is made;
+                                        4. JobLines from the non-optional ITEM rows (number, section, kind,
+                                           quotedQty, rate, measurements, provisional) — unique per row;
+                                        5. JobRequirements from the take-off: materials (qty, packs) and labour
+                                           days by trade — quantities, no rates;
+                                        6. when the payment schedule has an ON_ACCEPT stage: the ADVANCE invoice
+                                           — its total the stage's to the paisa (the stage's own VAT,
+                                           money.js#stageDocument), SENT with a public link, due in
+                                           finance.advanceDueDays (7), paymentStageId unique — and
+                                           job.advanceInvoiceId (unique). No ON_ACCEPT stage: no invoice, no gate.
+                                        Library, template and take-off reads happen before the transaction.
+                                        A VARIATION (Phase L7) instead: SENT → APPROVED, then in the same
+                                        transaction its non-optional rows join its job as VARIATION job lines
+                                        (numbered "VO-… · A.1", sectioned "Variation VO-… — <section>", after the
+                                        job's own) and its take-off as VARIATION requirements, and APPROVED →
+                                        CONVERTED (guarded; a double tap adds once). No job, no lead change, no
+                                        advance. The dispatchers and the job's lead technician are told
+                                        (variation_accepted); the response's job is the job it changed.
+                                        Response adds job { id, number } and advance { number, total, balance,
+                                        dueDate, status, url } | null (also on GET once accepted).
                                         Then, once each: the customer (SMS quotation_accepted, and email when on
                                         file, in their preferredLocale), the lead's salesperson and the
                                         quotation's author (in-app + email), every active DISPATCHER (in-app +
                                         email, linking /admin/jobs/:id) and the approving manager (in-app;
                                         nobody when it was auto-approved). Notification type quotation_accepted.
+                                        With an advance, the customer is also sent advance_due — SMS in their
+                                        language ({{customerName}} {{quotation}} {{amount}} (formatNpr)
+                                        {{dueDate}} {{link}} {{payTo}} — the finance.bankAccount and
+                                        finance.fonepayNumber settings, labelled in their language), and email
+                                        when on file — and the dispatchers read "waits for the advance".
                                       request_changes — SENT → CHANGES_REQUESTED, decisionNote = the message, a
                                         lead timeline note "Customer asked for changes to QT-… vN: …" (the lead
                                         keeps its status); the salesperson and author get in-app + email
@@ -110,7 +148,29 @@ POST /public/quotations/:token/decide decisionLimiter (20 per IP per 15 min) · 
                                       The three answers are quotation.service.js acceptQuotation /
                                       requestQuotationChanges / declineQuotation, so a customer account
                                       (Phase K) reuses them.
-GET  /public/invoices/:token          customer views an invoice (read-only; paid offline)
+GET  /public/visits/:token            the site visit as the customer sees it (Phase L5) — no login, no money:
+                                      { number, status, window: { start, end }, site: { label, address, area,
+                                        landmark } | null, surveyor: { name, phone } | null (the lead
+                                        technician), customer: { name, preferredLocale }, answer: CONFIRMED |
+                                        RESCHEDULE_REQUESTED | null, answerNote, answeredAt, canAnswer,
+                                        company: { name, phone } }
+                                      canAnswer: the job is DRAFT, SCHEDULED or ASSIGNED and its window (its end,
+                                      else its start) is still ahead. 404 for an unknown token or a job that is
+                                      not an INSPECTION. The token is Job.visitToken, minted when an INSPECTION
+                                      job is created and sent in the visit_booked / visit_reminder SMS.
+POST /public/visits/:token/respond    visitLimiter (10 per IP per 15 min) · { answer: confirm | reschedule,
+                                      note? (≤500) } -> 200 the view above
+                                      The latest answer wins; the same answer again (a reschedule with the same
+                                      note) changes nothing. The time and IP are kept (visitAnsweredAt,
+                                      visitAnswerIp); confirm sets customerConfirmedAt, reschedule clears it.
+                                      Each answer is a lead timeline note and an audit event (visit.confirmed /
+                                      visit.reschedule_requested). "reschedule" tells the lead's salesperson and
+                                      every active DISPATCHER (in-app, type visit_reschedule_requested, linking
+                                      /admin/jobs/:id). 422 VISIT_CLOSED once canAnswer is false. A new window
+                                      (POST /admin/jobs/:id/schedule) clears the answer.
+GET  /public/invoices/:token          customer views an invoice (read-only; paid offline) — with `balance`, the
+                                      office's figure (Phase I), and `kind` with paymentStage { label, basisPoints,
+                                      trigger } | null — "Advance — on acceptance (50 %)" (Phase L6)
                                       payments[] include voided ones with voidedAt set (shown struck
                                       through); paidAmount already excludes them
 GET  /public/warranties/:token
@@ -181,7 +241,8 @@ A slug derived from a title (`slugFrom`) keeps Devanagari as-is, vowel signs and
 ```
 /admin/hero-slides
 /admin/service-categories
-/admin/services
+/admin/services                 + jobType (Phase L6: INSPECTION|REPAIR|INSTALLATION|RENOVATION|AMC_VISIT|WARRANTY,
+                                  default REPAIR) — the job an accepted quotation for the service becomes
 /admin/projects                 + POST /:id/images { mediaId, caption?, sortOrder? } -> 201 the image,
                                   PATCH /:id/images/reorder { items: [{ id, sortOrder }] } -> 204,
                                   DELETE /:id/images/:imageId -> 204 (400 when the image is not this project's)
@@ -255,14 +316,22 @@ wherever it is accepted.
 
 ```
 GET    /admin/leads                 leads:read · ?status&priority&source&assignedToId&serviceId&slaRisk
-                                     &requestedVisit=true|false&from&to&q&page&limit&sort
+                                     &requestedVisit=true|false&nextAction=due_today|overdue|none&from&to&q&page&limit&sort
+                                    nextAction: open leads whose next action falls in the Kathmandu day, is
+                                    past due, or is not booked. Rows carry nextActionAt, nextActionType,
+                                    nextActionNote, stageEnteredAt, contactAttempts, lostCategory,
+                                    lostAtStage and qualification (Phase L1).
                                     assignedToId: a user id, `me` (the caller — the "My leads" view) or
                                     `none` (unassigned). requestedVisit: the lead names a visit day
                                     (preferredAt set — online bookings, and bookings folded onto an enquiry)
 POST   /admin/leads                 leads:write · manual entry (call, walk-in, WhatsApp…)
                                     { name, phone, altPhone?, email?, address?, area?, serviceId?, message?,
                                       source (default call), priority, assignedToId? (default: the caller),
-                                      estimatedAmount? (rupees), preferredLocale? (default en) }
+                                      estimatedAmount? (rupees), preferredLocale? (default en),
+                                      qualification? { propertyType (house|apartment|commercial|land|other),
+                                        floors, buildingAgeYears, budgetBand (under_25k|25k_1l|1l_5l|5l_25l|
+                                        over_25l — labels, not money), decisionMaker (self|family|owner_abroad|
+                                        landlord|company), note } | null }
 GET    /admin/leads/sla-board       leads:read · { breached[], atRisk[], waiting[], newToday, answeredToday, metToday } —
                                     waiting[] is unanswered and still outside the warning window (a fresh
                                     enquiry lands here); the counts use Kathmandu's day; metToday ≤ answeredToday (first contact
@@ -290,20 +359,61 @@ GET    /admin/leads/:id/customer-matches  leads:read · live customers with the 
                                        lastVisitAt, primaryAddress, createdAt }]
 GET    /admin/leads/:id/history     leads:history · see "Record history" below
 PUT    /admin/leads/:id             leads:write · partial; leaving preferredLocale out keeps it
-PATCH  /admin/leads/:id/status      validated transition; LOST needs lostReason; writes a status_change
-                                    timeline entry; the status it already has is a no-op
+PATCH  /admin/leads/:id/status      validated transition; LOST needs lostCategory (PRICE|COMPETITOR|UNREACHABLE|
+                                    POSTPONED|BUDGET|OWN_LABOUR|OUT_OF_SCOPE|OUT_OF_AREA|DUPLICATE_SPAM|OTHER —
+                                    400 without; OTHER also needs lostReason, the free-text detail). The server
+                                    records lostAtStage (the status it was lost from); a reopen clears the lost
+                                    details. Every move restarts stageEnteredAt; WON/LOST clear the next action.
+                                    Writes a status_change timeline entry; the status it already has is a no-op
+PATCH  /admin/leads/:id/next-action leads:write · { at: ISO | null, type?, note? (≤300) } — at null clears it;
+                                    a time needs a type (CALL|BOOK_VISIT|VISIT|SEND_QUOTE|FOLLOW_UP) — 400.
+                                    422 LEAD_CLOSED on a WON or LOST lead. -> the lead row
 PATCH  /admin/leads/:id/assign      leads:write · { assignedToId | null, note? } — the assignee must be an
                                     active SALES or ADMIN user (400 otherwise); notified unless unchanged
 POST   /admin/leads/:id/notes
-POST   /admin/leads/:id/activities  leads:write · { type: call|sms|whatsapp|email|visit|note, summary, meta? }
+POST   /admin/leads/:id/activities  leads:write · { type: call|sms|whatsapp|email|visit|note, summary, meta?,
+                                      outcome?, nextAction? { at, type, note? }, close? { lostCategory, lostReason? } }
                                     (status_change and assignment are the system's — 400). Any type but
-                                    note stamps firstResponseAt the first time. Writes lead.activity_logged.
-                                    -> 201 { …activity, user, firstResponse: bool, sla: { state, … } }
+                                    note is a contact attempt: contactAttempts + 1, and firstResponseAt the
+                                    first time. Writes lead.activity_logged (with the outcome).
+                                    outcome (contacts only — 400 on a note) — on an open lead the entry
+                                    must leave a next action or the lead closed:
+                                      outcome              reached  default next action           needs
+                                      no_answer            no       CALL in pipeline.noAnswerRetryMinutes
+                                      wrong_number         no       —                             nextAction or close
+                                      call_back            yes      —                             nextAction
+                                      book_visit           yes      BOOK_VISIT now  → dialog visit
+                                      quote_without_visit  yes      SEND_QUOTE now  → dialog quotation
+                                      price_shopping       yes      FOLLOW_UP in pipeline.priceShoppingFollowUpDays
+                                      not_now              yes      —                             nextAction (revisit)
+                                      not_interested       yes      —                             close
+                                    A reached outcome moves NEW → CONTACTED; `close` moves the lead to LOST
+                                    in the same transaction; a sent nextAction overrides the default; never
+                                    both nextAction and close (400). Missing → 422 NEXT_ACTION_REQUIRED.
+                                    -> 201 { …activity, user, firstResponse: bool, sla: { state, … },
+                                             lead { id, status, nextActionAt, nextActionType, nextActionNote,
+                                                    contactAttempts, stageEnteredAt, lostCategory },
+                                             dialog: 'visit' | 'quotation' | null }
 POST   /admin/leads/:id/convert     leads:write · { customerId? | createNewCustomer?, confirmEmail? (false),
                                       preferredLocale?, site? { label, address, area },
                                       createQuotation, createInspectionJob, scheduledStart, scheduledEnd,
-                                      surveyorId }
+                                      surveyorId, siteContactName?, siteContactPhone?, landmark? }
                                     -> 201 { customer, customerCreated, site, quotation?, job?, survey? }
+                                    Booking the visit (Phase L5): scheduledStart–scheduledEnd is the window
+                                    the customer is told (end after start, 400); siteContactName (≤120) and
+                                    siteContactPhone (a Nepali number, normalised: "+977-9841 234567" →
+                                    9841234567; needs the name) are who opens the door — the caretaker while
+                                    the owner is abroad — and landmark (≤200) how to find the house. All three
+                                    are stored on the visit's site (CustomerSite contactName / contactPhone /
+                                    landmark), so the next job there knows them. After the commit the customer
+                                    gets visit_booked by SMS in their preferredLocale — {{name}} {{number}}
+                                    {{date}} {{window}} {{surveyor}} (name and phone, or "our surveyor")
+                                    {{link}} (/visit/:token) {{appName}} — and so does the site contact when it
+                                    is another number (same language). Nothing is sent without a start.
+                                    The lead steps NEW → CONTACTED, and to INSPECTION_SCHEDULED with a visit.
+                                    A draft quotation does NOT make it QUOTED (sending does — see
+                                    /admin/quotations/:id/send). Next action: VISIT at scheduledStart with a
+                                    visit, else SEND_QUOTE now with a draft.
                                     Which customer — a phone is shared and recycled, so it is never enough:
                                       · a lead already linked keeps its customer (a second convert adds a
                                         visit or a quotation);
@@ -352,31 +462,72 @@ GET    /admin/customers/:id/timeline  customers:read · leads, quotations, jobs,
                                     ("Customer accepted QT-… vN · NPR …", "…asked for changes to…", "…declined…")
 GET    /admin/customers/:id/history customers:history · see "Record history" below
 GET    /admin/customers/:id/sites   customers:read
-POST   /admin/customers/:id/sites   customers:write · { label, address, area?, lat?, lng?, accessNotes?, isPrimary? }
+POST   /admin/customers/:id/sites   customers:write · { label, address, area?, lat?, lng?, accessNotes?,
+                                      contactName?, contactPhone? (Nepali, normalised; '' clears), landmark?,
+                                      isPrimary? } — the contact and landmark are Phase L5's booking fields
 PUT    /admin/customers/:id/sites/:siteId     partial; 404 when the site is not that customer's
 DELETE /admin/customers/:id/sites/:siteId     soft; 400 while jobs use the site
                                     Exactly one primary site: the first site is primary whatever was sent; a site
                                     marked primary takes the flag from the others; unmarking the primary is 422
                                     (mark another instead); deleting the primary passes it to the oldest site left
-/admin/rate-card                    GET (?q searches code, name, category; ?deleted=true is Trash), GET /:id,
-                                    POST, PUT /:id (partial), PATCH /:id/toggle, PATCH /reorder { items },
-                                    PATCH /:id/restore, DELETE /:id (soft) — read: quotations:read,
-                                    write: quotations:write. The same eight endpoints as a CMS resource,
-                                    plus GET /:id/history (quotations:history — not ACCOUNTANT).
-                                    DELETE ?hard=true needs cms:purge (ADMIN); quotation and survey lines
-                                    that used the item keep their copy and lose the link.
-                                    Body { code, name, description?, category?, unit, rate (rupees), sortOrder?,
-                                    isActive? }. `code` is letters, digits, - and _, stored upper-case and
-                                    unique: `wp-1` after `WP-1` is 409 (a soft-deleted item still holds its code).
+/admin/rate-card                    THE RATE LIBRARY (Phase L2, L-D1) — mounted by mountResource: GET (?q
+                                    searches code, name, category; ?deleted=true is Trash), GET /:id, POST,
+                                    PUT /:id (partial), PATCH /:id/toggle, PATCH /reorder { items },
+                                    PATCH /:id/restore, DELETE /:id (soft), GET /:id/history.
+                                    read: rates:read (SALES, MANAGER, ACCOUNTANT) · write: rates:write
+                                    (MANAGER) · DELETE ?hard=true needs cms:purge (ADMIN); quotation and survey
+                                    lines that used the item keep their copy and lose the link.
+                                    Body { code, name, description?, category?, unit, rateMode (MANUAL|DERIVED,
+                                      default MANUAL), rate (rupees — required when MANUAL, derived when
+                                      DERIVED), recipeQty (default 1: the recipe is per N units, DoR norms are
+                                      per 10 or 100), overheadPct?, profitPct?, roundTo? (rupees) — null = the
+                                      quotation.defaultOverheadPct / defaultProfitPct / sellRateRoundTo settings —,
+                                      components?: [{ kind MATERIAL|LABOUR|EQUIPMENT|OTHER, materialId (MATERIAL),
+                                        tradeId (LABOUR), description + cost (rupees, EQUIPMENT/OTHER), qty (> 0:
+                                        the material's own unit; man-days), wastagePct? }] (≤ 40, replaced whole),
+                                      sortOrder?, isActive? }. DERIVED without components 400; an unknown material
+                                    or trade 422 UNKNOWN_MATERIAL / UNKNOWN_TRADE; DERIVED with a line whose price
+                                    is unknown (no purchase rate / wage) 422 RECIPE_INCOMPLETE. `code` is letters,
+                                    digits, - and _, stored upper-case and unique (409).
+                                    A save sets `rate` (DERIVED: derived) and `unitCost` only when the recipe,
+                                    its pricing (mode, recipeQty, overhead, profit, roundTo) or a MANUAL rate
+                                    actually differs from what is stored — the edit form sends everything on
+                                    every save, so a rename (or a resend of the same recipe) never moves a
+                                    rate; a DERIVED item ignores a sent `rate`.
+                                    Rows add components[] (with material { id, code, name, unit, packSize,
+                                    packLabel } / trade { id, code, name }, unit filled by the server),
+                                    derivedRate (paisa — today's derived sell rate; null without a complete
+                                    recipe) and outOfDate (DERIVED and derivedRate ≠ rate: a purchase rate or
+                                    wage moved since). costs:read only (stripped for everyone else, history
+                                    included): overheadPct, profitPct, unitCost, costBreakdown { material,
+                                    labour, equipment, other, direct, overhead, unitCost, complete } (paisa per
+                                    unit, today's prices), margin { amount, pct } | null, components[].cost,
+                                    .lineCost, material.purchaseRate, trade.dayWage.
                                     Feeds quotation lines, survey pricing and the rate table on GET
                                     /public/pricing (active items). The estimator does not read it.
+POST /admin/rate-card/derive        costs:read · { recipeQty, overheadPct?, profitPct?, roundTo?, rate? (rupees — the
+                                    form's), components (≥1) } -> { costBreakdown, derivedRate, margin (at `rate`;
+                                    null without it or a complete recipe), derivedMargin, lines [{ index,
+                                    lineCost }] } — the editor's live cost card; nothing is saved, and the client
+                                    computes no money
+POST /admin/rate-card/reprice       rates:write · { ids? (≤500), apply } — the DERIVED items (all, or ids) whose
+                                    derived rate today ≠ their rate -> { items [{ id, code, name, rate,
+                                    derivedRate, delta }], applied }. apply false previews and writes nothing;
+                                    apply true sets each rate and unitCost and records rate_card.repriced
+                                    (before/after rate) per item, in one transaction. A price change reaches a
+                                    rate only this way.
+/admin/trades                       rates:read / rates:write · the registry surface (mountResource) · { code
+                                    (upper-case, unique), name, dayWage (rupees in, paisa out), sortOrder,
+                                    isActive } · dayWage only for costs:read
 GET    /admin/quotations            quotations:read · ?stage&status&customerId&leadId&from&to&q&page&limit&sort
                                     stage: drafts (DRAFT) · approval (PENDING_APPROVAL) · ready
                                     (OFFICE_APPROVED) · with_customer (SENT) · changes_requested
                                     (CHANGES_REQUESTED) · won (APPROVED, CONVERTED) · lost (REJECTED,
                                     EXPIRED) · all (everything, SUPERSEDED included). No stage = all.
                                     status narrows within the stage. 400 on an unknown stage or status.
-                                    Rows add submittedBy, approvedBy { id, name } and lead.assignedToId.
+                                    Rows add submittedBy, approvedBy { id, name } and lead.assignedToId, and —
+                                    costs:read only — costTotal, costComplete and margin { amount, pct } | null
+                                    (from the stored cost; the approval queue's margin column).
 GET    /admin/quotations/:id        quotations:read · adds parent { id, number, version, status, decisionNote },
                                     supersededBy { id, number, version, status }, revisions[], and
                                     versions[] { id, number, version, status, total, createdAt } — the
@@ -391,9 +542,98 @@ GET    /admin/quotations/:id/history  quotations:history (SALES, MANAGER, ADMIN)
                                     shape as the lead and customer history (no ip, no user agent)
 POST   /admin/quotations            quotations:write · creates a DRAFT. Without `validUntil` it is valid to
                                     the end of the Kathmandu day `quotation.validDays` (default 15) away, so a
-                                    quotation built from a survey or a convert can be submitted as it is
+                                    quotation built from a survey or a convert can be submitted as it is.
+                                    { customerId, siteId?, leadId?, validUntil?, discount? (rupees),
+                                      vatApplied (default true), terms?, internalNote?, items (0–500 BOQ rows —
+                                      a DRAFT may start blank) }
+                                    A VARIATION ORDER (Phase L7): send `jobId` (customerId may be left out).
+                                    The quotation is kind VARIATION, numbered VO-…, takes the job's customer and
+                                    site (a different customerId is 400; a CANCELLED or VERIFIED job is 422
+                                    VARIATION_JOB_CLOSED), has no lead and NO payment schedule. Only a variation
+                                    may have negative rows (omissions: negative qty, amounts rounded away from
+                                    zero); on any other quotation a row that comes out ≤ 0 is 422 NEGATIVE_LINE.
+                                    Its total may be negative (then no discount, a negative VAT). Every
+                                    quotation row carries kind QUOTATION|VARIATION and jobId; GET /:id adds
+                                    job { id, number, status, title }; GET takes ?kind&jobId.
 PUT    /admin/quotations/:id        quotations:write · DRAFT only. Any other status is 422 UNPROCESSABLE
-                                    ("…cannot be edited. …") and nothing changes
+                                    ("…cannot be edited. …") and nothing changes. items replace the rows (a
+                                    row sent with its id keeps its frozen recipe and cost); a discount or VAT
+                                    change without items re-totals the stored rows. The kind, job and customer
+                                    are fixed once created (Phase L7); a variation's schedule stays empty.
+                                    Submit, approve (maker-checker, LOW_MARGIN — skipped when the total is not
+                                    positive), send and the customer's link work unchanged for a variation; a
+                                    net-negative variation never auto-approves. Revise keeps kind and job.
+
+A quotation is a BILL OF QUANTITIES (Phase L3): one ordered list of rows, as an estimator's sheet reads.
+  Request row (rupees): { id? (a stored row's), rowType ITEM|SECTION|NOTE (default ITEM), description
+    (1–500; a SECTION's title, a NOTE's text), spec? (≤2000), kind? LABOUR|MATERIAL|SERVICE|OTHER,
+    rateCardItemId?, materialId?, unit?, qty? | measurements? [{ area, description, nos, l, b, h, deduct }]
+    (≤200; they give the quantity: Σ ± nos×L×B×H over the dimensions present), wastagePct? (0–100),
+    rate? (rupees, required on ITEM), isOptional?, isProvisional? } — array order is row order.
+  An ITEM needs a rate and a qty or measurements (400); its quantity (net, then + wastage) must come out
+  > 0 — 422 NEGATIVE_LINE (negative lines are variations', Phase L7). Cost sent by the client (unitCost,
+  costAmount, recipe) is DROPPED by the schema, never trusted: a row priced from the rate library freezes
+  the item's recipe, with every line's price, and its unit cost when first saved (L-D1); a MATERIAL row
+  freezes the material's purchase rate; anything else has an unknown cost (null, never zero).
+  Response rows: { id, rowType, number ('A', 'A.1', '1' before any section, null for a NOTE — computed),
+    description, spec, kind, rateCardItemId, materialId, unit, measurements, netQty, wastagePct, qty (billed),
+    rate, amount (0 for SECTION/NOTE; an optional row keeps its amount, never totalled), isOptional,
+    isProvisional, sortOrder, recipe { v: 1, rateCardItemId, code, name, recipeQty, complete, takenAt,
+    components [{ kind, materialId, tradeId, description, unit, qty, wastagePct, cost© }], overheadPct©,
+    profitPct©, unitCost© } | null, unitCost©, costAmount© } and quotation.boq = { sections [{ index,
+    number, title, subtotal }], optionalTotal, cost© { costTotal, costComplete, margin { amount, pct } | null
+    — on the taxable amount, null unless every totalled row's cost is known } }.
+  © = costs:read only (MANAGER, ADMIN): every /admin/quotations* and /admin/leads* response passes the cost
+  wall (middleware/costWall.js), and the quotation history is masked the same way.
+The CONTRACT around the BOQ (Phase L4) — on POST, PUT and preview: contractType LUMP_SUM|ITEM_RATE (default
+quotation.defaultContractType), estimatedDays? (days), exclusions? (≤4000), showMeasurements (default true — the
+customer's measurements annex), summaryOnly (default false — the customer sees section subtotals only),
+paymentStages? [{ label (1–80), basisPoints (1–10000), trigger ON_ACCEPT|MILESTONE|ON_COMPLETION }] (1–10; must
+sum to 10000 and have at most one ON_ACCEPT — 400; omitted on create = quotation.defaultPaymentSchedule, 50/40/10;
+on PUT it replaces the schedule). A new quotation's terms default to the terms library's default entry (then the
+finance.quotationTerms setting). Staff responses add contractType, estimatedDays, exclusions, showMeasurements,
+summaryOnly, firstViewedAt, viewCount, declineCategory, paymentStages [{ id, label, basisPoints, trigger,
+sortOrder, taxable, vat, total }] (money.js#paymentSchedule — both the taxable amount and the VAT split by the
+same basis points, so the stages sum to the total exactly), totalInWords { en, ne } (lakh/crore), dates
+{ createdAtBs, validUntilBs, sentAtBs }, letterhead { companyName, address, city, phones, email, panVatNo, logo,
+tagline } and, costs:read only, costTotal, costComplete, margin. Revisions and copies carry the contract and
+the schedule. Preview adds paymentStages (for sent stages) and totalInWords.
+GET    /admin/quotations/:id/export.xlsx  quotations:read · the workbook (exceljs): BOQ (live formulas — amount =
+                                    ROUND(qty × rate, 2), section subtotals and the subtotal over rows marked "In
+                                    total", discount, VAT, total; a measured row's qty links to its measurement
+                                    total), Measurements, Payment schedule, and a Cost sheet ONLY for costs:read.
+                                    Every formula stores the server's figure as its cached result; recalculated
+                                    (LibreOffice, in 23-quotation-document) it gives the same totals. Audited as
+                                    export.xlsx { number, version, costSheet }.
+/admin/quotation-terms              THE TERMS LIBRARY (Phase L4) — mountResource: read rates:read or
+                                    quotations:read, write rates:write (the manager's), history rates:read ·
+                                    { title (2–120), body (1–8000, English), bodyNe? (Nepali), isDefault (one
+                                    default: saving one moves the flag), sortOrder, isActive }
+POST   /admin/quotations/preview    quotations:write · { quotationId?, items, discount? (rupees) | discountPct?
+                                    (0–100) | targetTotal? (rupees, VAT included), vatApplied } — the builder's
+                                    live figures through the same code as a save, nothing written ->
+                                    { items [{ index, rowType, number, netQty, qty, amount, recipe, unitCost©,
+                                    costAmount© }], totals { subtotal, discount, vatApplied, vatRate, vatAmount,
+                                    total, optionalTotal, sections }, cost© }. With discountPct or targetTotal
+                                    the server works out totals.discount (a target VAT rounding cannot reach
+                                    exactly lands on the nearest total below it). quotationId keeps that
+                                    draft's frozen recipes for rows sent with ids.
+GET    /admin/quotations/:id/takeoff  quotations:read · what the totalled rows need, from each frozen recipe ×
+                                    its quantity plus the MATERIAL rows -> { materials [{ materialId, code,
+                                    name, unit, qty, packSize, packLabel, packs (rounded up), onHand, shortfall,
+                                    costAmount© }], labour [{ tradeId, code, name, days, costAmount© }], other
+                                    [{ description, unit, qty, costAmount© }], rowsWithoutRecipe [{ id, number,
+                                    description }] } — optional rows excluded
+POST   /admin/quotations/:id/reprice  quotations:write · { apply } — DRAFT only (else 422
+                                    QUOTATION_NOT_DRAFT): library rows re-priced from the rate library as it
+                                    is now (rate, recipe, cost) -> { rows [{ id, number, description, rate,
+                                    newRate, unitCost©, newUnitCost© }], applied, quotation? }. apply false
+                                    previews and writes nothing
+POST   /admin/quotations/:id/copy   quotations:write · { customerId?, siteId?, leadId? } -> 201 a new DRAFT (its
+                                    own number, version 1) with the same rows — recipes and costs as frozen —,
+                                    terms, discount and VAT choice; the source is untouched
+Submitting (below) needs at least one ITEM row that is not optional — 422 QUOTATION_INCOMPLETE. A revision
+copies rows, measurements and frozen recipes as they are.
 DELETE /admin/quotations/:id        quotations:write · soft delete; CONVERTED is 400
 
 Internal approval — no quotation is sent until it is approved (see ARCHITECTURE.md "State machines").
@@ -407,9 +647,15 @@ POST   /admin/quotations/:id/submit     quotations:write · DRAFT → PENDING_AP
                                     (actorType system) — for every version, revisions included.
                                     Otherwise every active MANAGER and ADMIN except the submitter gets
                                     quotation_submitted (in-app + email). -> 200 the quotation (GET shape)
-POST   /admin/quotations/:id/approve    quotations:approve · { note? ≤1000 } · PENDING_APPROVAL → OFFICE_APPROVED
-                                    sets approvedById, approvedAt, approvalNote. 403 SELF_APPROVAL when
-                                    quotation.makerChecker is on (default) and the caller created it.
+POST   /admin/quotations/:id/approve    quotations:approve · { note? ≤1000, acknowledgeLowMargin? } · PENDING_APPROVAL →
+                                    OFFICE_APPROVED · sets approvedById, approvedAt, approvalNote. 403 SELF_APPROVAL
+                                    when quotation.makerChecker is on (default) and the caller created it.
+                                    THE MARGIN GATE (L-D4, Phase L4): when the margin on the taxable amount is
+                                    below quotation.minMarginPct (15) or any totalled row's cost is unknown →
+                                    422 LOW_MARGIN { details: { marginPct | null, minMarginPct, costComplete } }
+                                    unless acknowledgeLowMargin is true; then quotation.office_approved carries
+                                    meta.lowMargin { marginPct, minMarginPct, costComplete, acknowledged: true }.
+                                    Auto-approval (submit) never fires on a low or unknown margin.
                                     The creator gets quotation_office_approved (in-app).
 POST   /admin/quotations/:id/send-back  quotations:approve · { note 3–1000 } · PENDING_APPROVAL → DRAFT
                                     sentBackReason = note; the creator gets quotation_sent_back (in-app)
@@ -418,7 +664,10 @@ POST   /admin/quotations/:id/pull-back  quotations:write · { note 3–1000 } ·
 POST   /admin/quotations/:id/send       quotations:write · OFFICE_APPROVED → SENT only (a DRAFT or
                                     PENDING_APPROVAL is 422 INVALID_TRANSITION; a validUntil already past
                                     is 422 QUOTATION_EXPIRED). Issues publicToken, SMS + email
-                                    quotation_sent in the customer's language.
+                                    quotation_sent in the customer's language. In the same transaction the
+                                    lead becomes QUOTED (from NEW by way of CONTACTED; a WON or LOST lead
+                                    only gets a note) and its next action is FOLLOW_UP in
+                                    pipeline.quoteUnansweredDays (Phase L1).
 POST   /admin/quotations/:id/revise     quotations:write · from SENT, CHANGES_REQUESTED, REJECTED or EXPIRED
                                     -> 201 a new DRAFT: version+1, parentId, lines and totals copied,
                                     requestedChanges = the parent's change request (when it was
@@ -426,14 +675,18 @@ POST   /admin/quotations/:id/revise     quotations:write · from SENT, CHANGES_R
                                     which closes its link (its GET shows replaced once the new version is
                                     sent). Events quotation.revised (new) + quotation.superseded (parent).
                                     The new version is submitted and approved again.
-POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only — quotations the customer
-                                    approved before Phase F; since then acceptance creates the job itself.
-                                    CONVERTED (a job exists) is 422 INVALID_TRANSITION, so it never makes a
-                                    second job.
-                                    { type?, title?, description?, priority?, scheduledStart?,
-                                      scheduledEnd?, templateId?, technicianIds?, leadTechnicianId? }
-                                    -> 201 job. Customer, site and lead come from the quotation, which
-                                    becomes CONVERTED. SALES can win the work but not schedule it.
+POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only — a quotation the customer
+                                    accepted by phone. The same hand-off as the customer's Accept (steps 2–6
+                                    above; Phase L6): the lead is WON too, the lines, requirements and the
+                                    advance are made. CONVERTED (a job exists) is 422 INVALID_TRANSITION, so
+                                    it never makes a second job. An APPROVED VARIATION joins its job the same
+                                    way as on the customer's link (Phase L7) → 201 that job.
+                                    { type? (default the service's jobType), title?, description?, priority?,
+                                      scheduledStart?, scheduledEnd?, templateId?, technicianIds?,
+                                      leadTechnicianId? }
+                                    -> 201 the job (as GET /admin/jobs/:id). While an advance will be due, a
+                                    convert that dates or crews the job is 422 ADVANCE_UNPAID before anything
+                                    is written. SALES can win the work but not schedule it.
 ```
 
 ### Record history
@@ -444,7 +697,7 @@ GET /admin/customers/:id/history    customers:history
 GET /admin/quotations/:id/history   quotations:history
 GET /admin/jobs/:id/history         jobs:history
 GET /admin/invoices/:id/history     invoices:history
-GET /admin/rate-card/:id/history    quotations:history
+GET /admin/rate-card/:id/history    rates:read — cost keys masked without costs:read (so is /admin/trades/:id/history)
 GET /admin/<cms resource>/:id/history   cms:read — every resource the CRUD factory mounts
 GET /admin/materials|material-categories|suppliers/:id/history   materials:read
 GET /admin/job-templates/:id/history    jobs:read
@@ -485,11 +738,36 @@ survey is `surveys:read`, but seeing any money is `quotations:read` — that is 
 GET    /admin/surveys                ?status&surveyorId&customerId&from&to&q     surveys:read
                                      status may list several: SUBMITTED,IN_REVIEW (400 on an unknown one)
 GET    /admin/surveys/:id            readings + quantity items + job photos      surveys:read
+                                     + media { [mediaId]: media } — the job photos', the customer's
+                                     (lead.photos) and the checklist answers' (readings[].mediaId) images
+                                     Phase L5 adds: template (the checklist, as on /tech below), lead { …,
+                                     message, qualification, photos [{ id, mediaId, caption, url, thumb }] },
+                                     site { …, lat, lng, landmark, contactName, contactPhone, accessNotes },
+                                     readings[].questionKey / flagged, items[].measurements, job.photos[].area
+/admin/inspection-templates          SITE CHECKLISTS (Phase L5) — mountResource: read surveys:read, write
+                                     surveys:write · { serviceId? (null = the general checklist), name,
+                                     questions, isActive, sortOrder } · ?serviceId filters
+                                     questions (1–60, keys unique) = [{ key (a-z0-9_, ≤40), label, labelNe?,
+                                       type: YES_NO | NUMBER | CHOICE | TEXT, unit?, metric?, options?
+                                       (CHOICE: ≥2), flag?: { above?, below? } (NUMBER; '' = none) |
+                                       { equals: 'yes'|'no' } (YES_NO) | { values: [options] } (CHOICE),
+                                       required, photoRequired }]
+                                     A survey's checklist is its service's active template (lowest sortOrder),
+                                     else the general one, else none — resolved when read.
 GET    /admin/surveys/:id/pricing    priced preview (paisa) + missing[]          quotations:read
 PATCH  /admin/surveys/:id/review     { status: IN_REVIEW|RETURNED, note }        surveys:write
                                      RETURNED requires a note and SMSes the surveyor
-POST   /admin/surveys/:id/quotation  { items?, discount?, vatApplied?, validUntil?, terms? }
+POST   /admin/surveys/:id/quotation  { items? (BOQ rows, as above), discount?, vatApplied?, validUntil?, terms? }
                                      -> 201 { survey, quotation }  rates in RUPEES   quotations:write
+                                     Without items the server prices the survey's lines: each carries its
+                                     kind, material, raw quantity + wastage %, optional flag (an optional line
+                                     is an optional row — no longer dropped) and note (as the spec); an
+                                     unpriceable line stays out. Rows without a SECTION are grouped by
+                                     the room a line was measured in (Phase L5: all its measurement rows
+                                     share one `area`), else by rate-card / material category (the survey's
+                                     service names the rest). A measured line's measurement rows travel
+                                     into the BOQ row, so its netQty equals the survey's quantity.
+                                     `includeOptional` is accepted and ignored.
 DELETE /admin/surveys/:id            soft delete, DRAFT only                     surveys:write
 ```
 
@@ -511,24 +789,85 @@ GET    /admin/jobs                  ?page&limit&q&status&type&priority&technicia
                                     (a status filter narrows it further)
                                     sort: createdAt|scheduledStart|number|priority|status|updatedAt, "-" for desc
                                     anything else is 400 BAD_REQUEST
-POST   /admin/jobs                  a quotationId must belong to the customer and be APPROVED
-                                    (it becomes CONVERTED); a templateId pulls its checklist
+POST   /admin/jobs                  a templateId pulls its checklist; type defaults to REPAIR. With a
+                                    quotationId it is the quotation's hand-off, as convert-to-job (Phase L6):
+                                    the quotation must be the customer's (400) and APPROVED (422)
 GET    /admin/jobs/:id              + lead, quotation (with status), survey { id, number, status },
                                     project { id, title, isActive } (its case study), parentJob, childJobs,
                                     createdBy, tasks, photos, timeLogs, materials, events (newest first), warranty
+                                    Phase L6: plannedDays; lines [{ id, source QUOTATION|VARIATION,
+                                    quotationItemId, number, section, kind, description, unit, quotedQty, rate,
+                                    measurements, measuredQty, progressPct, isProvisional, sortOrder }];
+                                    requirements [{ id, kind MATERIAL|LABOUR, materialId, tradeId, description,
+                                    unit, qty, packs, source }] (no rates); advance { required, gateOn,
+                                    invoice { id, number, status, total, paidAmount, balance, dueDate,
+                                    publicUrl } | null, paid, overridden, override { by { id, name }, reason,
+                                    at } | null, awaitingAdvance }
+GET    /admin/jobs/:id/plan         jobs:read · the Plan tab (Phase L6) — quantities only: { job { id, number,
+                                    plannedDays, scheduledStart, scheduledEnd }, advance (as above), sections
+                                    [{ title, lines [{ id, number, description, unit, quotedQty,
+                                    isProvisional }] }], lineCount, materials [{ id, materialId, code, name,
+                                    unit, qty, packs, packSize, packLabel, onHand, shortfall }], labour [{ id,
+                                    tradeId, code, name, days }], labourDays, crew { size, lead { technicianId,
+                                    name } | null, technicians [{ technicianId, name, isLead }] }, readiness
+                                    [{ key advance|boq|materials|crew|schedule|site, label, done, detail }] }
+GET    /admin/jobs/:id/diary        jobs:read · the site diary (Phase L7), newest first: { days: [{ id, day,
+                                    weather, headcount [{ tradeId, count, tradeName }], progress [{ jobLineId,
+                                    progressPct, number, description }], received [{ materialId?, description,
+                                    qty, unit?, challanNo? }], issues, lostHours, lostReason, photoMediaIds, note,
+                                    createdBy { id, name }, updatedAt }], media { [mediaId]: media } }
+GET    /admin/jobs/:id/progress     jobs:read · BOQ & progress (Phase L7): { sections [{ title, lines [{ id,
+                                    number, source, description, unit, quotedQty, progressPct, isProvisional,
+                                    rate?, value?, earned? }] }], totals { earnedPct, value?, earned? }, stages
+                                    [{ id, label, basisPoints, trigger, cumulativeBp, billed, due }], nextBill
+                                    { stageId, label, basisPoints } | null }. rate, value (qty × rate) and earned
+                                    (value × progress, money.js) only for quotations:read or invoices:read (SALES,
+                                    MANAGER, ACCOUNTANT, ADMIN) — not DISPATCHER. A MILESTONE stage is due once
+                                    earnedPct reaches its cumulative share and no bill has taken it; nextBill is
+                                    the first (the running bill itself is Phase L8's).
+GET    /admin/jobs/:id/planned-vs-actual   jobs:read · quantities only (Phase L7): { materials [{ materialId,
+                                    code, name, unit, planned (requirements), issued (job materials), received
+                                    (the diary's challans), variance (issued − planned), overPlan }], labour
+                                    [{ tradeId, code, name, plannedDays, loggedDays }], technicianHours,
+                                    workdayHours } — loggedDays: each diary day's headcount × (workday − lost
+                                    hours) / workday (job.workdayHours, 8), summed
+GET    /admin/jobs/:id/variations   jobs:read · the job's variation orders, newest first: [{ id, number,
+                                    version, status, kind, total?, createdAt, sentAt, decidedAt }] (total for
+                                    quotations:read only)
+POST   /admin/jobs/:id/purchase-lists/from-shortfall   materials:write · 201 a DRAFT purchase list for the
+                                    job: each planned material's shortfall (planned − issued − on hand), bought in
+                                    whole packs where the material has a pack size; the materials' supplier when
+                                    they share one. 422 NO_SHORTFALL when nothing is short.
+POST   /admin/jobs/:id/advance-override   jobs:advance-override (MANAGER, ADMIN; DISPATCHER 403) ·
+                                    { reason 5–500 } → the job (as GET /:id). The work may go ahead before
+                                    the advance is paid; the invoice stays owed. Audited job.advance_overridden
+                                    (reason, invoice). 422: no advance on the job, already paid or void, or
+                                    already overridden.
 GET    /admin/jobs/:id/history      jobs:history (DISPATCHER, ADMIN) · see "Record history"
 PUT    /admin/jobs/:id              details only (type, site, title, description, priority, window, isBillable);
                                     422 once COMPLETED, VERIFIED or CANCELLED
 DELETE /admin/jobs/:id              DRAFT or CANCELLED only (400 otherwise); soft
 PATCH  /admin/jobs/:id/status       validated transition, writes JobStatusEvent;
                                     ON_HOLD and CANCELLED need a note
+
+**The advance gate (L-D3, Phase L6).** While a job's ADVANCE invoice is neither PAID nor VOID, there is no
+override and `job.advanceGate` is on, `POST …/schedule`, `POST …/assign`, `PATCH …/status` (any move but
+CANCELLED and ON_HOLD), `POST …/complete` and the field app's moves answer **422 `ADVANCE_UNPAID`** — `details:
+{ invoiceId, invoiceNumber, balance }`. A job without an advance is never held. When the advance invoice becomes
+PAID, every dispatcher is told in-app ("Advance paid — JOB-… is ready to schedule", type advance_paid, linking the
+job). Job lists — GET /admin/jobs rows, the dispatch board's JobCards, /dispatch/unassigned — carry
+`awaitingAdvance` and `advanceInvoice { id, number, status } | null`.
 POST   /admin/jobs/:id/schedule     jobs:dispatch · see "Scheduling" below
 POST   /admin/jobs/:id/assign       jobs:dispatch · { technicianIds, leadTechnicianId }
 POST   /admin/jobs/:id/tasks        + PATCH /tasks/:taskId + DELETE /tasks/:taskId
 POST   /admin/jobs/:id/photos       { mediaId, kind: BEFORE|DURING|AFTER|ISSUE|SIGNATURE, caption? }
                                     + DELETE /photos/:photoId
 POST   /admin/jobs/:id/materials    { materialId, qty, rate? (rupees; default the sell rate), isBillable }
-                                    issues stock (ISSUE_TO_JOB) · 422 on a closed job
+                                    issues stock (ISSUE_TO_JOB) · 422 on a closed job · Phase L7: when the job's
+                                    issued total of that material passes its planned requirement — or the
+                                    material is not planned on a job that has a plan — the answer carries
+                                    meta.warnings [{ code: OVER_PLAN, materialId, name, unit, planned, issued }].
+                                    A warning never blocks: the material is issued. (Also POST /tech/jobs/:id/materials.)
 DELETE /admin/jobs/:id/materials/:jobMaterialId   reverses it (a RETURN movement)
 POST   /admin/jobs/:id/time-logs    { technicianId, startedAt, endedAt | minutes, note }
                                     labour the office records by hand — the timer was never started.
@@ -539,7 +878,8 @@ POST   /admin/jobs/:id/complete     { note, signatureMediaId, customerRating, cu
                                     checklist must be done (422 with the open items in details)
                                     -> creates Warranty, enables invoicing
 POST   /admin/jobs/:id/verify       COMPLETED -> VERIFIED
-GET    /admin/jobs/:id/costing      labour + materials + expenses vs invoiced (all paisa):
+GET    /admin/jobs/:id/costing      costs:read (MANAGER, ADMIN — Phase L2; 403 for SALES, DISPATCHER, ACCOUNTANT)
+                                    labour + materials + expenses vs invoiced (all paisa):
                                     { cost: { materials, labour, expenses, total }, labourMinutes,
                                       billable: { materials, invoiced }, margin, marginPct,
                                       breakdown: { materials[] { name, code, unit, qty, rate, amount (billed),
@@ -562,7 +902,8 @@ The `:taskId`, `:photoId`, `:jobMaterialId` and `:logId` params are validated (4
 put a job on the calendar:
 
 ```
-{ scheduledStart, scheduledEnd,            required; end after start, at most 14 days apart (400)
+{ scheduledStart, scheduledEnd?,           end after start, at most 90 days apart (400; it was 14). Without
+                                           an end, start + the job's plannedDays (Phase L6; 400 when it has none)
   technicianIds?: [id, …],                 1–20; replaces the assignment. Left out, the assignment stays
   leadTechnicianId?,                       must be one of technicianIds (400); default the first
   note?,                                   the status event's note (default "Scheduled for …" / "Rescheduled to …")
@@ -580,7 +921,10 @@ put a job on the calendar:
 - **Messages:** newly assigned technicians get `job_assigned` (in-app + SMS). When the window moved and
   `notifyCustomer` is not false, the customer gets **`job_scheduled`** by SMS in their `preferredLocale`
   (English fallback) — `{{customerName}} {{number}} {{date}} {{time}} {{appName}}`, times in Kathmandu.
+  An INSPECTION job gets **`visit_booked`** instead (and the site contact too — see convert), and a new window
+  clears the customer's answer and the reminder, so the new one is confirmed and reminded afresh (Phase L5).
 - **Audit:** `job.scheduled` — status, window and technician ids before → after.
+- **The advance gate** (Phase L6): 422 `ADVANCE_UNPAID` while the job's advance is unpaid — see Operations above.
 
 ### Dispatch
 
@@ -608,9 +952,12 @@ The board:
   unscheduledAssigned: [JobCard],    open jobs with people but no window (first 50)
   unassignedCount }                  the side list pages /dispatch/unassigned itself
 
-JobCard = { id, number, title, type, status, priority, scheduledStart, scheduledEnd, quotationId,
-            createdAt, customer: { id, name, phone }, site: { id, area, address } | null,
+JobCard = { id, number, title, type, status, priority, scheduledStart, scheduledEnd, plannedDays, quotationId,
+            createdAt, visitAnswer, visitAnswerNote, visitAnsweredAt, customerConfirmedAt,
+            customer: { id, name, phone }, site: { id, area, address } | null,
             assignments: [{ technicianId, isLead }] }
+            visitAnswer / customerConfirmedAt (Phase L5): an INSPECTION card with no answer is flagged
+            "Not confirmed", one with RESCHEDULE_REQUESTED "Wants another time".
 ```
 
 Lanes are the live technician profiles of active users (surveyors included; filter with `role`).
@@ -659,9 +1006,28 @@ four; the history needs the resource's read capability. `?hard=true` still needs
 /admin/job-templates                { name, serviceId?, description?, tasks: [{ title, description? }] (1–100),
                                       isActive } · ?serviceId · rows carry service { id, name } · no manual order
 /admin/materials                    { code, name, unit, categoryId?, supplierId?, purchaseRate, sellRate (rupees
-                                      in, paisa out), reorderLevel, sortOrder, isActive } · ?categoryId&supplierId
+                                      in, paisa out), packSize? (> 0 — 50 kg a bag, 1 when the unit is the pack),
+                                      packLabel? ("20 L tin"), reorderLevel, sortOrder, isActive }
+                                    · ?categoryId&supplierId · list and get also for rates:write (a manager picks
+                                    recipe materials); the history stays materials:read
 /admin/material-categories          { name, sortOrder, isActive }
 /admin/suppliers                    { name, phone?, email?, address?, notes?, isActive } · no manual order
+/admin/purchase-lists               PURCHASE LISTS (Phase L7) — mountResource, materials:read / materials:write
+                                    (DISPATCHER, ADMIN); no toggle, no reorder · { jobId?, supplierId?, note?,
+                                    items [{ materialId, qty > 0, packs?, note? }] (1–200) } · numbered PL-… ·
+                                    ?q (number, note, job, supplier)&status&jobId&supplierId&deleted · rows + job,
+                                    supplier, items [+ material, receivedQty], itemCount · PUT and DELETE (soft,
+                                    restore) a DRAFT only (422 otherwise) · history
+                                    PURCHASE_LIST_TRANSITIONS: DRAFT → ORDERED | CANCELLED; ORDERED → RECEIVED |
+                                    CANCELLED; RECEIVED and CANCELLED are final — a wrong move is 422
+                                    INVALID_TRANSITION, each is guarded and audited (purchase_list.*):
+POST /admin/purchase-lists/:id/order      → ORDERED (orderedAt)
+POST /admin/purchase-lists/:id/receive    { items?: [{ itemId, receivedQty }], note? } → RECEIVED (receivedAt),
+                                    in one transaction with a PURCHASE stock movement per item received (as
+                                    ordered unless the body says what came) at the material's purchase rate,
+                                    with StockMovement.supplierId, the job and the list's number as reference —
+                                    stock rises. An item not on the list is 422
+POST /admin/purchase-lists/:id/cancel     { reason 3–500 } → CANCELLED (cancelReason)
 
 GET  /admin/stock                   ?page&limit&q (name, code)&categoryId&lowOnly=true&includeInactive=true
                                     &sort=sortOrder|name|code|balance ("-" for desc)
@@ -688,30 +1054,92 @@ A movement that leaves a material at or below its reorder level notifies ADMIN a
 `ADMIN` and `DISPATCHER` may also call these; with `?technicianId=` they act on that
 technician's queue, and without one they have an empty queue rather than an error.
 
+**No money leaves this router (D1).** Every `/tech` response drops, at any depth, each key whose camelCase
+words name money — `rate`, `hourlyRate`, `total`, `amount`, `cost`, `price`, `discount`, `vat`, `paid`, `wage`,
+`margin`, `estimate`… (`utils/moneyWall.js`). Links (`…Id`) and `priceUnit` stay. So a job shows its quotation's
+number and status but not its total, a colleague's name but not their pay, a material's quantity but not its rate.
+
 ```
 GET   /tech/jobs/today
-GET   /tech/jobs                    ?from&to
-GET   /tech/jobs/:id
+GET   /tech/jobs                    ?from&to&status — from/to are Kathmandu days (YYYY-MM-DD), as on /admin/jobs
+GET   /tech/jobs/:id                the job + media { [mediaId]: media } — its photos' images (Phase H2)
 PATCH /tech/jobs/:id/status         EN_ROUTE | IN_PROGRESS | ON_HOLD | COMPLETED
 PATCH /tech/jobs/:id/tasks/:taskId
 POST  /tech/jobs/:id/photos         multipart `files` + `kind`
 POST  /tech/jobs/:id/materials
 POST  /tech/jobs/:id/time/start  |  /time/stop
-POST  /tech/jobs/:id/complete       { note, signatureMediaId, customerRating? }
+POST  /tech/jobs/:id/complete       { note, signatureMediaId, customerRating? } · a COMPLETED or VERIFIED job
+                                    is 422 INVALID_TRANSITION ("already completed") — never re-run
 POST  /tech/sync                    offline mutation queue replay (idempotency keys)
+GET   /tech/jobs/:id/diary          the site diary's days (Phase L7), newest first: { today (Kathmandu),
+                                    days [{ day, weather, headcountTotal, lostHours, updatedAt }] }
+GET   /tech/jobs/:id/diary/:day     { day, entry | null, lines [{ id, number, section, source, description, unit,
+                                    quotedQty, progressPct }] (no rate), trades [{ id, code, name }], materials
+                                    [{ id, code, name, unit }], media { [mediaId]: media } (the entry's photos) }
+PUT   /tech/jobs/:id/diary/:day     the day's entry, a FULL replace — { weather? SUNNY|CLOUDY|RAIN|HEAVY_RAIN|COLD,
+                                    headcount [{ tradeId, count 0–200 }], progress [{ jobLineId, progressPct
+                                    0–100 }], received [{ materialId?, description, qty > 0, unit?, challanNo? }],
+                                    issues?, lostHours 0–24, lostReason? RAIN|LATE_MATERIAL|CUSTOMER|BANDH|
+                                    FESTIVAL|OTHER (required with lost hours), photoMediaIds [≤ 30], note? } —
+                                    strict (a money key is 400). The day is a Kathmandu date, not in the future,
+                                    at most 60 days back (400). One entry per job per day (unique). People on the
+                                    job only (403); a job not on site (DRAFT, CANCELLED, VERIFIED) is 422
+                                    JOB_NOT_ON_SITE; 422 UNKNOWN_LINE / UNKNOWN_TRADE. Each line's progressPct
+                                    becomes what the latest day that mentions it says. A delivery does not move
+                                    stock (the purchase list and issue-to-job do).
 
-GET   /tech/surveys                 ?status              own surveys
-GET   /tech/surveys/:id
+GET   /tech/surveys                 ?status              own surveys, each shaped as /tech/surveys/:id (the
+                                    phone caches them for offline use)
+GET   /tech/surveys/:id             + job.photos [{ id, mediaId, kind, caption, area, createdAt }] and
+                                    media { [mediaId]: media } (job photos, the customer's, the answers')
+                                    Phase L5 adds: template { id, name, serviceId, questions } | null (the
+                                    checklist — see /admin/inspection-templates), lead { id, message,
+                                    qualification: { propertyType, floors, buildingAgeYears } | null (never
+                                    the budget), photos [{ id, mediaId, caption, url, thumb }] }, site { …,
+                                    lat, lng, landmark, contactName, contactPhone, accessNotes }, job.scheduledEnd
 POST  /tech/jobs/:id/survey         create-or-return for this INSPECTION job (201, then 200)
-PUT   /tech/surveys/:id             save draft — fields + readings + items, FULL REPLACE
+PUT   /tech/surveys/:id             save draft — fields + readings + items (+ sitePin), FULL REPLACE
 POST  /tech/surveys/:id/submit      DRAFT|RETURNED -> SUBMITTED, closes the inspection job
-POST  /tech/surveys/:id/photos      multipart -> JobPhoto{ kind: 'ISSUE' } on the parent job
+POST  /tech/surveys/:id/photos      multipart `files` + kind (ISSUE default | SKETCH — a photo of a paper
+                                    sketch), caption? (≤300), area? (≤80, the room) -> JobPhoto on the parent
+                                    job; append-only. 400 on another kind
 GET   /tech/materials               offline reference — id, code, name, unit. NO rate.
 GET   /tech/rate-card               offline reference — id, code, name, unit. NO rate.
 ```
 
 `/tech` responses never carry money. `PUT /tech/surveys/:id` accepts quantities only; a
 payload carrying `rate` or `amount` is rejected (400), not silently ignored.
+
+**The survey payload (Phase L5)** — `PUT`, `submit` and the `survey_draft` / `survey_submit` sync kinds:
+
+- `readings[]`: `{ questionKey?, label, metric?, value?, unit?, textValue?, location?, mediaId?, lat?, lng?,
+  takenAt?, sortOrder? }`. A reading with a `questionKey` answers that checklist question — NUMBER in
+  `value`, YES_NO as `textValue` `yes`/`no`, CHOICE as the option, TEXT as text — and `mediaId` is its photo
+  (an uploaded photo's media id). The server fills `metric`/`unit` from the question and computes `flagged`
+  from its flag; a `flagged` sent by the phone is accepted and ignored.
+- `items[]`: `{ …, qty?, measurements? }` — `measurements` is the sheet by room, rows `{ area, description,
+  nos, l, b, h, deduct }` (feet or metres as the line's unit; the phone turns 12'6" into 12.5). With a sheet the
+  server derives `qty` (nos × L × B × H over the dimensions given, deductions subtract, 3 dp) and ignores the
+  phone's; without one `qty` is required (400). A sheet netting to zero or less is 422 `NEGATIVE_LINE`.
+- `sitePin`: `{ lat, lng, accuracy? }` — "Arrived": sets the site's pin (the phone confirms before replacing
+  one); a moved pin is audited as `site.pinned` with the accuracy, the same pin again records nothing.
+- **Submit** refuses a survey whose checklist is not finished: 422 `SURVEY_INCOMPLETE`, `details: [{
+  questionKey, label, missing: 'answer' | 'photo' }]` — each required question without an answer, then each
+  photo-required question answered without a photo (an optional one left unanswered needs none). The survey
+  stays a DRAFT.
+
+`sync` (Phase H2, now `services/techSync.service.js`): mutations apply in the order the phone recorded them
+(`at`), each idempotency key at most once (`duplicate` on a resend). `time_start` / `time_stop` keep the time
+the technician tapped — `at`, or now when `at` is in the future — so an offline timer's minutes are the work's,
+not the sync's. A payload that fails its schema answers `failed` with code `INVALID_MUTATION` (terminal: it
+will fail every time); a state-machine refusal is `INVALID_TRANSITION` (terminal); anything else keeps its code
+or `SYNC_FAILED`. A failed result carries the error's `details` when it has them — `SURVEY_INCOMPLETE`'s
+missing answers and photos (Phase L5).
+
+`diary_save` (Phase L7) addresses a `jobId` with `payload { day, …the PUT body }`: a full replace keyed on job +
+day, so a replay — or the same day saved again — lands on one entry. `JOB_NOT_ON_SITE`, `UNKNOWN_LINE` and
+`UNKNOWN_TRADE` are as final for the phone as `INVALID_MUTATION`. An applied `material` mutation that takes the job
+over its plan carries `warnings: [{ code: 'OVER_PLAN', materialId, name, unit, planned, issued }]` in its result.
 
 `sync` gains the mutation kinds `survey_draft` and `survey_submit`, which address a
 `surveyId` instead of a `jobId`. A replayed `survey_submit` on a survey that is still
@@ -722,12 +1150,45 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
 ## Admin — Finance (`ADMIN`, `ACCOUNTANT`)
 
 ```
-/admin/invoices                     GET ?status&customerId&overdueOnly&from&to&q, POST, GET /:id, PUT /:id
-                                    no DELETE — an invoice is voided, never removed
+/admin/invoices                     GET ?status&kind&customerId&overdueOnly=true|false&from&to&q&page&limit&sort, POST,
+                                    GET /:id, PUT /:id · no DELETE — an invoice is voided, never removed
+                                    from/to: Kathmandu days (YYYY-MM-DD, 400 otherwise) on issuedAt. sort:
+                                    number|issuedAt|dueDate|total|createdAt, - for descending (400 otherwise).
+                                    Every invoice response (Phase I) carries balance — total − paidAmount,
+                                    never below zero; 0 on a VOID invoice — and publicUrl (the customer's /invoice/:token page,
+                                    null until sent). The list's meta adds counts { all, DRAFT, SENT, PARTIAL,
+                                    OVERDUE, PAID, VOID } under the other filters (the status tabs). GET /:id
+                                    adds jobs [{ id, number, title }] — the jobs its lines bill.
+                                    Phase L6: kind STANDARD|ADVANCE|RUNNING|FINAL (?kind= filters), jobId,
+                                    paymentStageId (unique — a stage is billed once), and on every read
+                                    job { id, number } | null and paymentStage { id, label, basisPoints,
+                                    trigger } | null. An ADVANCE invoice is the hand-off's; paying it in full
+                                    frees its job (the advance gate).
+                                    PUT /:id: a DRAFT only — 422 INVOICE_LOCKED once sent (void it and issue
+                                    another). An ADVANCE, RUNNING or FINAL draft takes dueDate, note and terms
+                                    only: items, discount or vatApplied is 422 INVOICE_LINES_LOCKED (Phase L6 —
+                                    its money is the quotation's and the stage bills'). A change to the discount or the VAT choice alone re-prices the
+                                    stored lines through documentTotals.
 GET    /admin/invoices/:id/history  invoices:history (ACCOUNTANT, ADMIN) · see "Record history"
 POST   /admin/invoices/:id/send
 POST   /admin/invoices/:id/void     { reason }
-POST   /admin/invoices/from-job/:jobId          once per job — a second is 422
+POST   /admin/invoices/from-job/:jobId          once per job — a second is 422. { dueDate?, discount? (rupees),
+                                                vatApplied?, includeMaterials?, includeLabour? }
+                                                One billing rule, never both:
+                                                · quoted job → its quotation's lines, discount and VAT
+                                                  choice (the invoice total equals the quotation's);
+                                                  includeMaterials / includeLabour → 422
+                                                  QUOTED_JOB_BILLS_SCOPE
+                                                · quoted job billed in stages (Phase L6: an ADVANCE, later
+                                                  RUNNING bills) → kind FINAL: the quotation's lines, less
+                                                  one "Less: advance INV-…" line per stage bill not DRAFT or
+                                                  VOID, with the VAT left over (money.js#finalBillDocument),
+                                                  so the stage bills + this one = the quotation to the paisa
+                                                · unquoted job → billable materials at their issued rate
+                                                  + logged time at the rate-card item named by
+                                                  finance.labourRateCode (per hour; default LABOUR-SKILL,
+                                                  missing → 422 LABOUR_RATE_MISSING), never a
+                                                  technician's hourlyRate. Both flags default on.
 POST   /admin/invoices/:id/payments             payments:write · an overpayment is refused;
                                                 status (PARTIAL / PAID) follows the paid total
 POST   /admin/invoices/:id/payments/:paymentId/void   payments:write · { reason } (3–500 chars)
@@ -737,29 +1198,129 @@ POST   /admin/invoices/:id/payments/:paymentId/void   payments:write · { reason
                                     back down: PAID → PARTIAL, or → SENT / OVERDUE (past due) when none
                                     are left. 400 no reason · 404 payment not on this invoice ·
                                     422 already voided
-GET    /admin/payments              ?q&method&customerId&from&to    payments:read
-                                    q matches the payment reference, invoice number or customer.
-                                    Voided payments are listed, flagged by voidedAt — never hidden
-/admin/expenses                     GET, GET /:id, POST, PUT /:id, DELETE /:id
-GET  /admin/reports/aging
-GET  /admin/reports/revenue         ?groupBy=service|month|technician
-GET  /admin/reports/collections     ?from&to   payments received, summed by method (voided excluded)
-GET  /admin/customers/:id/statement             ledger of invoices and payments (voided excluded)
+GET    /admin/payments              ?q&method&customerId&from&to&page&limit&sort    payments:read
+                                    q matches the payment reference, invoice number or customer; from/to are
+                                    Kathmandu days on receivedAt; sort receivedAt|amount (± ).
+                                    Voided payments are listed, flagged by voidedAt — never hidden.
+                                    meta.totals (Phase I) { total, count, byMethod { CASH: paisa, … } } —
+                                    the filtered payments NOT voided: the list's footer
+/admin/expenses                     A REGISTRY RESOURCE (Phase I) — mountResource, expenses:read / :write:
+                                    GET ?q (category, vendor, note)&category&jobId&from&to (Kathmandu days on
+                                    spentAt)&deleted, GET /:id, POST, PUT /:id, DELETE /:id (soft),
+                                    PATCH /:id/restore, GET /:id/history. No toggle and no reorder (404): an
+                                    expense has neither. Body { category, amount (rupees), jobId?, vendor?,
+                                    billMediaId?, spentAt?, note? }; approvedBy is the recording user, never
+                                    the body's. Rows add approver { id, name } | null, job { id, number } | null
+                                    and bill (media: url, thumb) | null; the list's meta.totals { total } sums
+                                    the filtered expenses (the search included).
+GET    /admin/expenses/categories   expenses:read → string[] — the categories in use, for suggestions
+POST   /admin/expenses/bill         expenses:write · multipart, one image in `files` → 201 the media { id, url,
+                                    thumb, … } — the bill's photo, stored in the "Expense bills" folder, for
+                                    billMediaId. expenses:write, not media:write: ACCOUNTANT attaches a bill but
+                                    cannot change the website's pictures
 ```
 
-## Admin — Aftercare (reads `ADMIN`, `DISPATCHER`, `SALES`, `MANAGER`; writes `ADMIN`, `DISPATCHER`)
+**Reports (Phase I).** Every report below — and the sales and ops ones under Platform — takes `?from&to`
+(Kathmandu `YYYY-MM-DD`, inclusive; default the last 30 Kathmandu days, today included; 400 otherwise) and
+**`?format=csv`**: a download of the report's main table under the same filters — `Content-Disposition:
+attachment`, UTF-8 with a BOM (Excel reads Devanagari), money as rupees with two decimals (`1234.56`, exact),
+dates in Kathmandu, a text a spreadsheet would run as a formula prefixed with `'`, at most **10,000 rows**
+(`X-Export-Truncated: true` when cut). Each download is audited as `export.csv` (model `Report` —
+`Customer` for a statement — with `meta { report, from, to, groupBy, rows, truncated }`). The CORS config
+exposes `Content-Disposition` and `X-Export-Truncated`.
 
 ```
-/admin/warranties                   GET, GET /expiring ?days, GET /:id, PUT /:id
-/admin/warranty-claims              GET, PATCH /:id { status: accepted|rejected|resolved,
-                                                      rejectReason?, scheduledStart? }
-                                    accepting creates the free WARRANTY job, linked to the original;
-                                    rejecting needs a reason
-/admin/amc-contracts                GET, GET /renewals-due ?days, POST, GET /:id, PUT /:id, DELETE /:id
-                                    POST lays down the visit schedule; visits come back inside GET /:id,
-                                    and a cron turns each into a scheduled job a week before it is due
-/admin/service-reminders            GET, POST, PUT /:id (pending only — 422 once sent), DELETE /:id
+GET  /admin/reports/aging           reports:finance · as of now (the period does not apply) →
+                                    { asOf, buckets { current, d0_30, d31_60, d61_90, d90_plus }, labels,
+                                      total, byCustomer [{ customer, total, current, d0_30, …, invoices }],
+                                      invoices [{ id, number, customer { id, name }, issuedAt, dueDate, total,
+                                        paid, outstanding, daysOverdue, bucket, bucketLabel }] most overdue first }
+                                    Days past due are Kathmandu calendar days: due today is current, due
+                                    yesterday is 1 (d0_30 = 1–30 days). SENT, PARTIAL and OVERDUE invoices with
+                                    money owed. CSV: the invoices.
+GET  /admin/reports/revenue         reports:finance · ?groupBy=month|day|service|technician (default month) →
+                                    { groupBy, rows [{ key, label, count, taxable, vat, invoiced, collected,
+                                      outstanding }], totals { same } } — invoices issued in the period, DRAFT
+                                    and VOID left out. taxable = subtotal − discount; taxable + vat = invoiced
+                                    on every row, to the paisa. month/day are Kathmandu; service is the job's
+                                    lead's (or its quotation's lead's) service, else the job type, else "No
+                                    job"; technician the job's lead technician. CSV: the rows.
+GET  /admin/reports/collections     reports:finance → { total, count, byMethod, payments (newest 500),
+                                    truncated } — payments received in the period, voided excluded; the totals
+                                    cover them all. CSV: the payments (up to 10,000).
+GET  /admin/customers/:id/statement reports:finance → { customer { id, name, phone, email, panVatNo },
+                                    ledger [{ at, kind: invoice|payment, ref, invoiceId, method?, debit, credit,
+                                      balance }], totals { invoiced, paid, outstanding } } — sent invoices
+                                    (DRAFT and VOID excluded) and payments standing, oldest first. 404 for an
+                                    unknown customer. CSV: the ledger.
 ```
+
+## Admin — Aftercare
+
+Capabilities (Phase I; the route file used role lists): **warranties:read / amc:read / reminders:read** — SALES,
+MANAGER, DISPATCHER; **warranties:write / amc:write / reminders:write** — DISPATCHER; ADMIN holds all through
+`*`; ACCOUNTANT none. The effective access is the same as before.
+
+```
+GET    /admin/warranties            warranties:read · ?status (ACTIVE|CLAIMED|EXPIRED|VOID)&customerId
+                                    &activeOnly=true&expiringDays=N (active, ending within N days)&q (customer
+                                    name or phone, job number)&page&limit&sort → rows + publicUrl (the
+                                    customer's /warranty/:token certificate)
+GET    /admin/warranties/expiring   warranties:read · ?days (30)
+GET    /admin/warranties/:id        warranties:read → + publicUrl, claims [… + resolvedJob { id, number,
+                                    status } | null]
+PUT    /admin/warranties/:id        warranties:write · { scope?, endsAt? } — strict: status or voidReason is
+                                    400 (the status is the server's). 422 on a VOID warranty
+POST   /admin/warranties/:id/void   warranties:write · { reason 3–500 } → VOID with the reason; audited
+                                    warranty.voided. 422 when already void. A void certificate takes no claim.
+GET    /admin/warranties/:id/history      warranties:read · see "Record history"
+GET    /admin/warranty-claims       warranties:read · ?status (open|accepted|rejected|resolved)&q (customer,
+                                    phone, job number)&page&limit → open first, then accepted, then rejected
+                                    and resolved; newest first within each. Rows { id, description, status,
+                                    rejectReason, createdAt, resolvedAt, resolvedJob { id, number, status } |
+                                    null, warranty { id, status, endsAt, job { id, number, title, type,
+                                    service (the name the warranty-claims report groups by, or null) },
+                                    customer { id, name, phone } } }
+GET    /admin/warranty-claims/:id   warranties:read — the row above (the claim notification links here)
+PATCH  /admin/warranty-claims/:id   warranties:write · { status: accepted|rejected|resolved, rejectReason?
+                                    (required to reject), scheduledStart? } → the claim, as GET /:id
+                                    accept / reject an OPEN claim; resolve an open or accepted one — otherwise
+                                    422 CLAIM_DECIDED. Claimed with a guarded update: two accepts at once make
+                                    one job. Accept creates the free WARRANTY job through createJob (numbered,
+                                    job.created audited) — linked to the original, not billable, unassigned,
+                                    SCHEDULED with a start else DRAFT — tells the customer (SMS in their
+                                    language, the time in Kathmandu) and every DISPATCHER (in-app). Every
+                                    decision is audited as warranty.claim_decided (meta: status, reason, job).
+GET    /admin/amc-contracts         amc:read · ?status (active|expired|cancelled)&customerId&renewalsDays=N
+                                    (active, ending within N days)&q (number, plan, customer)&page&limit&sort
+GET    /admin/amc-contracts/renewals-due   amc:read · ?days (60)
+POST   /admin/amc-contracts/preview amc:write · { startDate, endDate, visitsPerYear (1–52) } → { totalVisits,
+                                    intervalDays, visits [{ dueDate }] } — exactly the schedule create lays
+                                    down: visitsPerYear pro rata over the span, evenly spaced, the first one
+                                    interval after the start. End after start; at most five years (400).
+POST   /admin/amc-contracts         amc:write · { customerId, siteId? (the customer's, else 422), planName,
+                                    coveredServices? string[], startDate, endDate, visitsPerYear, amount
+                                    (rupees), billingCycle annual|quarterly|monthly, notes? }
+GET    /admin/amc-contracts/:id     amc:read → + visits [{ id, dueDate, status (pending|scheduled|completed|
+                                    missed), note, job { id, number, status, scheduledStart } | null }]
+                                    A cron turns each visit into a scheduled job a week before it is due.
+PUT    /admin/amc-contracts/:id     amc:write · { siteId?, planName?, coveredServices?, amount?, billingCycle?,
+                                    notes?, status? (active|cancelled) } — strict: the schedule (startDate,
+                                    endDate, visitsPerYear) is 400; a new schedule is a renewal (a new contract)
+GET    /admin/amc-contracts/:id/history   amc:read · see "Record history"
+DELETE /admin/amc-contracts/:id     amc:write — removes it (soft: status cancelled and deletedAt, gone from
+                                    every list). To cancel and keep it visible, PUT { status: 'cancelled' }
+GET    /admin/service-reminders     reminders:read · ?status (pending|sent|failed|skipped)&customerId&from&to
+                                    (Kathmandu days on dueAt)&q (message, customer, phone)&page&limit&sort
+POST   /admin/service-reminders     reminders:write · { customerId, jobId?, serviceId?, dueAt, channel sms|email,
+                                    message 5–1000 }
+PUT    /admin/service-reminders/:id reminders:write — pending only (422 once sent, failed or skipped)
+DELETE /admin/service-reminders/:id reminders:write — pending only (422: one that went out stays on record)
+```
+
+The `reminders:dispatch` task sends each due reminder's own text (`{{message}}` — a `service_reminder`
+template can wrap it) in the customer's language: `sent` when the provider took it, **`failed`** when it refused
+(Phase I; it used to say sent), `skipped` when the customer has no address on that channel.
 
 ## Admin — Platform
 
@@ -908,8 +1469,20 @@ GET   /admin/dashboard              every role · role-aware widget payload
                                           fullest first
                                       ADMIN, ACCOUNTANT — revenue (revenueReport, groupBy day, 30 days)
                                     Other roles get { role, cards } only.
+All the reports below take `?from&to` and `?format=csv` as described under Finance → Reports (Phase I);
+their CSV tables: lead-sources — the sources; funnel — the stages and Lost; sla — byStaff; lost — rows;
+technicians — the technicians; warranty-claims — byService; job-margin — rows.
+
 GET   /admin/reports/lead-sources | /funnel | /sla                  reports:sales
-GET   /admin/reports/job-margin | /technicians | /warranty-claims   reports:ops
+GET   /admin/reports/lost?from&to                                    reports:sales · LOST leads closed in
+                                    the range (Kathmandu YYYY-MM-DD, on closedAt; bad format 400) →
+                                    { total, byCategory [{ category, count }],
+                                      rows [{ category, stage, serviceId, serviceName, count }] } most first
+GET   /admin/reports/technicians | /warranty-claims                 reports:ops · warranty-claims →
+                                    { totalWarranties, totalClaims, claimRate, byType [{ type, warranties,
+                                      claims, claimRate }], byService [{ service, … }] (Phase I: the job's
+                                      lead's or quotation's lead's service, else "Other") }
+GET   /admin/reports/job-margin                                      costs:read (Phase L2) — cost and margin
 ```
 
 ## Me — shortcuts and notes
@@ -968,7 +1541,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `lead.assigned` | `PATCH /admin/leads/:id/assign` | assignedToId → assignedToId · note |
 | `lead.merged` | `POST /admin/leads/merge`, on the primary lead | · duplicateIds |
 | `lead.converted` | `POST /admin/leads/:id/convert` | customerId → customerId · quotationId, jobId, surveyId |
-| `lead.activity_logged` | `POST /admin/leads/:id/activities` | firstResponseAt null → the time, when this entry stopped the clock · activityId, type, summary |
+| `lead.activity_logged` | `POST /admin/leads/:id/activities` | firstResponseAt null → the time, when this entry stopped the clock · activityId, type, summary, outcome (when chosen) |
 | `customer.email_confirmed` | convert with `confirmEmail` puts the lead's email on an existing customer (actor = the staff member) | email → email · leadId |
 | `quotation.created` | a quotation is created (admin, convert, survey quote) | → number, status, total, customerId, leadId |
 | `quotation.submitted` | `POST /admin/quotations/:id/submit` | DRAFT → PENDING_APPROVAL, total |
@@ -989,6 +1562,10 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `job.scheduled` | `POST /admin/jobs/:id/schedule` (the dispatch board) | status, scheduledStart, scheduledEnd, technicianIds → the same |
 | `job.completed` | a job is completed (admin, field app, survey submit) | status → COMPLETED · customerRating |
 | `job.verified` | `POST /admin/jobs/:id/verify` | COMPLETED → VERIFIED |
+| `job.variation_added` | a VARIATION accepted (the customer's link or a staff convert, Phase L7) | · quotationId, number, version, lines, total |
+| `site_diary.saved` | PUT /tech/jobs/:id/diary/:day or `diary_save` (model `SiteDiary`) | · jobId, day, lines |
+| `purchase_list.ordered` · `.received` · `.cancelled` | the purchase list's moves (model `PurchaseList`) | status → status · items / reason |
+| `job.advance_overridden` | `POST /admin/jobs/:id/advance-override` (Phase L6) | advanceOverriddenAt null → set · reason, invoiceId, invoiceNumber |
 | `invoice.created` | an invoice is created (admin or from a job) | → number, status, total, customerId, quotationId |
 | `invoice.sent` | `POST /admin/invoices/:id/send` | status → SENT |
 | `invoice.voided` | `POST /admin/invoices/:id/void` | status → VOID · reason |
@@ -997,6 +1574,11 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `survey.submitted` | the surveyor submits (model `SiteSurvey`) | DRAFT/RETURNED → SUBMITTED · jobId, lines |
 | `survey.returned` | `PATCH /admin/surveys/:id/review` with RETURNED | status → RETURNED · note |
 | `survey.quoted` | `POST /admin/surveys/:id/quotation` | status → QUOTED · quotationId, quotationNumber |
+| `warranty.voided` | `POST /admin/warranties/:id/void` (Phase I) | status → VOID · reason |
+| `warranty.claim_decided` | `PATCH /admin/warranty-claims/:id` (model `WarrantyClaim`) | status → accepted / rejected / resolved · jobId, jobNumber, rejectReason |
+| `site.pinned` | a survey save's `sitePin` moves a site's pin (model `CustomerSite`) | lat, lng → lat, lng · surveyId, accuracy, userId |
+| `visit.confirmed` | the customer confirms on `/visit/:token` (`public`, model `Job`) | visitAnswer → CONFIRMED · note, ip |
+| `visit.reschedule_requested` | the customer asks for another time on `/visit/:token` | visitAnswer → RESCHEDULE_REQUESTED · note, ip |
 | `auth.login` | a successful sign-in (actor = the user) | · client |
 | `auth.login_failed` | a wrong password, a locked or disabled account, or an unknown email (`public`; recordId null, `meta.email` for the last) | · reason, attempt |
 | `auth.locked` | the fifth consecutive failure locks the account | → lockedUntil · attempts |
@@ -1006,7 +1588,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `auth.unlocked` | `POST /admin/users/:id/unlock` | failedLogins, lockedUntil → 0, null |
 | `auth.sessions_revoked` | `DELETE /admin/users/:id/sessions` | · count |
 | `settings.changed` | `PATCH /admin/settings`, once per save, only the keys whose value moved | { key: old } → { key: new } · keys |
-| `export.csv` | `GET /admin/leads/export.csv` | · the filters used |
+| `export.csv` | `GET /admin/leads/export.csv` (model `Lead`), a report with `?format=csv` (model `Report`; a statement on its `Customer`) | · the filters used — a report's also report, rows, truncated |
 | `cms.deleted` | a soft delete through the CRUD factory (any resource it mounts — content, materials, job templates), a technician profile, or `DELETE /admin/media/:id` | |
 | `cms.restored` | `PATCH …/:id/restore` | deletedAt → null |
 | `cms.purged` | `?hard=true` (needs `cms:purge`), or a delete on a resource with no soft delete | the removed row's scalars → |

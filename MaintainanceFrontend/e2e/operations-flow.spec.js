@@ -1,15 +1,19 @@
 import { test, expect, request } from '@playwright/test';
 import { apiAs, signIn } from './support/api.js';
 import { E2E } from './support/e2eEnv.js';
+import { payAdvance } from './support/handoff.js';
 
 /**
  * Phase H1's manual walk-through, as the dispatcher: the job an accepted quotation made is
- * scheduled on Hari's slot tomorrow by dragging, then moved with the Schedule dialog; a second job
+ * scheduled on Hari's 10:00 slot of a coming day by dragging, then moved with the Schedule dialog; a second job
  * dropped on the same slot is warned about and not saved; 22 kg of material is issued (stock falls by 22), time is
- * recorded, costing shows labour + materials to the paisa, completion is blocked while the
+ * recorded, costing shows labour + materials to the paisa (to a manager — the dispatcher has no
+ * Costing tab since Phase L2's money wall), completion is blocked while the
  * checklist is open, the job is completed and verified, and an admin publishes the case study.
  *
- * Set-up that is not under test (the quotation loop — Phase F's own spec) runs over the API.
+ * Set-up that is not under test (the quotation loop — Phase F's own spec) runs over the API. Since Phase L6 the
+ * Accept raises an advance invoice that holds the job back until it is paid; the gate is `boq-flow.spec.js`'s
+ * subject, not this one's, so the accountant pays it over the API first (`support/handoff.js#payAdvance`).
  */
 
 const tag = Date.now().toString(36);
@@ -19,7 +23,21 @@ const phone = `98${String(Date.now()).slice(-8)}`;
 /** Kathmandu's calendar day `n` days from now. */
 const ktmDay = (n) => new Date(Date.now() + n * 86_400_000 + 345 * 60_000).toISOString().slice(0, 10);
 const at = (day, hhmm) => new Date(`${day}T${hhmm}:00+05:45`).toISOString();
-const tomorrow = ktmDay(1);
+
+/**
+ * The first day from tomorrow on whose lane holds nothing an earlier run closed. A COMPLETED or VERIFIED job
+ * cannot be moved away, every run leaves one on its day, and a lane stacked with them pushes the drop onto the
+ * next technician's lane — so a run on a day that already had several would fail through no fault of the board.
+ */
+async function freeDay(dispatcher, technicianId) {
+  for (let n = 1; n <= 90; n += 1) {
+    const day = ktmDay(n);
+    const board = await dispatcher.get(`/admin/dispatch/board?date=${day}`);
+    const lane = board.lanes.find((l) => l.technician.id === technicianId);
+    if (!lane.jobs.some((j) => ['COMPLETED', 'VERIFIED'].includes(j.status))) return day;
+  }
+  throw new Error('No day in the next 90 without closed jobs on the lane — reset the e2e database (npm run test:api:prepare)');
+}
 
 /**
  * Drags with real pointer moves — dnd-kit starts a drag only after the pointer has moved. The
@@ -42,7 +60,7 @@ async function drag(page, handle, target) {
 test.describe.configure({ mode: 'serial' });
 
 test('dispatch: schedule, double-book warning, materials, time, costing, complete, verify, case study', async ({ browser }) => {
-  const [admin, sales, manager, dispatcher] = await Promise.all(['ADMIN', 'SALES', 'MANAGER', 'DISPATCHER'].map((r) => apiAs(r)));
+  const [admin, sales, manager, dispatcher, accountant] = await Promise.all(['ADMIN', 'SALES', 'MANAGER', 'DISPATCHER', 'ACCOUNTANT'].map((r) => apiAs(r)));
   await admin.patch('/admin/settings', { values: { 'quotation.makerChecker': true, 'quotation.autoApproveBelow': 0 } });
 
   // ── set-up: a Nepali-speaking customer accepts a quotation → one unscheduled job
@@ -53,19 +71,24 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     items: [{ description: 'Terrace waterproofing', unit: 'sq.ft', qty: 200, rate: 275 }],
   });
   await sales.post(`/admin/quotations/${quotation.id}/submit`);
-  await manager.post(`/admin/quotations/${quotation.id}/approve`, {});
+  // Phase L4's margin gate: a set-up quotation is approved whatever its margin, so say so.
+  await manager.post(`/admin/quotations/${quotation.id}/approve`, { acknowledgeLowMargin: true });
   const sent = await sales.post(`/admin/quotations/${quotation.id}/send`);
   const publicApi = await request.newContext({ baseURL: `${E2E.apiBase}/` });
   const decided = await publicApi.post(`public/quotations/${sent.publicToken}/decide`, { data: { decision: 'approve' } });
   expect(decided.status()).toBe(200);
   const [job] = (await dispatcher.list(`/admin/jobs?customerId=${customer.id}&limit=5`)).data;
   expect(job.status).toBe('DRAFT');
+  // Phase L6: the advance the Accept asked for is paid, so the job may be scheduled.
+  await payAdvance(accountant, job.id);
+  expect((await dispatcher.get(`/admin/jobs/${job.id}`)).advance?.awaitingAdvance ?? false).toBe(false);
   const second = await dispatcher.post('/admin/jobs', { customerId: customer.id, title: `Gutter repair ${tag}` });
 
   const technicians = (await dispatcher.list('/admin/technicians?q=hari&limit=10')).data;
   const hari = technicians.find((t) => t.user.email === 'hari@gharjatan.com.np');
-  // Hari's tomorrow must be free at 10:00 for this run: move away anything a previous run left there.
-  const board = await dispatcher.get(`/admin/dispatch/board?date=${tomorrow}`);
+  // Hari's day must be free at 10:00 for this run: move away anything a previous run left there.
+  const boardDay = await freeDay(dispatcher, hari.id);
+  const board = await dispatcher.get(`/admin/dispatch/board?date=${boardDay}`);
   for (const old of board.lanes.find((l) => l.technician.id === hari.id).jobs) {
     await dispatcher.patch(`/admin/jobs/${old.id}/status`, { status: 'CANCELLED', note: 'Cleared by the e2e run' }).catch(() => {});
   }
@@ -79,8 +102,8 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
 
   const hariCell = (hhmm) => page.getByRole('gridcell', { name: new RegExp(`^${hari.user.name}, .*, ${hhmm}$`) });
 
-  await test.step('drag the accepted job onto Hari at 10:00 tomorrow', async () => {
-    await page.goto(`/admin/dispatch?date=${tomorrow}`);
+  await test.step('drag the accepted job onto Hari at 10:00 on the day', async () => {
+    await page.goto(`/admin/dispatch?date=${boardDay}`);
     await page.getByRole('textbox', { name: 'Search unassigned jobs' }).fill(job.number);
     const handle = page.getByRole('button', { name: `Drag ${job.number}` });
     await expect(handle).toBeVisible();
@@ -91,7 +114,7 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await expect(hariCell('10:00')).toContainText(job.number);
     const moved = await dispatcher.get(`/admin/jobs/${job.id}`);
     expect(moved.status).toBe('ASSIGNED');
-    expect(moved.scheduledStart).toBe(at(tomorrow, '10:00'));
+    expect(moved.scheduledStart).toBe(at(boardDay, '10:00'));
     expect(moved.assignments.map((a) => a.technicianId)).toEqual([hari.id]);
     // The customer was told in Nepali.
     const logs = (await admin.list(`/admin/message-logs?relatedId=${job.id}&templateKey=job_scheduled`)).data;
@@ -110,8 +133,8 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await expect(dialog).toBeHidden();
     await expect(hariCell('11:00')).toContainText(job.number);
     const moved = await dispatcher.get(`/admin/jobs/${job.id}`);
-    expect(moved.scheduledStart).toBe(at(tomorrow, '11:00'));
-    expect(moved.scheduledEnd).toBe(at(tomorrow, '13:00'));
+    expect(moved.scheduledStart).toBe(at(boardDay, '11:00'));
+    expect(moved.scheduledEnd).toBe(at(boardDay, '13:00'));
   });
 
   await test.step('a double booking is warned about and not saved', async () => {
@@ -132,6 +155,9 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await page.getByRole('button', { name: /Issue from stock/ }).click();
     const dialog = page.getByRole('dialog', { name: `Issue material to ${job.number}` });
     await dialog.getByRole('combobox', { name: /Material/ }).click();
+    // Search, as a person would: the test database keeps every run's materials, so the one wanted is
+    // not always on the first page of the picker.
+    await page.keyboard.type('WP-CRYST');
     await page.getByRole('option', { name: /WP-CRYST/ }).click();
     await dialog.getByLabel(/Quantity/).fill('22');
     await dialog.getByRole('button', { name: 'Issue' }).click();
@@ -148,17 +174,24 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await expect(page.getByText('Total recorded: 1 h 30 min')).toBeVisible();
   });
 
-  await test.step('costing shows labour and materials, reconciled to the paisa', async () => {
-    const costing = await dispatcher.get(`/admin/jobs/${job.id}/costing`);
+  await test.step('costing shows labour and materials, reconciled to the paisa — to a manager only (Phase L2)', async () => {
+    // The money wall: job costing is costs:read. The dispatcher has no Costing tab and the API refuses them.
+    await expect(page.getByRole('tab', { name: 'Costing' })).toHaveCount(0);
+    await expect(dispatcher.get(`/admin/jobs/${job.id}/costing`)).rejects.toThrow(/→ 403/);
+    const costing = await manager.get(`/admin/jobs/${job.id}/costing`);
     expect(costing.cost.materials).toBe(costing.breakdown.materials.reduce((s, m) => s + m.cost, 0));
     expect(costing.cost.labour).toBe(costing.breakdown.labour.reduce((s, l) => s + l.cost, 0));
     expect(costing.cost.total).toBe(costing.cost.materials + costing.cost.labour + costing.cost.expenses);
     expect(costing.cost.materials).toBe(22 * material.purchaseRate);
-    await page.getByRole('tab', { name: 'Costing' }).click();
+    const managerCtx = await browser.newContext();
+    const managerPage = await managerCtx.newPage();
+    await signIn(managerPage, 'MANAGER');
+    await managerPage.goto(`/admin/jobs/${job.id}?tab=costing`);
     const rupees = (paisa) => `Rs. ${(paisa / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-    await expect(page.getByText(rupees(costing.cost.total)).first()).toBeVisible();
-    await expect(page.getByText(rupees(costing.cost.materials)).first()).toBeVisible();
-    await expect(page.getByText('1 h 30 min').first()).toBeVisible();
+    await expect(managerPage.getByText(rupees(costing.cost.total)).first()).toBeVisible();
+    await expect(managerPage.getByText(rupees(costing.cost.materials)).first()).toBeVisible();
+    await expect(managerPage.getByText('1 h 30 min').first()).toBeVisible();
+    await managerCtx.close();
   });
 
   await test.step('completion waits for the checklist, then complete and verify', async () => {

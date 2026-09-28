@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  ArrowLeft, CalendarCheck, ChevronDown, ClipboardCheck, Contact, FileText, MessageCircle, Pencil, Phone, Trash2, UserPlus, UserRoundCheck,
+  ArrowLeft, CalendarCheck, ChevronDown, ClipboardCheck, Contact, FilePlus2, FileText, MessageCircle, Pencil, Phone, Trash2, UserPlus, UserRoundCheck,
 } from 'lucide-react';
 import { useDeleteLeadMutation, useGetLeadDuplicatesQuery, useGetLeadQuery } from '@/api/leadsApi';
 import { ScheduleVisitDialog } from '@/components/leads/ScheduleVisitDialog';
@@ -15,6 +15,8 @@ import { ActivityComposer } from '@/components/leads/ActivityComposer';
 import { DuplicatesPanel } from '@/components/leads/DuplicatesPanel';
 import { LeadRequestPanel } from '@/components/leads/LeadRequestPanel';
 import { LeadStageTrack } from '@/components/leads/LeadStageTrack';
+import { NextActionCard } from '@/components/leads/NextActionCard';
+import { QualificationCard } from '@/components/leads/QualificationCard';
 import { RecordHeader } from '@/components/common/RecordHeader';
 import { ErrorState } from '@/components/common/ErrorState';
 import { SlaChip } from '@/components/common/SlaChip';
@@ -32,17 +34,22 @@ import { PageTransition, Stagger } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useLeadStatusChange } from '@/hooks/useLeadStatusChange';
+import { useLeadFollowUp } from '@/hooks/useLeadFollowUp';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
-import { ACTIVITY_LABELS, LEAD_SOURCE_LABELS } from '@/config/constants';
+import {
+  ACTIVITY_LABELS, LEAD_OUTCOME_LABELS, LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS, LOST_CATEGORIES,
+} from '@/config/constants';
 import { formatDate, formatDateTime, formatNpr, initials, relativeTime, titleCase } from '@/helpers/format';
-import { toneStyle } from '@/helpers/leadBoard';
+import { canDrop, dropDialogFor, hasQuotation, toneStyle } from '@/helpers/leadBoard';
 import { whatsappHref } from '@/helpers/contact';
 
 const TABS = ['overview', 'duplicates', 'history'];
 
 function Timeline({ lead }) {
   const entries = [
-    ...(lead.activities ?? []).map((a) => ({ id: `a-${a.id}`, at: a.createdAt, kind: a.type, text: a.summary, who: a.user?.name })),
+    ...(lead.activities ?? []).map((a) => ({
+      id: `a-${a.id}`, at: a.createdAt, kind: a.type, text: a.summary, who: a.user?.name, outcome: a.outcome,
+    })),
   ].sort((x, y) => new Date(y.at) - new Date(x.at));
   if (!entries.length) return <p className="text-sm text-muted-foreground">Nothing logged yet.</p>;
   return (
@@ -55,6 +62,9 @@ function Timeline({ lead }) {
             </StateBadge>
           </span>
           <div className="min-w-0">
+            {e.outcome ? (
+              <p className="text-xs font-semibold text-foreground">{LEAD_OUTCOME_LABELS[e.outcome] ?? titleCase(e.outcome)}</p>
+            ) : null}
             <p className="whitespace-pre-wrap break-words leading-snug">{e.text}</p>
             <p className="text-xs text-muted-foreground">{formatDateTime(e.at)}{e.who ? ` · ${e.who}` : ''}</p>
           </div>
@@ -116,8 +126,13 @@ function LinkedRecords({ lead, can }) {
 }
 
 /**
- * One lead, worked end to end: edit, move, assign, log contact, merge duplicates,
- * convert (with or without a visit), and its History.
+ * One lead, worked end to end: what is next (`NextActionCard`), edit, move, assign, log contact with
+ * its outcome (the composer opens the visit booking or the new-quotation sheet the answer names),
+ * qualify, merge duplicates, convert (with or without a visit), and its History.
+ *
+ * `?markLost=1` — the link a declined or expired quotation's notification carries — opens the Mark
+ * lost dialog once the lead has loaded, then leaves the address. `&category=PRICE` (the customer's decline reason,
+ * Phase L4) starts the dialog on that lost category.
  */
 export default function LeadDetailPage() {
   const { id } = useParams();
@@ -131,9 +146,32 @@ export default function LeadDetailPage() {
   const { data: duplicates } = useGetLeadDuplicatesQuery(id);
   const [deleteLead] = useDeleteLeadMutation();
   const [changeStatus, statusDialog] = useLeadStatusChange();
+  const [openFollowUp, followUpDialogs] = useLeadFollowUp();
   const [confirm, confirmDialog] = useConfirm();
   const [open, setOpen] = useState(null); // 'edit' | 'assign' | 'visit' | 'convert'
   const [converted, setConverted] = useState(null);
+
+  // `?markLost=1`: ask why at once — a person decides, the link only opens the dialog.
+  const markLost = search.get('markLost') === '1';
+  const markLostHandled = useRef(false);
+  useEffect(() => {
+    if (!markLost) {
+      markLostHandled.current = false;
+      return;
+    }
+    if (!lead || markLostHandled.current) return;
+    markLostHandled.current = true;
+    const category = search.get('category');
+    const rest = new URLSearchParams(search);
+    rest.delete('markLost');
+    rest.delete('category');
+    setSearch(rest, { replace: true });
+    if (!canWrite) return;
+    // The customer's decline reason (Phase L4) starts the dialog on that category; the person still decides.
+    const lostCategory = LOST_CATEGORIES.includes(category) ? category : undefined;
+    if (canDrop(lead.status, 'LOST')) changeStatus(lead, 'LOST', { lostCategory });
+    else dispatch(toastError(`${lead.name} is already ${LEAD_STATUS_LABELS[lead.status]}`, 'Nothing to mark lost.'));
+  }, [markLost, lead, search, setSearch, canWrite, changeStatus, dispatch]);
 
   const tab = TABS.includes(search.get('tab')) ? search.get('tab') : 'overview';
   const setTab = (next) => setSearch(next === 'overview' ? {} : { tab: next }, { replace: true });
@@ -161,6 +199,24 @@ export default function LeadDetailPage() {
 
   const closed = ['WON', 'LOST'].includes(lead.status);
   const whatsapp = whatsappHref(lead.phone);
+
+  // What a follow-up made: a convert's result shows what it made; a draft for an existing customer opens in the builder.
+  const followedUp = (result) => {
+    if (!result) return;
+    if (result.customer) setConverted(result);
+    else if (result.quotation?.id) navigate(`/admin/quotations/${result.quotation.id}`);
+  };
+
+  // "Change status" runs the board's rules: Visit booked books the visit, Quoted without a quotation
+  // starts one (the lead moves when it is sent), Lost asks why.
+  const moveTo = (to) => {
+    const dialog = dropDialogFor(to, hasQuotation(lead));
+    if (dialog === 'visit' || dialog === 'quotation') {
+      openFollowUp(lead, dialog).then(followedUp);
+    } else {
+      changeStatus(lead, to);
+    }
+  };
 
   return (
     <PageTransition>
@@ -213,8 +269,13 @@ export default function LeadDetailPage() {
             {canWrite ? (
               <>
                 <Button variant="outline" size="sm" onClick={() => setOpen('edit')}><Pencil /> Edit</Button>
-                <LeadStatusMenu lead={lead} onChange={(to) => changeStatus(lead, to)} />
+                <LeadStatusMenu lead={lead} onChange={moveTo} />
                 <Button variant="outline" size="sm" onClick={() => setOpen('assign')}><UserPlus /> Assign</Button>
+                {can('quotations:write') && lead.status !== 'LOST' ? (
+                  <Button variant="outline" size="sm" onClick={() => openFollowUp(lead, 'quotation').then(followedUp)}>
+                    <FilePlus2 /> New quotation
+                  </Button>
+                ) : null}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button size="sm" disabled={lead.status === 'WON'}>
@@ -239,6 +300,10 @@ export default function LeadDetailPage() {
         <LeadStageTrack lead={lead} />
       </RecordHeader>
 
+      <div className="mb-4 empty:hidden">
+        <NextActionCard lead={lead} canWrite={canWrite} />
+      </div>
+
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -258,11 +323,18 @@ export default function LeadDetailPage() {
             <Card>
               <CardHeader className="pb-3"><CardTitle className="text-base">Activity</CardTitle></CardHeader>
               <CardContent className="space-y-5">
-                {canWrite ? <ActivityComposer lead={lead} defaultType={lead.firstResponseAt ? 'note' : 'call'} /> : null}
+                {canWrite ? (
+                  <ActivityComposer
+                    lead={lead}
+                    defaultType={closed ? 'note' : 'call'}
+                    onLogged={(_activity, followUp) => followedUp(followUp)}
+                  />
+                ) : null}
                 <Timeline lead={lead} />
               </CardContent>
             </Card>
             <div className="space-y-4 self-start">
+              <QualificationCard lead={lead} canWrite={canWrite} />
               <LinkedRecords lead={lead} can={can} />
             </div>
           </div>
@@ -291,6 +363,7 @@ export default function LeadDetailPage() {
           ) : null}
           <ConvertResult result={converted} onOpenChange={(o) => { if (!o) setConverted(null); }} />
           {statusDialog}
+          {followUpDialogs}
         </>
       ) : null}
       {confirmDialog}

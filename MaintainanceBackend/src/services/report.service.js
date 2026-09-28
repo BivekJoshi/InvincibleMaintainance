@@ -1,9 +1,20 @@
 import { prisma } from '../lib/prisma.js';
-import { dateRange } from '../utils/pagination.js';
-import { sum } from '../utils/money.js';
-import { addDays } from '../utils/dates.js';
+import { env } from '../config/env.js';
+import { notFound } from '../utils/AppError.js';
+import { lineAmount, outstanding, sum } from '../utils/money.js';
+import { addDays, dayjs, kathmanduDayRange, local, startOfDay } from '../utils/dates.js';
 
-const range = (q) => dateRange(q.from, q.to) ?? { gte: addDays(new Date(), -30) };
+/**
+ * A report's period: `from`/`to` as Kathmandu days (inclusive), else the last 30 Kathmandu days, today
+ * included (Phase I — the server's own timezone used to decide where a day began).
+ */
+const range = (q) => kathmanduDayRange(q.from, q.to) ?? { gte: startOfDay(addDays(new Date(), -29)) };
+
+/** The period a report covered, as the Kathmandu days it names — for a CSV's filename. */
+export function reportPeriod(q = {}) {
+  const r = range(q);
+  return { from: r.gte ? local(r.gte, 'YYYY-MM-DD') : null, to: r.lte ? local(r.lte, 'YYYY-MM-DD') : local(new Date(), 'YYYY-MM-DD') };
+}
 
 /** Where leads come from and which sources actually convert. */
 export async function leadSourceReport(query = {}) {
@@ -26,6 +37,35 @@ export async function leadSourceReport(query = {}) {
   return Object.values(bySource)
     .map((s) => ({ ...s, conversionRate: s.total ? Number(((s.won / s.total) * 100).toFixed(1)) : 0 }))
     .sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Why leads were lost, and where: LOST leads closed in the range (Kathmandu days, on closedAt; all of them
+ * without one) by category × the stage they were lost at × service. Rows are most-lost first.
+ */
+export async function lostReport(query = {}) {
+  const closedAt = kathmanduDayRange(query.from, query.to);
+  const groups = await prisma.lead.groupBy({
+    by: ['lostCategory', 'lostAtStage', 'serviceId'],
+    where: { deletedAt: null, status: 'LOST', ...(closedAt ? { closedAt } : {}) },
+    _count: { _all: true },
+  });
+  const serviceIds = [...new Set(groups.map((g) => g.serviceId).filter(Boolean))];
+  const services = new Map((await prisma.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, name: true } }))
+    .map((sv) => [sv.id, sv.name]));
+  const rows = groups
+    .map((g) => ({
+      category: g.lostCategory, stage: g.lostAtStage, serviceId: g.serviceId,
+      serviceName: g.serviceId ? services.get(g.serviceId) ?? null : null, count: g._count._all,
+    }))
+    .sort((a, b) => b.count - a.count);
+  const byCategory = new Map();
+  for (const r of rows) byCategory.set(r.category, (byCategory.get(r.category) ?? 0) + r.count);
+  return {
+    total: sum(rows.map((r) => r.count)),
+    byCategory: [...byCategory].map(([category, count]) => ({ category, count })).sort((a, b) => b.count - a.count),
+    rows,
+  };
 }
 
 /** The funnel, stage by stage. */
@@ -87,89 +127,149 @@ export async function slaComplianceReport(query = {}) {
   };
 }
 
+const JOB_FOR_REVENUE = {
+  select: {
+    type: true,
+    lead: { select: { service: { select: { name: true } } } },
+    quotation: { select: { lead: { select: { service: { select: { name: true } } } } } },
+    assignments: { where: { isLead: true }, select: { technician: { select: { id: true, user: { select: { name: true } } } } } },
+  },
+};
+
+/** Which bucket an invoice falls in: its month or day (Kathmandu), its job's service, or its lead technician. */
+function revenueKey(inv, groupBy) {
+  if (groupBy === 'month') return { key: local(inv.issuedAt, 'YYYY-MM'), label: local(inv.issuedAt, 'MMM YYYY') };
+  if (groupBy === 'day') return { key: local(inv.issuedAt, 'YYYY-MM-DD'), label: local(inv.issuedAt, 'D MMM YYYY') };
+  const job = inv.items.find((i) => i.job)?.job;
+  if (groupBy === 'technician') {
+    const tech = job?.assignments?.[0]?.technician;
+    return tech ? { key: tech.id, label: tech.user.name } : { key: 'none', label: 'No technician' };
+  }
+  const service = job?.lead?.service?.name ?? job?.quotation?.lead?.service?.name;
+  if (service) return { key: service, label: service };
+  return job ? { key: `type:${job.type}`, label: job.type.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase()) }
+    : { key: 'none', label: 'No job' };
+}
+
+/**
+ * Revenue in the period (invoices by issue date, VOID and DRAFT left out — a draft is not revenue yet), by
+ * month, day, service or technician. Each row: taxable (subtotal − discount), VAT, invoiced (total),
+ * collected and outstanding — the stored document figures, summed, so the VAT reconciles to the paisa.
+ */
 export async function revenueReport(query = {}) {
   const issuedAt = range(query);
   const invoices = await prisma.invoice.findMany({
-    where: { deletedAt: null, status: { not: 'VOID' }, issuedAt },
-    include: { items: { include: { job: { select: { type: true } } } } },
+    where: { deletedAt: null, status: { notIn: ['VOID', 'DRAFT'] }, issuedAt },
+    include: { items: { select: { job: JOB_FOR_REVENUE } } },
   });
 
   const groupBy = query.groupBy ?? 'month';
-  const buckets = {};
+  const buckets = new Map();
   for (const inv of invoices) {
-    let key;
-    if (groupBy === 'month') key = inv.issuedAt.toISOString().slice(0, 7);
-    else if (groupBy === 'service') key = inv.items[0]?.job?.type ?? 'Other';
-    else key = inv.issuedAt.toISOString().slice(0, 10);
-    const b = (buckets[key] ??= { key, invoiced: 0, collected: 0, outstanding: 0, count: 0 });
+    const { key, label } = revenueKey(inv, groupBy);
+    if (!buckets.has(key)) buckets.set(key, { key, label, count: 0, taxable: 0, vat: 0, invoiced: 0, collected: 0, outstanding: 0 });
+    const b = buckets.get(key);
+    b.count += 1;
+    b.taxable += inv.subtotal - inv.discount;
+    b.vat += inv.vatAmount;
     b.invoiced += inv.total;
     b.collected += inv.paidAmount;
-    b.outstanding += inv.total - inv.paidAmount;
-    b.count += 1;
+    b.outstanding += outstanding(inv.total, inv.paidAmount);
   }
-  const rows = Object.values(buckets).sort((a, b) => String(a.key).localeCompare(String(b.key)));
+  const rows = [...buckets.values()].sort((a, b) => (['month', 'day'].includes(groupBy)
+    ? String(a.key).localeCompare(String(b.key)) : b.invoiced - a.invoiced));
+  const total = (k) => sum(rows.map((r) => r[k]));
   return {
     groupBy,
     rows,
     totals: {
-      invoiced: sum(rows.map((r) => r.invoiced)),
-      collected: sum(rows.map((r) => r.collected)),
-      outstanding: sum(rows.map((r) => r.outstanding)),
-      count: sum(rows.map((r) => r.count)),
+      count: total('count'), taxable: total('taxable'), vat: total('vat'),
+      invoiced: total('invoiced'), collected: total('collected'), outstanding: total('outstanding'),
     },
   };
 }
 
-/** Receivables split into the usual aging buckets. */
-export async function agingReport() {
-  const invoices = await prisma.invoice.findMany({
+const AGING_LABELS = { current: 'Not yet due', d0_30: '1–30 days', d31_60: '31–60 days', d61_90: '61–90 days', d90_plus: 'Over 90 days' };
+
+/** Whole Kathmandu calendar days from `due` to `now`: due today is 0, due yesterday 1. */
+const daysPast = (due, now) => {
+  const tz = env.business.timezone;
+  return dayjs(now).tz(tz).startOf('day').diff(dayjs(due).tz(tz).startOf('day'), 'day');
+};
+
+/**
+ * Receivables as of now, in the usual buckets by days past due (Kathmandu calendar days): not yet due,
+ * 1–30, 31–60, 61–90, over 90. Every sent invoice with money still owed; the period filter does not apply.
+ * `invoices` is the drill-down, most overdue first.
+ */
+export async function agingReport(now = new Date()) {
+  const rows = await prisma.invoice.findMany({
     where: { deletedAt: null, status: { in: ['SENT', 'PARTIAL', 'OVERDUE'] } },
     include: { customer: { select: { id: true, name: true, phone: true } } },
   });
-  const now = Date.now();
   const buckets = { current: 0, d0_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
   const byCustomer = {};
+  const invoices = [];
 
-  for (const inv of invoices) {
-    const outstanding = inv.total - inv.paidAmount;
-    if (outstanding <= 0) continue;
-    const daysOverdue = inv.dueDate ? Math.floor((now - new Date(inv.dueDate)) / 86400000) : 0;
+  for (const inv of rows) {
+    const owed = outstanding(inv.total, inv.paidAmount);
+    if (owed <= 0) continue;
+    const daysOverdue = inv.dueDate ? daysPast(inv.dueDate, now) : 0;
     let bucket;
     if (daysOverdue <= 0) bucket = 'current';
     else if (daysOverdue <= 30) bucket = 'd0_30';
     else if (daysOverdue <= 60) bucket = 'd31_60';
     else if (daysOverdue <= 90) bucket = 'd61_90';
     else bucket = 'd90_plus';
-    buckets[bucket] += outstanding;
+    buckets[bucket] += owed;
 
+    const row = {
+      id: inv.id, number: inv.number, customer: { id: inv.customer.id, name: inv.customer.name },
+      issuedAt: inv.issuedAt, dueDate: inv.dueDate, total: inv.total, paid: inv.paidAmount, outstanding: owed,
+      daysOverdue: Math.max(0, daysOverdue), bucket, bucketLabel: AGING_LABELS[bucket],
+    };
+    invoices.push(row);
     const c = (byCustomer[inv.customerId] ??= {
       customer: inv.customer, total: 0, current: 0, d0_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0, invoices: [],
     });
-    c.total += outstanding;
-    c[bucket] += outstanding;
-    c.invoices.push({ id: inv.id, number: inv.number, dueDate: inv.dueDate, outstanding, daysOverdue });
+    c.total += owed;
+    c[bucket] += owed;
+    c.invoices.push({ id: inv.id, number: inv.number, dueDate: inv.dueDate, outstanding: owed, daysOverdue: row.daysOverdue });
   }
 
   return {
+    asOf: now,
     buckets,
+    labels: AGING_LABELS,
     total: sum(Object.values(buckets)),
     byCustomer: Object.values(byCustomer).sort((a, b) => b.total - a.total),
+    invoices: invoices.sort((a, b) => b.daysOverdue - a.daysOverdue || b.outstanding - a.outstanding),
   };
 }
 
-export async function collectionsReport(query = {}) {
-  const receivedAt = range(query);
-  const payments = await prisma.payment.findMany({
-    // A voided payment was never money received.
-    where: { receivedAt, voidedAt: null },
-    include: { invoice: { select: { number: true, customer: { select: { name: true } } } } },
-    orderBy: { receivedAt: 'desc' },
-  });
-  const byMethod = {};
-  for (const p of payments) {
-    byMethod[p.method] = (byMethod[p.method] ?? 0) + p.amount;
-  }
-  return { total: sum(payments.map((p) => p.amount)), count: payments.length, byMethod, payments };
+/**
+ * Money received in the period, by method. The totals cover every payment; the list is the newest `limit`
+ * (500 on screen; a CSV asks for its cap) and says when it was cut. A voided payment was never received.
+ */
+export async function collectionsReport(query = {}, { limit = 500 } = {}) {
+  const where = { receivedAt: range(query), voidedAt: null };
+  const [groups, payments] = await Promise.all([
+    prisma.payment.groupBy({ by: ['method'], where, _sum: { amount: true }, _count: { _all: true } }),
+    prisma.payment.findMany({
+      where,
+      include: { invoice: { select: { id: true, number: true, customer: { select: { id: true, name: true } } } } },
+      orderBy: { receivedAt: 'desc' },
+      take: limit + 1,
+    }),
+  ]);
+  const count = sum(groups.map((g) => g._count._all));
+  return {
+    total: sum(groups.map((g) => g._sum.amount)),
+    count,
+    byMethod: Object.fromEntries(groups.map((g) => [g.method, g._sum.amount ?? 0])),
+    payments: payments.slice(0, limit),
+    truncated: payments.length > limit,
+  };
 }
 
 /** Which work actually makes money. */
@@ -186,8 +286,8 @@ export async function jobMarginReport(query = {}) {
   });
 
   const rows = jobs.map((j) => {
-    const materialCost = sum(j.materials.map((m) => Math.round(m.qty * (m.material.purchaseRate || m.rate))));
-    const labourCost = sum(j.timeLogs.map((t) => Math.round(((t.minutes ?? 0) / 60) * (t.technician.hourlyRate ?? 0))));
+    const materialCost = sum(j.materials.map((m) => lineAmount(m.qty, m.material.purchaseRate || m.rate)));
+    const labourCost = sum(j.timeLogs.map((t) => lineAmount((t.minutes ?? 0) / 60, t.technician.hourlyRate ?? 0)));
     const expenseCost = sum(j.expenses.map((e) => e.amount));
     const invoiced = sum(j.invoiceItems.map((i) => i.amount));
     const cost = materialCost + labourCost + expenseCost;
@@ -244,41 +344,60 @@ export async function technicianProductivity(query = {}) {
   }).sort((a, b) => b.completed - a.completed);
 }
 
-/** Warranty claim rate is the honest quality metric. */
+const WARRANTY_JOB = {
+  select: {
+    type: true,
+    lead: { select: { service: { select: { name: true } } } },
+    quotation: { select: { lead: { select: { service: { select: { name: true } } } } } },
+  },
+};
+/** The service a warranted job did — its lead's, else its quotation's lead's — or null. */
+const serviceOf = (job) => job?.lead?.service?.name ?? job?.quotation?.lead?.service?.name ?? null;
+const rate = (part, whole) => (whole ? Number(((part / whole) * 100).toFixed(1)) : 0);
+
+/**
+ * Warranty claim rate is the honest quality metric: warranties issued in the period and the claims raised in
+ * it, by job type and (Phase I) by service — the claims queue shows a job's service's rate.
+ */
 export async function warrantyClaimReport(query = {}) {
   const createdAt = range(query);
   const [warranties, claims] = await Promise.all([
-    prisma.warranty.findMany({ where: { createdAt }, include: { job: { select: { type: true } } } }),
-    prisma.warrantyClaim.findMany({ where: { createdAt }, include: { warranty: { include: { job: { select: { type: true } } } } } }),
+    prisma.warranty.findMany({ where: { createdAt }, include: { job: WARRANTY_JOB } }),
+    prisma.warrantyClaim.findMany({ where: { createdAt }, include: { warranty: { include: { job: WARRANTY_JOB } } } }),
   ]);
-  const byType = {};
-  for (const w of warranties) {
-    const t = (byType[w.job.type] ??= { type: w.job.type, warranties: 0, claims: 0 });
-    t.warranties += 1;
-  }
-  for (const c of claims) {
-    const t = (byType[c.warranty.job.type] ??= { type: c.warranty.job.type, warranties: 0, claims: 0 });
-    t.claims += 1;
-  }
+  const tally = (keyOf, name) => {
+    const out = new Map();
+    const at = (key) => {
+      if (!out.has(key)) out.set(key, { [name]: key, warranties: 0, claims: 0 });
+      return out.get(key);
+    };
+    for (const w of warranties) at(keyOf(w.job)).warranties += 1;
+    for (const c of claims) at(keyOf(c.warranty.job)).claims += 1;
+    return [...out.values()].map((t) => ({ ...t, claimRate: rate(t.claims, t.warranties) })).sort((a, b) => b.warranties - a.warranties);
+  };
   return {
     totalWarranties: warranties.length,
     totalClaims: claims.length,
-    claimRate: warranties.length ? Number(((claims.length / warranties.length) * 100).toFixed(1)) : 0,
-    byType: Object.values(byType).map((t) => ({
-      ...t, claimRate: t.warranties ? Number(((t.claims / t.warranties) * 100).toFixed(1)) : 0,
-    })),
+    claimRate: rate(claims.length, warranties.length),
+    byType: tally((job) => job.type, 'type'),
+    byService: tally((job) => serviceOf(job) ?? 'Other', 'service'),
   };
 }
 
+/**
+ * A customer's account: every sent invoice (a debit) and every payment standing (a credit), oldest first, with
+ * the running balance. A DRAFT is not yet owed; a VOID never was; a voided payment was never received.
+ */
 export async function customerStatement(customerId) {
   const [customer, invoices, payments] = await Promise.all([
-    prisma.customer.findUnique({ where: { id: customerId } }),
-    prisma.invoice.findMany({ where: { customerId, deletedAt: null, status: { not: 'VOID' } }, orderBy: { issuedAt: 'asc' } }),
+    prisma.customer.findFirst({ where: { id: customerId, deletedAt: null }, select: { id: true, name: true, phone: true, email: true, panVatNo: true } }),
+    prisma.invoice.findMany({ where: { customerId, deletedAt: null, status: { notIn: ['VOID', 'DRAFT'] } }, orderBy: { issuedAt: 'asc' } }),
     prisma.payment.findMany({ where: { invoice: { customerId }, voidedAt: null }, orderBy: { receivedAt: 'asc' }, include: { invoice: { select: { number: true } } } }),
   ]);
+  if (!customer) throw notFound('Customer');
   const entries = [
-    ...invoices.map((i) => ({ at: i.issuedAt, kind: 'invoice', ref: i.number, debit: i.total, credit: 0 })),
-    ...payments.map((p) => ({ at: p.receivedAt, kind: 'payment', ref: p.invoice.number, debit: 0, credit: p.amount })),
+    ...invoices.map((i) => ({ at: i.issuedAt, kind: 'invoice', ref: i.number, invoiceId: i.id, debit: i.total, credit: 0 })),
+    ...payments.map((p) => ({ at: p.receivedAt, kind: 'payment', ref: p.invoice.number, invoiceId: p.invoiceId, method: p.method, debit: 0, credit: p.amount })),
   ].sort((a, b) => new Date(a.at) - new Date(b.at));
 
   let balance = 0;

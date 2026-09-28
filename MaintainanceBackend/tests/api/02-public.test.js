@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
-  anon, as, expectStatus, createCustomer, createCompletedJob, prisma, phone, dayMatching, uid, approveAndSend, pngBuffer,
+  anon, as, expectStatus, createCustomer, createCompletedJob, prisma, phone, dayMatching, uid, approveAndSend, pngBuffer, bookVisit,
 } from './helpers.js';
 
 const lead = (extra = {}) => ({
@@ -413,5 +413,96 @@ describe('SEO artefacts', () => {
   it('GET /json-ld', async () => {
     const body = expectStatus(await anon().get(`/json-ld?origin=https://gharjatan.com.np&x=${uid()}`), 200);
     expect(body).toBeTypeOf('object');
+  });
+});
+
+describe('the site visit link (Phase L5)', () => {
+  let visit;
+  const sms = (to, templateKey) => prisma.messageLog.findMany({ where: { toAddress: to, templateKey }, orderBy: { createdAt: 'asc' } });
+
+  beforeAll(async () => {
+    visit = await bookVisit({ contactPhone: `+977 98${String(Date.now()).slice(-8)}` });
+  });
+
+  it('booking sends visit_booked, with the window, the surveyor and the link, to the customer and the caretaker', async () => {
+    const site = await prisma.customerSite.findUnique({ where: { id: visit.job.siteId } });
+    // The caretaker's number is stored normalised; the landmark with the site.
+    expect(site.contactPhone).toMatch(/^98\d{8}$/);
+    expect(site).toMatchObject({ contactName: 'Ram Bahadur (caretaker)', landmark: 'Opposite the Bhatbhateni, blue gate' });
+    const [toCustomer] = await sms(visit.customerPhone, 'visit_booked');
+    const [toCaretaker] = await sms(site.contactPhone, 'visit_booked');
+    expect(toCustomer.body).toContain(`/visit/${visit.token}`);
+    expect(toCustomer.body).toContain(visit.job.number);
+    expect(toCustomer.body).toMatch(/Survey|\(98/); // the surveyor by name and phone
+    expect(toCaretaker.body).toContain('Ram Bahadur');
+  });
+
+  it('GET /public/visits/:token shows the window, the address, the surveyor — and no money', async () => {
+    const body = expectStatus(await anon().get(`/public/visits/${visit.token}`), 200).data;
+    expect(body).toMatchObject({
+      number: visit.job.number, answer: null, canAnswer: true,
+      site: { landmark: 'Opposite the Bhatbhateni, blue gate', area: 'Jhamsikhel' },
+      surveyor: { name: expect.any(String) }, customer: { preferredLocale: 'en' },
+    });
+    expect(new Date(body.window.end) - new Date(body.window.start)).toBe(2 * 3_600_000);
+    expect(JSON.stringify(body)).not.toMatch(/"(rate|total|amount|visitToken|visitAnswerIp)"/);
+  });
+
+  it('Confirm is recorded with the time and IP; the same answer twice changes nothing', async () => {
+    const ip = '198.51.100.21';
+    const first = expectStatus(await anon(ip).post(`/public/visits/${visit.token}/respond`).send({ answer: 'confirm' }), 200).data;
+    expect(first).toMatchObject({ answer: 'CONFIRMED', canAnswer: true });
+    const row = await prisma.job.findUnique({ where: { id: visit.job.id } });
+    expect(row).toMatchObject({ visitAnswer: 'CONFIRMED', visitAnswerIp: ip });
+    expect(row.customerConfirmedAt).toBeInstanceOf(Date);
+    expectStatus(await anon().post(`/public/visits/${visit.token}/respond`).send({ answer: 'confirm' }), 200);
+    expect((await prisma.job.findUnique({ where: { id: visit.job.id } })).visitAnsweredAt).toEqual(row.visitAnsweredAt);
+    const board = expectStatus(await (await as('DISPATCHER')).get(`/admin/dispatch/board?date=${row.scheduledStart.toISOString().slice(0, 10)}`), 200).data;
+    const card = board.lanes.flatMap((l) => l.jobs).find((j) => j.id === visit.job.id);
+    expect(card).toMatchObject({ visitAnswer: 'CONFIRMED', customerConfirmedAt: expect.any(String) });
+  });
+
+  it('Need another time replaces it, and tells the salesperson and the dispatchers', async () => {
+    const body = expectStatus(await anon().post(`/public/visits/${visit.token}/respond`)
+      .send({ answer: 'reschedule', note: 'After 3 pm please, or Saturday' }), 200).data;
+    expect(body).toMatchObject({ answer: 'RESCHEDULE_REQUESTED', answerNote: 'After 3 pm please, or Saturday' });
+    const row = await prisma.job.findUnique({ where: { id: visit.job.id } });
+    expect(row.customerConfirmedAt).toBeNull();
+    const told = await prisma.notification.findMany({ where: { type: 'visit_reschedule_requested', link: `/admin/jobs/${visit.job.id}` }, include: { user: true } });
+    expect(told.map((n) => n.user.email)).toEqual(expect.arrayContaining(['sales@gharjatan.com.np', 'dispatch@gharjatan.com.np']));
+    const timeline = await prisma.leadActivity.findMany({ where: { leadId: visit.lead.id, summary: { contains: 'another time' } } });
+    expect(timeline).toHaveLength(1);
+  });
+
+  it('a new window clears the answer and sends the visit message again', async () => {
+    const dispatcher = await as('DISPATCHER');
+    const start = new Date(visit.job.scheduledStart.getTime() + 86_400_000);
+    expectStatus(await dispatcher.post(`/admin/jobs/${visit.job.id}/schedule`).send({
+      scheduledStart: start.toISOString(), scheduledEnd: new Date(start.getTime() + 7_200_000).toISOString(),
+    }), 200);
+    expect(await prisma.job.findUnique({ where: { id: visit.job.id } })).toMatchObject({ visitAnswer: null, customerConfirmedAt: null });
+    expect(await sms(visit.customerPhone, 'visit_booked')).toHaveLength(2);
+    expect(await sms(visit.customerPhone, 'job_scheduled')).toHaveLength(0);
+  });
+
+  it('an unknown token is 404; a visit that is over or cancelled is closed', async () => {
+    expectStatus(await anon().get(`/public/visits/${'x'.repeat(43)}`), 404);
+    expectStatus(await anon().post(`/public/visits/${'x'.repeat(43)}/respond`).send({ answer: 'confirm' }), 404);
+    expectStatus(await anon().post(`/public/visits/${visit.token}/respond`).send({ answer: 'maybe' }), 400);
+    const past = await bookVisit({ start: new Date(Date.now() - 3 * 3_600_000), contactPhone: null });
+    expect(expectStatus(await anon().get(`/public/visits/${past.token}`), 200).data.canAnswer).toBe(false);
+    const res = expectStatus(await anon().post(`/public/visits/${past.token}/respond`).send({ answer: 'confirm' }), 422);
+    expect(res.error.code).toBe('VISIT_CLOSED');
+    await prisma.job.update({ where: { id: visit.job.id }, data: { status: 'CANCELLED' } });
+    expect(expectStatus(await anon().post(`/public/visits/${visit.token}/respond`).send({ answer: 'confirm' }), 422).error.code).toBe('VISIT_CLOSED');
+  });
+
+  it('rate-limits one address', async () => {
+    const ip = '203.0.113.99';
+    const statuses = [];
+    for (let i = 0; i < 12; i += 1) {
+      statuses.push((await anon(ip).post(`/public/visits/${'y'.repeat(43)}/respond`).send({ answer: 'confirm' })).status);
+    }
+    expect(statuses).toContain(429);
   });
 });

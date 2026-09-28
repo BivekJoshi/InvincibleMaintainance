@@ -12,9 +12,10 @@ import { cn } from '@/helpers/utils';
  */
 export function DocumentShell({ children, width = 'md', className }) {
   return (
-    <PageTransition className={cn('container py-14', width === 'sm' ? 'max-w-2xl' : 'max-w-3xl', className)}>
+    // Tighter edges on a phone: at 360 px the sheet keeps ~300 px for the document itself.
+    <PageTransition className={cn('container px-3 py-8 sm:px-6 sm:py-14', width === 'sm' ? 'max-w-2xl' : 'max-w-3xl', className)}>
       <Card>
-        <CardContent className="p-6 sm:p-8">{children}</CardContent>
+        <CardContent className="p-4 sm:p-8">{children}</CardContent>
       </Card>
     </PageTransition>
   );

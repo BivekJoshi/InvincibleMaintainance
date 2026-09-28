@@ -5,11 +5,12 @@ import { render } from '@testing-library/react';
 import { apiSlice } from '@/api/apiSlice';
 import authReducer from '@/redux/slices/authSlice';
 import uiReducer from '@/redux/slices/uiSlice';
+import fieldSyncReducer from '@/redux/slices/fieldSyncSlice';
 
 /** A fresh store per test, built from the same reducers as `redux/store.js`. */
 export function makeStore(preloadedState) {
   return configureStore({
-    reducer: { [apiSlice.reducerPath]: apiSlice.reducer, auth: authReducer, ui: uiReducer },
+    reducer: { [apiSlice.reducerPath]: apiSlice.reducer, auth: authReducer, ui: uiReducer, fieldSync: fieldSyncReducer },
     middleware: (getDefault) => getDefault().concat(apiSlice.middleware),
     preloadedState,
   });

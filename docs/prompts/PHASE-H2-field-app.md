@@ -1,6 +1,6 @@
 # Phase H2 — Operations: field app
 
-~3 days · branch `admin/phase-h2-field-app` · requires Phase H1 done
+~3 days · branch `admin/phase-h2-field-app` · requires Phase L4 done (Phase L was inserted after H1 on 2026-09-26)
 
 ````text
 You are working in the InvincibleMaintainance repo. This is Phase H2 of docs/ADMIN-PLAN.md: close the

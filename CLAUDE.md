@@ -23,7 +23,7 @@ This is **not** a clone. The marketing page is one deliverable out of nine modul
 | Ops depth | Full: leads → quotations → jobs → materials → invoices → warranty → AMC |
 | Auth | JWT access (15m) + httpOnly refresh cookie (30d), RBAC by role |
 | Roles | ADMIN, EDITOR, SALES, **MANAGER** (SALES + `quotations:approve`), DISPATCHER, TECHNICIAN, SURVEYOR, ACCOUNTANT |
-| Quotation approval | **No quotation is sent without internal approval** — MANAGER/ADMIN, never your own (`quotation.makerChecker`), or auto below `quotation.autoApproveBelow`. Every revision is approved again. The customer answers Accept · Ask for changes · Decline with no login; Accept creates the job. |
+| Quotation approval | **No quotation is sent without internal approval** — MANAGER/ADMIN, never your own (`quotation.makerChecker`), or auto below `quotation.autoApproveBelow`. Every revision is approved again. The customer answers Accept · Ask for changes · Decline with no login; Accept creates the job — with the accepted BOQ as its lines and, when the payment schedule has an advance, the ADVANCE invoice, which gates scheduling until it is paid (a manager may override, audited). |
 | Language | English + Nepali (`en` / `ne`), UTF-8 everywhere, day one |
 | Money | Integer **paisa** (NPR × 100). Never floats. |
 | Dates | UTC in DB; display in Asia/Kathmandu (+05:45). BS dates display-only. |
@@ -53,10 +53,8 @@ split by route group: `(site)` public, `(admin)` staff, `(tech)` technician PWA.
 - Layering: `routes/ → services/ → prisma`. The thin inline `asyncHandler` in a route file **is**
   the controller (decision D5, 2026-09-14): it takes the validated request, calls a service and
   shapes the response. Route files never call Prisma directly; business logic stays in services.
-  Raw Prisma calls still in some routers move into services when each router is next touched.
-  *Progress (Phase H1, 2026-09-17):* prisma-free — `platform`, `cms`, `crm`, `ops` (technicians moved to
-  `services/technician.service.js`), `finance`, `aftercare`, `surveys`, `auth`, `public`. Still calling
-  Prisma — `tech.routes.js` (sync), for Phase H2. A record's history route is `routes/admin/historyRoute.js`;
+  *Done (Phase H2, 2026-09-27):* no route file calls Prisma — the last one, `tech.routes.js`, moved its offline
+  sync into `services/techSync.service.js`. A record's history route is `routes/admin/historyRoute.js`;
   every registry resource (content, materials, job templates, technicians) is mounted by
   `routes/admin/mountResource.js`.
 - Every route: `validate(schema)` → `authenticate` → `authorize(...roles)` → controller.
@@ -131,6 +129,9 @@ Seeded logins are listed in `MaintainanceBackend/README.md` (password `Password1
    resource screen is a **registry entry** — one file in `MaintainanceFrontend/src/config/admin/resources/`,
    registered in `resourceRegistry.js` with a nav item in `adminNav.js` — rendered by the generic
    `ResourceListPage` / `ResourceEditPage`. Do not hand-roll another table, form or per-resource CMS page.
+   Spreadsheet-style editing (the BOQ builder, recipes, measurement sheets) is **`<EditableGrid>`**
+   (`components/common/EditableGrid/`, Phase L3), reached **only through ResourceForm field types**
+   (`lineItems`, `grid`, `measurements`, `recipe`) — never mounted directly by a page.
 4. Add shadcn components with `npx shadcn@latest add <name>` — do not hand-copy them.
 5. Money, phone numbers, and Nepali text are the three things that break. Test them.
 6. No secrets in the repo. Everything through `.env` with a matching `.env.example` entry.

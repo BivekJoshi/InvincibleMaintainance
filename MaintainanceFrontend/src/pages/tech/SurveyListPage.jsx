@@ -6,13 +6,23 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { StatusBadge } from '@/components/ui/badge';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { PageTransition, Stagger } from '@/three/motion/motionKit';
-import { formatDate } from '@/helpers/format';
+import { formatDate, formatTime } from '@/helpers/format';
+import { useFieldCopy } from '@/hooks/useFieldCopy';
 
 /** Anything still in the surveyor's hands sorts above what the office has. */
 const OPEN = ['DRAFT', 'RETURNED'];
 
+/** The visit's day and window, when it has one: "02 Oct 2026, 10:00–12:00". */
+function visitWhen(job) {
+  if (!job?.scheduledStart) return null;
+  const day = formatDate(job.scheduledStart);
+  return job.scheduledEnd ? `${day}, ${formatTime(job.scheduledStart)}–${formatTime(job.scheduledEnd)}` : `${day}, ${formatTime(job.scheduledStart)}`;
+}
+
+/** The surveyor's surveys: still to fill in first, then what the office has. Words in en/ne (`fieldCopy().survey.list`). */
 export default function SurveyListPage() {
   const { data: surveys, isLoading, error, refetch } = useGetMySurveysQuery({});
+  const words = useFieldCopy().survey.list;
 
   if (isLoading) return <PageTransition><CardSkeleton /></PageTransition>;
   if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
@@ -20,11 +30,7 @@ export default function SurveyListPage() {
   if (!surveys?.length) {
     return (
       <PageTransition>
-        <EmptyState
-          icon={ClipboardCheck}
-          title="No surveys yet"
-          description="A survey appears here once a visit is booked and assigned to you."
-        />
+        <EmptyState icon={ClipboardCheck} title={words.emptyTitle} description={words.emptyBody} />
       </PageTransition>
     );
   }
@@ -34,14 +40,14 @@ export default function SurveyListPage() {
 
   return (
     <PageTransition>
-      <h1 className="mb-4 text-lg font-semibold">Your surveys</h1>
-      {open.length ? <Section title="To fill in" surveys={open} /> : null}
-      {done.length ? <Section title="Submitted" surveys={done} muted /> : null}
+      <h1 className="mb-4 text-lg font-semibold">{words.title}</h1>
+      {open.length ? <Section title={words.toFill} surveys={open} words={words} /> : null}
+      {done.length ? <Section title={words.submitted} surveys={done} words={words} muted /> : null}
     </PageTransition>
   );
 }
 
-function Section({ title, surveys, muted }) {
+function Section({ title, surveys, words, muted }) {
   return (
     <section className="mb-6">
       <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h2>
@@ -64,7 +70,7 @@ function Section({ title, surveys, muted }) {
                 </p>
               ) : null}
               <p className="mt-1 text-xs text-muted-foreground">
-                {s.service?.name ?? 'General'} · {formatDate(s.job?.scheduledStart)}
+                {s.service?.name ?? words.general}{visitWhen(s.job) ? ` · ${visitWhen(s.job)}` : ''}
               </p>
               {s.returnedReason ? (
                 <p className="mt-1.5 rounded border border-destructive/25 bg-destructive/10 px-2 py-1 text-xs text-destructive">

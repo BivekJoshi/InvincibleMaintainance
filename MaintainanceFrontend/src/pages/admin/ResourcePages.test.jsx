@@ -20,7 +20,7 @@ class TestRequest {
 }
 
 const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
-const RATE = { id: 'r1', code: 'WP-TERRACE', name: 'Terrace membrane waterproofing', category: 'Waterproofing', unit: 'sq.ft', rate: 27550, isActive: true, sortOrder: 0 };
+const RATE = { id: 'r1', code: 'WP-TERRACE', name: 'Terrace membrane waterproofing', category: 'Waterproofing', unit: 'sq.ft', rate: 27550, rateMode: 'MANUAL', recipeQty: 1, components: [], derivedRate: null, outOfDate: false, isActive: true, sortOrder: 0 };
 
 beforeEach(() => {
   vi.stubGlobal('Request', TestRequest);
@@ -55,9 +55,9 @@ function Screens() {
 
 const renderAt = (path, role) => renderWithProviders(<Screens />, { path: '*', preloadedState: signedInAs(role), initialPath: path });
 
-describe('rate card screens', () => {
-  it('lists rates with their rate in rupees and the “In use” switch, and lets SALES add one', async () => {
-    renderAt('/admin/rate-card', 'SALES');
+describe('rate library screens', () => {
+  it('lists rates with their rate in rupees and the “In use” switch, and lets MANAGER add one', async () => {
+    renderAt('/admin/rate-card', 'MANAGER');
     expect(await screen.findByText('Terrace membrane waterproofing')).toBeInTheDocument();
     expect(screen.getByText(/275\.50/)).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: /In use/ })).toBeInTheDocument();
@@ -66,8 +66,8 @@ describe('rate card screens', () => {
     expect(screen.getByText(/The estimator uses each service’s own price range/)).toBeInTheDocument();
   });
 
-  it('is read-only for ACCOUNTANT: no New, a disabled switch, a form without Save, and /new goes back to the list', async () => {
-    const { router } = renderAt('/admin/rate-card', 'ACCOUNTANT');
+  it.each(['ACCOUNTANT', 'SALES'])('is read-only for %s: no New, a disabled switch, a form without Save, and /new goes back to the list', async (role) => {
+    const { router } = renderAt('/admin/rate-card', role);
     expect(await screen.findByText('Terrace membrane waterproofing')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /New Rate/ })).not.toBeInTheDocument();
     expect(screen.getByRole('switch')).toBeDisabled();
@@ -99,9 +99,23 @@ describe('the History tab on a registry edit page', () => {
     expect(calls).toContain('/api/v1/admin/rate-card/r1/history');
   });
 
-  it('has no History tab for a role that reads the record but not its trail', async () => {
+  it('shows the rate library’s trail to every reader since Phase L2 — the API masks cost in it', async () => {
     renderAt('/admin/rate-card/r1', 'ACCOUNTANT');
     expect(await screen.findByDisplayValue('Terrace membrane waterproofing')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'History' })).toBeInTheDocument();
+  });
+
+  it('has no History tab for a role that reads the record but not its trail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (request) => {
+      const path = new URL(request.url, 'http://localhost').pathname.replace(/^\/api\/v1/, '');
+      if (path === '/admin/technicians/t1') return json({ data: { id: 't1', userId: 'u1', employeeCode: 'T-009', skills: [], serviceAreas: [], certifications: [], dailyCapacity: 2, isAvailable: true } });
+      return json({ data: { id: 'u1', label: 'Hari KC · Technician' } });
+    }));
+    renderWithProviders(
+      <Routes><Route path="/admin/technicians/:id" element={<ResourceEditPage resource="technicians" />} /></Routes>,
+      { path: '*', preloadedState: signedInAs('SALES'), initialPath: '/admin/technicians/t1' },
+    );
+    expect(await screen.findByDisplayValue('T-009')).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'History' })).not.toBeInTheDocument();
   });
 });

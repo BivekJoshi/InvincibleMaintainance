@@ -137,3 +137,16 @@ describe('survey transitions', () => {
     expect(() => assertTransition(SURVEY_TRANSITIONS, 'QUOTED', 'SUBMITTED', 'survey')).toThrow(/Cannot move survey/);
   });
 });
+
+describe('the purchase list (Phase L7)', () => {
+  it('DRAFT → ORDERED → RECEIVED, or CANCELLED before it arrives; RECEIVED and CANCELLED are final', async () => {
+    const { PURCHASE_LIST_TRANSITIONS: m } = await import('../src/shared/stateMachines.js');
+    expect(canTransition(m, 'DRAFT', 'ORDERED')).toBe(true);
+    expect(canTransition(m, 'ORDERED', 'RECEIVED')).toBe(true);
+    expect(canTransition(m, 'DRAFT', 'RECEIVED')).toBe(false);
+    expect(canTransition(m, 'ORDERED', 'CANCELLED')).toBe(true);
+    expect(canTransition(m, 'RECEIVED', 'CANCELLED')).toBe(false);
+    expect(m.RECEIVED).toEqual([]);
+    expect(m.CANCELLED).toEqual([]);
+  });
+});

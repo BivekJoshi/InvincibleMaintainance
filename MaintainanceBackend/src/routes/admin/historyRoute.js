@@ -17,7 +17,7 @@ export const historyRoute = (model, capability) => [
   requires(capability),
   validate({ params: idParam, query: historyQuery }),
   asyncHandler(async (req, res) => {
-    const { items, meta } = await recordHistory(model, req.params.id, req.validatedQuery);
+    const { items, meta } = await recordHistory(model, req.params.id, req.validatedQuery, { role: req.user.role });
     ok(res, items, meta);
   }),
 ];

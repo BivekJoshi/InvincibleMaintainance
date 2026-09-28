@@ -27,8 +27,28 @@ describe('recordHref', () => {
     expect(recordHref({ model: 'Material', recordId: 'm1' })).toBe('/admin/materials/m1');
   });
 
-  it('has no link for records without a screen yet', () => {
-    expect(recordHref({ model: 'Invoice', recordId: 'i1' })).toBeNull();
+  it('links a trade, and a recipe line to its rate (Phase L2)', () => {
+    expect(recordHref({ model: 'Trade', recordId: 'tr1' })).toBe('/admin/trades/tr1');
+    expect(recordHref({ model: 'RateCardComponent', recordId: 'c1', after: { rateCardItemId: 'r9' } })).toBe('/admin/rate-card/r9');
+  });
+
+  it('has no link for records without a screen', () => {
+    expect(recordHref({ model: 'Report', recordId: null })).toBeNull();
     expect(recordHref({ model: 'Lead', recordId: null })).toBeNull();
+  });
+
+  it('links an invoice, its payments and lines, and an expense (Phase I)', () => {
+    expect(recordHref({ model: 'Invoice', recordId: 'i1' })).toBe('/admin/invoices/i1');
+    expect(recordHref({ model: 'Payment', recordId: 'p1', after: { invoiceId: 'i1', amount: 100000 } })).toBe('/admin/invoices/i1');
+    expect(recordHref({ model: 'InvoiceItem', recordId: 'it1', before: { invoiceId: 'i2' } })).toBe('/admin/invoices/i2');
+    expect(recordHref({ model: 'Expense', recordId: 'ex1' })).toBe('/admin/expenses/ex1');
+  });
+
+  it('links a purchase list and its items, and a site diary day to its job’s diary (Phase L7)', () => {
+    expect(recordHref({ model: 'PurchaseList', recordId: 'pl1' })).toBe('/admin/purchase-lists/pl1');
+    expect(recordHref({ model: 'PurchaseListItem', recordId: 'it1', after: { listId: 'pl1' } })).toBe('/admin/purchase-lists/pl1');
+    expect(recordHref({ model: 'SiteDiary', recordId: 'd1', meta: { jobId: 'j9', day: '2026-09-28' } })).toBe('/admin/jobs/j9?tab=diary');
+    expect(recordHref({ model: 'SiteDiary', recordId: 'd1', after: { jobId: 'j9' } })).toBe('/admin/jobs/j9?tab=diary');
+    expect(recordHref({ model: 'SiteDiary', recordId: 'd1' })).toBeNull();
   });
 });

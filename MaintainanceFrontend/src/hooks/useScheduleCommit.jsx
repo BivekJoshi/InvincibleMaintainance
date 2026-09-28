@@ -3,6 +3,7 @@ import { useDispatch } from 'react-redux';
 import { useScheduleJobMutation } from '@/api/jobsApi';
 import { useConfirm } from '@/hooks/useConfirm';
 import { scheduleWarnings, warningText } from '@/helpers/dispatchBoard';
+import { plannedEnd } from '@/helpers/handoff';
 import { formatDateTime } from '@/helpers/format';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 
@@ -18,8 +19,12 @@ import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
  *   const [commit, confirmDialog] = useScheduleCommit({ lanes, days });
  *   const done = await commit(job, { scheduledStart, scheduledEnd, technicianIds });
  *
+ * Since Phase L6 `scheduledEnd` may be left out: the API ends the window `plannedDays` after the start, and the
+ * clash check here judges that same window. A refusal is toasted — or, with `{ rethrow: true }`, thrown to the
+ * caller untouched, so the Schedule dialog can explain a 422 ADVANCE_UNPAID in place.
+ *
  * @param {{ lanes?: object[], days?: string[] }} [board]
- * @returns {[(job: object, body: object, opts?: { quiet?: boolean }) => Promise<boolean>, import('react').ReactElement]}
+ * @returns {[(job: object, body: object, opts?: { rethrow?: boolean }) => Promise<boolean>, import('react').ReactElement]}
  *   resolves false when the dispatcher called it off or the API refused (the refusal is toasted)
  */
 export function useScheduleCommit({ lanes, days } = {}) {
@@ -27,9 +32,12 @@ export function useScheduleCommit({ lanes, days } = {}) {
   const [schedule] = useScheduleJobMutation();
   const [confirm, confirmDialog] = useConfirm();
 
-  const commit = useCallback(async (job, body) => {
+  const commit = useCallback(async (job, body, { rethrow = false } = {}) => {
     const technicianIds = body.technicianIds ?? (job.assignments ?? []).map((a) => a.technicianId);
-    const window = { scheduledStart: body.scheduledStart, scheduledEnd: body.scheduledEnd };
+    const window = {
+      scheduledStart: body.scheduledStart,
+      scheduledEnd: body.scheduledEnd ?? plannedEnd(body.scheduledStart, job.plannedDays),
+    };
     const checked = lanes ? scheduleWarnings({ job, window, technicianIds, lanes, days }) : { warnings: [], unchecked: true };
 
     if (checked.warnings.length) {
@@ -55,6 +63,7 @@ export function useScheduleCommit({ lanes, days } = {}) {
       if (fresh.length) dispatch(toastError('Scheduled — but check this', fresh.map(warningText).join(' ')));
       return true;
     } catch (err) {
+      if (rethrow) throw err;
       dispatch(toastError(`Could not schedule ${job.number}`, err?.data?.error?.message ?? 'Please try again.'));
       return false;
     }

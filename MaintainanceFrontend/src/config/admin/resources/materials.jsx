@@ -58,6 +58,13 @@ export const materials = {
       cell: (r) => <span className="whitespace-nowrap tabular-nums">{formatNpr(r.sellRate)}</span>,
     },
     {
+      key: 'packSize', header: 'Bought as',
+      cell: (r) => (r.packSize && r.packLabel
+        ? <span className="whitespace-nowrap">{r.packLabel} <span className="text-xs text-muted-foreground">= {Number(r.packSize)} {r.unit}</span></span>
+        : <span className="text-muted-foreground">—</span>),
+      exportValue: (r) => (r.packSize && r.packLabel ? `${r.packLabel} = ${Number(r.packSize)} ${r.unit}` : ''),
+    },
+    {
       key: 'reorderLevel', header: 'Reorder at', sortable: true, className: 'text-right',
       cell: (r) => <span className="tabular-nums">{r.reorderLevel ? `${r.reorderLevel} ${r.unit}` : '—'}</span>,
     },
@@ -76,6 +83,14 @@ export const materials = {
     { name: 'supplierId', type: 'relation', label: 'Usual supplier', span: 'half', relation: SUPPLIER_RELATION },
     { name: 'purchaseRate', type: 'money', label: 'Purchase rate', span: 'half', description: 'Per unit. Costs a job.' },
     { name: 'sellRate', type: 'money', label: 'Sell rate', span: 'half', description: 'Per unit. What a job is billed unless someone changes it.' },
+    {
+      name: 'packSize', type: 'number', label: 'Pack size', span: 'half', min: 0, step: 'any', nullable: true,
+      description: 'How many units one pack holds — 50 for a 50 kg bag, or 1 when the unit is the pack. A take-off rounds up to whole packs.',
+    },
+    {
+      name: 'packLabel', type: 'text', label: 'Pack', span: 'half', maxLength: 20, nullable: true, placeholder: 'bag',
+      description: 'What a pack is called: bag, 20 L tin, box of 8.',
+    },
     {
       name: 'reorderLevel', type: 'number', label: 'Reorder at', span: 'half', min: 0, step: 0.5,
       description: 'Dispatch is told when stock falls to this. 0 = never.',

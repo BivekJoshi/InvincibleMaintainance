@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { apiAs, signIn } from './support/api.js';
+import { checklistReadings } from './support/survey.js';
+import { approveInDialog } from './support/quotation.js';
 
 /**
  * Phase F's acceptance, end to end: the customer books, the surveyor reports, the office
@@ -69,12 +71,14 @@ test('booking → survey → approval → change request → revision → accept
   });
   expect(converted.survey?.id, 'convert with a surveyor creates the survey').toBeTruthy();
 
-  // ── 3 · the surveyor reports quantities and submits (API)
+  // ── 3 · the surveyor reports quantities and submits (API). Since Phase L5 the seepage service's checklist is
+  // answered first — its required questions, and a photo on the photo-required ones.
   const rateCard = await surveyor.get('/tech/rate-card');
   const seepChem = rateCard.find((r) => r.code === 'SEEP-CHEM');
+  const { readings: checklist } = await checklistReadings(surveyor, converted.survey.id);
   await surveyor.post(`/tech/surveys/${converted.survey.id}/submit`, {
     diagnosis: 'Rising damp on the north wall.',
-    readings: [{ label: 'North wall, 300mm', metric: 'moisture', value: 21.5, unit: '%' }],
+    readings: [...checklist, { label: 'North wall, 300mm', metric: 'moisture', value: 21.5, unit: '%', sortOrder: checklist.length }],
     items: [{ kind: 'SERVICE', rateCardItemId: seepChem.id, description: 'Crystalline seepage treatment', unit: 'sq.ft', qty: 240 }],
   });
 
@@ -103,10 +107,12 @@ test('booking → survey → approval → change request → revision → accept
     await page.goto('/admin/quotations?stage=approval');
     await page.getByRole('row', { name: new RegExp(customerName) }).first().click();
     await expect(page).toHaveURL(new RegExp(`/admin/quotations/${quotationId}$`));
-    await page.getByRole('button', { name: 'Approve' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Approve this quotation' });
-    await dialog.getByRole('textbox').fill('Rates match the rate card.');
-    await dialog.getByRole('button', { name: 'Approve' }).click();
+    // The builder is a lazy chunk: wait for it, and name the button exactly — while the list is still on screen its
+    // "Prepared · approved" column-actions button also matches a loose 'Approve'.
+    await expect(page.getByTestId('waiting-for')).toContainText('Waiting for your approval');
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    // Phase L4: a low or unknown margin needs the manager's acknowledgement; the helper gives it when asked.
+    await approveInDialog(page, 'Rates match the rate card.');
     await expect(page.getByTestId('waiting-for')).toContainText('ready to send');
   });
 
@@ -141,7 +147,8 @@ test('booking → survey → approval → change request → revision → accept
   const v2 = await sales.post(`/admin/quotations/${quotationId}/revise`);
   expect(v2).toMatchObject({ version: 2, status: 'DRAFT', requestedChanges: nepaliRequest });
   expect((await sales.post(`/admin/quotations/${v2.id}/submit`)).status).toBe('PENDING_APPROVAL');
-  expect((await manager.post(`/admin/quotations/${v2.id}/approve`, {})).status).toBe('OFFICE_APPROVED');
+  // The revision is priced like v1: acknowledge a low or unknown margin up front (Phase L4 — harmless when healthy).
+  expect((await manager.post(`/admin/quotations/${v2.id}/approve`, { acknowledgeLowMargin: true })).status).toBe('OFFICE_APPROVED');
   const sentV2 = await sales.post(`/admin/quotations/${v2.id}/send`);
   const secondLink = `/quotation/${sentV2.publicToken}`;
 

@@ -54,7 +54,8 @@ export function createApp({ logger = defaultLogger } = {}) {
       return cb(new AppError(403, 'FORBIDDEN_ORIGIN', 'This origin is not allowed to call the API'));
     },
     credentials: true,
-    exposedHeaders: ['X-Request-Id'],
+    // A download's name and whether a report CSV was cut (Phase I) are read by the SPA.
+    exposedHeaders: ['X-Request-Id', 'Content-Disposition', 'X-Export-Truncated'],
   }));
 
   app.use(compression());

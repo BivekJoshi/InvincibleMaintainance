@@ -24,6 +24,9 @@ export const ACTION_LABELS = {
   convert: 'Convert to job',
 };
 
+/** A variation's convert (Phase L7): no new job — its rows join the job it changes. */
+export const VARIATION_CONVERT_LABEL = 'Add to the job';
+
 /** Statuses a revision starts from. */
 export const REVISABLE = ['SENT', 'CHANGES_REQUESTED', 'REJECTED', 'EXPIRED'];
 
@@ -47,8 +50,16 @@ export function quotationActions(quotation, { can, userId }) {
   const action = (key, extra = {}) => ({ key, label: ACTION_LABELS[key], ...extra });
 
   switch (quotation.status) {
-    case 'DRAFT':
-      return write ? [action('submit', { primary: true })] : [];
+    case 'DRAFT': {
+      if (!write) return [];
+      // A detail record says what its rows are; a list row does not, and the API has the last word (Phase L3).
+      const rows = Array.isArray(quotation.items) ? quotation.items : null;
+      const priced = rows?.some((r) => (r.rowType ?? 'ITEM') === 'ITEM' && !r.isOptional);
+      return [action('submit', {
+        primary: true,
+        ...(rows && !priced ? { disabledReason: 'Add at least one row that counts toward the total before submitting.' } : {}),
+      })];
+    }
     case 'PENDING_APPROVAL':
       if (!approve) return [];
       return [
@@ -70,8 +81,11 @@ export function quotationActions(quotation, { can, userId }) {
     case 'EXPIRED':
       return write ? [action('revise', { primary: true })] : [];
     case 'APPROVED':
-      // Only a quotation the customer approved before acceptance started creating the job.
-      return can('jobs:write') ? [action('convert', { primary: true })] : [];
+      // Only a quotation the customer approved before acceptance started creating the job. A variation's is adding its
+      // rows to the job (Phase L7).
+      return can('jobs:write')
+        ? [action('convert', { primary: true, ...(quotation.kind === 'VARIATION' ? { label: VARIATION_CONVERT_LABEL } : {}) })]
+        : [];
     default:
       return [];
   }
@@ -82,6 +96,13 @@ export function quotationActions(quotation, { can, userId }) {
  * @returns {string|null}
  */
 export function waitingFor(quotation, { can, userId }) {
+  // A variation order (Phase L7) ends on its job, not on a new one.
+  if (quotation?.kind === 'VARIATION') {
+    const job = quotation.job?.number ?? 'the job';
+    if (quotation.status === 'DRAFT') return `Variation to ${job} — add its rows (an omission is a negative quantity), then submit it for approval.`;
+    if (quotation.status === 'APPROVED') return `Accepted by the customer — add its rows to ${job}.`;
+    if (quotation.status === 'CONVERTED') return `Accepted — its rows are on ${job}.`;
+  }
   switch (quotation?.status) {
     case 'DRAFT':
       return 'Draft — edit the lines, then submit it for approval.';
@@ -146,4 +167,24 @@ export function sentAge(quotation, now = Date.now()) {
   const days = Math.floor((now - new Date(quotation.sentAt).getTime()) / DAY_MS);
   if (days <= 0) return 'Sent today';
   return `Sent ${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+/**
+ * A quotation's margin as the API sent it — only to `costs:read` (the money wall strips it for everyone else): the
+ * record's `margin` / `costComplete` / `costTotal` (Phase L4, also on list rows), or Phase L3's `boq.cost`. Nothing is
+ * worked out here. `known` is true when the margin is a figure, false when a cost is unknown (the approval then needs
+ * an acknowledgement), and null when no cost was sent at all.
+ *
+ * @param {object|null|undefined} q
+ * @returns {{ margin: { amount: number, pct: number|null }|null, costComplete: boolean|undefined,
+ *   costTotal: number|null, known: boolean|null }}
+ */
+export function marginOf(q) {
+  const cost = q?.boq?.cost ?? null;
+  const margin = q?.margin !== undefined ? q.margin : cost?.margin;
+  const costComplete = q?.costComplete ?? cost?.costComplete;
+  const costTotal = q?.costTotal ?? cost?.costTotal ?? null;
+  const sent = margin !== undefined || costComplete !== undefined;
+  const known = sent ? Boolean(costComplete !== false && margin && margin.pct != null) : null;
+  return { margin: margin ?? null, costComplete, costTotal, known };
 }

@@ -12,6 +12,7 @@ export const leadsApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: ['LeadBoard'],
     }),
+    // The lead page's record: `quotations[]` and `jobs[]` ride along (the board reads `quotations` before a drop on Quoted).
     getLead: build.query({
       query: (id) => `/admin/leads/${id}`,
       transformResponse: (r) => r.data,
@@ -62,10 +63,19 @@ export const leadsApi = apiSlice.injectEndpoints({
       query: ({ id, note }) => ({ url: `/admin/leads/${id}/notes`, method: 'POST', body: { note } }),
       invalidatesTags: (r, e, { id }) => [{ type: 'Lead', id }, 'History'],
     }),
-    // Logging contact is what stamps firstResponseAt and stops the SLA clock. The answer
-    // carries `firstResponse` and the lead's `sla` after the entry.
+    // Logging contact is what stamps firstResponseAt and stops the SLA clock. The answer carries
+    // `firstResponse`, the lead's `sla`, the lead's new next action and status (`lead`), and `dialog`
+    // ('visit' | 'quotation' | null) — the step the outcome asks the screen to open.
     addLeadActivity: build.mutation({
       query: ({ id, ...body }) => ({ url: `/admin/leads/${id}/activities`, method: 'POST', body }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: (r, e, { id }) => [
+        { type: 'Lead', id }, { type: 'Lead', id: 'LIST' }, 'LeadBoard', 'Dashboard', 'History',
+      ],
+    }),
+    // Sets (at + type) or clears (at: null) what the owner does next. 422 LEAD_CLOSED on a won or lost lead.
+    setLeadNextAction: build.mutation({
+      query: ({ id, ...body }) => ({ url: `/admin/leads/${id}/next-action`, method: 'PATCH', body }),
       transformResponse: (r) => r.data,
       invalidatesTags: (r, e, { id }) => [
         { type: 'Lead', id }, { type: 'Lead', id: 'LIST' }, 'LeadBoard', 'Dashboard', 'History',
@@ -116,5 +126,5 @@ export const {
   useCreateLeadMutation, useUpdateLeadMutation, useSetLeadStatusMutation, useAssignLeadMutation,
   useAddLeadNoteMutation, useAddLeadActivityMutation, useConvertLeadMutation, useGetTechniciansQuery,
   useMergeLeadsMutation, useDeleteLeadMutation, useLazyExportLeadsCsvQuery,
-  useGetLeadCustomerMatchesQuery, useBulkAssignLeadsMutation,
+  useGetLeadCustomerMatchesQuery, useBulkAssignLeadsMutation, useSetLeadNextActionMutation, useLazyGetLeadQuery,
 } = leadsApi;

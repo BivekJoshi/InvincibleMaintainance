@@ -5,7 +5,8 @@ import { JOB_PHOTO_KINDS, JOB_TYPES, PRIORITIES } from '@/config/constants';
 /**
  * The job forms. Mirrors MaintainanceBackend/src/shared/schemas/ops.js (`jobSchema`,
  * `jobScheduleSchema`, `jobAssignSchema`, `jobStatusSchema`, `jobCompleteSchema`, `jobTaskSchema`,
- * `jobPhotoSchema`, `jobMaterialSchema`, `timeLogCreateSchema`) — change both together. Times are
+ * `jobPhotoSchema`, `jobMaterialSchema`, `timeLogCreateSchema`, and Phase L6's `jobAdvanceOverrideSchema`) — change
+ * both together. Times are
  * the UTC ISO strings the datetime field produces; money is in rupees.
  */
 
@@ -21,7 +22,8 @@ export const jobCreateSchema = z.object({
   siteId: z.string().optional().nullable(),
   quotationId: z.string().optional().nullable(),
   templateId: z.string().optional().nullable(),
-  type: z.enum(JOB_TYPES).default('REPAIR'),
+  // Left out: REPAIR — or, for a job made from a quotation, its service's jobType (Phase L6).
+  type: z.enum(JOB_TYPES).optional(),
   title: z.string().trim().min(2, 'Give the job a title').max(250),
   description: optionalText,
   priority: z.enum(PRIORITIES).default('NORMAL'),
@@ -44,20 +46,40 @@ export const jobUpdateSchema = z.object({
   isBillable: z.coerce.boolean(),
 });
 
-/** The Schedule dialog — the board's non-drag path. At least one technician once people are chosen. */
+/** The longest window a schedule may span (Phase L6: 90 days — a BOQ job runs for weeks; it was 14). */
+export const MAX_SCHEDULE_DAYS = 90;
+
+/**
+ * The Schedule dialog — the board's non-drag path. At least one technician once people are chosen. Since Phase L6
+ * the end is optional: without it the API ends the window `plannedDays` after the start (400 when the job has none —
+ * the dialog then asks for it, `jobScheduleSchemaFor`).
+ */
 export const jobScheduleSchema = z.object({
   scheduledStart: instant('start'),
-  scheduledEnd: instant('end'),
+  scheduledEnd: optionalInstant,
   technicianIds: technicianIds.min(1, 'Choose at least one technician'),
   leadTechnicianId: z.string().optional(),
   note: z.string().trim().max(1000).optional(),
   notifyCustomer: z.coerce.boolean().default(true),
 })
   .refine(endAfterStart, { message: 'End time must be after the start time', path: ['scheduledEnd'] })
-  .refine((v) => new Date(v.scheduledEnd) - new Date(v.scheduledStart) <= 14 * 86_400_000, {
-    message: 'A visit cannot be longer than 14 days', path: ['scheduledEnd'],
+  .refine((v) => !v.scheduledEnd || new Date(v.scheduledEnd) - new Date(v.scheduledStart) <= MAX_SCHEDULE_DAYS * 86_400_000, {
+    message: `A schedule cannot be longer than ${MAX_SCHEDULE_DAYS} days`, path: ['scheduledEnd'],
   })
   .refine(leadIsOnJob, { message: 'The lead must be one of the technicians on the job', path: ['leadTechnicianId'] });
+
+/** The dialog's schema for one job: a job with no planned days must be given an end. */
+export const jobScheduleSchemaFor = (job) => (Number(job?.plannedDays) > 0
+  ? jobScheduleSchema
+  : jobScheduleSchema.refine((v) => Boolean(v.scheduledEnd), { message: 'Choose the end', path: ['scheduledEnd'] }));
+
+/**
+ * The advance override (Phase L6, `jobs:advance-override`): the job may go ahead before the advance is paid. The
+ * reason is required — it is audited as `job.advance_overridden`.
+ */
+export const jobAdvanceOverrideSchema = z.object({
+  reason: z.string().trim().min(5, 'Say why, in at least 5 characters').max(500, 'Keep it under 500 characters'),
+});
 
 export const jobAssignSchema = z.object({
   technicianIds: technicianIds.min(1, 'Choose at least one technician'),

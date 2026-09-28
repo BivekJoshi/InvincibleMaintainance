@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, TriangleAlert, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { selectToasts, dismissToast } from '@/redux/slices/uiSlice';
 import { cn } from '@/helpers/utils';
@@ -8,12 +8,14 @@ import { cn } from '@/helpers/utils';
 const ICONS = {
   success: CheckCircle2,
   destructive: AlertCircle,
+  warning: TriangleAlert,
   default: Info,
 };
 
 const STYLES = {
   success: 'surface-success border',
   destructive: 'border-destructive/30 bg-destructive/10 text-destructive',
+  warning: 'surface-warning border',
   default: 'border-border bg-popover text-popover-foreground',
 };
 
