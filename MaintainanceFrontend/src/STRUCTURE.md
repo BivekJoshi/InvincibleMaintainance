@@ -20,14 +20,14 @@ src/
 ├── helpers/        Pure functions.
 └── styles/         Tailwind entry + CSS variables.
 
-e2e/                The Playwright suite: the quotation loop (Phase F2), the dispatch walk-through (Phase H1), the BOQ (Phases L3–L4) and the field app (Phase H2).
+e2e/                The Playwright suite: the quotation loop (Phase F2), the dispatch walk-through (Phase H1), the BOQ (Phases L3–L5) and the field app (Phase H2).
 ├── quotation-flow.spec.js
 ├── operations-flow.spec.js   (on the first day from tomorrow with no closed job left by an earlier run on Hari) schedule by drag and by dialog, double-book warning, materials, time, costing, complete, verify, case study
 ├── field-flow.spec.js  Hari at 360 px: today → on my way → start → tick, timer → `context.setOffline(true)` → a photo, a material, a tick wait on the phone ("Offline — 3 waiting") → back online, the queue drains by itself → last tick, sign, complete; the dispatcher finds the photos (DURING + SIGNATURE = `signatureId`), the material, the time, the checklist and the warranty
-├── boq-flow.spec.js    SALES builds a 3-section BOQ by keyboard, pastes 15 rows, adds a `/` library row, a measured and an optional row, saves (server totals = what the builder showed), submits; MANAGER sees the margin, approves (L4: the unknown cost needs the acknowledgement, recorded in the event), sends; the customer opens the link at 360 px (sections, the 50 · 40 · 10 schedule with the server's amounts, the words, the annex, no sideways scroll), SALES sees "Opened 1×", the customer accepts; the public view has no cost key. L5–L8 extend it
+├── boq-flow.spec.js    SALES builds a 3-section BOQ by keyboard, pastes 15 rows, adds a `/` library row, a measured and an optional row, saves (server totals = what the builder showed), submits; MANAGER sees the margin, approves (L4: the unknown cost needs the acknowledgement, recorded in the event), sends; the customer opens the link at 360 px (sections, the 50 · 40 · 10 schedule with the server's amounts, the words, the annex, no sideways scroll), SALES sees "Opened 1×", the customer accepts; the public view has no cost key. **L5** (a second test): SALES books the visit from a lead (window, a Devanagari caretaker with a `+977` number, a landmark, the SMS preview in Nepali), the customer opens `/visit/:token` at 360 px, switches to नेपाली and confirms (`visitAnswer` / `customerConfirmedAt` on the job); the surveyor opens it from the survey list and drives the stepper at 360 px **offline** (`setOffline(true)`, the GPS granted) — the pin, the seepage checklist (a flagged reading, a photo on each photo-required question), two rooms in feet-inches with a door deducted (210.5 sq.ft), a SKETCH filed under its room, the line's work item — and submits on the phone ("Offline — n waiting", the office still has a DRAFT); back online the queue drains by itself (photos, then the save carrying their media ids, then the submit); the office's survey has the flagged reading with its photo, the rows, the pin and the sketch; SALES builds the quotation from it and the BOQ row's measurements and quantity equal the survey's. L6–L8 extend it
 ├── fixtures/           boq-paste.tsv — the 15 rows pasted from "Excel" (a header, two text-only section rows, Indian grouping, `Rs.`); site-photo.jpg — the field flow's camera shot (320 × 240)
 ├── global-setup.js     migrates and seeds the *_test database
-└── support/            e2eEnv.js (ports, database, the API's environment, the seeded logins — `TECHNICIAN` is Hari), api.js (HTTP + signIn), quotation.js (`approveInDialog` — ticks the low-margin acknowledgement when the dialog or the API asks — and `rupeesText`)
+└── support/            e2eEnv.js (ports, database, the API's environment, the seeded logins — `TECHNICIAN` is Hari), api.js (HTTP + signIn; `upload(path, { file, fields })` for multipart), quotation.js (`approveInDialog` — ticks the low-margin acknowledgement when the dialog or the API asks — and `rupeesText`), survey.js (Phase L5: `checklistReadings(surveyor, surveyId)` — uploads one photo and answers a survey's required and photo-required questions, so an API submit passes the checklist; the quotation loop uses it for the seeded seepage checklist)
 ```
 
 ## api/
@@ -83,7 +83,12 @@ The CRM files (Phase E):
 - `techApi.js` — the field app. Phase H2 added **`uploadMyJobPhotos({ id, body })`** (multipart `files` + `kind` +
   `caption`, answered `{ photos, media }`) beside `uploadSurveyPhotos`; both are sent only by the upload queue's engine
   (`hooks/useOfflineQueue.js`), never straight from a screen. `getTechMaterials` is kept 12 h (reference data for the
-  materials sheet offline); `getMyJobs({ from, to })` feeds History. See "The field app (Phase H2)".
+  materials sheet offline); `getMyJobs({ from, to })` feeds History. See "The field app (Phase H2)". Since Phase L5 a survey
+  upload carries `kind` (ISSUE, or SKETCH), `caption` and `area`, and `getMySurvey` answers the stepper's whole survey
+  (template, lead photos and message, site pin and contact, `media`); the survey screen writes only through the queue.
+- `publicApi.js` (Phase L5) — **`getVisitByToken(token)`** and **`respondToVisit({ token, answer, note })`** for the
+  customer's `/visit/:token` page; a successful answer writes the returned visit into the GET's cache, so the page
+  shows what was recorded.
 - Phase L1 added to `leadsApi.js` **`setLeadNextAction`** (`PATCH …/next-action`: `{ at, type, note }`, or `{ at: null }` to
   clear) and uses the lazy **`useLazyGetLeadQuery`** on the board (a list row does not say whether a quotation exists).
   `addLeadActivity` now carries the outcome contract: the answer has `lead` (status, next action, attempts after it) and
@@ -121,17 +126,17 @@ The CRM files (Phase E):
 | `media/` | The media library screen's own parts: `MediaFolderTree` (folders as an indented tree) and `MediaDetailsSheet` (one file's facts, URL and alt/caption/folder form — a `ResourceForm` sheet) — and `MediaCell`, a list column's thumbnail of one media id (the gallery, features). |
 | `projects/` | `ProjectGalleryTab` — the Gallery tab of a project's edit page (add from the library or upload, drag or Move earlier/later, remove; each change saves at once through the project image endpoints) — and `ProjectName`, a project's title from its id for a list column. |
 | `homeComposer/` | `HomeSectionList` — the home page composer's sortable section rows (drag handle, Move up / down, visibility, item limit). |
-| `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog` (a required lost category, then the words — required only for "Other"), `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (**the outcome composer** — see "Lead follow-through (Phase L1)"), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice; both report completion before they close, so a caller can tell done from Cancel — L1's new-quotation use of it became `quotations/NewQuotationSheet` in L3), `ConvertResult` (what a convert made, with links), `LeadPhotoGallery` (what the customer photographed, with a lightbox: arrow keys, thumbnails, full size), `ResponseRunway` (the SLA board's hero: every unanswered lead on its two-hour clock; `RunwayStrip` is the one-line version on the dashboard) `LeadStageTrack` (a lead's road from New to Won on its page; a lost lead shows its category and the stage it was lost at), and Phase L1's `NextActionCard`, `QualificationCard` and `StageAgeChip` (see "Lead follow-through (Phase L1)"). |
+| `leads/` | The lead screens' parts: `LeadFormSheet` (new / edit), `AssignLeadDialog` (one lead or a selection), `LostReasonDialog` (a required lost category, then the words — required only for "Other"), `LeadStatusMenu` (only the allowed moves), `ActivityComposer` (**the outcome composer** — see "Lead follow-through (Phase L1)"), `LeadRequestPanel` (contact, slot, estimate, UTM, language), `DuplicatesPanel` (merge with a preview), `CustomerMatchChoice` ("same person / different person", the email and language boxes), `ScheduleVisitDialog` and `ConvertLeadSheet` (the two converts, both with the choice; both report completion before they close, so a caller can tell done from Cancel — L1's new-quotation use of it became `quotations/NewQuotationSheet` in L3; since Phase L5 the visit is a window with a site contact, a landmark and an SMS preview from `visitBookedCopy.js` — see "The site-visit kit (Phase L5)"), `ConvertResult` (what a convert made, with links), `LeadPhotoGallery` (what the customer photographed, with a lightbox: arrow keys, thumbnails, full size), `ResponseRunway` (the SLA board's hero: every unanswered lead on its two-hour clock; `RunwayStrip` is the one-line version on the dashboard) `LeadStageTrack` (a lead's road from New to Won on its page; a lost lead shows its category and the stage it was lost at), and Phase L1's `NextActionCard`, `QualificationCard` and `StageAgeChip` (see "Lead follow-through (Phase L1)"). |
 | `rateLibrary/` | Phase L2's rate library parts: `RateCostCard` (the edit form's live **Cost vs rate** card — a `preview` field behind `costs:read`), `RepricePreview` ("Update to derived rate"'s before/after table, inside the confirmation) and `RateLibraryIntro` (above a saved rate: how its rate is set, and "Out of date" with what its recipe gives today). See "The rate library and the money wall (Phase L2)". Phase L3's **`RateLibrarySearch`** is the BOQ grid's `/`: a cmdk palette over the server search — Enter adds the highlighted item, Shift+Enter ticks several, each becomes a row priced from the library (`helpers/boq.js#libraryRow`). |
 | `quotations/` | Phase L3's **`NewQuotationSheet`** — the one way a quotation starts: blank · from a survey · copy. See "Quotations — the BOQ builder (Phase L3)". Phase L4's **`ApproveQuotationDialog`** — the margin, a remark, and the low-margin acknowledgement (`useQuotationActions` opens it for Approve). |
 | `customers/` | `CustomerFormSheet` (new customer), `CustomerAvatar` (initials in a steady colour; squared for a company), `CustomerBook` (the list's summary tiles, each a filter) and `MapPinInput` ("use map pin": pasted coordinates fill a site's latitude and longitude — it sits in the site form's `intro`, inside the form). |
 | `jobs/` | Phase H1, shared by the jobs list, the job page and the dispatch board: `JobFormSheet` (new job; the site and quotation follow the customer), `ScheduleJobDialog` (window, who goes, lead, "text the customer" — the board's non-drag path), `AssignJobDialog`, `CompleteJobDialog` (note, signature photo, rating, warranty). |
 | `stock/` | `StockMovementsSheet` — one material's movements, paged (Phase H1). |
-| `tech/` | The field app's parts (Phase H2) — see "The field app (Phase H2)": `FieldSyncStatus` (`SyncButton` — the header's Offline / Syncing… / Sync now (n) / All sent — and `SyncBanner` — no signal, and each change the office refused), `PhotoCapture` (camera input, kind picker, caption, the queued thumbnails "Waiting to upload" and the sent ones — job and survey), `MaterialsSheet` (pick from `/tech/materials`, quantity in its unit, − and +; no rate) and `SignaturePad` (pointer events, Undo, Clear, the minimum-ink check). |
+| `tech/` | The field app's parts (Phase H2) — see "The field app (Phase H2)": `FieldSyncStatus` (`SyncButton` — the header's Offline / Syncing… / Sync now (n) / All sent — and `SyncBanner` — no signal, and each change the office refused), `PhotoCapture` (camera input, kind picker, caption, the queued thumbnails "Waiting to upload" and the sent ones — job and survey; since Phase L5 a survey's kinds too — ISSUE or SKETCH — and, with `areas`, the room the photo was taken in, suggesting the rooms measured), `MaterialsSheet` (pick from `/tech/materials`, quantity in its unit, − and +; no rate) and `SignaturePad` (pointer events, Undo, Clear, the minimum-ink check). |
 | `charts/` | Hand-drawn SVG charts, no chart library: `ChartCard` (the frame — title, Chart/Table switch, link; with `ChartTable`, `ChartTooltip`, `LegendKey`), `LineChart` (running lines, crosshair, arrow-key stepping), `ColumnChart` (a few columns, one emphasised, each a button), `RingMeter`, `Sparkline`. Width comes from `hooks/useElementWidth`. Series colours are `hsl(var(--chart-1))` (teal) and `--chart-2` (brass) from `globals.css`, validated as a colour-blind-safe pair — marks only, never text. Every chart has a table twin. |
 | `dashboard/` | The admin dashboard's widgets, one per file: `DashboardHero` (greeting and the "to do" chips), `MetricGroup` (a titled strip of numbers — groups and names in `config/admin/dashboardCards.js`), `LatestCard` (your notifications), `LeadTrendCard`, `SlaCard`, `SlaQueueCard`, `PipelineCard`, `FunnelCard`, `HeatmapCard`, `LeadSourcesCard`, `TodayJobsCard`, `TechLoadCard`, `JobsWeekCard`, `JobStatusCard`, `RevenueCard`. `pages/admin/DashboardPage.jsx` lays them out on a 12-column grid by section and drops whatever the API did not send for the role; the arithmetic is in `helpers/dashboard.js`. |
 | `platform/` | The admin platform screens' parts (Phase G): `AuditDiff` (a before/after, nested fields by path, each line marked added / removed / changed on the semantic surfaces and in words), `AuditRowDetails` (an audit row opened: the diff, request id, ip, browser, "Show everything from this request", "Open the record"), `UserFormSheet` (new / edit — no password field), `SessionsDialog` (where someone is signed in, "Sign out everywhere"). |
-| `public/`, `booking/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. `public/SitePhotoUpload` is shared by the booking wizard's details step and the enquiry form: each photo uploads as it is chosen (`POST /public/lead-photos`) and the enquiry carries only the ids. |
+| `public/`, `booking/`, `surveys/` | Domain components, named for the domain they serve. `booking/BookingWizard/` is a folder for the same reason a page is: the flow's state in `BookingWizard.jsx`, one file per step under `steps/`, and the Kathmandu date maths in `bookingDays.js`. `public/SitePhotoUpload` is shared by the booking wizard's details step and the enquiry form: each photo uploads as it is chosen (`POST /public/lead-photos`) and the enquiry carries only the ids. `surveys/SurveyFindings` is the office review's evidence (Phase L5: the customer's photos, readings flagged first, a measurement table per measured line, photos by area, the pin with a Maps link). |
 
 A component used by exactly one page can live beside its domain here; a component
 used by two pages **must**. Nothing imports upward from `pages/`.
@@ -231,6 +236,8 @@ keyboard map as data, `resolveCellKey` / `resolveEditorKey`, `gridKeymap` for th
   stays as typed for the schema to name. `pastedBoqRows` turns a row with **text but no quantity and no rate into a
   SECTION**. Pasted rows go in after the selected row (in place of it when it is blank); one value pastes into the cell.
 - **Numbering** is the caller's `numbers` (the BOQ's `A`, `A.1` from `helpers/boq.js#boqNumbers`, the API's rule).
+- **A `select` cell** opened with Enter/F2 lists every option; typing over it searches for what was typed (Phase L5 — it
+  used to search for the stored value, `YES_NO`, and matched nothing).
 - **Drag** by a row's handle (dnd-kit, pointer); every drag has the keyboard equivalent Alt+↑/↓ and the menu's Move up / down.
   A read-only grid has no handles and no dnd-kit context at all.
 - **500 rows**: above 60 rows only the rows in view (plus a margin) render, from each row's known height; the selected
@@ -382,6 +389,7 @@ Every CMS resource the API mounts has a screen. `cms` means `cms:read` to open a
 | Terms library | registry `quotation-terms` (Phase L4), own `basePath`; the English body and the Nepali `bodyNe` as two textareas (a column of its own, not a translation — so no LocaleTabs); **Default** moves the flag (the API's rule) | `/admin/quotation-terms` · rates:read / rates:write (the API also lets `quotations:read` list it); History rates:read | Catalog | — (a new quotation starts with the default's text; the builder's terms picker) |
 | Technicians | registry `technicians`, own `basePath`, switch = **availability** (`activeField: 'isAvailable'`) | `/admin/technicians` · technicians:read / technicians:write; the rate field and the History tab need technicians:write | Operations | — |
 | Job templates | registry `job-templates`, own `basePath`; steps as an `objectList` | `/admin/job-templates` · jobs:read / jobs:write | Operations | — (a new job copies the steps) |
+| Inspection templates | registry `inspection-templates` (Phase L5), own `basePath`; the questions as a `grid` field (rows in the API's shape, columns with `get`/`set`); Reorder matters — a survey uses its service's first active template, else the first general one | `/admin/inspection-templates` · surveys:read / surveys:write (SALES, MANAGER; DISPATCHER reads); History surveys:read | Operations | — (the field stepper's checklist; the review page names readings by it) |
 | Materials | registry `materials`, own `basePath`; pack size and name (`nullable`) since L2 | `/admin/materials` · materials:read / materials:write (the API also lets `rates:write` list and read them, for the recipe picker) | Operations | — (stock is the Stock page; a recipe's materials) |
 | Material categories, Suppliers | registry `material-categories`, `suppliers`, own `basePath` | `/admin/material-categories`, `/admin/suppliers` · materials | Operations | — |
 | Site settings | **bespoke** `pages/admin/SettingsPage` | `/admin/platform/settings` · settings:read to open; saving is ADMIN's (`settings:write`) | Platform | header, footer, contact, hero badges and counters, booking calendar, SEO defaults |
@@ -482,8 +490,8 @@ Icons are picked, not typed: `resources/iconOptions.jsx` offers exactly `DataIco
    every translatable field is a text field, the nav item and the entry agree on the capability, a filter's
    `defaultValue` is one of its options, `reorderWithin` names a filter, and every `rowActions` endpoint is a `cmsApi`
    mutation. The test reads the resources the API mounts through `mountResource` in `cms.routes.js` and
-   `ops.routes.js` (Phase H1; the mounter is `routes/admin/mountResource.js`) and `crm.routes.js` (Phase L2: the rate
-   library and trades). Nothing is mounted by hand any more. Every field and column `capability` must be a real one, a
+   `ops.routes.js` (Phase H1; the mounter is `routes/admin/mountResource.js`), `crm.routes.js` (Phase L2: the rate
+   library and trades) and `surveys.routes.js` (Phase L5: inspection templates). Nothing is mounted by hand any more. Every field and column `capability` must be a real one, a
    `preview` field has a `component` and is not in the schema, and every `bulkActions` entry has a `run`.
 6. When another screen reads the same data through its own endpoint, add its tag to `ALSO_READ_AS` in
    `api/cmsApi.js` (the rate card also invalidates the quotation builder's `RateCard` list; materials and trades refresh
@@ -745,7 +753,8 @@ capabilities only ADMIN's `*` holds (`users:admin`, `audit:read`, `messages:admi
 - **The board** (`DispatchBoardPage/`): `DispatchGrid` (a `role="grid"`; each cell a dnd-kit droppable named
   "Hari KC, Fri 18 Sept, 10:00"; the lane header shows load against the daily limit, unavailable and clashes),
   `DispatchJobCard` (drag handle + **Schedule…**, the keyboard and screen-reader path; work under way is not
-  draggable; "Clash" on overlapping cards) and `UnassignedQueue`. Pointer-within collision like the pipeline; the
+  draggable; "Clash" on overlapping cards; since Phase L5 an inspection's **visit flag** — `helpers/dispatchBoard#visitFlag`:
+  "Wants another time" loud, on every card size, "Not confirmed" quiet, "Confirmed" a small tick) and `UnassignedQueue`. Pointer-within collision like the pipeline; the
   keyboard sensor still works; auto-scroll only at the very edges, so a job dragged in from the queue does not scroll
   the hours away. **Every drag has the dialog as its equivalent** — the rule for any board.
 - `api/jobsApi.js` — jobs, their parts, schedule (`{ job, warnings }`), the board, the queue, costing, publish, and the
@@ -779,7 +788,8 @@ money field. Motion is the page transition only (it respects `prefers-reduced-mo
 | `/tech/jobs/:id` | `TechJobPage/` | the job sheet: contact, checklist, time (start / stop, Hold with a reason), photos, materials used, finish up (note, 1–5 rating, signature, Complete). Read only once closed, or while its signature uploads |
 | `/tech/history` | `TechHistoryPage` | the technician's jobs between two Kathmandu days (7 / 30 / 90 days, or From and To), newest first; the range is in the URL |
 | `/tech/history/:id` | `TechJobPage` with `readOnly` | the same sheet with no controls; Back returns to the same range |
-| `/tech/surveys`, `/tech/surveys/:id` | `SurveyListPage`, `SurveyFormPage` | unchanged, plus a **Photos** card on the survey (the same upload queue; the API files survey photos as ISSUE) |
+| `/tech/surveys` | `SurveyListPage` | the surveyor's surveys — to fill in first, then with the office — with the visit's day and window (en/ne since Phase L5) |
+| `/tech/surveys/:id` | `SurveyFormPage/` | **the survey stepper** (Phase L5) — see "The site-visit kit (Phase L5)" |
 
 `TechJobPage/` is a folder page: `TechJobPage.jsx` (fetch, the queue overlay, what each action queues) and `sections/`
 — `JobHeader` (with `JobContactCard`), `ChecklistSection`, `TimerSection`, `PhotosSection`, `MaterialsSection`,
@@ -803,8 +813,8 @@ money field. Motion is the page transition only (it respects `prefers-reduced-mo
    So online and offline take the same path, and the screen shows the change straight away from the queue (the
    overlay), not from a hand-patched cache. Kinds used — exactly the ones `/tech/sync` accepts: `status` (EN_ROUTE,
    IN_PROGRESS, ON_HOLD with its `note`), `task` (`{ isDone }`), `material` (`{ materialId, qty }` — never a rate),
-   `time_start`, `time_stop`, `complete` (`{ note?, customerRating?, signatureMediaId? }`); the survey form still
-   queues `survey_draft` / `survey_submit` when its direct save fails.
+   `time_start`, `time_stop`, `complete` (`{ note?, customerRating?, signatureMediaId? }`), and — since Phase L5 for
+   **every** survey write, online or not — `survey_draft` (the whole survey, a full replace) and `survey_submit`.
 2. **Order is the order the technician acted in.** `at` and `seq` are strictly increasing (two taps in a millisecond, or a
    clock set back, cannot swap), the queue sends oldest first, and the server sorts a batch by `at`.
 3. **Dedupe by idempotency key**: enqueueing a key already waiting is a no-op; the server answers a key it applied before
@@ -826,6 +836,18 @@ money field. Motion is the page transition only (it respects `prefers-reduced-mo
    fixed when the signature is queued, so a follow-up enqueued twice is still one completion. While it waits, the job
    shows "Completing — the signature is waiting to upload" and is read only. Without a signature ("The customer is not
    here to sign") `complete` is queued directly.
+8. **A survey reading waits for its photo** (Phase L5). A checklist photo is an upload like any other; the reading names
+   the queue entry (`photoUploadId`). `flush(send, { resolve })` asks `useOfflineQueue#resolveSurveyPhotos` to prepare each
+   entry: a reading whose picture is on the server gets its `mediaId` (`sentPhotos#mediaIdForUpload` — the upload's answer
+   is remembered before the queue forgets it), one whose picture was refused is sent without it (the office's submit check
+   then names it), and one whose picture still waits **holds the entry — and every later entry for the same survey** — so
+   a survey's submit never overtakes the save it follows. Step 2 uploads the picture and step 3 sends both. Other jobs and
+   surveys are not held. `photoUploadId` never reaches the wire.
+9. **A newer save replaces an older one** — `queueMutation(mutation, { supersede })` drops waiting entries the new one
+   replaces (`offlineQueue#dropPending`): a survey's older `survey_draft` is worth nothing once a newer full save waits.
+10. **What the office refused, with its reasons** — a failed result's `details` travel into the note (the API lists a
+   `SURVEY_INCOMPLETE` submit's missing answers and photos); `INVALID_MUTATION` and `SURVEY_INCOMPLETE` are terminal.
+   A note about a survey links to it (`?step=checklist` for SURVEY_INCOMPLETE).
 
 The header (`TechLayout` → `SyncButton`) shows the pending count — changes plus photos — with Offline, Syncing… or
 "Sync now"; the strip under it says what is kept on the phone while there is no signal.
@@ -854,14 +876,124 @@ when they replay, not when they were tapped (`/tech/sync` ignores `at` beyond or
 ### Words
 
 The field app's words are in **`config/tech/fieldCopy.js`**, English and Nepali, read through `hooks/useFieldCopy()` (the
-`uiSlice` locale) — the shell, today, the job sheet, history and the survey's Photos card. J1 moves them into its catalogues;
-`fieldCopy.test.js` holds the two languages to the same keys. The survey form's own fields are still inline English.
+`uiSlice` locale) — the shell, today, the job sheet, history, and since Phase L5 the survey list and the whole survey
+stepper (`survey.*`; a question's own Nepali is the template's `labelNe`). J1 moves them into its catalogues;
+`fieldCopy.test.js` holds the two languages to the same keys.
 
 Tests: `helpers/compressImage.test.js`, `offlineQueue.test.js` (order, dedupe, failures), `uploadQueue.test.js` (retry, in
 order, signature → complete), `fieldJob.test.js` (overlay, history range), `signature.test.js`, `hooks/useOfflineQueue.test.js`
 (the engine against a mocked API), `pages/tech/TechScreens.test.jsx` (completion blocked while items are open, the materials
 sheet, status / hold / timer through the queue, read-only history, the history range, the header's count and notes),
 `config/tech/fieldCopy.test.js`, and `e2e/field-flow.spec.js`.
+
+## The site-visit kit (Phase L5)
+
+A booked visit is something the customer confirms, and the surveyor has a guided, offline stepper; the office gets
+sections and measurement rows it can turn straight into a BOQ. **Quantities only** on every `/tech` and public visit
+screen — no rate, cost, total or margin (D1).
+
+**Booking the visit** — `ScheduleVisitDialog` books a **window**, not a start hour: the slot picker (the bootstrap's
+`booking.slots`) fills a From / Until pair in Nepal time — the slot's own hours, or two hours from its start — and both can
+be moved; an end at or before the start is refused under Until and Book stays disabled. The form is
+`useZodForm(lead.schema#visitBookingSchema)`; `visitBookingBody` builds `scheduledStart` / `scheduledEnd` at +05:45
+(`fromKathmanduParts`) and adds the surveyor, the address and, only when filled, the **site contact** (`siteContactName`,
+`siteContactPhone` — a Nepali mobile or landline, normalised; a number needs a name, as the API says) and a **landmark**
+(≤200), stored on the visit's site. Under the fields an **SMS preview** shows what `visit_booked` will say — text only,
+built in the browser from `components/leads/visitBookedCopy.js`, whose en / ne bodies mirror the seeded template (a test
+reads `prisma/seed-data.js` to hold them equal) — in the language of the customer the convert lands on, with an en / ne
+toggle, the surveyor's name and phone, the day and window as the API writes them (`3 Oct 2026, 10:00–12:00`), and
+`…/visit/…` for the link; "Also sent to <contact> (<phone>)" when the site contact's number is not the customer's.
+`ConvertLeadSheet` takes the same three fields (`convertSiteFields`, `convertSiteSchema`), and a customer's site form
+(`siteFields`, `customerSiteSchema`) edits them as `contactName` / `contactPhone` / `landmark` — `nullable`, so emptying
+one clears it; the Sites tab shows the landmark under the address and a Site contact column.
+
+**The customer's visit page** — `/visit/:token` → `pages/public/VisitPublicPage/` (lazy, in the site shell, no login; the
+link in the `visit_booked` and reminder SMS). `VisitPublicPage.jsx` fetches `getVisitByToken` and shows a skeleton,
+`sections/VisitUnavailable` (404: "This link is not valid", with the company phone from `useSiteSettings`; a network error:
+Try again) or the visit: `sections/VisitHeading` (company, "Your site visit", the reference), `sections/VisitDetails` (the
+window in Kathmandu time via `visitWhen` — "Friday, 2 October 2026", "10:00–12:00", Latin digits in Nepali too — the
+address, area and landmark, the surveyor with a `tel:` call button, or the office's phone when none is assigned yet) and
+`sections/VisitAnswer`, which follows `visitPageState(visit)`: unanswered → two ≥56 px buttons, **Confirm** (one tap) and
+**Need another time** (the inline `sections/RescheduleForm`: an optional note, 500 at most, with a count); answered → the
+recorded state (confirmed, or "We will call you to find another time" with their note echoed) and **Change my answer**
+while `canAnswer` (the latest answer wins); `cancelled` / `underway` / `done` / `closed` → no buttons, a call to the office.
+A 422 `VISIT_CLOSED` forces the closed state and refetches. Every word is in `visitPageCopy.js` as `{ en, ne }`
+(`visitPageState.test.js` holds the keys equal); the page follows the site's locale and, when the customer's
+`preferredLocale` differs, offers a one-tap switch written in that language ("नेपालीमा पढ्नुहोस्"). The answer goes
+through `form/schemas/visit.schema#visitResponseSchema` (the API's, mirror-tested).
+
+**The dispatch board** flags an inspection that is not confirmed — see "Operations (Phase H1)" (`visitFlag`: "Wants
+another time" loud on every card size, with the note and time in its title when the board sends them; "Not confirmed"
+quiet; "Confirmed" a small tick).
+
+**Inspection templates** — the registry entry `config/admin/resources/inspectionTemplates.jsx` (see "Which screen is
+which"; nav Operations › Inspection templates). The questions editor is the generic **`grid`** field: each row is already
+a question in the API's shape (`{ key, label, labelNe?, type, unit?, metric?, options?, flag?, required, photoRequired }`)
+and the columns reach into it with `get` / `set` / `parse` / `toText` — Question, In Nepali, Key, Type, Unit, Metric,
+Options, Flag above, Flag below, Flag when, Required, Needs photo. The key follows the words (`suggestQuestionKey`) until
+someone types one; changing the type drops what the new type does not use, and a cell the type does not use is read-only
+and shaded; options and a choice's flagged values are comma-separated text (`splitOptions`). `form/schemas/
+inspectionTemplate.schema.js` holds the rules once (`questionIssues`, at the API's paths — a duplicate or bad key, a choice
+with fewer than two options, a flag that does not fit its type or names an option the question does not offer), places
+each message on its column and sends `questionBody`, exactly the API shape; its test runs the same cases through the API's
+own schema. `config/constants.js` has `INSPECTION_QUESTION_TYPES` / `_LABELS`, `SURVEY_PHOTO_KINDS` and `VISIT_ANSWERS`
+(mirror-tested), and `SKETCH` joined `JOB_PHOTO_KINDS`.
+
+**The survey stepper** — `pages/tech/SurveyFormPage/` (the single-file form it replaced is gone). The step is in the URL
+(`?step=`, and `&line=` for the line being measured), so Back and a reload land where the surveyor was; the step bar
+(`sections/StepBar`) is one row of 48 px buttons that scrolls sideways on a phone, each with a tick or its count ("3/5").
+
+| Step | File (`steps/`) | Does |
+|---|---|---|
+| Before you go | `BeforeYouGoStep` | the site (address, area, landmark, access, Open in Maps), who to meet (the customer and the caretaker, each with a call button), what the customer wrote, the photos they sent (`lead.photos`) |
+| Arrived | `ArrivedStep` | `navigator.geolocation` → `sitePin: { lat, lng, accuracy }` in the next save (the site's pin); **asks before replacing** a pin the site already has; the accuracy shown, and "step outside" when it is worse than 50 m; the pin opens in Maps |
+| Checklist | `ChecklistStep` | the survey's template (`survey.template` — the service's, else the general one): yes / no as two big toggles, a number with its unit, a choice as chips, words; an answer crossing its flag is highlighted at once (`helpers/inspection#predictFlag`, the server's rule) and the server's own `flagged` decides once it holds the same answer (`surveyForm#serverFlagFor`); a photo-required question takes its photo through the upload queue (its answer keeps `photoUploadId` until the engine links the `mediaId`); then "Other readings" |
+| Measure | `MeasurementsStep` | pick the line (or start a new measured one), then rooms, **one card per row** — what, nos, L, B, H (feet-inches through `helpers/measurements#parseLength`, "= 12.5 ft" under the input, "Could not read this" when it does not), the deduction switch, the row's value; each room's total and the line's are previews, and the quantity the server derived shows once the sheet it holds is the one on the phone (`surveyForm#serverQtyFor`); a row that does not read stays on the phone |
+| Photos | `PhotosStep` | `PhotoCapture` with the kinds ISSUE / SKETCH and the room (suggesting the rooms measured) |
+| Findings | `FindingsStep` | the complaint, the diagnosis, the recommendation, the area, the days, the urgency, access, risks |
+| Lines | `LinesStep` | one card per line: kind, a material or a work item (code · name — never a rate), words, quantity, unit, waste; **Measure this line** opens the sheet on it, and a measured line's quantity is the sheet's, read only |
+
+- **Every write is a `survey_draft`** through the field queue, online or not (`surveyForm.js#surveyPayload` — the fields,
+  the readings with the template's answers first, the lines with their measurement rows as numbers, `sitePin` when taken):
+  a moment after the last tap (`AUTOSAVE_MS`), on every step change, when the screen goes or the phone locks. A newer draft
+  replaces a waiting one (`supersede`), and the entry's `meta.form` keeps the form as typed (12'6", not 12.5), so coming
+  back before it is sent shows what was typed. A line is saved once it has a description and a quantity above 0; a line
+  whose deductions exceed its area waits on the phone (the API would answer `NEGATIVE_LINE`).
+- **Submit** checks the template first (`helpers/inspection#missingAnswers` — the API's `checklistGaps`, one step stricter:
+  a photo-required question's photo rides on its answer, so a photo with no answer names the answer). Anything missing →
+  the Checklist step opens with `sections/IncompletePanel` ("Moisture … — photo needed", each with **Show me**), each card
+  marked `aria-invalid` with what it lacks, and the focus on the first; nothing is queued. Otherwise the last draft and
+  `survey_submit` are queued and, with signal, synced at once: the office's own 422 `SURVEY_INCOMPLETE` (a refused
+  `survey_submit`, with its `details`) is shown the same way — an item the office named stays until its question is
+  touched. With no signal the survey is "Submitted on this phone" and read only until it is sent.
+- Parts: `surveyForm.js` (the pure side — `surveyToForm`, `surveyPayload`, `stepProgress`, `serverQtyFor`, `serverFlagFor`,
+  `groupByArea`, `areasOf`, `currentFix`, `siteMapHref`), `helpers/inspection.js` (answers ⇄ readings, the flag, what is
+  missing, the question's words in the viewer's language), `hooks/usePendingPicture.js` (a queued picture as an object URL
+  — `PhotoCapture` and the checklist share it).
+
+**The office review** (`SurveyReviewPage` → `components/surveys/SurveyFindings`): what the customer wrote and their photos
+(`LeadPhotoGallery`); the findings with the site's address, landmark, site contact (tap to call) and the **pin as a Google
+Maps link** (`https://www.google.com/maps?q=lat,lng`); readings **flagged first** — a flagged row on `surface-warning`
+saying "Flagged — above 20 %", named by its template question, with the answer's photo; a **measurement table per measured
+line** (rows by room, "− deduction", each row's value a preview, the quantity the server's); site photos **grouped by
+area** ("No area" last) with their kind (Sketch too). The pricing table marks a measured line. **Build quotation** sends each
+line's measurement rows (`helpers/boq.js#surveyQuotationRows`), so the BOQ row derives the same quantity and the server
+sections the quotation by room when a line was measured in one.
+
+Tests: `pages/tech/SurveyFormPage/SurveyFormPage.test.jsx` (Before you go; submit blocked and pointing at each missing
+answer and photo, nothing queued; the office's SURVEY_INCOMPLETE shown on the checklist; a complete submit — draft then
+submit; the checklist's toggles, chips, live flags and a queued photo, offline; the GPS pin with its confirmation and
+accuracy; Nepali; the measurement cards at 360 px — one card per row, feet-inches, deduction, room and line previews, the
+office's quantity, the payload; a new measured line and Lines' link back), `surveyForm.test.js`, `helpers/inspection.test.js`,
+`helpers/measurements.test.js` (12' 6", 6", plain decimals), the L5 blocks of `helpers/offlineQueue.test.js` (supersede,
+held entries, SURVEY_INCOMPLETE details) and `hooks/useOfflineQueue.test.js` (SKETCH with its room; a save and submit held
+until the checklist photo is up, then sent with its media id; a refused photo), `VisitPublicPage.test.jsx` (en and ne at
+360 px: confirm, reschedule with a note, closed, VISIT_CLOSED, 404) and `visitPageState.test.js`, `form/schemas/
+visit.schema.test.js`, `DispatchJobCard.test.jsx` and the `visitFlag` block of `helpers/dispatchBoard.test.js`,
+`config/admin/resources/inspectionTemplates.test.jsx` and `form/schemas/inspectionTemplate.schema.test.js`, the L5 blocks
+of `SurveyReviewPage.test.jsx`, `LeadScreens.test.jsx`, `LeadFollowUp.test.jsx`, `CustomerScreens.test.jsx`,
+`lead.schema.test.js`, `contactFields.test.js`, `components/leads/visitBookedCopy.test.js`, `crmMirror.test.js` and
+`EditableGrid.test.jsx` (the select fix), and the L5 test of `e2e/boq-flow.spec.js`.
 
 ## Leads and customers (Phase E)
 
@@ -1095,6 +1227,7 @@ public/
 ├── QuotationPublicPage/ }
 ├── InvoicePublicPage/   } token-addressed, all three built from components/documents/
 ├── WarrantyPublicPage/  }
+├── VisitPublicPage/     token-addressed too (Phase L5): the customer confirms a site visit, en/ne, 360 px
 └── BookingPage.jsx      still one file, because it still reads as one
 ```
 
@@ -1193,6 +1326,11 @@ whole of the API's `shared/schemas/cms.js`, one schema per CMS resource, for the
 API's `shared/enums.js` — the one test import that is a relative path, because the fixture is outside `src/`.
 There is no `formKit.js`-style barrel for it: import the schema you need.
 
+Phase L5 added `visit.schema.js` (`visitResponseSchema` — the customer's answer to a visit, mirror-tested against the API's
+own) and `inspectionTemplate.schema.js` (see "The site-visit kit (Phase L5)"); `lead.schema.js` gained
+`visitBookingSchema` / `visitBookingBody` and the site contact on `convertSiteSchema`, `customer.schema.js` the site's
+contact and landmark.
+
 `useZodForm(schema, options)` is the only place `zodResolver` is imported.
 
 ## config/ vs helpers/
@@ -1220,9 +1358,11 @@ next action (`keepView` — see "Lead follow-through (Phase L1)"), Breached, Una
 Bookings this week — the Kathmandu week starts on Sunday), `customerTabs.jsx` (the customer page's record tabs: columns,
 links, and which role may see each), `homeSections.js` (what each home
 section shows, where its content is edited, which ones take a `limit`, and `toSectionItems`), and `settingsForm.js`
-(the settings screen as data — see "Which screen is which"). `tech/fieldCopy.js` is the field app's words in en and ne (Phase H2).
+(the settings screen as data — see "Which screen is which"). `tech/fieldCopy.js` is the field app's words in en and ne (Phase H2;
+the survey stepper's since L5). `auditEvents.js` names Phase L5's `visit.confirmed`, `visit.reschedule_requested` and
+`site.pinned` (their groups Site visits and Sites); `admin/messageKeys.js` describes `visit_booked` and `visit_reminder`.
 
-`helpers/` is behaviour with no state (Phase L4 added `paymentSchedule.js` and `download.js` — see "Quotations — terms and
+`helpers/` is behaviour with no state (Phase L5 added `inspection.js` — see "The site-visit kit (Phase L5)"; Phase L4 added `paymentSchedule.js` and `download.js` — see "Quotations — terms and
 the customer document (Phase L4)"; Phase L3 added `boq.js` and `measurements.js` — see "Quotations — the BOQ builder
 (Phase L3)"; Phase L2 added `recipe.js` — see "The rate library and the money wall"; Phase H1 added `jobActions.js` and `dispatchBoard.js` — see "Operations
 (Phase H1)" — and `formatMinutes` in `format.js`; Phase G added `auditDiff.js`, `sms.js`, `recordLinks.js` and
@@ -1245,7 +1385,8 @@ the API's map), `leadBoard.js` (`nextStatuses`, `canDrop`, `dropDialogFor` and `
 `config/`, `helpers/` and `hooks/` have no barrel files (`config.js`, `helpers.js` and `hooks.js` had no importers
 and were removed in C2) — import the module itself.
 
-`hooks/useOfflineQueue.js` is the field app's sync engine and `useFieldCopy` its words (Phase H2).
+`hooks/useOfflineQueue.js` is the field app's sync engine and `useFieldCopy` its words (Phase H2); `usePendingPicture` (Phase L5)
+a queued picture as an object URL.
 `hooks/` also holds the admin kit's behaviour: `useJobActions` and `useScheduleCommit` (Phase H1), `useConfirm`, `useUnsavedChangesGuard`,
 `useDebouncedValue`, `useListParams` (whose `defaults` are compared by value), `useLeadStatusChange` (the one way a
 screen moves a lead: `const [changeStatus, dialog] = useLeadStatusChange()`; LOST asks why first — a category and the

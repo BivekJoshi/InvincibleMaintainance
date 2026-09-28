@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-27 (Phase H2). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-27 (Phase L5). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -36,6 +36,7 @@ Updated 2026-09-27 (Phase H2). **Current build order: [`docs/ADMIN-PLAN.md`](doc
 | **v2 · L3 The BOQ builder** | **The quotation is a bill of quantities:** ordered ITEM / SECTION / NOTE rows numbered A, A.1…, section subtotals, measurement sheets (nos × L × B × H with deductions, feet-inches input), wastage, optional rows shown but never totalled, provisional rows and specs. A row priced from the rate library **freezes its recipe and cost** (L-D1) — a library change reaches a draft only through Reprice (preview → apply). **EditableGrid** (keyboard-first: arrows, Enter, Tab, type-to-overwrite, Ctrl+Enter / Ctrl+Shift+Enter / Ctrl+D / Alt+↑↓ / `/` library search; paste from Excel with Indian digit grouping), reached only through ResourceForm field types. Builder tabs **BOQ · Take-off** (buying units, packs, stock, shortfall) **· Labour** (days per trade, crew calculator) **· Payment & terms · Customer view · History**, a live server preview with "%" and "target total" discount helpers, and a **margin rail for managers only** (the cost wall now covers quotations). **New quotation** sheet: blank · from survey · copy. Surveys carry kind, material, wastage, optional lines and notes into sectioned BOQs; the customer page shows sections, notes and optional rows. | ✅ 2026-09-27 |
 | **v2 · L4 Terms & the customer document** | **The contract around the BOQ:** lump sum or item rate (with the sentence the customer reads), a **payment schedule** (50·40·10 by default; stages must total 100 %, one advance at most; the server's amounts sum to the total exactly), duration, exclusions, and a **terms library** (English + Nepali, one default, the manager's). **The margin gate:** approving below `quotation.minMarginPct` (15 %) — or with any cost unknown — needs an explicit acknowledgement, recorded on the event; auto-approval never fires on a low margin; managers see a Margin column. **The customer's document:** letterhead, AD + BS dates, numbered sections with subtotals (or a section summary), notes, specs, optional rows, a measurements annex, the total in words (lakh/crore, en/ne), the schedule, the terms — on the link page (360 px, en/ne), a print route, and an **Excel workbook** whose formulas recalculate to the same totals (Cost sheet for managers only). Decline reasons feed the lost categories; "Opened N×" and WhatsApp/Viber share in the send panel. | ✅ 2026-09-27 |
 | **v2 · H2 Field app** | **A job finished on a phone, partly offline:** camera photos by kind (compressed to 1600 px, queued, retried, shown "Waiting to upload"), materials used from a searchable sheet (no rates), a finger signature and the completion — blocked while checklist items are open —, and job status, checklist, timers, materials and completion through an IndexedDB queue that replays in the order the technician acted, with the pending count and "Sync now" in the header. Survey photos use the same queue; a history of past jobs by Kathmandu day. API: offline timers keep the tapped time, a second completion is refused, malformed mutations are terminal (`INVALID_MUTATION`), field photos carry their images, and `tech.routes.js` moved its sync into `techSync.service.js` — **no route file calls Prisma** (#15). Verified: API 719, unit 224, web 769, e2e 4/4 including the new field flow at 360 px. | ✅ 2026-09-27 |
+| **v2 · L5 Site-visit kit** | **A visit the customer confirms:** booking takes the window, a site contact (the caretaker while the owner is abroad — stored on the site, normalised Nepali number) and a landmark; `visit_booked` (en/ne) goes to the customer and the contact with the surveyor and a `/visit/:token` link, where they Confirm or ask for another time with no login (IP and time kept; "another time" tells the salesperson and dispatchers; a new window clears the answer); `visits:remind` at 17:00 the evening before, once per window; the dispatch card flags "Not confirmed" / "Wants another time". **The surveyor's stepper** (`pages/tech/SurveyFormPage/`): Before you go (the customer's photos and message, no budget) · Arrived (GPS → site pin) · Checklist from an **inspection template** (registry resource; yes/no, number with thresholds, choice, text; the server flags answers and refuses submit with `SURVEY_INCOMPLETE` naming each missing answer or photo) · Measurements by room in feet-inches with deductions, the server deriving the quantity · Photos with room and a SKETCH kind · Findings · Lines — every write a `survey_draft` through the offline queue, checklist photos held until uploaded. **Office review** shows it all, flagged first; Build quotation sections by room and carries the measurement rows into the BOQ. Verified: API 739, unit 231, web 905, e2e 5/5 including a 360 px offline survey and a Nepali confirmation. | ✅ 2026-09-27 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, the whole lead pipeline (list, board, detail, convert) and customers with their sites, the
@@ -121,12 +122,19 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A–H (C1 + C2, D1 + D2, F1 + F2, H1 + H2), G and **L0–L4** are done — the business flow runs end to end
+Phases A–H (C1 + C2, D1 + D2, F1 + F2, H1 + H2), G and **L0–L5** are done — the business flow runs end to end
 from the UI, an ADMIN can trace any record, a dispatcher runs the day from the board, and every open lead carries a next
 action, every rate can be built from a recipe, and a quotation is a bill of quantities the customer reads as a proper
-document, and a technician can finish a job on a phone, partly offline. Next is **Phase L5 — the site-visit kit**
-(`docs/prompts/PHASE-L5-site-visit-kit.md`: visit confirmation and reminder, the surveyor's checklist, measurement sheet,
-photos and GPS pin, all carried into the BOQ), then I (finance screens), then L6–L8.
+document, and a technician can finish a job on a phone, partly offline; the customer confirms the site visit from an
+SMS link and the surveyor's checklist, measurements and photos arrive in the BOQ. Next is **Phase I — finance &
+aftercare screens** (`docs/prompts/`), then L6 (won → hand-off, which needs I's payment screen), L7 and L8.
+
+Left from L5 for later phases: the Nepali checklist labels and the `visit_booked` / `visit_reminder` Nepali texts
+need a native speaker's review (J1); the site contact is sent the SMS in the customer's language (a contact language
+of its own would be a small addition); the offline queue still belongs to the device, not the user; a phone that
+crashes between a photo's upload and recording its media id sends that answer without its photo (the office's
+check names it). The `_test` database keeps growing — L5 hardened one more test against it
+(`15-operations-admin › filters by skill and service area` now uses an area of its own).
 
 Left from H1 for later phases: the costing tab shows labour cost to every role that reads jobs (SALES, ACCOUNTANT), from
 which a rate can be worked out; a checklist cannot be reordered (no endpoint); `casestudy.service` stores

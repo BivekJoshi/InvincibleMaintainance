@@ -983,12 +983,47 @@ the same totals; SALES's export has no cost sheet; a low-margin quote needs the 
   `paymentSchedule` (EditableGrid) and `checkbox`; the decline dialog's six reason chips; "Opened N×" with WhatsApp and
   Viber share; the lost dialog pre-fills `?category=`.
 
-**L5 · Site-visit kit (≈4 days, after H2)** — visit time window, site contact, confirm/reschedule link and
+**L5 · Site-visit kit (≈4 days, after H2) · ✅ done 2026-09-27** — visit time window, site contact, confirm/reschedule link and
 day-before reminder; field survey stepper: customer's photos, GPS pin, service inspection templates, measurement
 sheet in feet-inches with deductions, captioned photos; office review shows all of it and carries measurements into
 the BOQ. *Acceptance:* the customer confirms in Nepali and is reminded once; offline at 360 px the surveyor
 completes a damp checklist with a flagged reading and photo, measures two rooms with a door deduction, pins GPS and
 syncs; the quotation arrives with the same sections and quantities; the `/tech` key-scan still passes.
+
+**Deviations (Phase L5, 2026-09-27)**
+- **The site contact and the landmark live on the site** (`CustomerSite.contactName / contactPhone / landmark`), not
+  on the inspection job: the caretaker and the way to the house belong to the house, so the next job there — the
+  work itself — knows them too (the field job view carries them). The job keeps what belongs to this visit: the
+  window, `visitToken` and the customer's answer (`visitAnswer`, note, time, IP, `customerConfirmedAt`). The site
+  contact is sent the SMS in the customer's language — a follow-up could give the contact a language of their own.
+- **"Sent once" for an SMS is a compare-and-swap on `Job.visitReminderSentAt`**, not L1's `Notification.dedupeKey`:
+  a customer SMS has no Notification row to carry the key. A new window (`POST /admin/jobs/:id/schedule`) clears
+  it together with the answer, so a moved visit is confirmed and reminded afresh; a visit the customer asked to
+  move is not reminded of. The hour is the `visits.reminderHour` setting (17). For an INSPECTION job the
+  schedule sends `visit_booked` in place of `job_scheduled`.
+- **The checklist is resolved when read** — the service's active template, else the general one (`serviceId`
+  null), else none — rather than pinned on the survey; a reading keeps its own label, so an edited template does
+  not rewrite answers. Only the seepage service has a seeded template: a general one with required questions would
+  block every other survey. An optional photo-required question left unanswered needs no photo.
+  `SURVEY_INCOMPLETE` also reaches the phone through `/tech/sync` (a failed result carries `details`).
+- **Sections by room:** Build quotation puts a line under the room its measurement rows are all in, else under
+  its category as before — the surveyor measures room by room, and a homeowner reads a quote the same way.
+- **The field lead** shows the message, the customer's photos and the house (type, floors, age) but not the budget
+  band: `budget` is not a money-named key, so the wall would have let it through — it is left out by name, and the
+  `/tech` key-scan now treats `budget` as money. The visit token is dropped from the field job view.
+- `GET /tech/surveys` returns each survey in the detail shape (template, media), so the phone can cache the
+  checklist for offline use. A moved site pin is audited as `site.pinned` with the fix's accuracy.
+- **Seed photos** are generated placeholder images stored through the media service (the demo needs pictures on
+  the review page and in "Before you go").
+- **Frontend:** the stepper saves a full `survey_draft` 1.2 s after the last tap, on each step change and on leaving;
+  a newer draft replaces a waiting one. A checklist photo is an ordinary upload whose reading carries the upload's id
+  until the sync engine swaps in the media id, holding that survey's save and submit until the picture is up.
+  `SURVEY_INCOMPLETE` and `INVALID_MUTATION` are terminal in the queue. The phone names a photo-required question
+  with no answer as "answer needed" (a reading needs a value), one step stricter than the server. The questions
+  editor is the kit's `grid` field; a kit fix made a grid select opened with Enter list every option (it searched
+  for the stored value). The SMS preview in the booking dialog is held equal to the seeded text by a test.
+- Tests hardened against the reused `_test` database: `15-operations-admin › filters by skill and service area`
+  uses a Devanagari area of its own (more than a page of earlier runs' technicians shared "ललितपुर").
 
 **L6 · Won → hand-off (≈4 days, after I)** — `handoff.service.js` inside the accept transaction: lead WON, job typed
 from the service with planned days, job lines, requirements, ADVANCE invoice; the advance gate
@@ -1069,7 +1104,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | L3 BOQ builder ✅ 2026-09-27 | 5 | 45 | Excel-grade quotation with take-off and labour days |
 | L4 Terms & customer document ✅ 2026-09-27 | 4 | 49 | Payment schedule, contract type, print, Excel |
 | H2 Operations — field app ✅ 2026-09-27 | 3 | 52 | Photos, materials and job mutations offline |
-| L5 Site-visit kit | 4 | 56 | Confirmed visits, checklists, measurement sheet |
+| L5 Site-visit kit ✅ 2026-09-27 | 4 | 56 | Confirmed visits, checklists, measurement sheet |
 | I Finance & aftercare | 6 | 62 | Billing and retention |
 | L6 Won → hand-off | 4 | 66 | Job with its BOQ, material list and advance gate |
 | L7 Execution | 5 | 71 | Site diary, planned vs actual, purchases, variations |

@@ -305,6 +305,15 @@ async function main() {
     }
   }
 
+  // ── site checklists (Phase L5)
+  for (const t of D.INSPECTION_TEMPLATES) {
+    const { service, ...rest } = t;
+    if (!(await prisma.inspectionTemplate.findFirst({ where: { name: t.name } }))) {
+      await prisma.inspectionTemplate.create({ data: { ...rest, serviceId: service ? services[service]?.id ?? null : null } });
+    }
+  }
+  console.log(`  inspection templates: ${D.INSPECTION_TEMPLATES.length}`);
+
   // ═══ demo pipeline: leads → customer → quotation → job → invoice → warranty → AMC
 
   if ((await prisma.lead.count()) === 0) {
@@ -834,6 +843,143 @@ async function main() {
       where: { id: low.id }, data: { status: 'PENDING_APPROVAL', submittedAt: new Date(), submittedById: users.SALES.id },
     });
     console.log(`  low-margin demo: ${low.number} waiting for approval`);
+  }
+
+  // ═══ site-visit demo (Phase L5): a visit the customer confirmed, one they have not (the owner is abroad
+  //     and a relative opens the door), and a submitted survey with the damp checklist answered — a flagged
+  //     reading with its photo, two rooms measured with the door and window deducted, photos by room and a
+  //     paper sketch. Guarded on its own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841800001' } }))) {
+    const { uploadFiles } = await import('../src/services/media.service.js');
+    const { dayjs } = await import('../src/utils/dates.js');
+    const { default: sharp } = await import('sharp');
+    const seepage = services['seepage-and-damp-treatment'];
+    const damp = await prisma.inspectionTemplate.findFirst({ where: { name: D.INSPECTION_TEMPLATES[0].name } });
+    const [seepChem, labourSkill] = await Promise.all(['SEEP-CHEM', 'LABOUR-SKILL'].map((code) => prisma.rateCardItem.findUnique({ where: { code } })));
+    /** A Kathmandu wall-clock time, `n` days from today. */
+    const ktmAt = (n, hour) => dayjs().tz('Asia/Kathmandu').add(n, 'day').startOf('day').hour(hour).toDate();
+    /** A stand-in photograph: a coloured frame with what it shows written on it. */
+    const picture = async (label, background) => {
+      const svg = `<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg"><text x="40" y="310" font-size="42" fill="#ffffff" font-family="sans-serif">${label}</text></svg>`;
+      const buffer = await sharp({ create: { width: 800, height: 600, channels: 3, background } })
+        .composite([{ input: Buffer.from(svg) }]).jpeg().toBuffer();
+      const [media] = await uploadFiles([{ buffer, originalname: `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`, mimetype: 'image/jpeg' }], { uploadedBy: users.SURVEYOR.id });
+      return media;
+    };
+
+    const book = async ({ customer, locale = 'en', site, lead, day, from, to, answer, status = 'ASSIGNED' }) => {
+      const row = await prisma.customer.create({
+        data: { ...customer, preferredLocale: locale, sites: { create: { label: 'Home', isPrimary: true, ...site } } },
+        include: { sites: true },
+      });
+      const leadRow = await prisma.lead.create({
+        data: {
+          name: customer.name, phone: customer.phone, address: site.address, area: site.area, serviceId: seepage?.id ?? null,
+          source: 'call', status: 'INSPECTION_SCHEDULED', assignedToId: users.SALES.id, customerId: row.id, preferredLocale: locale,
+          createdAt: days(-3), slaDueAt: days(-3), firstResponseAt: days(-3), stageEnteredAt: days(-2),
+          nextActionAt: ktmAt(day, from), nextActionType: 'VISIT', ...lead,
+        },
+      });
+      const job = await prisma.job.create({
+        data: {
+          number: await prisma.$transaction((tx) => nextNumber(tx, 'JOB')), type: 'INSPECTION', status,
+          customerId: row.id, siteId: row.sites[0].id, leadId: leadRow.id, isBillable: false, priority: 'HIGH',
+          title: 'Free inspection — Seepage & Damp Treatment', description: lead.message ?? null,
+          scheduledStart: ktmAt(day, from), scheduledEnd: ktmAt(day, to), visitToken: token(),
+          ...(answer === 'CONFIRMED' ? { visitAnswer: 'CONFIRMED', visitAnsweredAt: days(-1), customerConfirmedAt: days(-1), visitAnswerIp: '127.0.0.1' } : {}),
+          assignments: { create: { technicianId: surveyor.id, isLead: true } },
+        },
+      });
+      return { customer: row, site: row.sites[0], lead: leadRow, job };
+    };
+    const surveyFor = async ({ customer, site, lead, job }, data = {}) => prisma.siteSurvey.create({
+      data: {
+        number: await prisma.$transaction((tx) => nextNumber(tx, 'SRV')), jobId: job.id, leadId: lead.id,
+        customerId: customer.id, siteId: site.id, serviceId: seepage?.id ?? null, surveyorId: surveyor.id,
+        urgency: 'HIGH', problemSummary: lead.message ?? null, ...data,
+      },
+    });
+
+    // Confirmed, tomorrow 10–12. The customer sent two photos with the enquiry.
+    const confirmed = await book({
+      customer: { name: 'Ramesh Shrestha', phone: '9841800001', email: 'ramesh.shrestha@example.com' },
+      site: { address: 'Sanepa-2, Lalitpur', area: 'Sanepa', landmark: 'Behind Sanepa chowk, the house with the green gate' },
+      lead: { message: 'Bedroom and kitchen walls are wet up to knee height, paint bubbling.', qualification: { propertyType: 'house', floors: 2, buildingAgeYears: 18, decisionMaker: 'self' } },
+      day: 1, from: 10, to: 12, answer: 'CONFIRMED',
+    });
+    for (const [i, [label, colour]] of [['Bedroom wall, paint bubbling', '#8a6d4b'], ['Kitchen skirting, white salt', '#6b7b8c']].entries()) {
+      const media = await picture(label, colour);
+      await prisma.leadPhoto.create({ data: { leadId: confirmed.lead.id, mediaId: media.id, caption: label, sortOrder: i } });
+    }
+    await surveyFor(confirmed);
+
+    // Not answered yet, the day after tomorrow 14–16. The owner is abroad; her brother-in-law opens the door.
+    const pending = await book({
+      customer: { name: 'गीता थापा', phone: '9841800002' }, locale: 'ne',
+      site: { address: 'Budhanilkantha-5, Kathmandu', area: 'Budhanilkantha', landmark: 'Narayanthan temple, second lane on the left', contactName: 'हरि थापा (देवर)', contactPhone: '9851800002' },
+      lead: { message: 'छतबाट पानी चुहिन्छ, माथिल्लो तलाको कोठामा दाग।', qualification: { propertyType: 'house', floors: 3, decisionMaker: 'owner_abroad' } },
+      day: 2, from: 14, to: 16,
+    });
+    await surveyFor(pending);
+
+    // Surveyed yesterday and submitted: the checklist answered, two rooms measured, photos by room.
+    const done = await book({
+      customer: { name: 'Laxmi Karki', phone: '9841800003' },
+      site: { address: 'Sitapaila-3, Kathmandu', area: 'Sitapaila', landmark: 'Opposite the ward office', lat: 27.7218, lng: 85.2787 },
+      lead: { message: 'Ground floor walls always damp, worse in the monsoon.', status: 'INSPECTION_SCHEDULED' },
+      day: -1, from: 11, to: 13, answer: 'CONFIRMED', status: 'COMPLETED',
+    });
+    await prisma.job.update({ where: { id: done.job.id }, data: { actualStart: ktmAt(-1, 11), actualEnd: ktmAt(-1, 12), completionNote: 'Site survey submitted' } });
+    const shots = {
+      meter: await picture('Bedroom - meter reads 26%', '#3f6e8c'),
+      salt: await picture('Kitchen - heavy salt bloom', '#7c8a6a'),
+      plinth: await picture('Outside - no DPC at plinth', '#6d5a4b'),
+      sketch: await picture('Sketch - ground floor plan', '#9a9a9a'),
+    };
+    await prisma.jobPhoto.createMany({
+      data: [
+        { jobId: done.job.id, mediaId: shots.meter.id, kind: 'ISSUE', caption: 'Meter at 300 mm, north wall', area: 'Bedroom' },
+        { jobId: done.job.id, mediaId: shots.salt.id, kind: 'ISSUE', caption: 'Salt behind the gas table', area: 'Kitchen' },
+        { jobId: done.job.id, mediaId: shots.plinth.id, kind: 'ISSUE', caption: 'Plinth, north side', area: 'Outside' },
+        { jobId: done.job.id, mediaId: shots.sketch.id, kind: 'SKETCH', caption: 'Ground floor with sizes', area: 'Ground floor' },
+      ],
+    });
+    const bedroom = [
+      { area: 'Bedroom', description: 'North and east walls to 1 m', nos: 2, l: 12.5, h: 3.25 },
+      { area: 'Bedroom', description: 'Door', nos: 1, l: 3, h: 3.25, deduct: true },
+    ];
+    const kitchen = [
+      { area: 'Kitchen', description: 'Back wall to 1 m', nos: 1, l: 10, h: 3.25 },
+      { area: 'Kitchen', description: 'Window', nos: 1, l: 4, h: 1, deduct: true },
+    ];
+    const { measurementQty } = await import('../src/utils/quantity.js');
+    const flagged = await surveyFor(done, {
+      status: 'SUBMITTED', submittedAt: days(-1), submittedById: users.SURVEYOR.id,
+      diagnosis: 'Rising damp: 26 % at 300 mm falling to 12 % at 1 m, heavy salt, no DPC at the plinth.',
+      recommendation: 'Chip to 1 m, crystalline treatment in both rooms, replaster with a waterproof admixture.',
+      estimatedDays: 3,
+      readings: {
+        create: [
+          { questionKey: 'moisture_low', label: 'Moisture 300 mm above the floor', metric: 'moisture', value: 26, unit: '%', flagged: true, mediaId: shots.meter.id, location: 'Bedroom, north wall', sortOrder: 0 },
+          { questionKey: 'moisture_high', label: 'Moisture 1 m above the floor', metric: 'moisture', value: 12, unit: '%', flagged: false, location: 'Bedroom, north wall', sortOrder: 1 },
+          { questionKey: 'salt', label: 'Salt deposits (white bloom)', metric: 'observation', textValue: 'Heavy', flagged: true, mediaId: shots.salt.id, location: 'Kitchen', sortOrder: 2 },
+          { questionKey: 'dpc_visible', label: 'Damp-proof course visible at the plinth?', metric: 'observation', textValue: 'no', flagged: true, sortOrder: 3 },
+          { questionKey: 'water_source', label: 'Likely source of the water', metric: 'observation', textValue: 'Rising damp', sortOrder: 4 },
+          { questionKey: 'wet_room_behind', label: 'Bathroom or kitchen on the other side?', metric: 'observation', textValue: 'no', sortOrder: 5 },
+          { questionKey: 'customer_story', label: 'When it started, and whether it is worse after rain', metric: 'observation', textValue: 'Since they moved in 4 years ago; worst in Shrawan.', sortOrder: 6 },
+        ],
+      },
+      items: {
+        create: [
+          { kind: 'SERVICE', rateCardItemId: seepChem?.id, description: 'Crystalline treatment, bedroom', unit: 'sq.ft', qty: measurementQty(bedroom), measurements: bedroom, sortOrder: 0 },
+          { kind: 'SERVICE', rateCardItemId: seepChem?.id, description: 'Crystalline treatment, kitchen', unit: 'sq.ft', qty: measurementQty(kitchen), measurements: kitchen, sortOrder: 1 },
+          { kind: 'LABOUR', rateCardItemId: labourSkill?.id, description: 'Skilled applicator — chipping and treatment', unit: 'hour', qty: 20, sortOrder: 2 },
+        ],
+      },
+    });
+    console.log(`  site-visit demo: ${confirmed.job.number} confirmed, ${pending.job.number} not yet (ne, caretaker), `
+      + `${flagged.number} submitted with the ${damp ? 'damp' : 'no'} checklist, 2 rooms measured, 4 photos`);
   }
 
   console.log('\nSeed complete.');

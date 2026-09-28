@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { apiAs, signIn } from './support/api.js';
+import { checklistReadings } from './support/survey.js';
 import { approveInDialog } from './support/quotation.js';
 
 /**
@@ -70,12 +71,14 @@ test('booking → survey → approval → change request → revision → accept
   });
   expect(converted.survey?.id, 'convert with a surveyor creates the survey').toBeTruthy();
 
-  // ── 3 · the surveyor reports quantities and submits (API)
+  // ── 3 · the surveyor reports quantities and submits (API). Since Phase L5 the seepage service's checklist is
+  // answered first — its required questions, and a photo on the photo-required ones.
   const rateCard = await surveyor.get('/tech/rate-card');
   const seepChem = rateCard.find((r) => r.code === 'SEEP-CHEM');
+  const { readings: checklist } = await checklistReadings(surveyor, converted.survey.id);
   await surveyor.post(`/tech/surveys/${converted.survey.id}/submit`, {
     diagnosis: 'Rising damp on the north wall.',
-    readings: [{ label: 'North wall, 300mm', metric: 'moisture', value: 21.5, unit: '%' }],
+    readings: [...checklist, { label: 'North wall, 300mm', metric: 'moisture', value: 21.5, unit: '%', sortOrder: checklist.length }],
     items: [{ kind: 'SERVICE', rateCardItemId: seepChem.id, description: 'Crystalline seepage treatment', unit: 'sq.ft', qty: 240 }],
   });
 

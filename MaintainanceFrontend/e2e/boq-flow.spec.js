@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { apiAs, signIn } from './support/api.js';
 import { approveInDialog, rupeesText } from './support/quotation.js';
+import { SITE_PHOTO } from './support/survey.js';
 
 /**
  * Phase L3's acceptance, end to end: SALES builds a bill of quantities in the builder — sections and rows by
@@ -10,7 +11,11 @@ import { approveInDialog, rupeesText } from './support/quotation.js';
  * margin, approves and sends. Phase L4: the pasted rows have no known cost, so the approval needs the low-margin
  * acknowledgement; the customer opens the link on a 360 px phone — the sections, the default 50 · 40 · 10 payment
  * schedule with the server's amounts, the total in words — SALES sees "Opened 1×", and the customer accepts.
- * Phases L5–L8 extend this walk.
+ * Phase L5 adds the walk before a BOQ: SALES books the site visit with a caretaker, the customer confirms it in
+ * Nepali on a phone, the surveyor fills the stepper at 360 px with no signal — checklist with a flagged reading and
+ * its photos, the site pin, two rooms measured in feet-inches with a door deducted, a sketch — submits on the phone,
+ * and the queue drains once the signal is back; the office builds the
+ * quotation from the survey, whose BOQ row carries the same measurements and quantity. Phases L6–L8 extend it.
  *
  * Set-up that is not under test runs over the API; everything is keyed to a unique name and phone.
  */
@@ -294,4 +299,205 @@ test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured li
   await customerCtx.close();
   await salesCtx.close();
   await Promise.all([admin, sales, manager].map((c) => c.dispose()));
+});
+
+/** A Kathmandu calendar day, `days` from today, as a date input takes it. */
+const ktmDay = (days) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kathmandu' }).format(new Date(Date.now() + days * 86_400_000));
+const rowOf = (m) => ({
+  area: m.area ?? null, description: m.description ?? null, nos: m.nos ?? null, l: m.l ?? null, b: m.b ?? null, h: m.h ?? null, deduct: Boolean(m.deduct),
+});
+
+test('L5: book the visit with a caretaker; the customer confirms in Nepali; the surveyor measures offline at 360 px and syncs; the quotation carries the measurements', async ({ browser }) => {
+  const [admin, sales] = await Promise.all(['ADMIN', 'SALES'].map((r) => apiAs(r)));
+  const visitTag = `${tag}v`;
+  const visitName = `E2E Visit ${visitTag}`;
+  const visitPhone = `98${String(Date.now() + 11).slice(-8)}`;
+  const services = (await admin.list('/admin/services?limit=100')).data;
+  const seepage = services.find((sv) => sv.slug === 'seepage-and-damp-treatment');
+  expect(seepage, 'the seeded seepage service').toBeTruthy();
+  const lead = await sales.post('/admin/leads', {
+    name: visitName, phone: visitPhone, address: 'Jhamsikhel, Lalitpur', serviceId: seepage.id, source: 'call',
+    preferredLocale: 'ne', message: 'भुइँतलाको भित्तामा चिस्यान, पानी परेपछि बढ्छ।',
+  });
+  const technicians = (await sales.list('/admin/technicians?limit=100')).data;
+  const surveyor = technicians.find((t) => t.user?.email === 'survey@gharjatan.com.np');
+
+  const salesCtx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await salesCtx.newPage();
+  let booked;
+
+  await test.step('SALES books the visit: a window, the caretaker and a landmark, with the SMS in Nepali', async () => {
+    await signIn(page, 'SALES');
+    await page.goto(`/admin/leads/${lead.id}`);
+    await page.getByRole('button', { name: /^Convert/ }).click();
+    await page.getByRole('menuitem', { name: /Book the inspection visit/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'Book the site visit' });
+    await dialog.getByLabel('Date').fill(ktmDay(2));
+    await dialog.getByLabel('From').fill('10:00');
+    await dialog.getByLabel('Until').fill('12:00');
+    await dialog.getByRole('combobox', { name: 'Surveyor' }).click();
+    await page.getByRole('option', { name: new RegExp(surveyor.user.name) }).click();
+    await dialog.getByLabel(/^Site contact/).first().fill('हरि थापा (caretaker)');
+    await dialog.getByLabel('Site contact phone').fill('+977 9851012345');
+    await dialog.getByLabel(/^Landmark/).fill('Opposite the Bhatbhateni, blue gate');
+    await expect(dialog.getByTestId('visit-sms')).toContainText('नमस्ते');
+    await expect(dialog.getByTestId('visit-sms')).toContainText('10:00–12:00');
+    await expect(dialog.getByText(/Also sent to हरि थापा \(caretaker\)/)).toBeVisible();
+    const converted = page.waitForResponse((r) => r.url().endsWith(`/api/v1/admin/leads/${lead.id}/convert`) && r.request().method() === 'POST');
+    await dialog.getByRole('button', { name: 'Book visit' }).click();
+    const response = await converted;
+    expect(response.status(), await response.text()).toBeLessThan(300);
+    booked = (await response.json()).data;
+    expect(booked.job?.id && booked.survey?.id, 'the booking made the inspection job and its survey').toBeTruthy();
+  });
+
+  const job = await admin.get(`/admin/jobs/${booked.job.id}`);
+  expect(job.visitToken).toBeTruthy();
+  expect(job.site).toMatchObject({ contactName: 'हरि थापा (caretaker)', contactPhone: '9851012345', landmark: 'Opposite the Bhatbhateni, blue gate' });
+
+  await test.step('the customer opens the SMS link on a phone and confirms, in Nepali', async () => {
+    const customerCtx = await browser.newContext({ viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true });
+    const phonePage = await customerCtx.newPage();
+    await phonePage.goto(`/visit/${job.visitToken}`);
+    await phonePage.getByRole('button', { name: 'नेपालीमा पढ्नुहोस्' }).click();
+    await expect(phonePage.getByText('Opposite the Bhatbhateni, blue gate')).toBeVisible();
+    await expect(phonePage.getByRole('link', { name: new RegExp(surveyor.user.name) })).toBeVisible();
+    await phonePage.getByRole('button', { name: 'पक्का गर्नुहोस्' }).click();
+    await expect(phonePage.getByText('धन्यवाद — तपाईंको भ्रमण पक्का भयो')).toBeVisible();
+    const overflow = await phonePage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    await customerCtx.close();
+    const answered = await admin.get(`/admin/jobs/${booked.job.id}`);
+    expect(answered.visitAnswer).toBe('CONFIRMED');
+    expect(answered.customerConfirmedAt).toBeTruthy();
+  });
+
+  await test.step('the surveyor fills the stepper at 360 px with no signal — checklist, pin, two rooms in feet-inches, a sketch, the line — and it syncs', async () => {
+    const fieldCtx = await browser.newContext({
+      viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true,
+      permissions: ['geolocation'], geolocation: { latitude: 27.6712345, longitude: 85.3134567, accuracy: 15 },
+    });
+    const field = await fieldCtx.newPage();
+    await signIn(field, 'SURVEYOR');
+    await field.goto('/tech/surveys');
+    await field.getByRole('link', { name: new RegExp(visitName) }).click();
+    const next = () => field.getByRole('button', { name: 'Next' }).click();
+
+    // Before you go: what the customer sent, and who to meet.
+    await expect(field.getByRole('heading', { name: 'Before you go' })).toBeVisible();
+    await expect(field.getByText('भुइँतलाको भित्तामा चिस्यान, पानी परेपछि बढ्छ।')).toBeVisible();
+    await expect(field.getByRole('link', { name: /Call हरि थापा/ })).toHaveAttribute('href', 'tel:9851012345');
+
+    // In the basement: no signal from here until the survey is submitted.
+    await fieldCtx.setOffline(true);
+    await expect(field.getByRole('button', { name: /^Offline/ })).toBeVisible();
+    await next();
+
+    // Arrived: the GPS becomes the site's pin.
+    await field.getByRole('button', { name: 'Pin the site here' }).click();
+    await expect(field.getByText('Pinned — it goes to the office with the survey.')).toBeVisible();
+    await next();
+
+    // The seepage checklist: a flagged reading, and a photo on each question that needs one.
+    await expect(field.getByRole('heading', { name: 'Checklist' })).toBeVisible();
+    await field.getByRole('textbox', { name: 'Moisture 300 mm above the floor' }).fill('24');
+    await expect(field.getByTestId('flag-moisture_low')).toBeVisible();
+    await field.getByLabel('Take the photo: Moisture 300 mm above the floor').setInputFiles({ name: 'meter.jpg', mimeType: 'image/jpeg', buffer: SITE_PHOTO });
+    await field.getByRole('textbox', { name: 'Moisture 1 m above the floor' }).fill('12');
+    await field.locator('#question-salt').getByRole('radio', { name: 'Light' }).click();
+    await field.getByLabel('Take the photo: Salt deposits (white bloom)').setInputFiles({ name: 'salt.jpg', mimeType: 'image/jpeg', buffer: SITE_PHOTO });
+    await field.locator('#question-dpc_visible').getByRole('radio', { name: 'Yes' }).click();
+    await field.locator('#question-water_source').getByRole('radio', { name: 'Rising damp' }).click();
+    await next();
+
+    // Two rooms, feet-inches, a door deducted — one card per row.
+    await field.getByRole('button', { name: /New measured line/ }).click();
+    await field.getByLabel('What are you measuring?').fill('Chemical damp treatment');
+    await field.getByRole('button', { name: 'Start measuring' }).click();
+    const addRoom = async (name) => {
+      await field.locator('#new-room').fill(name);
+      await field.getByRole('button', { name: /Add a room/ }).click();
+    };
+    const fillRow = async (name, what, nos, l, h) => {
+      const row = field.getByRole('group', { name });
+      await row.getByLabel('What').fill(what);
+      await row.getByLabel('Nos').fill(nos);
+      await row.getByLabel('Length').fill(l);
+      await row.getByLabel('Height').fill(h);
+      return row;
+    };
+    await addRoom('Living room');
+    await fillRow('Row 1 — Living room', 'North wall', '1', '12\'6"', '10\'');
+    await field.getByRole('button', { name: 'Add a row in Living room' }).click();
+    const door = await fillRow('Row 2 — Living room', 'Door', '1', '3\'6"', '7\'');
+    await door.getByRole('switch', { name: /Deduct/ }).click();
+    await addRoom('Bedroom');
+    await fillRow('Row 3 — Bedroom', 'East wall', '1', '11\'', '10\'');
+    await expect(field.getByTestId('measurement-card')).toHaveCount(3);
+    await expect(field.getByTestId('line-total')).toHaveText('This line: 210.5 sq.ft');
+    await next();
+
+    // A photo of the paper sketch, filed under its room.
+    await field.getByRole('radio', { name: 'Paper sketch' }).click();
+    await field.getByLabel('Room or area (optional)').fill('Living room');
+    await field.getByLabel('Take a photo').setInputFiles({ name: 'sketch.jpg', mimeType: 'image/jpeg', buffer: SITE_PHOTO });
+    await next();
+
+    await field.getByLabel('Diagnosis — the cause, not the symptom').fill('Rising damp — no DPC at the plinth.');
+    await next();
+
+    // The measured line takes its work item from the rate card (a code and a name — never a rate).
+    const line = field.getByRole('group', { name: 'Line 1' });
+    await expect(line.getByText('Measured: 210.5 sq.ft')).toBeVisible();
+    await line.getByRole('combobox', { name: 'Line 1: Work item' }).click();
+    await field.getByRole('option', { name: /SEEP-CHEM/ }).click();
+    expect(await field.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    await field.getByRole('button', { name: 'Submit survey' }).click();
+    await field.waitForURL(/\/tech\/surveys$/, { timeout: 30_000 });
+
+    // Everything waited on the phone: the office has only the empty draft.
+    await expect(field.getByRole('button', { name: /^Offline — \d+ waiting/ })).toBeVisible();
+    expect((await sales.get(`/admin/surveys/${booked.survey.id}`)).status).toBe('DRAFT');
+
+    // Signal again: the queue drains by itself — the photos, then the save that needed their ids, then the submit.
+    await fieldCtx.setOffline(false);
+    await expect.poll(async () => (await sales.get(`/admin/surveys/${booked.survey.id}`)).status, { timeout: 60_000 }).toBe('SUBMITTED');
+    await fieldCtx.close();
+  });
+
+  let surveyItem;
+  await test.step('the office has the survey: the flagged reading with its photo, the rows, the pin, the sketch by room', async () => {
+    const survey = await sales.get(`/admin/surveys/${booked.survey.id}`);
+    expect(survey.status).toBe('SUBMITTED');
+    const moisture = survey.readings.find((r) => r.questionKey === 'moisture_low');
+    expect(moisture).toMatchObject({ value: 24, flagged: true });
+    expect(moisture.mediaId).toBeTruthy();
+    expect(survey.readings.find((r) => r.questionKey === 'salt').mediaId).toBeTruthy();
+    [surveyItem] = survey.items;
+    expect(surveyItem.measurements.map(rowOf)).toEqual([
+      { area: 'Living room', description: 'North wall', nos: 1, l: 12.5, b: null, h: 10, deduct: false },
+      { area: 'Living room', description: 'Door', nos: 1, l: 3.5, b: null, h: 7, deduct: true },
+      { area: 'Bedroom', description: 'East wall', nos: 1, l: 11, b: null, h: 10, deduct: false },
+    ]);
+    expect(Number(surveyItem.qty)).toBe(210.5);
+    expect(survey.site.lat).toBeCloseTo(27.6712, 3);
+    expect(survey.job.photos).toContainEqual(expect.objectContaining({ kind: 'SKETCH', area: 'Living room' }));
+  });
+
+  await test.step('SALES builds the quotation from the survey: the BOQ row carries the same measurements and quantity', async () => {
+    await page.goto(`/admin/surveys/${booked.survey.id}`);
+    await expect(page.getByText('Flagged', { exact: false }).first()).toBeVisible();
+    const build = page.getByRole('button', { name: 'Build quotation' });
+    await expect(build).toBeEnabled();
+    await build.click();
+    await page.waitForURL(/\/admin\/quotations\/[^/]+$/);
+    const quotation = await sales.get(`/admin/quotations/${page.url().split('/').pop()}`);
+    const row = quotation.items.find((r) => r.rowType === 'ITEM' && r.measurements?.length);
+    expect(row, 'a measured BOQ row').toBeTruthy();
+    expect(row.measurements.map(rowOf)).toEqual(surveyItem.measurements.map(rowOf));
+    expect(Number(row.netQty ?? row.qty)).toBe(Number(surveyItem.qty));
+  });
+
+  await salesCtx.close();
+  await Promise.all([admin, sales].map((c) => c.dispose()));
 });

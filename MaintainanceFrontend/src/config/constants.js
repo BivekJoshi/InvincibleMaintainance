@@ -200,11 +200,16 @@ export const JOB_TYPE_LABELS = {
   WARRANTY: 'Warranty work',
 };
 
-/** The kinds a job photo is filed under. SIGNATURE is the customer's sign-off, taken at completion. */
-export const JOB_PHOTO_KINDS = ['BEFORE', 'DURING', 'AFTER', 'ISSUE', 'SIGNATURE'];
+/**
+ * The kinds a job photo is filed under. SIGNATURE is the customer's sign-off, taken at completion; SKETCH (Phase L5)
+ * a photo of the surveyor's paper sketch.
+ */
+export const JOB_PHOTO_KINDS = ['BEFORE', 'DURING', 'AFTER', 'ISSUE', 'SIGNATURE', 'SKETCH'];
 export const JOB_PHOTO_KIND_LABELS = {
-  BEFORE: 'Before', DURING: 'During', AFTER: 'After', ISSUE: 'Issue found', SIGNATURE: 'Signature',
+  BEFORE: 'Before', DURING: 'During', AFTER: 'After', ISSUE: 'Issue found', SIGNATURE: 'Signature', SKETCH: 'Sketch',
 };
+/** What a survey photo may be filed as (`POST /tech/surveys/:id/photos` `kind`); ISSUE is the API's default. */
+export const SURVEY_PHOTO_KINDS = ['ISSUE', 'SKETCH'];
 
 /** How stock moves. ISSUE_TO_JOB happens only from a job (the API refuses it on its own). */
 export const STOCK_MOVEMENT_TYPES = ['PURCHASE', 'ISSUE_TO_JOB', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
@@ -232,6 +237,19 @@ export const SURVEY_METRICS = [
   'moisture', 'crack_width', 'crack_length', 'area', 'depth', 'slope', 'temperature',
   'humidity', 'voltage', 'pressure', 'observation',
 ];
+
+/**
+ * An inspection template's question types (Phase L5) — `InspectionTemplate.questions[].type`. A NUMBER question
+ * may carry a unit, a metric and a flag `{ above?, below? }`; YES_NO a flag `{ equals: 'yes' | 'no' }`; CHOICE its
+ * `options` and a flag `{ values: [...] }`. The server computes a reading's `flagged` from the flag.
+ */
+export const INSPECTION_QUESTION_TYPES = ['YES_NO', 'NUMBER', 'CHOICE', 'TEXT'];
+export const INSPECTION_QUESTION_TYPE_LABELS = {
+  YES_NO: 'Yes / no', NUMBER: 'Number', CHOICE: 'Choice', TEXT: 'Text',
+};
+
+/** A visit's answer from the customer's `/visit/:token` page (Phase L5), on the inspection job. */
+export const VISIT_ANSWERS = ['CONFIRMED', 'RESCHEDULE_REQUESTED'];
 
 /** APPROVED means the customer accepted; OFFICE_APPROVED is the internal approval. */
 export const QUOTATION_STATUSES = [

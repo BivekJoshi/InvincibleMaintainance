@@ -146,3 +146,68 @@ describe('the sync engine', () => {
     expect(await pending()).toEqual([]);
   });
 });
+
+describe('the sync engine — the survey stepper (Phase L5)', () => {
+  it('sends a survey sketch with its kind and room', async () => {
+    await addUpload({ target: 'survey', targetId: 's1', kind: 'SKETCH', area: 'बैठक कोठा', caption: 'Plan', file: picture('sketch.jpg') });
+    const calls = mockApi(({ path }) => (path === '/tech/surveys/s1/photos' ? photoAnswer('m-sketch') : undefined));
+    const store = makeStore(signedInAs('SURVEYOR'));
+
+    await syncFieldQueue(store.dispatch);
+
+    const [upload] = calls.filter((c) => c.method === 'POST');
+    expect(upload.body.get('kind')).toBe('SKETCH');
+    expect(upload.body.get('area')).toBe('बैठक कोठा');
+    expect(upload.body.get('caption')).toBe('Plan');
+  });
+
+  it('holds a survey save and its submit until the checklist photo is up, then sends the reading with its media id', async () => {
+    const photo = await addUpload({ target: 'survey', targetId: 's1', kind: 'ISSUE', caption: 'Moisture at 300 mm', file: picture('meter.jpg') });
+    await enqueue({
+      kind: 'survey_draft', surveyId: 's1',
+      payload: { readings: [{ questionKey: 'moisture_low', label: 'Moisture at 300 mm', value: 24, unit: '%', photoUploadId: photo.id, sortOrder: 0 }] },
+    });
+    await enqueue({ kind: 'survey_submit', surveyId: 's1', payload: {} });
+    await enqueue({ kind: 'status', jobId: 'j1', payload: { status: 'EN_ROUTE' } });
+    const calls = mockApi(({ path, body }) => {
+      if (path === '/tech/sync') return syncAnswer(body);
+      if (path === '/tech/surveys/s1/photos') return photoAnswer('m-meter');
+      return undefined;
+    });
+    const store = makeStore(signedInAs('SURVEYOR'));
+
+    await syncFieldQueue(store.dispatch);
+
+    const posts = calls.filter((c) => c.method === 'POST');
+    expect(posts.map((c) => c.path)).toEqual(['/tech/sync', '/tech/surveys/s1/photos', '/tech/sync']);
+    expect(posts[0].body.mutations.map((m) => m.kind)).toEqual(['status']);
+    expect(posts[2].body.mutations.map((m) => m.kind)).toEqual(['survey_draft', 'survey_submit']);
+    expect(posts[2].body.mutations[0].payload.readings).toEqual([
+      { questionKey: 'moisture_low', label: 'Moisture at 300 mm', value: 24, unit: '%', mediaId: 'm-meter', sortOrder: 0 },
+    ]);
+    expect(await pending()).toEqual([]);
+  });
+
+  it('sends the reading without the photo when the picture was refused, so the office says what is missing', async () => {
+    const photo = await addUpload({ target: 'survey', targetId: 's1', file: picture('not-a-photo.jpg') });
+    await enqueue({
+      kind: 'survey_draft', surveyId: 's1',
+      payload: { readings: [{ questionKey: 'moisture_low', label: 'Moisture at 300 mm', value: 24, photoUploadId: photo.id, sortOrder: 0 }] },
+    });
+    const calls = mockApi(({ path, body }) => {
+      if (path === '/tech/sync') return syncAnswer(body);
+      if (path === '/tech/surveys/s1/photos') return json({ error: { code: 'BAD_REQUEST', message: 'Not an image' } }, 400);
+      return undefined;
+    });
+    const store = makeStore(signedInAs('SURVEYOR'));
+
+    await syncFieldQueue(store.dispatch);
+
+    const syncs = calls.filter((c) => c.path === '/tech/sync');
+    expect(syncs).toHaveLength(1);
+    expect(syncs[0].body.mutations[0].payload.readings).toEqual([
+      { questionKey: 'moisture_low', label: 'Moisture at 300 mm', value: 24, sortOrder: 0 },
+    ]);
+    expect(store.getState().fieldSync.notes).toEqual([expect.objectContaining({ source: 'upload', surveyId: 's1', code: 'BAD_REQUEST' })]);
+  });
+});

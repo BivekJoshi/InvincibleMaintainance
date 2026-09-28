@@ -538,3 +538,211 @@ describe('RecordHistory', () => {
     expect(await screen.findByText('No history yet')).toBeInTheDocument();
   });
 });
+
+describe('booking the visit — the window, the site contact and the SMS (Phase L5)', () => {
+  const SURVEYOR = { id: 't1', employeeCode: 'SRV-01', user: { name: 'राम थापा', phone: '9851012345' } };
+  const SLOTS = [
+    { key: 'morning', label: 'Morning', window: '8:00 – 12:00', startHour: 8, endHour: 12 },
+    { key: 'afternoon', label: 'Afternoon', window: '12:00 – 16:00', startHour: 12, endHour: 16 },
+  ];
+
+  /** The dialog's API: no matching customer, one surveyor, the company's name in the settings. */
+  function visitApi({ slots = SLOTS, matches = [] } = {}) {
+    return mockApi(({ method, path }) => {
+      if (path === '/admin/leads/l1/customer-matches') return json({ data: matches });
+      if (path === '/public/bootstrap') {
+        return json({ data: { settings: { 'contact.companyName': 'Ghar Jatan' }, booking: { slots } } });
+      }
+      if (path === '/public/availability') return json({ data: { days: [] } });
+      if (path === '/admin/technicians') return page([SURVEYOR]);
+      if (method === 'POST' && path === '/admin/leads/l1/convert') {
+        return json({ data: { customer: { id: 'c9', name: 'Sita Rai' }, customerCreated: true, job: { number: 'JOB-2083-0007' } } }, 201);
+      }
+      return undefined;
+    });
+  }
+
+  const renderDialog = (lead = LEAD) => renderWithProviders(
+    <ScheduleVisitDialog lead={lead} open onOpenChange={() => {}} />, { preloadedState: signedInAs('SALES') },
+  );
+  const replace = async (user, input, value) => {
+    await user.clear(input);
+    await user.type(input, value);
+  };
+  const smsText = () => screen.getByTestId('visit-sms').textContent;
+
+  it('books a window with a caretaker and a landmark: +05:45 instants, the number normalised, Devanagari kept', async () => {
+    const user = userEvent.setup();
+    const calls = visitApi();
+    renderDialog();
+    const book = screen.getByRole('button', { name: 'Book visit' });
+    await waitFor(() => expect(book).toBeEnabled());
+
+    // The slot fills the window; both ends can be moved.
+    expect(screen.getByLabelText('From')).toHaveValue('08:00');
+    expect(screen.getByLabelText('Until')).toHaveValue('12:00');
+    await replace(user, screen.getByLabelText('Date'), '2026-10-03');
+    await replace(user, screen.getByLabelText('From'), '10:00');
+    await replace(user, screen.getByLabelText('Until'), '12:00');
+
+    await user.click(screen.getByRole('combobox', { name: 'Surveyor' }));
+    await user.click(await screen.findByRole('option', { name: 'राम थापा · SRV-01' }));
+    await user.type(screen.getByLabelText(/^Site contact \(optional\)/), 'हरि बहादुर');
+    await user.type(screen.getByLabelText('Site contact phone'), '+977 9841234567');
+    await user.type(screen.getByLabelText(/^Landmark/), 'Opposite the Bhatbhateni, blue gate');
+    expect(screen.getByText('Also sent to हरि बहादुर (9841234567).')).toBeInTheDocument();
+
+    await user.click(book);
+    await waitFor(() => expect(convertBody(calls)).toEqual({
+      createInspectionJob: true,
+      // 10:00 and 12:00 in Kathmandu are 04:15 and 06:15 UTC.
+      scheduledStart: '2026-10-03T04:15:00.000Z',
+      scheduledEnd: '2026-10-03T06:15:00.000Z',
+      surveyorId: 't1',
+      site: { label: 'Primary site', address: 'Jhamsikhel, Lalitpur' },
+      siteContactName: 'हरि बहादुर',
+      siteContactPhone: '9841234567',
+      landmark: 'Opposite the Bhatbhateni, blue gate',
+    }));
+  }, 15_000);
+
+  it('a slot without an end hour gives a two-hour window, and picking another slot moves it', async () => {
+    const user = userEvent.setup();
+    visitApi({ slots: [{ key: 'morning', label: 'Morning', window: '8:00 – 12:00', startHour: 8 }, SLOTS[1]] });
+    renderDialog({ ...LEAD, preferredSlot: 'morning' });
+    // The slots arrive with the bootstrap, after the dialog has opened.
+    await waitFor(() => expect(screen.getByLabelText('Until')).toHaveValue('10:00'), { timeout: 3000 });
+    expect(screen.getByLabelText('From')).toHaveValue('08:00');
+
+    await user.click(screen.getByRole('combobox', { name: 'Slot' }));
+    await user.click(await screen.findByRole('option', { name: /Afternoon/ }));
+    expect(screen.getByLabelText('From')).toHaveValue('12:00');
+    expect(screen.getByLabelText('Until')).toHaveValue('16:00');
+  });
+
+  it('an end at or before the start disables Book and says why', async () => {
+    const user = userEvent.setup();
+    const calls = visitApi();
+    renderDialog();
+    const book = screen.getByRole('button', { name: 'Book visit' });
+    await waitFor(() => expect(book).toBeEnabled());
+
+    await replace(user, screen.getByLabelText('Until'), '07:30');
+    expect(screen.getByText('The window must end after it starts')).toBeInTheDocument();
+    expect(screen.getByLabelText('Until')).toHaveAttribute('aria-invalid', 'true');
+    expect(book).toBeDisabled();
+
+    await replace(user, screen.getByLabelText('From'), '06:00');
+    expect(screen.queryByText('The window must end after it starts')).not.toBeInTheDocument();
+    expect(book).toBeEnabled();
+    expect(convertBody(calls)).toBeUndefined();
+  });
+
+  it('a wrong number — or a number with nobody’s name — blocks Book with a message', async () => {
+    const user = userEvent.setup();
+    const calls = visitApi();
+    renderDialog();
+    const book = screen.getByRole('button', { name: 'Book visit' });
+    await waitFor(() => expect(book).toBeEnabled());
+
+    await user.type(screen.getByLabelText('Site contact phone'), '5407720');
+    await user.click(book);
+    expect(await screen.findByText(/Enter a valid Nepali number/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Site contact phone')).toHaveFocus();
+    expect(convertBody(calls)).toBeUndefined();
+
+    // A landline with its area code is a Nepali number too — but whose?
+    await replace(user, screen.getByLabelText('Site contact phone'), '01-5407720');
+    await waitFor(() => expect(screen.queryByText(/Enter a valid Nepali number/)).not.toBeInTheDocument());
+    await user.click(book);
+    expect(await screen.findByText('Say whose number this is')).toBeInTheDocument();
+    expect(convertBody(calls)).toBeUndefined();
+
+    await user.type(screen.getByLabelText(/^Site contact \(optional\)/), 'Hari');
+    await waitFor(() => expect(screen.queryByText('Say whose number this is')).not.toBeInTheDocument());
+    await user.click(book);
+    await waitFor(() => expect(convertBody(calls)).toMatchObject({ siteContactName: 'Hari', siteContactPhone: '01-5407720' }));
+    expect(convertBody(calls)).not.toHaveProperty('landmark');
+  }, 15_000);
+
+  it('previews the SMS in the customer’s language (Nepali for this lead), with the surveyor and the window', async () => {
+    const user = userEvent.setup();
+    visitApi();
+    renderDialog();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book visit' })).toBeEnabled());
+    await replace(user, screen.getByLabelText('Date'), '2026-10-03');
+    await replace(user, screen.getByLabelText('From'), '10:00');
+
+    const preview = screen.getByRole('region', { name: 'SMS to the customer' });
+    expect(within(preview).getByRole('radio', { name: 'नेपाली' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('visit-sms')).toHaveAttribute('lang', 'ne');
+    expect(smsText()).toContain('नमस्ते Sita Rai');
+    expect(smsText()).toContain('3 Oct 2026, 10:00–12:00');
+    // Nobody picked yet: "our surveyor", in Nepali.
+    expect(smsText()).toContain('हाम्रो सर्वेक्षक आउनुहुनेछ');
+    expect(smsText()).toMatch(/\/visit\/… - Ghar Jatan$/);
+
+    await user.click(screen.getByRole('combobox', { name: 'Surveyor' }));
+    await user.click(await screen.findByRole('option', { name: 'राम थापा · SRV-01' }));
+    expect(smsText()).toContain('राम थापा (9851012345) आउनुहुनेछ');
+
+    await user.click(within(preview).getByRole('radio', { name: 'English' }));
+    expect(screen.getByTestId('visit-sms')).toHaveAttribute('lang', 'en');
+    expect(smsText()).toBe(
+      `Hi Sita Rai, your site visit JOB-… is booked for 3 Oct 2026, 10:00–12:00. राम थापा (9851012345) will come. Confirm or ask for another time: ${window.location.origin}/visit/… - Ghar Jatan`,
+    );
+  }, 15_000);
+
+  it('an English customer reads English; the site contact is not written to twice on the customer’s own number', async () => {
+    const user = userEvent.setup();
+    visitApi();
+    renderDialog({ ...LEAD, preferredLocale: 'en' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book visit' })).toBeEnabled());
+    expect(smsText()).toMatch(/^Hi Sita Rai, your site visit JOB-… is booked for .+, 08:00–12:00\. our surveyor will come\./);
+
+    await user.type(screen.getByLabelText(/^Site contact \(optional\)/), 'Sita');
+    await user.type(screen.getByLabelText('Site contact phone'), '+977 9808338255');
+    expect(screen.queryByText(/Also sent to/)).not.toBeInTheDocument();
+  });
+
+  it('"same person" writes to the existing customer, in their language', async () => {
+    const user = userEvent.setup();
+    visitApi({ matches: [HOUSEHOLD] });
+    renderDialog();
+    await user.click(await screen.findByRole('radio', { name: /Same person/ }));
+    expect(smsText()).toMatch(/^Hi Existing Household,/);
+    await user.click(screen.getByRole('checkbox', { name: /Write to them in नेपाली/ }));
+    expect(smsText()).toMatch(/^नमस्ते Existing Household,/);
+  });
+});
+
+describe('convert without a visit — the site contact (Phase L5)', () => {
+  it('sends the caretaker and the landmark as top-level fields, normalised, only when filled', async () => {
+    const user = userEvent.setup();
+    const calls = convertApi([]);
+    renderWithProviders(
+      <ConvertLeadSheet lead={LEAD} open onOpenChange={() => {}} onConverted={() => {}} />,
+      { preloadedState: signedInAs('SALES') },
+    );
+    const sheet = await screen.findByRole('dialog', { name: 'Convert without a visit' });
+    expect(within(sheet).getByText('The caretaker, when the owner is abroad')).toBeInTheDocument();
+
+    await user.type(within(sheet).getByLabelText('Site contact phone'), '98083382');
+    await user.click(within(sheet).getByRole('button', { name: 'Convert' }));
+    expect(await within(sheet).findByText(/Enter a valid Nepali number/)).toBeInTheDocument();
+    expect(convertBody(calls)).toBeUndefined();
+
+    await user.clear(within(sheet).getByLabelText('Site contact phone'));
+    await user.type(within(sheet).getByLabelText('Site contact phone'), '+977 9841234567');
+    await user.type(within(sheet).getByLabelText(/^Site contact$/), 'हरि बहादुर');
+    await user.type(within(sheet).getByLabelText(/^Landmark/), 'भाटभटेनी अगाडि, निलो गेट');
+    await user.click(within(sheet).getByRole('button', { name: 'Convert' }));
+    await waitFor(() => expect(convertBody(calls)).toEqual({
+      site: { label: 'Primary site', address: 'Jhamsikhel, Lalitpur' },
+      createQuotation: false,
+      siteContactName: 'हरि बहादुर',
+      siteContactPhone: '9841234567',
+      landmark: 'भाटभटेनी अगाडि, निलो गेट',
+    }));
+  }, 15_000);
+});

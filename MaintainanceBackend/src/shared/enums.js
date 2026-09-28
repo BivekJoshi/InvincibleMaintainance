@@ -76,7 +76,14 @@ export const JOB_TYPES = ['INSPECTION', 'REPAIR', 'INSTALLATION', 'RENOVATION', 
 export const JOB_STATUSES = [
   'DRAFT', 'SCHEDULED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'VERIFIED', 'CANCELLED',
 ];
-export const JOB_PHOTO_KINDS = ['BEFORE', 'DURING', 'AFTER', 'ISSUE', 'SIGNATURE'];
+/** SKETCH (Phase L5): a photo of the surveyor's paper sketch — a floor plan with dimensions. */
+export const JOB_PHOTO_KINDS = ['BEFORE', 'DURING', 'AFTER', 'ISSUE', 'SIGNATURE', 'SKETCH'];
+/** What a survey photo may be (Phase L5): evidence of the problem, or a sketch. */
+export const SURVEY_PHOTO_KINDS = ['ISSUE', 'SKETCH'];
+/** An inspection-template question (Phase L5): yes/no, a number with a flag threshold, a choice, text. */
+export const INSPECTION_QUESTION_TYPES = ['YES_NO', 'NUMBER', 'CHOICE', 'TEXT'];
+/** The customer's answer on the /visit/:token page (Phase L5). */
+export const VISIT_ANSWERS = ['CONFIRMED', 'RESCHEDULE_REQUESTED'];
 export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 'VOID'];
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const STOCK_MOVEMENT_TYPES = ['PURCHASE', 'ISSUE_TO_JOB', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
@@ -149,6 +156,9 @@ export const AUDIT_EVENTS = Object.freeze({
   JOB_SCHEDULED: 'job.scheduled',
   JOB_COMPLETED: 'job.completed',
   JOB_VERIFIED: 'job.verified',
+  /** The customer's answer on the /visit/:token page (Phase L5). */
+  VISIT_CONFIRMED: 'visit.confirmed',
+  VISIT_RESCHEDULE_REQUESTED: 'visit.reschedule_requested',
 
   INVOICE_CREATED: 'invoice.created',
   INVOICE_SENT: 'invoice.sent',
@@ -159,6 +169,8 @@ export const AUDIT_EVENTS = Object.freeze({
   SURVEY_SUBMITTED: 'survey.submitted',
   SURVEY_RETURNED: 'survey.returned',
   SURVEY_QUOTED: 'survey.quoted',
+  /** The surveyor's GPS fix moved a site's pin (Phase L5). */
+  SITE_PINNED: 'site.pinned',
 
   AUTH_LOGIN: 'auth.login',
   AUTH_LOGIN_FAILED: 'auth.login_failed',

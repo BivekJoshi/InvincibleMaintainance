@@ -267,12 +267,13 @@ model Service {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  category     ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  leads        Lead[]
-  jobTemplates JobTemplate[]
-  surveys      SiteSurvey[]
-  surveyItems  SurveyItem[]
-  projects     Project[]
+  category            ServiceCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  leads               Lead[]
+  jobTemplates        JobTemplate[]
+  surveys             SiteSurvey[]
+  surveyItems         SurveyItem[]
+  inspectionTemplates InspectionTemplate[]
+  projects            Project[]
 
   @@index([isActive, sortOrder])
   @@index([categoryId])
@@ -549,7 +550,7 @@ enum Priority {
 }
 
 model Lead {
-  id              String     @id @default(cuid())
+  id              String        @id @default(cuid())
   name            String
   phone           String
   altPhone        String?
@@ -562,16 +563,16 @@ model Lead {
   estimatePayload Json?
   preferredAt     DateTime?
   preferredSlot   String?
-  source          String     @default("web_form")
+  source          String        @default("web_form")
   sourcePage      String?
   utmSource       String?
   utmMedium       String?
   utmCampaign     String?
-  status          LeadStatus @default(NEW)
-  priority        Priority   @default(NORMAL)
+  status          LeadStatus    @default(NEW)
+  priority        Priority      @default(NORMAL)
   assignedToId    String?
   slaDueAt        DateTime?
-  slaBreached     Boolean    @default(false)
+  slaBreached     Boolean       @default(false)
   firstResponseAt DateTime?
   closedAt        DateTime?
   lostReason      String?
@@ -585,18 +586,18 @@ model Lead {
   nextActionType  String?
   nextActionNote  String?
   /// When the lead entered its current status — "4d in stage", and the stale reminders.
-  stageEnteredAt  DateTime   @default(now())
+  stageEnteredAt  DateTime      @default(now())
   /// Every logged contact attempt, answered or not.
-  contactAttempts Int        @default(0)
+  contactAttempts Int           @default(0)
   /// { propertyType, floors, buildingAgeYears, budgetBand, decisionMaker, note } — zod-checked (leadQualification).
   qualification   Json?
   customerId      String?
   /// en | ne — the language customer SMS and email use (the site's language when they enquired)
-  preferredLocale String     @default("en")
+  preferredLocale String        @default("en")
   ip              String?
   userAgent       String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   deletedAt       DateTime?
 
   service    Service?       @relation(fields: [serviceId], references: [id], onDelete: SetNull)
@@ -691,18 +692,23 @@ model Customer {
 }
 
 model CustomerSite {
-  id          String    @id @default(cuid())
-  customerId  String
-  label       String
-  address     String
-  area        String?
-  lat         Float?
-  lng         Float?
-  accessNotes String?
-  isPrimary   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id           String    @id @default(cuid())
+  customerId   String
+  label        String
+  address      String
+  area         String?
+  lat          Float?
+  lng          Float?
+  accessNotes  String?
+  /// Who opens the door when it is not the customer — the caretaker while the owner is abroad (Phase L5).
+  contactName  String?
+  contactPhone String?
+  /// "Opposite the Bhatbhateni, the blue gate" — how the surveyor finds it.
+  landmark     String?
+  isPrimary    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
   jobs       Job[]
@@ -876,16 +882,16 @@ model Quotation {
   updatedAt        DateTime        @updatedAt
   deletedAt        DateTime?
 
-  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  site         CustomerSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  lead         Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  createdBy    User?           @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  submittedBy  User?           @relation("QuotationSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
-  approvedBy   User?           @relation("QuotationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  parent       Quotation?      @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
-  revisions    Quotation[]     @relation("QuotationVersions")
-  supersededBy Quotation?      @relation("QuotationSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
-  supersedes   Quotation[]     @relation("QuotationSupersession")
+  customer     Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site         CustomerSite?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  lead         Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdBy    User?                   @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  submittedBy  User?                   @relation("QuotationSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  approvedBy   User?                   @relation("QuotationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  parent       Quotation?              @relation("QuotationVersions", fields: [parentId], references: [id], onDelete: SetNull)
+  revisions    Quotation[]             @relation("QuotationVersions")
+  supersededBy Quotation?              @relation("QuotationSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   Quotation[]             @relation("QuotationSupersession")
   items        QuotationItem[]
   stages       QuotationPaymentStage[]
   jobs         Job[]
@@ -1049,35 +1055,51 @@ model JobTemplate {
   service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 }
 
+/// The customer's answer on the /visit/:token page (Phase L5).
+enum VisitAnswer {
+  CONFIRMED
+  RESCHEDULE_REQUESTED
+}
+
 model Job {
-  id               String    @id @default(cuid())
-  number           String    @unique
-  type             JobType   @default(REPAIR)
-  customerId       String
-  siteId           String?
-  leadId           String?
-  quotationId      String?
-  parentJobId      String?
-  title            String
-  description      String?
-  priority         Priority  @default(NORMAL)
-  status           JobStatus @default(DRAFT)
-  scheduledStart   DateTime?
-  scheduledEnd     DateTime?
-  actualStart      DateTime?
-  actualEnd        DateTime?
-  holdReason       String?
-  cancelReason     String?
-  completionNote   String?
-  signatureId      String?
-  customerRating   Int?
-  customerFeedback String?
-  isBillable       Boolean   @default(true)
-  invoicedAt       DateTime?
-  createdById      String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
+  id                  String       @id @default(cuid())
+  number              String       @unique
+  type                JobType      @default(REPAIR)
+  customerId          String
+  siteId              String?
+  leadId              String?
+  quotationId         String?
+  parentJobId         String?
+  title               String
+  description         String?
+  priority            Priority     @default(NORMAL)
+  status              JobStatus    @default(DRAFT)
+  scheduledStart      DateTime?
+  scheduledEnd        DateTime?
+  actualStart         DateTime?
+  actualEnd           DateTime?
+  holdReason          String?
+  cancelReason        String?
+  completionNote      String?
+  signatureId         String?
+  customerRating      Int?
+  customerFeedback    String?
+  isBillable          Boolean      @default(true)
+  invoicedAt          DateTime?
+  /// An INSPECTION job's /visit/:token link (Phase L5): the customer confirms the window or asks for
+  /// another time, with no login. The latest answer wins; a new window clears it.
+  visitToken          String?      @unique
+  visitAnswer         VisitAnswer?
+  visitAnswerNote     String?
+  visitAnsweredAt     DateTime?
+  visitAnswerIp       String?
+  customerConfirmedAt DateTime?
+  /// The `visits:remind` SMS for the current window went (once — compare-and-swap on this column).
+  visitReminderSentAt DateTime?
+  createdById         String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  deletedAt           DateTime?
 
   customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
   site         CustomerSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
@@ -1158,6 +1180,8 @@ model JobPhoto {
   mediaId   String
   kind      String
   caption   String?
+  /// The room or part of the site it shows ("Bedroom 1", "Roof") — the review groups by it (Phase L5).
+  area      String?
   createdAt DateTime @default(now())
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -1272,19 +1296,23 @@ model SiteSurvey {
 // readings, so both a numeric and a text column — not a Json blob, because `value`
 // is what the review screen thresholds on and what reports group by.
 model SurveyReading {
-  id        String   @id @default(cuid())
-  surveyId  String
-  label     String
-  metric    String
-  value     Float?
-  unit      String?
-  textValue String?
-  location  String?
-  mediaId   String?
-  lat       Float?
-  lng       Float?
-  takenAt   DateTime @default(now())
-  sortOrder Int      @default(0)
+  id          String   @id @default(cuid())
+  surveyId    String
+  label       String
+  metric      String
+  value       Float?
+  unit        String?
+  textValue   String?
+  location    String?
+  mediaId     String?
+  lat         Float?
+  lng         Float?
+  /// The inspection-template question this answers (Phase L5); null for a free reading.
+  questionKey String?
+  /// The answer crossed the question's flag (a moisture reading above 20 %). Computed by the server.
+  flagged     Boolean  @default(false)
+  takenAt     DateTime @default(now())
+  sortOrder   Int      @default(0)
 
   survey SiteSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
@@ -1301,6 +1329,9 @@ model SurveyItem {
   description    String
   unit           String
   qty            Float
+  /// The measurement sheet, rows `{ area, description, nos, l, b, h, deduct }` (Phase L5). When present,
+  /// `qty` is derived from it on the server (quantity.js#measurementQty).
+  measurements   Json?
   wastagePct     Float          @default(0)
   isOptional     Boolean        @default(false)
   note           String?
@@ -1315,6 +1346,25 @@ model SurveyItem {
   @@index([surveyId, sortOrder])
   @@index([materialId])
   @@index([rateCardItemId])
+}
+
+/// A service's site checklist (Phase L5): the questions the surveyor answers on the site, each a
+/// SurveyReading keyed by `questionKey`. `serviceId` null is the general checklist, used when the
+/// survey's service has none. `questions` is zod-checked (schemas/survey.js#inspectionQuestions).
+model InspectionTemplate {
+  id        String    @id @default(cuid())
+  serviceId String?
+  name      String
+  questions Json
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([serviceId, isActive])
 }
 
 // ═══════════════════════════ Materials
@@ -1366,12 +1416,12 @@ model Material {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  category     MaterialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  supplier     Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  movements    StockMovement[]
-  jobMaterials JobMaterial[]
-  surveyItems  SurveyItem[]
-  recipeLines  RateCardComponent[]
+  category       MaterialCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  supplier       Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  movements      StockMovement[]
+  jobMaterials   JobMaterial[]
+  surveyItems    SurveyItem[]
+  recipeLines    RateCardComponent[]
   quotationItems QuotationItem[]
 
   @@index([isActive, sortOrder])

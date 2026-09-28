@@ -120,6 +120,28 @@ describe('EditableGrid', () => {
     expect(cell(container, 0, 'unit')).toHaveFocus();
   });
 
+  it('Enter on a select cell that has a value lists every option; typing over it searches (Phase L5 fix)', async () => {
+    const user = userEvent.setup();
+    const kindColumn = {
+      key: 'kind', header: 'Kind', width: 100, editor: 'select',
+      options: [{ value: 'YES_NO', label: 'Yes / no' }, { value: 'NUMBER', label: 'Number' }],
+      format: (v) => ({ YES_NO: 'Yes / no', NUMBER: 'Number' })[v] ?? '',
+    };
+    const rows = [{ ...ROWS()[0], kind: 'YES_NO' }];
+    const { container, latest } = renderGrid(rows, { columns: [...COLUMNS, kindColumn] });
+    await user.click(cell(container, 0, 'kind'));
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('option', { name: 'Yes / no' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Number' })).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'Number' }));
+    expect(latest()[0].kind).toBe('NUMBER');
+
+    await user.click(cell(container, 0, 'kind'));
+    await user.keyboard('Yes');
+    expect(await screen.findByRole('option', { name: 'Yes / no' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Number' })).not.toBeInTheDocument();
+  });
+
   it('Tab after the last cell adds a row; Ctrl+Enter adds a row and Ctrl+Shift+Enter a section', async () => {
     const user = userEvent.setup();
     const { container, latest } = renderGrid(ROWS());

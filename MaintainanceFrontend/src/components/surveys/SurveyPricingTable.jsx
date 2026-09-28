@@ -11,6 +11,9 @@ import { cn } from '@/helpers/utils';
  * The reviewer's working surface: the surveyor's quantities on the left, today's catalogue rate on the right,
  * an editable rate for anything the catalogue could not price, and whether each line counts in the total.
  *
+ * A line the surveyor measured (Phase L5) says so; its quantity is the server's, worked out from the sheet, which the
+ * findings show row by row.
+ *
  * Since Phase L3 every line goes into the quotation: a line left out of the total (an optional one, by default)
  * becomes an **optional row** — shown to the customer, not totalled. Rates are edited in RUPEES because that is
  * what the quotation API accepts. Amounts and the subtotal are the server's (`figures` / `totals`, from the
@@ -59,6 +62,9 @@ export function SurveyPricingTable({ lines, missing = [], draft, onChange, figur
                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     <Badge variant="outline" className="px-1 py-0 text-[10px]">{titleCase(line.kind)}</Badge>
                     {!counted ? <span className="text-warning">optional — shown, not in the total</span> : null}
+                    {line.measurements?.length ? (
+                      <span>measured · {line.measurements.length} row{line.measurements.length === 1 ? '' : 's'}</span>
+                    ) : null}
                     {line.wastagePct > 0 ? <span>{formatQty(line.rawQty)} + {line.wastagePct}% waste</span> : null}
                     {line.note ? <span className="italic">{line.note}</span> : null}
                   </div>

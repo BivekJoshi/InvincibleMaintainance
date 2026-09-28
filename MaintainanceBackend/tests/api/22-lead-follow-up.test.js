@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, approveAndSend, expectStatus, phone, prisma, technicianIdFor, uid, USERS,
+  anon, as, approveAndSend, bookVisit, expectStatus, phone, prisma, technicianIdFor, uid, USERS,
 } from './helpers.js';
 import { runFollowUps, runStaleSweep } from '../../src/services/pipeline.service.js';
 import { expireQuotations } from '../../src/services/quotation.service.js';
+import { runVisitReminders } from '../../src/services/visit.service.js';
 
 /** Phase L1: every open lead has a next action and a clock; LOST says why and where. */
 
@@ -266,5 +267,53 @@ describe('GET /admin/reports/lost', () => {
 
   it('is a sales report', async () => {
     expectStatus(await (await as('DISPATCHER')).get('/admin/reports/lost'), 403);
+  });
+});
+
+describe('visits:remind (Phase L5)', () => {
+  const sms = (to) => prisma.messageLog.findMany({ where: { toAddress: to, templateKey: 'visit_reminder' } });
+
+  it('reminds the customer and the caretaker once, at 17:00 the day before, in the customer\'s language', async () => {
+    const day = uniqueFutureDay();
+    // A caretaker's number typed the way people type it — the country code, spaces — reaches the SMS normalised.
+    const digits = `98${String(Date.now() + 17).slice(-8)}`;
+    const typed = `+977-${digits.slice(0, 4)} ${digits.slice(4)}`;
+    const visit = await bookVisit({ start: ktm(day, 10), locale: 'ne', contactPhone: typed });
+    const caretaker = (await prisma.customerSite.findUnique({ where: { id: visit.job.siteId } })).contactPhone;
+    expect(caretaker).toBe(digits);
+
+    const eve = new Date(day.getTime() - 86_400_000);
+    await runVisitReminders(ktm(eve, 16, 30));
+    expect(await sms(visit.customerPhone)).toHaveLength(0);
+    await runVisitReminders(ktm(eve, 17, 5));
+    await runVisitReminders(ktm(eve, 18, 0));
+    const [toCustomer, ...more] = await sms(visit.customerPhone);
+    expect(more).toHaveLength(0);
+    // The Nepali template, with the window in Kathmandu time and the link.
+    expect(toCustomer.body).toContain('सम्झना');
+    expect(toCustomer.body).toContain('10:00–12:00');
+    expect(toCustomer.body).toContain(`/visit/${visit.token}`);
+    expect(await sms(caretaker)).toHaveLength(1);
+    expect((await prisma.job.findUnique({ where: { id: visit.job.id } })).visitReminderSentAt).toBeInstanceOf(Date);
+  });
+
+  it('a visit moved to another day is reminded again; one the customer asked to move is not', async () => {
+    const day = uniqueFutureDay();
+    const moved = await bookVisit({ start: ktm(day, 9), contactPhone: null });
+    const eve = new Date(day.getTime() - 86_400_000);
+    await runVisitReminders(ktm(eve, 17, 30));
+    expect(await sms(moved.customerPhone)).toHaveLength(1);
+
+    const later = new Date(day.getTime() + 2 * 86_400_000);
+    expectStatus(await (await as('DISPATCHER')).post(`/admin/jobs/${moved.job.id}/schedule`).send({
+      scheduledStart: ktm(later, 9).toISOString(), scheduledEnd: ktm(later, 11).toISOString(),
+    }), 200);
+    await runVisitReminders(ktm(new Date(later.getTime() - 86_400_000), 17, 30));
+    expect(await sms(moved.customerPhone)).toHaveLength(2);
+
+    const declined = await bookVisit({ start: ktm(day, 15), contactPhone: null });
+    expectStatus(await anon().post(`/public/visits/${declined.token}/respond`).send({ answer: 'reschedule', note: 'Not Friday' }), 200);
+    await runVisitReminders(ktm(eve, 17, 45));
+    expect(await sms(declined.customerPhone)).toHaveLength(0);
   });
 });

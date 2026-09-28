@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { id, listQuery, optionalText, unit } from './common.js';
-import { PRIORITIES, SURVEY_ITEM_KINDS, SURVEY_METRICS, SURVEY_STATUSES } from '../enums.js';
-import { quotationRow } from './crm.js';
+import {
+  INSPECTION_QUESTION_TYPES, PRIORITIES, SURVEY_ITEM_KINDS, SURVEY_METRICS, SURVEY_PHOTO_KINDS, SURVEY_STATUSES,
+} from '../enums.js';
+import { measurementRow, quotationRow } from './crm.js';
 
 /**
  * The site survey is the one document in the system a field user writes.
@@ -13,7 +15,14 @@ import { quotationRow } from './crm.js';
  * `rate` or `amount` is rejected, rather than having the field silently ignored.
  */
 
+/** An inspection-template question's key: `moisture_pct`, `dpc_visible`. Unique within its template. */
+export const questionKey = z.string().trim().regex(/^[a-z0-9_]{1,40}$/, 'Use a-z, 0-9 and underscore (up to 40)');
+
 const reading = z.object({
+  /** The template question this answers (Phase L5). The server computes `flagged` from its flag. */
+  questionKey: questionKey.nullable().optional(),
+  /** Accepted and ignored: `flagged` is the server's, worked out from the template (Phase L5). */
+  flagged: z.any().optional(),
   label: z.string().trim().min(1, 'Say what was measured').max(200),
   metric: z.string().trim().min(1).max(60).default('observation'),
   value: z.coerce.number().finite().optional(),
@@ -39,11 +48,25 @@ const item = z.object({
   serviceId: z.string().optional(),
   description: z.string().trim().min(1, 'Describe the line').max(500),
   unit,
-  qty: z.coerce.number().positive('Quantity must be greater than zero').max(1_000_000),
+  /** With `measurements`, the server derives it (quantity.js#measurementQty) and this is only a fallback. */
+  qty: z.coerce.number().positive('Quantity must be greater than zero').max(1_000_000).optional(),
+  /** The measurement sheet (Phase L5): rows by room — nos × L × B × H, deductions subtract. */
+  measurements: z.array(measurementRow).max(200).nullable().optional(),
   wastagePct: z.coerce.number().min(0).max(100).default(0),
   isOptional: z.coerce.boolean().default(false),
   note: z.string().trim().max(2000).optional(),
   sortOrder: z.coerce.number().int().min(0).max(10000).optional(),
+}).strict().refine(
+  (it) => it.qty !== undefined || it.measurements?.length,
+  { message: 'Enter the quantity, or measure it', path: ['qty'] },
+);
+
+/** "Arrived": the phone's GPS fix, which becomes the site's pin (Phase L5). */
+const sitePin = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  /** Metres, as the phone reports it. Kept in the audit trail, not on the site. */
+  accuracy: z.coerce.number().min(0).max(100_000).optional(),
 }).strict();
 
 const surveyFields = {
@@ -58,19 +81,90 @@ const surveyFields = {
   urgency: z.enum(PRIORITIES).optional(),
 };
 
-/** PUT /tech/surveys/:id — a full replace of readings and items. */
+/** PUT /tech/surveys/:id and the `survey_draft` sync kind — a full replace of readings and items. */
 export const surveySaveSchema = z.object({
   ...surveyFields,
   readings: z.array(reading).max(200).optional(),
   items: z.array(item).max(200).optional(),
+  sitePin: sitePin.optional(),
 }).strict();
 
 export const surveySubmitSchema = z.object({
   ...surveyFields,
   readings: z.array(reading).max(200).optional(),
   items: z.array(item).max(200).optional(),
+  sitePin: sitePin.optional(),
   note: z.string().trim().max(2000).optional(),
 }).strict();
+
+/** The form fields sent with POST /tech/surveys/:id/photos (multipart). */
+export const surveyPhotoFields = z.object({
+  kind: z.enum(SURVEY_PHOTO_KINDS).default('ISSUE'),
+  caption: z.string().trim().max(300).optional(),
+  area: z.string().trim().max(80).optional(),
+});
+
+// ── inspection templates (Phase L5)
+
+/** A form's empty number box arrives as '' — that is "no threshold", not zero. */
+const threshold = z.preprocess((v) => (v === '' || v === null ? undefined : v), z.coerce.number().finite().optional());
+
+/**
+ * One checklist question. `flag` marks an answer the office must see first: a NUMBER above or below a
+ * threshold, a YES_NO equal to `yes` or `no`, a CHOICE among `values`. A TEXT question is never flagged.
+ * `required` blocks submit without an answer; `photoRequired` without a photo on the answer (its reading's
+ * mediaId).
+ */
+export const inspectionQuestion = z.object({
+  key: questionKey,
+  label: z.string().trim().min(1, 'Write the question').max(200),
+  labelNe: z.string().trim().max(200).nullable().optional(),
+  type: z.enum(INSPECTION_QUESTION_TYPES),
+  unit: z.string().trim().max(20).nullable().optional(),
+  metric: z.string().trim().max(60).nullable().optional(),
+  options: z.array(z.string().trim().min(1).max(80)).max(20).nullable().optional(),
+  flag: z.object({
+    above: threshold,
+    below: threshold,
+    equals: z.enum(['yes', 'no']).optional(),
+    values: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  }).strict().nullable().optional(),
+  required: z.coerce.boolean().default(false),
+  photoRequired: z.coerce.boolean().default(false),
+}).superRefine((q, ctx) => {
+  const issue = (path, message) => ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+  if (q.type === 'CHOICE' && (q.options?.length ?? 0) < 2) issue(['options'], 'A choice needs at least two options');
+  const f = q.flag ?? {};
+  if ((f.above !== undefined || f.below !== undefined) && q.type !== 'NUMBER') issue(['flag'], 'Only a number is flagged above or below a value');
+  if (f.above !== undefined && f.below !== undefined && f.below > f.above) issue(['flag', 'below'], 'Flag below cannot be higher than flag above');
+  if (f.equals && q.type !== 'YES_NO') issue(['flag', 'equals'], 'Only a yes/no question is flagged on yes or no');
+  if (f.values?.length) {
+    if (q.type !== 'CHOICE') issue(['flag', 'values'], 'Only a choice is flagged on its options');
+    else if (f.values.some((v) => !q.options?.includes(v))) issue(['flag', 'values'], 'Flag only options the question offers');
+  }
+});
+
+export const inspectionQuestions = z.array(inspectionQuestion).min(1, 'Add at least one question').max(60)
+  .superRefine((questions, ctx) => {
+    const seen = new Set();
+    questions.forEach((q, i) => {
+      if (seen.has(q.key)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, 'key'], message: `The key "${q.key}" is used twice` });
+      seen.add(q.key);
+    });
+  });
+
+/** /admin/inspection-templates — a registry resource. `serviceId` null is the general checklist. */
+export const inspectionTemplateSchema = z.object({
+  serviceId: z.string().min(1).nullable().optional(),
+  name: z.string().trim().min(1).max(120),
+  questions: inspectionQuestions,
+  isActive: z.coerce.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(0).default(0),
+});
+
+export const inspectionTemplateListQuery = listQuery.extend({
+  serviceId: z.string().optional(),
+}).passthrough();
 
 export const surveyReviewSchema = z.object({
   status: z.enum(['IN_REVIEW', 'RETURNED']),

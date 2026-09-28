@@ -81,7 +81,9 @@ function TextEditor({ column, editing, api, id, label, placeholder }) {
  * starts the search with that letter; Enter picks and moves right; Esc leaves the value as it was.
  */
 function SelectEditor({ column, row, editing, api, label }) {
-  const [search, setSearch] = useState(editing.draft ?? '');
+  // Typing over the cell searches for what was typed; Enter/F2 opens the full list (the cell's stored value —
+  // `YES_NO`, `ON_ACCEPT` — is not a label, and searching for it would match nothing).
+  const [search, setSearch] = useState(editing.mode === 'overwrite' ? editing.draft ?? '' : '');
   const done = useRef(false);
   const options = (typeof column.options === 'function' ? column.options(row) : column.options) ?? [];
 

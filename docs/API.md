@@ -121,6 +121,26 @@ POST /public/quotations/:token/decide decisionLimiter (20 per IP per 15 min) · 
                                       The three answers are quotation.service.js acceptQuotation /
                                       requestQuotationChanges / declineQuotation, so a customer account
                                       (Phase K) reuses them.
+GET  /public/visits/:token            the site visit as the customer sees it (Phase L5) — no login, no money:
+                                      { number, status, window: { start, end }, site: { label, address, area,
+                                        landmark } | null, surveyor: { name, phone } | null (the lead
+                                        technician), customer: { name, preferredLocale }, answer: CONFIRMED |
+                                        RESCHEDULE_REQUESTED | null, answerNote, answeredAt, canAnswer,
+                                        company: { name, phone } }
+                                      canAnswer: the job is DRAFT, SCHEDULED or ASSIGNED and its window (its end,
+                                      else its start) is still ahead. 404 for an unknown token or a job that is
+                                      not an INSPECTION. The token is Job.visitToken, minted when an INSPECTION
+                                      job is created and sent in the visit_booked / visit_reminder SMS.
+POST /public/visits/:token/respond    visitLimiter (10 per IP per 15 min) · { answer: confirm | reschedule,
+                                      note? (≤500) } -> 200 the view above
+                                      The latest answer wins; the same answer again (a reschedule with the same
+                                      note) changes nothing. The time and IP are kept (visitAnsweredAt,
+                                      visitAnswerIp); confirm sets customerConfirmedAt, reschedule clears it.
+                                      Each answer is a lead timeline note and an audit event (visit.confirmed /
+                                      visit.reschedule_requested). "reschedule" tells the lead's salesperson and
+                                      every active DISPATCHER (in-app, type visit_reschedule_requested, linking
+                                      /admin/jobs/:id). 422 VISIT_CLOSED once canAnswer is false. A new window
+                                      (POST /admin/jobs/:id/schedule) clears the answer.
 GET  /public/invoices/:token          customer views an invoice (read-only; paid offline)
                                       payments[] include voided ones with voidedAt set (shown struck
                                       through); paidAmount already excludes them
@@ -347,8 +367,19 @@ POST   /admin/leads/:id/activities  leads:write · { type: call|sms|whatsapp|ema
 POST   /admin/leads/:id/convert     leads:write · { customerId? | createNewCustomer?, confirmEmail? (false),
                                       preferredLocale?, site? { label, address, area },
                                       createQuotation, createInspectionJob, scheduledStart, scheduledEnd,
-                                      surveyorId }
+                                      surveyorId, siteContactName?, siteContactPhone?, landmark? }
                                     -> 201 { customer, customerCreated, site, quotation?, job?, survey? }
+                                    Booking the visit (Phase L5): scheduledStart–scheduledEnd is the window
+                                    the customer is told (end after start, 400); siteContactName (≤120) and
+                                    siteContactPhone (a Nepali number, normalised: "+977-9841 234567" →
+                                    9841234567; needs the name) are who opens the door — the caretaker while
+                                    the owner is abroad — and landmark (≤200) how to find the house. All three
+                                    are stored on the visit's site (CustomerSite contactName / contactPhone /
+                                    landmark), so the next job there knows them. After the commit the customer
+                                    gets visit_booked by SMS in their preferredLocale — {{name}} {{number}}
+                                    {{date}} {{window}} {{surveyor}} (name and phone, or "our surveyor")
+                                    {{link}} (/visit/:token) {{appName}} — and so does the site contact when it
+                                    is another number (same language). Nothing is sent without a start.
                                     The lead steps NEW → CONTACTED, and to INSPECTION_SCHEDULED with a visit.
                                     A draft quotation does NOT make it QUOTED (sending does — see
                                     /admin/quotations/:id/send). Next action: VISIT at scheduledStart with a
@@ -401,7 +432,9 @@ GET    /admin/customers/:id/timeline  customers:read · leads, quotations, jobs,
                                     ("Customer accepted QT-… vN · NPR …", "…asked for changes to…", "…declined…")
 GET    /admin/customers/:id/history customers:history · see "Record history" below
 GET    /admin/customers/:id/sites   customers:read
-POST   /admin/customers/:id/sites   customers:write · { label, address, area?, lat?, lng?, accessNotes?, isPrimary? }
+POST   /admin/customers/:id/sites   customers:write · { label, address, area?, lat?, lng?, accessNotes?,
+                                      contactName?, contactPhone? (Nepali, normalised; '' clears), landmark?,
+                                      isPrimary? } — the contact and landmark are Phase L5's booking fields
 PUT    /admin/customers/:id/sites/:siteId     partial; 404 when the site is not that customer's
 DELETE /admin/customers/:id/sites/:siteId     soft; 400 while jobs use the site
                                     Exactly one primary site: the first site is primary whatever was sent; a site
@@ -658,7 +691,22 @@ survey is `surveys:read`, but seeing any money is `quotations:read` — that is 
 GET    /admin/surveys                ?status&surveyorId&customerId&from&to&q     surveys:read
                                      status may list several: SUBMITTED,IN_REVIEW (400 on an unknown one)
 GET    /admin/surveys/:id            readings + quantity items + job photos      surveys:read
-                                     + media { [mediaId]: media } for those photos
+                                     + media { [mediaId]: media } — the job photos', the customer's
+                                     (lead.photos) and the checklist answers' (readings[].mediaId) images
+                                     Phase L5 adds: template (the checklist, as on /tech below), lead { …,
+                                     message, qualification, photos [{ id, mediaId, caption, url, thumb }] },
+                                     site { …, lat, lng, landmark, contactName, contactPhone, accessNotes },
+                                     readings[].questionKey / flagged, items[].measurements, job.photos[].area
+/admin/inspection-templates          SITE CHECKLISTS (Phase L5) — mountResource: read surveys:read, write
+                                     surveys:write · { serviceId? (null = the general checklist), name,
+                                     questions, isActive, sortOrder } · ?serviceId filters
+                                     questions (1–60, keys unique) = [{ key (a-z0-9_, ≤40), label, labelNe?,
+                                       type: YES_NO | NUMBER | CHOICE | TEXT, unit?, metric?, options?
+                                       (CHOICE: ≥2), flag?: { above?, below? } (NUMBER; '' = none) |
+                                       { equals: 'yes'|'no' } (YES_NO) | { values: [options] } (CHOICE),
+                                       required, photoRequired }]
+                                     A survey's checklist is its service's active template (lowest sortOrder),
+                                     else the general one, else none — resolved when read.
 GET    /admin/surveys/:id/pricing    priced preview (paisa) + missing[]          quotations:read
 PATCH  /admin/surveys/:id/review     { status: IN_REVIEW|RETURNED, note }        surveys:write
                                      RETURNED requires a note and SMSes the surveyor
@@ -668,7 +716,10 @@ POST   /admin/surveys/:id/quotation  { items? (BOQ rows, as above), discount?, v
                                      kind, material, raw quantity + wastage %, optional flag (an optional line
                                      is an optional row — no longer dropped) and note (as the spec); an
                                      unpriceable line stays out. Rows without a SECTION are grouped by
-                                     rate-card / material category (the survey's service names the rest).
+                                     the room a line was measured in (Phase L5: all its measurement rows
+                                     share one `area`), else by rate-card / material category (the survey's
+                                     service names the rest). A measured line's measurement rows travel
+                                     into the BOQ row, so its netQty equals the survey's quantity.
                                      `includeOptional` is accepted and ignored.
 DELETE /admin/surveys/:id            soft delete, DRAFT only                     surveys:write
 ```
@@ -761,6 +812,8 @@ put a job on the calendar:
 - **Messages:** newly assigned technicians get `job_assigned` (in-app + SMS). When the window moved and
   `notifyCustomer` is not false, the customer gets **`job_scheduled`** by SMS in their `preferredLocale`
   (English fallback) — `{{customerName}} {{number}} {{date}} {{time}} {{appName}}`, times in Kathmandu.
+  An INSPECTION job gets **`visit_booked`** instead (and the site contact too — see convert), and a new window
+  clears the customer's answer and the reminder, so the new one is confirmed and reminded afresh (Phase L5).
 - **Audit:** `job.scheduled` — status, window and technician ids before → after.
 
 ### Dispatch
@@ -790,8 +843,11 @@ The board:
   unassignedCount }                  the side list pages /dispatch/unassigned itself
 
 JobCard = { id, number, title, type, status, priority, scheduledStart, scheduledEnd, quotationId,
-            createdAt, customer: { id, name, phone }, site: { id, area, address } | null,
+            createdAt, visitAnswer, visitAnswerNote, visitAnsweredAt, customerConfirmedAt,
+            customer: { id, name, phone }, site: { id, area, address } | null,
             assignments: [{ technicianId, isLead }] }
+            visitAnswer / customerConfirmedAt (Phase L5): an INSPECTION card with no answer is flagged
+            "Not confirmed", one with RESCHEDULE_REQUESTED "Wants another time".
 ```
 
 Lanes are the live technician profiles of active users (surveyors included; filter with `role`).
@@ -890,12 +946,21 @@ POST  /tech/jobs/:id/complete       { note, signatureMediaId, customerRating? } 
                                     is 422 INVALID_TRANSITION ("already completed") — never re-run
 POST  /tech/sync                    offline mutation queue replay (idempotency keys)
 
-GET   /tech/surveys                 ?status              own surveys
-GET   /tech/surveys/:id             + job.photos [{ id, mediaId, kind, caption }] and media { [mediaId]: media }
+GET   /tech/surveys                 ?status              own surveys, each shaped as /tech/surveys/:id (the
+                                    phone caches them for offline use)
+GET   /tech/surveys/:id             + job.photos [{ id, mediaId, kind, caption, area, createdAt }] and
+                                    media { [mediaId]: media } (job photos, the customer's, the answers')
+                                    Phase L5 adds: template { id, name, serviceId, questions } | null (the
+                                    checklist — see /admin/inspection-templates), lead { id, message,
+                                    qualification: { propertyType, floors, buildingAgeYears } | null (never
+                                    the budget), photos [{ id, mediaId, caption, url, thumb }] }, site { …,
+                                    lat, lng, landmark, contactName, contactPhone, accessNotes }, job.scheduledEnd
 POST  /tech/jobs/:id/survey         create-or-return for this INSPECTION job (201, then 200)
-PUT   /tech/surveys/:id             save draft — fields + readings + items, FULL REPLACE
+PUT   /tech/surveys/:id             save draft — fields + readings + items (+ sitePin), FULL REPLACE
 POST  /tech/surveys/:id/submit      DRAFT|RETURNED -> SUBMITTED, closes the inspection job
-POST  /tech/surveys/:id/photos      multipart -> JobPhoto{ kind: 'ISSUE' } on the parent job
+POST  /tech/surveys/:id/photos      multipart `files` + kind (ISSUE default | SKETCH — a photo of a paper
+                                    sketch), caption? (≤300), area? (≤80, the room) -> JobPhoto on the parent
+                                    job; append-only. 400 on another kind
 GET   /tech/materials               offline reference — id, code, name, unit. NO rate.
 GET   /tech/rate-card               offline reference — id, code, name, unit. NO rate.
 ```
@@ -903,12 +968,31 @@ GET   /tech/rate-card               offline reference — id, code, name, unit. 
 `/tech` responses never carry money. `PUT /tech/surveys/:id` accepts quantities only; a
 payload carrying `rate` or `amount` is rejected (400), not silently ignored.
 
+**The survey payload (Phase L5)** — `PUT`, `submit` and the `survey_draft` / `survey_submit` sync kinds:
+
+- `readings[]`: `{ questionKey?, label, metric?, value?, unit?, textValue?, location?, mediaId?, lat?, lng?,
+  takenAt?, sortOrder? }`. A reading with a `questionKey` answers that checklist question — NUMBER in
+  `value`, YES_NO as `textValue` `yes`/`no`, CHOICE as the option, TEXT as text — and `mediaId` is its photo
+  (an uploaded photo's media id). The server fills `metric`/`unit` from the question and computes `flagged`
+  from its flag; a `flagged` sent by the phone is accepted and ignored.
+- `items[]`: `{ …, qty?, measurements? }` — `measurements` is the sheet by room, rows `{ area, description,
+  nos, l, b, h, deduct }` (feet or metres as the line's unit; the phone turns 12'6" into 12.5). With a sheet the
+  server derives `qty` (nos × L × B × H over the dimensions given, deductions subtract, 3 dp) and ignores the
+  phone's; without one `qty` is required (400). A sheet netting to zero or less is 422 `NEGATIVE_LINE`.
+- `sitePin`: `{ lat, lng, accuracy? }` — "Arrived": sets the site's pin (the phone confirms before replacing
+  one); a moved pin is audited as `site.pinned` with the accuracy, the same pin again records nothing.
+- **Submit** refuses a survey whose checklist is not finished: 422 `SURVEY_INCOMPLETE`, `details: [{
+  questionKey, label, missing: 'answer' | 'photo' }]` — each required question without an answer, then each
+  photo-required question answered without a photo (an optional one left unanswered needs none). The survey
+  stays a DRAFT.
+
 `sync` (Phase H2, now `services/techSync.service.js`): mutations apply in the order the phone recorded them
 (`at`), each idempotency key at most once (`duplicate` on a resend). `time_start` / `time_stop` keep the time
 the technician tapped — `at`, or now when `at` is in the future — so an offline timer's minutes are the work's,
 not the sync's. A payload that fails its schema answers `failed` with code `INVALID_MUTATION` (terminal: it
 will fail every time); a state-machine refusal is `INVALID_TRANSITION` (terminal); anything else keeps its code
-or `SYNC_FAILED`.
+or `SYNC_FAILED`. A failed result carries the error's `details` when it has them — `SURVEY_INCOMPLETE`'s
+missing answers and photos (Phase L5).
 
 `sync` gains the mutation kinds `survey_draft` and `survey_submit`, which address a
 `surveyId` instead of a `jobId`. A replayed `survey_submit` on a survey that is still
@@ -1210,6 +1294,9 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `survey.submitted` | the surveyor submits (model `SiteSurvey`) | DRAFT/RETURNED → SUBMITTED · jobId, lines |
 | `survey.returned` | `PATCH /admin/surveys/:id/review` with RETURNED | status → RETURNED · note |
 | `survey.quoted` | `POST /admin/surveys/:id/quotation` | status → QUOTED · quotationId, quotationNumber |
+| `site.pinned` | a survey save's `sitePin` moves a site's pin (model `CustomerSite`) | lat, lng → lat, lng · surveyId, accuracy, userId |
+| `visit.confirmed` | the customer confirms on `/visit/:token` (`public`, model `Job`) | visitAnswer → CONFIRMED · note, ip |
+| `visit.reschedule_requested` | the customer asks for another time on `/visit/:token` | visitAnswer → RESCHEDULE_REQUESTED · note, ip |
 | `auth.login` | a successful sign-in (actor = the user) | · client |
 | `auth.login_failed` | a wrong password, a locked or disabled account, or an unknown email (`public`; recordId null, `meta.email` for the last) | · reason, attempt |
 | `auth.locked` | the fifth consecutive failure locks the account | → lockedUntil · attempts |

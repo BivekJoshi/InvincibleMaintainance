@@ -27,19 +27,21 @@ const STORE = 'uploads';
  * @property {string} id
  * @property {'job'|'survey'} target
  * @property {string} targetId
- * @property {string} [kind] a job photo's kind — BEFORE | DURING | AFTER | ISSUE | SIGNATURE
+ * @property {string} [kind] the photo's kind — a job's BEFORE | DURING | AFTER | ISSUE | SIGNATURE; a survey's ISSUE
+ *   (the API's default) or SKETCH (Phase L5: a photo of a paper sketch)
  * @property {string} [caption]
+ * @property {string} [area] where on the site (Phase L5: a survey photo's room or area — "Kitchen", "Terrace")
  * @property {Blob} file
  * @property {string} [name]
  * @property {{ kind: string, jobId: string, payload: object, idempotencyKey: string }} [then]
  */
 
 /**
- * @param {{ target: 'job'|'survey', targetId: string, kind?: string, caption?: string, file: Blob,
+ * @param {{ target: 'job'|'survey', targetId: string, kind?: string, caption?: string, area?: string, file: Blob,
  *           name?: string, then?: object }} upload
  * @returns {Promise<UploadEntry>}
  */
-export async function addUpload({ target, targetId, kind, caption, file, name, then }) {
+export async function addUpload({ target, targetId, kind, caption, area, file, name, then }) {
   const { seq, at } = await nextStamp();
   const entry = {
     id: newKey(),
@@ -49,6 +51,7 @@ export async function addUpload({ target, targetId, kind, caption, file, name, t
     targetId,
     ...(kind ? { kind } : {}),
     ...(caption?.trim() ? { caption: caption.trim() } : {}),
+    ...(area?.trim() ? { area: area.trim() } : {}),
     file,
     name: name ?? file?.name ?? 'photo.jpg',
     size: file?.size ?? 0,

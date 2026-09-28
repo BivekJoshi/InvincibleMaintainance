@@ -189,6 +189,48 @@ describe('the outcome composer', () => {
   });
 });
 
+describe('the outcome composer — the visit it books (Phase L5)', () => {
+  it('"Interested — book a visit" opens the booking with its SMS preview in the customer’s Nepali', async () => {
+    const user = userEvent.setup();
+    const calls = mockApi(({ method, path }) => {
+      if (method === 'POST' && path === '/admin/leads/l1/activities') {
+        return json({ data: { id: 'a1', type: 'call', summary: 'x', outcome: 'book_visit', lead: { id: 'l1', status: 'CONTACTED' }, dialog: 'visit' } }, 201);
+      }
+      if (path === '/admin/leads/l1/customer-matches') return json({ data: [] });
+      if (path === '/public/bootstrap') {
+        return json({ data: { booking: { slots: [{ key: 'evening', label: 'Evening', window: '16:00 – 19:00', startHour: 16, endHour: 19 }] } } });
+      }
+      if (path === '/public/availability') return json({ data: { days: [] } });
+      if (path === '/admin/technicians') return json({ data: [] });
+      if (method === 'POST' && path === '/admin/leads/l1/convert') return json({ data: { job: { number: 'JOB-2083-0009' } } }, 201);
+      return undefined;
+    });
+    renderWithProviders(<ActivityComposer lead={{ ...LEAD, preferredSlot: 'evening' }} />, { preloadedState: signedInAs('SALES') });
+
+    await user.click(screen.getByRole('combobox', { name: /What came of it/ }));
+    await user.click(await screen.findByRole('option', { name: 'Interested — book a visit' }));
+    await user.click(screen.getByRole('button', { name: 'Log it' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Book the site visit' });
+
+    const sms = await within(dialog).findByTestId('visit-sms');
+    await waitFor(() => expect(sms).toHaveTextContent('नमस्ते सीता राई'));
+    expect(sms).toHaveTextContent('16:00–19:00');
+    expect(sms).toHaveAttribute('lang', 'ne');
+
+    await user.type(within(dialog).getByLabelText(/^Site contact \(optional\)/), 'कान्छा (केयरटेकर)');
+    await user.type(within(dialog).getByLabelText('Site contact phone'), '977-9861234567');
+    expect(within(dialog).getByText('Also sent to कान्छा (केयरटेकर) (9861234567).')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Book visit' }));
+    await waitFor(() => expect(calls.find((c) => c.path === '/admin/leads/l1/convert')?.body).toMatchObject({
+      createInspectionJob: true, siteContactName: 'कान्छा (केयरटेकर)', siteContactPhone: '9861234567',
+    }));
+    const { scheduledStart, scheduledEnd } = calls.find((c) => c.path === '/admin/leads/l1/convert').body;
+    // Three hours, starting at 16:00 Kathmandu (10:15 UTC).
+    expect(scheduledStart).toMatch(/T10:15:00\.000Z$/);
+    expect(new Date(scheduledEnd) - new Date(scheduledStart)).toBe(3 * HOUR);
+  }, 15_000);
+});
+
 describe('the lost dialog', () => {
   it('requires a category, and words for "Other"', async () => {
     const user = userEvent.setup();

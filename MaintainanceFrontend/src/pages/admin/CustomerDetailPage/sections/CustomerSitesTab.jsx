@@ -24,7 +24,22 @@ const columns = [
       </span>
     ),
   },
-  { key: 'address', header: 'Address', cell: (r) => [r.address, r.area].filter(Boolean).join(' · ') },
+  {
+    key: 'address', header: 'Address',
+    cell: (r) => (
+      <>
+        {[r.address, r.area].filter(Boolean).join(' · ')}
+        {r.landmark ? <span className="block text-xs text-muted-foreground">{r.landmark}</span> : null}
+      </>
+    ),
+    exportValue: (r) => [r.address, r.area, r.landmark].filter(Boolean).join(' · '),
+  },
+  {
+    key: 'contact', header: 'Site contact',
+    cell: (r) => (r.contactName || r.contactPhone
+      ? [r.contactName, r.contactPhone].filter(Boolean).join(' · ')
+      : <span className="text-xs text-muted-foreground">The customer</span>),
+  },
   {
     key: 'pin', header: 'Map',
     cell: (r) => (r.lat != null && r.lng != null ? (
@@ -41,7 +56,9 @@ const columns = [
 
 /**
  * A customer's sites. Exactly one is primary: the first site is, marking another moves
- * the flag, and the primary cannot be unmarked — only replaced.
+ * the flag, and the primary cannot be unmarked — only replaced. Since Phase L5 a site also knows who
+ * opens the door (the caretaker while the owner is abroad) and its landmark, shown in the list and
+ * edited in the site sheet (emptied fields are cleared).
  */
 export function CustomerSitesTab({ customer, canWrite }) {
   const dispatch = useDispatch();

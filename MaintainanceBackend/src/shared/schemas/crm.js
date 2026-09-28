@@ -168,11 +168,23 @@ export const leadConvertSchema = z.object({
   createQuotation: z.coerce.boolean().default(false),
   createInspectionJob: z.coerce.boolean().default(false),
   scheduledStart: z.coerce.date().optional(),
+  /** The end of the visit's window (Phase L5): the customer is told "between 10:00 and 12:00". */
   scheduledEnd: z.coerce.date().optional(),
   /** Technician.id of the surveyor to send. Assigning one also creates the survey. */
   surveyorId: z.string().optional(),
+  /**
+   * Who opens the door when it is not the customer — the caretaker while the owner is abroad — and how
+   * to find the house (Phase L5). Stored on the visit's site, so the next job there knows them too.
+   */
+  siteContactName: z.string().trim().max(120).optional(),
+  siteContactPhone: optionalPhone,
+  landmark: z.string().trim().max(200).optional(),
 }).refine((v) => !(v.customerId && v.createNewCustomer), {
   message: 'Choose an existing customer or a new one, not both', path: ['customerId'],
+}).refine((v) => !(v.scheduledStart && v.scheduledEnd) || v.scheduledEnd > v.scheduledStart, {
+  message: 'The window must end after it starts', path: ['scheduledEnd'],
+}).refine((v) => !v.siteContactPhone || v.siteContactName, {
+  message: 'Say whose number this is', path: ['siteContactName'],
 });
 
 /** `boolean` query flags arrive as strings; z.coerce.boolean() would read 'false' as true. */
@@ -242,6 +254,10 @@ export const customerSiteSchema = z.object({
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),
   accessNotes: optionalText,
+  /** The caretaker or tenant who opens the door, and how to find the house (Phase L5). */
+  contactName: z.string().trim().max(120).nullable().optional(),
+  contactPhone: z.union([nepaliPhone, z.literal(''), z.null()]).optional().transform((v) => v || null),
+  landmark: z.string().trim().max(200).nullable().optional(),
   isPrimary: z.coerce.boolean().default(false),
 });
 

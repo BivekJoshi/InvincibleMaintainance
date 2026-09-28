@@ -24,6 +24,7 @@ import { useDispatch } from 'react-redux';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { formatDate, formatNpr } from '@/helpers/format';
 import { serverFiguresByKey, surveyQuotationRows } from '@/helpers/boq';
+import { formatQty } from '@/helpers/measurements';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { skipToken } from '@reduxjs/toolkit/query';
 
@@ -182,7 +183,10 @@ export default function SurveyReviewPage() {
                   {survey.items?.map((item) => (
                     <li key={item.id} className="flex items-center justify-between gap-3 px-3 py-2">
                       <span className="min-w-0 truncate">{item.description}</span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">{item.qty} {item.unit}</span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {formatQty(item.qty)} {item.unit}
+                        {item.measurements?.length ? <span className="ml-1 text-xs">(measured)</span> : null}
+                      </span>
                     </li>
                   ))}
                 </ul>

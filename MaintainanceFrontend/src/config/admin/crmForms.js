@@ -73,10 +73,30 @@ export const customerFields = [
   { name: 'notes', type: 'textarea', label: 'Notes', rows: 3 },
 ];
 
+/** The words the site contact and the landmark share across the booking, the convert sheet and the site form. */
+export const SITE_CONTACT_HINT = 'The caretaker, when the owner is abroad';
+export const LANDMARK_PLACEHOLDER = 'e.g. Opposite the Bhatbhateni, blue gate';
+
+/**
+ * Who opens the door and how to find the house (Phase L5), as ResourceForm specs. The first argument names
+ * the fields as the request does: the convert sends `siteContactName` / `siteContactPhone` / `landmark`, a
+ * site saves `contactName` / `contactPhone` / `landmark` — with `{ nullable: true }`, so emptying one clears it.
+ */
+const siteContactFields = ({ name, phone, landmark }, extra = {}) => [
+  {
+    name, type: 'text', label: 'Site contact', span: 'half', maxLength: 120, placeholder: 'Name', description: SITE_CONTACT_HINT, ...extra,
+  },
+  {
+    name: phone, type: 'text', label: 'Site contact phone', span: 'half', inputType: 'tel', description: PHONE_HINT, ...extra,
+  },
+  { name: landmark, type: 'text', label: 'Landmark', maxLength: 200, placeholder: LANDMARK_PLACEHOLDER, ...extra },
+];
+
 export const siteFields = [
   { name: 'label', type: 'text', label: 'Name', required: true, span: 'half', placeholder: 'Home, Office…' },
   { name: 'area', type: 'text', label: 'Area', span: 'half' },
   { name: 'address', type: 'text', label: 'Address', required: true },
+  ...siteContactFields({ name: 'contactName', phone: 'contactPhone', landmark: 'landmark' }, { nullable: true }),
   { name: 'lat', type: 'number', label: 'Latitude', span: 'half', step: 'any', min: -90, max: 90 },
   { name: 'lng', type: 'number', label: 'Longitude', span: 'half', step: 'any', min: -180, max: 180 },
   { name: 'accessNotes', type: 'textarea', label: 'Access notes', rows: 2, placeholder: 'Gate code, parking, who to ask for' },
@@ -203,6 +223,7 @@ export const convertSiteFields = [
   { name: 'label', type: 'text', label: 'Site name', required: true, span: 'half' },
   { name: 'area', type: 'text', label: 'Area', span: 'half' },
   { name: 'address', type: 'text', label: 'Address', required: true },
+  ...siteContactFields({ name: 'siteContactName', phone: 'siteContactPhone', landmark: 'landmark' }),
   {
     name: 'createQuotation', type: 'switch', label: 'Start a draft quotation',
     description: 'One line priced from the service’s starting price, VAT included. Edit it before sending.',

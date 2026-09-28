@@ -12,10 +12,18 @@ describe('parseLength — feet-inches as typed on site', () => {
     expect(parseLength('12\'-6"')).toBe(12.5);
     expect(parseLength('10 ft 3 in')).toBe(10.25);
     expect(parseLength('12’6”')).toBe(12.5);
+    // Phase L5: what a surveyor types on a phone — a space between feet and inches, with or without the mark.
+    expect(parseLength('12\' 6"')).toBe(12.5);
+    expect(parseLength(' 12\'6" ')).toBe(12.5);
+    expect(parseLength('6"')).toBe(0.5);
+    expect(parseLength('0\' 9"')).toBe(0.75);
+    expect(parseLength('10\' 0"')).toBe(10);
   });
 
   it('reads plain numbers, with grouping', () => {
     expect(parseLength('12.5')).toBe(12.5);
+    expect(parseLength('.5')).toBe(0.5);
+    expect(parseLength('7')).toBe(7);
     expect(parseLength('1,200')).toBe(1200);
     expect(parseLength(7)).toBe(7);
   });

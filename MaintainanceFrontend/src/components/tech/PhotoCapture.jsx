@@ -1,39 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Camera, CloudUpload, ImageIcon, Loader2 } from 'lucide-react';
+import { Camera, CloudUpload, ImageIcon, Loader2, MapPin } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useFieldQueue } from '@/hooks/useOfflineQueue';
+import { usePendingPicture } from '@/hooks/usePendingPicture';
 import { compressImage } from '@/helpers/compressImage';
-import { getUpload } from '@/helpers/uploadQueue';
 import { sentFor, thumbFor } from '@/helpers/sentPhotos';
 import { formatTime, imageUrl } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 import { selectFieldSync } from '@/redux/slices/fieldSyncSlice';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 
-/** A queued picture's bytes as an object URL, released when the tile goes. */
-function usePendingPicture(id) {
-  const [url, setUrl] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    let objectUrl = null;
-    getUpload(id).then((entry) => {
-      if (!alive || !entry?.file || typeof URL?.createObjectURL !== 'function') return;
-      objectUrl = URL.createObjectURL(entry.file);
-      setUrl(objectUrl);
-    }).catch(() => {});
-    return () => {
-      alive = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [id]);
-  return url;
-}
-
-function Tile({ src, kindLabel, caption, at, badge, pending }) {
+function Tile({ src, kindLabel, caption, area, at, badge, pending }) {
   return (
     <li className="overflow-hidden rounded-lg border bg-card">
       <div className="relative aspect-[4/3] bg-muted">
@@ -54,6 +35,9 @@ function Tile({ src, kindLabel, caption, at, badge, pending }) {
       </div>
       <div className="px-2 py-1.5 text-xs">
         {kindLabel ? <p className="font-medium">{kindLabel}</p> : null}
+        {area ? (
+          <p className="flex items-center gap-1 truncate text-muted-foreground"><MapPin className="h-3 w-3 shrink-0" aria-hidden />{area}</p>
+        ) : null}
         {caption ? <p className="truncate text-muted-foreground">{caption}</p> : null}
         {at ? <p className="text-muted-foreground">{formatTime(at)}</p> : null}
       </div>
@@ -63,12 +47,13 @@ function Tile({ src, kindLabel, caption, at, badge, pending }) {
 
 function PendingTile({ upload, badge, kindLabel }) {
   const src = usePendingPicture(upload.id);
-  return <Tile src={src} kindLabel={kindLabel} caption={upload.caption} at={upload.at} badge={badge} pending />;
+  return <Tile src={src} kindLabel={kindLabel} caption={upload.caption} area={upload.area} at={upload.at} badge={badge} pending />;
 }
 
 /**
  * Take a picture and queue it (`hooks/useOfflineQueue#useFieldQueue`) — for a job (`target="job"`, with the
- * kind picker) or a survey (`target="survey"`, filed by the API as ISSUE). The camera input opens the rear
+ * kind picker) or a survey (`target="survey"`: filed by the API as ISSUE, or — Phase L5 — under the kind picked,
+ * ISSUE or SKETCH, with the room it was taken in when `areas` is given). The camera input opens the rear
  * camera on a phone; each picture is compressed (`helpers/compressImage.js`) and queued, and shows at once as
  * a thumbnail marked "Waiting to upload" until it is on the server.
  *
@@ -77,18 +62,22 @@ function PendingTile({ upload, badge, kindLabel }) {
  * not refetched yet falls back to the thumbnail remembered from its upload.
  *
  * @param {{ target: 'job'|'survey', targetId: string, kinds?: string[], defaultKind?: string,
- *   photos?: Array<{ id: string, mediaId: string, kind: string, caption?: string, createdAt?: string }>,
- *   media?: Record<string, object>, readOnly?: boolean, copy: object }} props  `copy` is the field copy
- *   (`config/tech/fieldCopy.js`)
+ *   areas?: string[]|null, photos?: Array<{ id: string, mediaId: string, kind: string, caption?: string, area?: string,
+ *   createdAt?: string }>, media?: Record<string, object>, readOnly?: boolean, copy: object }} props
+ *   `areas` — ask for the room (a text box suggesting these); `copy` is the field copy (`config/tech/fieldCopy.js`)
  */
-export function PhotoCapture({ target, targetId, kinds = [], defaultKind, photos, media = {}, readOnly = false, copy }) {
+export function PhotoCapture({
+  target, targetId, kinds = [], defaultKind, areas = null, photos, media = {}, readOnly = false, copy,
+}) {
   const dispatch = useDispatch();
   const { queueUpload } = useFieldQueue();
   const { uploads, syncing, online } = useSelector(selectFieldSync);
   const [kind, setKind] = useState(defaultKind ?? kinds[0]);
   const [caption, setCaption] = useState('');
+  const [area, setArea] = useState('');
   const [preparing, setPreparing] = useState(0);
   const words = copy.photos;
+  const askArea = Array.isArray(areas);
 
   const waiting = useMemo(
     () => uploads.filter((u) => u.target === target && u.targetId === targetId).slice().reverse(),
@@ -97,9 +86,16 @@ export function PhotoCapture({ target, targetId, kinds = [], defaultKind, photos
   // What the server has, with its images; before the page first loads them, what this phone sent.
   const sent = photos
     ? [...photos].reverse().map((p) => ({
-      key: p.id, src: imageUrl(media[p.mediaId], 400) ?? thumbFor(p.mediaId), kind: p.kind, caption: p.caption, at: p.createdAt,
+      key: p.id,
+      src: imageUrl(media[p.mediaId], 400) ?? thumbFor(p.mediaId),
+      kind: p.kind,
+      caption: p.caption,
+      area: p.area,
+      at: p.createdAt,
     }))
-    : sentFor(target, targetId).map((p) => ({ key: p.mediaId, src: p.thumb, kind: p.kind, caption: p.caption, at: p.at }));
+    : sentFor(target, targetId).map((p) => ({
+      key: p.mediaId, src: p.thumb, kind: p.kind, caption: p.caption, area: p.area, at: p.at,
+    }));
 
   const onFiles = async (event) => {
     const files = [...(event.target.files ?? [])];
@@ -113,8 +109,9 @@ export function PhotoCapture({ target, targetId, kinds = [], defaultKind, photos
         await queueUpload({
           target,
           targetId,
-          ...(target === 'job' ? { kind } : {}),
+          ...(kind ? { kind } : {}),
           caption,
+          ...(askArea ? { area } : {}),
           file: small,
           name: small.name ?? file.name,
         });
@@ -126,6 +123,7 @@ export function PhotoCapture({ target, targetId, kinds = [], defaultKind, photos
       }
     }
     if (queued) {
+      // The room stays: the next picture is usually taken in the same one.
       setCaption('');
       if (!navigator.onLine) dispatch(toastSuccess(words.queued(queued)));
     }
@@ -160,6 +158,23 @@ export function PhotoCapture({ target, targetId, kinds = [], defaultKind, photos
               </ToggleGroup>
             </div>
           ) : null}
+          {askArea ? (
+            <div className="space-y-1.5">
+              <Label htmlFor={`${inputId}-area`}>{words.area}</Label>
+              <Input
+                id={`${inputId}-area`}
+                value={area}
+                maxLength={80}
+                list={`${inputId}-areas`}
+                onChange={(e) => setArea(e.target.value)}
+                placeholder={words.areaPlaceholder}
+                className="h-11 text-base"
+              />
+              <datalist id={`${inputId}-areas`}>
+                {areas.map((a) => <option key={a} value={a} />)}
+              </datalist>
+            </div>
+          ) : null}
           <div className="space-y-1.5">
             <Label htmlFor={`${inputId}-caption`}>{words.caption}</Label>
             <Input
@@ -174,7 +189,7 @@ export function PhotoCapture({ target, targetId, kinds = [], defaultKind, photos
           <label
             className={cn(
               buttonVariants({ size: 'xl' }),
-              'w-full cursor-pointer focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2',
+              'relative w-full cursor-pointer focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2',
               preparing ? 'pointer-events-none opacity-70' : '',
             )}
           >
@@ -205,7 +220,7 @@ export function PhotoCapture({ target, targetId, kinds = [], defaultKind, photos
             />
           ))}
           {sent.map((p) => (
-            <Tile key={p.key} src={p.src} kindLabel={p.kind ? words.kinds[p.kind] : null} caption={p.caption} at={p.at} />
+            <Tile key={p.key} src={p.src} kindLabel={p.kind ? words.kinds[p.kind] : null} caption={p.caption} area={p.area} at={p.at} />
           ))}
         </ul>
       ) : (

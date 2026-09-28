@@ -184,6 +184,43 @@ describe('the field app never carries money (D1, defect #17)', () => {
   });
 });
 
+describe('the field app never carries money — the Phase L5 survey shapes', () => {
+  const MONEY_WORDS = new Set(['rate', 'rates', 'amount', 'total', 'subtotal', 'discount', 'margin', 'balance',
+    'cost', 'costs', 'price', 'prices', 'wage', 'wages', 'paid', 'vat', 'estimate', 'overhead', 'profit', 'budget']);
+  const moneyNamed = (k) => k !== 'priceUnit' && !k.endsWith('Id') && k.split(/(?=[A-Z])/).some((w) => MONEY_WORDS.has(w.toLowerCase()));
+
+  it('the checklist, the customer\'s photos, the measurements and the visit answer reach the phone without money', async () => {
+    const surveyor = await as('SURVEYOR');
+    // The seeded site-visit demo: a draft with the customer's photos, and a submitted one with everything.
+    const [draft, submitted] = await Promise.all(['9841800001', '9841800003'].map((p) => prisma.siteSurvey.findFirst({
+      where: { customer: { phone: p }, deletedAt: null }, orderBy: { createdAt: 'desc' },
+    })));
+    const saved = await surveyor.put(`/tech/surveys/${draft.id}`).send({
+      readings: [{ questionKey: 'moisture_low', label: 'Moisture 300 mm above the floor', value: 22 }],
+      items: [{ kind: 'OTHER', description: 'Measured wall', unit: 'sq.ft', measurements: [{ area: 'Bedroom', nos: 1, l: 10, h: 9 }] }],
+    });
+    const responses = {
+      draft: await surveyor.get(`/tech/surveys/${draft.id}`),
+      submitted: await surveyor.get(`/tech/surveys/${submitted.id}`),
+      list: await surveyor.get('/tech/surveys'),
+      saved,
+      job: await surveyor.get(`/tech/jobs/${draft.jobId}`),
+    };
+    const leaks = Object.entries(responses).flatMap(([name, res]) => {
+      expect(res.status, `${name} → ${res.status}`).toBeLessThan(300);
+      return findKeys(res.body.data, moneyNamed).map((k) => `${name}: ${k}`);
+    });
+    expect(leaks).toEqual([]);
+    const body = responses.draft.body.data;
+    expect(body.template.questions.length).toBeGreaterThan(0);
+    expect(body.lead.photos[0]).toMatchObject({ url: expect.any(String), thumb: expect.any(String) });
+    expect(body.lead.qualification).not.toHaveProperty('budgetBand');
+    expect(responses.saved.body.data.readings[0].flagged).toBe(true);
+    // The visit link answers for the customer — it is theirs, not the field's.
+    expect(responses.job.body.data).not.toHaveProperty('visitToken');
+  });
+});
+
 describe('the field app, as H2 uses it', () => {
   const HOUR = 3_600_000;
   const key = () => uid('k-sync-');

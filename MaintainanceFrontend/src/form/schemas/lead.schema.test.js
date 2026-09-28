@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  activityBody, activityFormSchema, leadActivitySchema, leadOutcomeIssues, lostReasonSchema, nextActionSchema,
-  qualificationSchema,
+  activityBody, activityFormSchema, convertSiteSchema, leadActivitySchema, leadOutcomeIssues, lostReasonSchema,
+  nextActionSchema, qualificationSchema, visitBookingBody, visitBookingSchema, visitWindowIssue,
 } from '@/form/schemas/lead.schema';
 
 const AT = '2026-09-17T04:15:00.000Z';
@@ -113,5 +113,68 @@ describe('the small forms', () => {
     expect(qualificationSchema.safeParse({ floors: -1 }).success).toBe(false);
     expect(qualificationSchema.safeParse({ floors: 61 }).success).toBe(false);
     expect(qualificationSchema.safeParse({ budgetBand: 250000 }).success).toBe(false);
+  });
+});
+
+describe('booking the visit (Phase L5)', () => {
+  const BOOKING = {
+    date: '2026-10-03', startTime: '10:00', endTime: '12:00', surveyorId: '', address: 'Jhamsikhel, Lalitpur',
+    siteContactName: '', siteContactPhone: '', landmark: '',
+  };
+
+  it('builds the window at Kathmandu’s +05:45, whatever the browser’s zone', () => {
+    const body = visitBookingBody(visitBookingSchema.parse(BOOKING));
+    expect(body).toEqual({
+      createInspectionJob: true,
+      scheduledStart: '2026-10-03T04:15:00.000Z',
+      scheduledEnd: '2026-10-03T06:15:00.000Z',
+      site: { label: 'Primary site', address: 'Jhamsikhel, Lalitpur' },
+    });
+    // 00:30 Kathmandu is the evening before in UTC.
+    expect(visitBookingBody(visitBookingSchema.parse({ ...BOOKING, startTime: '00:30', endTime: '05:45' })))
+      .toMatchObject({ scheduledStart: '2026-10-02T18:45:00.000Z', scheduledEnd: '2026-10-03T00:00:00.000Z' });
+  });
+
+  it('refuses a window that ends at or before its start, on the end', () => {
+    expect(visitWindowIssue('10:00', '10:00')).toBe('The window must end after it starts');
+    expect(visitWindowIssue('12:00', '09:30')).toBe('The window must end after it starts');
+    expect(visitWindowIssue('09:30', '12:00')).toBeNull();
+    expect(visitWindowIssue('', '12:00')).toBeNull();
+    expect(errorsOf(visitBookingSchema, { ...BOOKING, endTime: '09:00' })).toEqual({ endTime: 'The window must end after it starts' });
+    expect(errorsOf(visitBookingSchema, { ...BOOKING, startTime: '' })).toEqual({ startTime: 'Pick a start time' });
+    expect(errorsOf(visitBookingSchema, { ...BOOKING, endTime: '25:00' })).toEqual({ endTime: 'Pick an end time' });
+  });
+
+  it('keeps a Devanagari contact and normalises a Nepali number; sends only what was filled', () => {
+    const parsed = visitBookingSchema.parse({
+      ...BOOKING, surveyorId: 't1', siteContactName: ' हरि बहादुर ', siteContactPhone: '+977 9841234567',
+      landmark: 'भाटभटेनी अगाडि, निलो गेट',
+    });
+    expect(visitBookingBody(parsed)).toMatchObject({
+      surveyorId: 't1', siteContactName: 'हरि बहादुर', siteContactPhone: '9841234567', landmark: 'भाटभटेनी अगाडि, निलो गेट',
+    });
+    expect(visitBookingSchema.parse({ ...BOOKING, siteContactName: 'Hari', siteContactPhone: '01-5407720' }).siteContactPhone)
+      .toBe('01-5407720');
+    const bare = visitBookingBody(visitBookingSchema.parse({ ...BOOKING, address: '' }));
+    expect(Object.keys(bare).sort()).toEqual(['createInspectionJob', 'scheduledEnd', 'scheduledStart']);
+  });
+
+  it('refuses a number that is not Nepali, or one with nobody’s name, and overlong words', () => {
+    expect(errorsOf(visitBookingSchema, { ...BOOKING, siteContactName: 'Hari', siteContactPhone: '12345' }))
+      .toEqual({ siteContactPhone: expect.stringMatching(/9808338255 or 01-5407720/) });
+    expect(errorsOf(visitBookingSchema, { ...BOOKING, siteContactPhone: '9841234567' }))
+      .toEqual({ siteContactName: 'Say whose number this is' });
+    expect(errorsOf(visitBookingSchema, { ...BOOKING, siteContactName: 'क'.repeat(121) })).toHaveProperty('siteContactName');
+    expect(errorsOf(visitBookingSchema, { ...BOOKING, landmark: 'क'.repeat(201) })).toHaveProperty('landmark');
+    expect(visitBookingSchema.safeParse({ ...BOOKING, landmark: 'क'.repeat(200) }).success).toBe(true);
+    expect(errorsOf(visitBookingSchema, { ...BOOKING, address: 'ab' })).toEqual({ address: 'Where is the work?' });
+  });
+
+  it('the convert sheet takes the same site contact', () => {
+    const site = { label: 'Primary site', address: 'Jhamsikhel', createQuotation: false };
+    expect(convertSiteSchema.parse({ ...site, siteContactName: 'सीता', siteContactPhone: '977-9808338255', landmark: '' }))
+      .toMatchObject({ siteContactName: 'सीता', siteContactPhone: '9808338255', landmark: undefined });
+    expect(errorsOf(convertSiteSchema, { ...site, siteContactPhone: '9808338255' })).toEqual({ siteContactName: 'Say whose number this is' });
+    expect(convertSiteSchema.safeParse({ ...site, siteContactName: 'Hari', siteContactPhone: '98083382' }).success).toBe(false);
   });
 });

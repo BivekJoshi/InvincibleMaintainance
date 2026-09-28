@@ -7,6 +7,7 @@ import {
   BUDGET_BANDS, CONTACT_ACTIVITY_TYPES, DECISION_MAKERS, LEAD_OUTCOMES, LEAD_OUTCOME_LABELS, LEAD_SOURCES,
   LOGGABLE_ACTIVITY_TYPES, LOST_CATEGORIES, NEXT_ACTION_TYPES, PRIORITIES, PROPERTY_TYPES,
 } from '@/config/constants';
+import { fromKathmanduParts } from '@/helpers/format';
 
 /** The public enquiry form. Mirrors the API's `publicLeadSchema` (the fields it asks for). */
 export const leadSchema = z.object({
@@ -242,10 +243,79 @@ export const qualificationSchema = z.object({
   note: blankToUndefined(500),
 });
 
-/** The site a convert books against — the API's `leadConvertSchema.site`. */
+/**
+ * Who opens the door when it is not the customer — the caretaker while the owner is abroad — and how to
+ * find the house (Phase L5). Top-level fields of the API's `leadConvertSchema`, stored on the visit's site.
+ */
+const siteContactShape = {
+  siteContactName: blankToUndefined(120),
+  siteContactPhone: optionalPhone,
+  landmark: blankToUndefined(200),
+};
+
+/** The API refuses a number with nobody's name on it. */
+function siteContactIssue(values, ctx) {
+  if (values.siteContactPhone && !values.siteContactName) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['siteContactName'], message: 'Say whose number this is' });
+  }
+}
+
+/** The site contact and landmark as request fields: only what was filled. */
+export const siteContactBody = ({ siteContactName, siteContactPhone, landmark }) => ({
+  ...(siteContactName ? { siteContactName } : {}),
+  ...(siteContactPhone ? { siteContactPhone } : {}),
+  ...(landmark ? { landmark } : {}),
+});
+
+/** The site a convert books against — the API's `leadConvertSchema.site`, plus the site contact and landmark. */
 export const convertSiteSchema = z.object({
   label: z.string().trim().min(1).max(120),
   address: z.string().trim().min(3, 'Where is the work?').max(400),
   area: z.string().trim().max(120).optional(),
   createQuotation: z.boolean(),
+  ...siteContactShape,
+}).superRefine(siteContactIssue);
+
+const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** The API's words for a window that ends before it starts; null while the window is in order (or not picked yet). */
+export function visitWindowIssue(startTime, endTime) {
+  if (!HH_MM.test(startTime ?? '') || !HH_MM.test(endTime ?? '')) return null;
+  return endTime <= startTime ? 'The window must end after it starts' : null;
+}
+
+/**
+ * "Book the site visit" (`ScheduleVisitDialog`, Phase L5): the day and the window's start and end in
+ * Kathmandu time (`HH:mm`), the surveyor, the address, and the site contact and landmark. The window
+ * cannot cross midnight: an end at or before the start is refused, as the API refuses it.
+ * `visitBookingBody` turns the parsed values into the convert request.
+ */
+export const visitBookingSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick the day'),
+  startTime: z.string().regex(HH_MM, 'Pick a start time'),
+  endTime: z.string().regex(HH_MM, 'Pick an end time'),
+  surveyorId: z.string().optional().transform((v) => v || undefined),
+  address: z.string().trim().max(400).optional()
+    .refine((v) => !v || v.length >= 3, 'Where is the work?')
+    .transform((v) => v || undefined),
+  ...siteContactShape,
+}).superRefine((values, ctx) => {
+  const window = visitWindowIssue(values.startTime, values.endTime);
+  if (window) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endTime'], message: window });
+  siteContactIssue(values, ctx);
 });
+
+/**
+ * The booking's parsed values → the inspection fields of `POST /admin/leads/:id/convert`. The instants
+ * are built at Kathmandu's fixed +05:45 (`fromKathmanduParts`), never from the browser's clock.
+ */
+export function visitBookingBody(values) {
+  return {
+    createInspectionJob: true,
+    scheduledStart: fromKathmanduParts(values.date, values.startTime),
+    scheduledEnd: fromKathmanduParts(values.date, values.endTime),
+    ...(values.surveyorId ? { surveyorId: values.surveyorId } : {}),
+    ...(values.address ? { site: { label: 'Primary site', address: values.address } } : {}),
+    ...siteContactBody(values),
+  };
+}

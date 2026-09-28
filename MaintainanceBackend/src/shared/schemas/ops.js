@@ -116,6 +116,15 @@ export const jobPhotoSchema = z.object({
   caption: z.string().trim().max(300).optional(),
 });
 
+/**
+ * POST /public/visits/:token/respond (Phase L5): the customer confirms the window, or asks for another
+ * time — a note ("after 3 pm, or Saturday") helps the office pick one.
+ */
+export const visitResponseSchema = z.object({
+  answer: z.enum(['confirm', 'reschedule']),
+  note: z.string().trim().max(500).optional(),
+}).strict();
+
 export const jobMaterialSchema = z.object({
   materialId: z.string().min(1),
   qty: z.coerce.number().min(0.001).max(1_000_000),

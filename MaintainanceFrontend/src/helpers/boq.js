@@ -261,7 +261,9 @@ export function crewDuration(days, crew) {
  * A reviewed survey's priced lines → the rows `POST /admin/surveys/:id/quotation` takes (rupees). Every line goes
  * in: one the reviewer leaves out of the total (an optional one, by default) becomes an **optional row**. The
  * quantity sent is the surveyor's (`rawQty`) — the server adds the wastage — and the surveyor's note becomes the
- * row's specification. The server groups the rows into sections by category.
+ * row's specification. A measured line carries its measurement rows (Phase L5), from which the server derives the
+ * row's quantity. The server groups the rows into sections — by the room when all of a line's rows share one,
+ * else by category.
  *
  * @param {object[]} lines  `GET /admin/surveys/:id/pricing` lines (paisa)
  * @param {Record<string, { rate?: string, included?: boolean }>} draft  the reviewer's edits, by survey item
@@ -283,6 +285,9 @@ export function surveyQuotationRows(lines = [], draft = {}) {
       description: line.description,
       ...(line.unit ? { unit: line.unit } : {}),
       qty: line.rawQty ?? line.qty,
+      // The surveyor's measurement sheet travels with the line (Phase L5): the server derives the BOQ row's
+      // quantity from the same rows, so the quotation's measured rows equal the survey's.
+      ...(Array.isArray(line.measurements) && line.measurements.length ? { measurements: line.measurements } : {}),
       wastagePct: Number(line.wastagePct ?? 0),
       isOptional: !counted,
       ...(line.note ? { spec: line.note } : {}),

@@ -39,6 +39,6 @@ export const SITE_ROUTE_PREFIXES = ['/services/', '/projects/', '/book/', '/blog
  * reachable when its slug is none of these, because the fixed route wins.
  */
 export const RESERVED_SLUGS = [
-  'services', 'projects', 'pricing', 'contact', 'book', 'blog', 'quotation', 'invoice', 'warranty',
+  'services', 'projects', 'pricing', 'contact', 'book', 'blog', 'quotation', 'invoice', 'warranty', 'visit',
   'login', 'admin', 'tech', 'api', 'uploads', 'sitemap.xml', 'robots.txt',
 ];

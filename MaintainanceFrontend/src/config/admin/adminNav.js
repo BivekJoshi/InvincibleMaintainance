@@ -1,5 +1,5 @@
 import {
-  Blocks, BookText, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, FolderTree, Hammer, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
+  Blocks, BookText, Boxes, Globe, LifeBuoy, Briefcase, Building2, CalendarDays, ClipboardCheck, ClipboardList, ClipboardPen, FolderTree, Hammer, HardHat, Truck, Coins, Contact, File, FileText, GalleryHorizontal,
   HelpCircle, Home, Image, Images, KanbanSquare, LayoutDashboard, LayoutGrid, ListChecks, ListOrdered, LogIn,
   MessageSquareQuote, MessageSquareText, Newspaper, Package, Receipt, Ruler, ScrollText, Send, Settings, ShieldCheck,
   Sparkles, Tag, Tags, Timer, TrendingDown, UserCog, Users, Wallet, Wrench,
@@ -71,6 +71,8 @@ export const ADMIN_NAV = [
       { to: '/admin/dispatch', label: 'Dispatch board', icon: CalendarDays, capability: 'jobs:dispatch', editLabel: 'Board' },
       { to: '/admin/technicians', label: 'Technicians', icon: HardHat, capability: 'technicians:read', editLabel: 'Edit' },
       { to: '/admin/stock', label: 'Stock', icon: Boxes, capability: 'materials:read' },
+      // A service's site checklist (Phase L5): read with surveys:read, changed with surveys:write.
+      { to: '/admin/inspection-templates', label: 'Inspection templates', icon: ClipboardPen, capability: 'surveys:read', editLabel: 'Edit' },
     ],
   },
   {

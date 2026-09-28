@@ -9,6 +9,8 @@
 //   { sed -n '1,/^\/\/ ═══/p' docs/DATA-MODEL.prisma; cat MaintainanceBackend/prisma/schema.prisma; } \
 //     > /tmp/dm && mv /tmp/dm docs/DATA-MODEL.prisma
 //
+// Phase L5 (2026-09-27): VisitAnswer, the Job visit fields, CustomerSite contact/landmark, InspectionTemplate,
+// SurveyReading.questionKey/flagged, SurveyItem.measurements, JobPhoto.area — edited in by hand.
 // Last regenerated 2026-09-16 (Phase F1: Role.MANAGER, the approval QuotationStatus values and the Quotation approval fields).
 // ═════════════════════════════════════════════════════════════════════════════
 // Maintenance System — Prisma schema
@@ -284,6 +286,7 @@ model Service {
   jobTemplates JobTemplate[]
   surveys      SiteSurvey[]
   surveyItems  SurveyItem[]
+  inspectionTemplates InspectionTemplate[]
   projects     Project[]
 
   @@index([isActive, sortOrder])
@@ -729,6 +732,11 @@ model CustomerSite {
   lat         Float?
   lng         Float?
   accessNotes String?
+  /// Who opens the door when it is not the customer — the caretaker while the owner is abroad (Phase L5).
+  contactName  String?
+  contactPhone String?
+  /// "Opposite the Bhatbhateni, the blue gate" — how the surveyor finds it.
+  landmark    String?
   isPrimary   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1079,6 +1087,12 @@ model JobTemplate {
   service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 }
 
+/// The customer's answer on the /visit/:token page (Phase L5).
+enum VisitAnswer {
+  CONFIRMED
+  RESCHEDULE_REQUESTED
+}
+
 model Job {
   id               String    @id @default(cuid())
   number           String    @unique
@@ -1104,6 +1118,16 @@ model Job {
   customerFeedback String?
   isBillable       Boolean   @default(true)
   invoicedAt       DateTime?
+  /// An INSPECTION job's /visit/:token link (Phase L5): the customer confirms the window or asks for
+  /// another time, with no login. The latest answer wins; a new window clears it.
+  visitToken          String?      @unique
+  visitAnswer         VisitAnswer?
+  visitAnswerNote     String?
+  visitAnsweredAt     DateTime?
+  visitAnswerIp       String?
+  customerConfirmedAt DateTime?
+  /// The `visits:remind` SMS for the current window went (once — compare-and-swap on this column).
+  visitReminderSentAt DateTime?
   createdById      String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -1188,6 +1212,8 @@ model JobPhoto {
   mediaId   String
   kind      String
   caption   String?
+  /// The room or part of the site it shows ("Bedroom 1", "Roof") — the review groups by it (Phase L5).
+  area      String?
   createdAt DateTime @default(now())
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -1297,6 +1323,10 @@ model SurveyReading {
   mediaId   String?
   lat       Float?
   lng       Float?
+  /// The inspection-template question this answers (Phase L5); null for a free reading.
+  questionKey String?
+  /// The answer crossed the question's flag (a moisture reading above 20 %). Computed by the server.
+  flagged   Boolean  @default(false)
   takenAt   DateTime @default(now())
   sortOrder Int      @default(0)
 
@@ -1315,6 +1345,9 @@ model SurveyItem {
   description    String
   unit           String
   qty            Float
+  /// The measurement sheet, rows `{ area, description, nos, l, b, h, deduct }` (Phase L5). When present,
+  /// `qty` is derived from it on the server (quantity.js#measurementQty).
+  measurements   Json?
   wastagePct     Float          @default(0)
   isOptional     Boolean        @default(false)
   note           String?
@@ -1329,6 +1362,25 @@ model SurveyItem {
   @@index([surveyId, sortOrder])
   @@index([materialId])
   @@index([rateCardItemId])
+}
+
+/// A service's site checklist (Phase L5): the questions the surveyor answers on the site, each a
+/// SurveyReading keyed by `questionKey`. `serviceId` null is the general checklist, used when the
+/// survey's service has none. `questions` is zod-checked (schemas/survey.js#inspectionQuestions).
+model InspectionTemplate {
+  id        String    @id @default(cuid())
+  serviceId String?
+  name      String
+  questions Json
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([serviceId, isActive])
 }
 
 // ═══════════════════════════ Materials

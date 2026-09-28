@@ -11,6 +11,7 @@ import {
   DECISION_MAKERS, DECISION_MAKER_LABELS,
   UNITS, RATE_MODES, RATE_MODE_LABELS, RECIPE_COMPONENT_KINDS, RECIPE_COMPONENT_LABELS,
   CONTRACT_TYPES, CONTRACT_TYPE_LABELS, PAYMENT_TRIGGERS, PAYMENT_TRIGGER_LABELS, PAYMENT_SCHEDULE_PRESETS, DECLINE_CATEGORIES,
+  SURVEY_PHOTO_KINDS, INSPECTION_QUESTION_TYPES, INSPECTION_QUESTION_TYPE_LABELS,
 } from '@/config/constants';
 import { AUDIT_EVENT_LABELS } from '@/config/auditEvents';
 import { PERMISSIONS, can } from '@/helpers/permissions';
@@ -65,6 +66,13 @@ describe('the CRM rules mirror the API', () => {
     expect(STOCK_MOVEMENT_TYPES).toEqual(API_ENUMS.STOCK_MOVEMENT_TYPES);
     expect(Object.keys(STOCK_MOVEMENT_LABELS)).toEqual(STOCK_MOVEMENT_TYPES);
     expect(MANUAL_STOCK_MOVEMENTS).toEqual(STOCK_MOVEMENT_TYPES.filter((t) => t !== 'ISSUE_TO_JOB'));
+  });
+
+  it('survey photo kinds and inspection question types are the API’s, and every type has words (Phase L5)', () => {
+    expect(SURVEY_PHOTO_KINDS).toEqual(API_ENUMS.SURVEY_PHOTO_KINDS);
+    expect(INSPECTION_QUESTION_TYPES).toEqual(API_ENUMS.INSPECTION_QUESTION_TYPES);
+    expect(Object.keys(INSPECTION_QUESTION_TYPE_LABELS)).toEqual(INSPECTION_QUESTION_TYPES);
+    for (const kind of SURVEY_PHOTO_KINDS) expect(JOB_PHOTO_KINDS).toContain(kind);
   });
 
   it('the follow-up lists are the API’s, and every value has words (Phase L1)', () => {

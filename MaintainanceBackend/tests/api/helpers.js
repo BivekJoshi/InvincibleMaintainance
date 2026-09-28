@@ -197,3 +197,30 @@ export async function uploadImage(api, color) {
   const res = await api.post('/admin/media').attach('files', await pngBuffer(color), 'test.png');
   return expectStatus(res, 201).data[0];
 }
+
+/**
+ * A lead converted with a booked site visit (Phase L5): the window, the SURVEYOR, a caretaker as the site
+ * contact and a landmark. Returns the lead, the inspection job, its survey and the /visit/:token token.
+ * @param {{ start?: Date, hours?: number, locale?: 'en'|'ne', contactPhone?: string|null, serviceId?: string }} [opts]
+ */
+export async function bookVisit({ start = daysFromNow(3), hours = 2, locale = 'en', contactPhone = phone(), serviceId } = {}) {
+  const sales = await as('SALES');
+  const salesUser = await prisma.user.findUnique({ where: { email: USERS.SALES } });
+  const customerPhone = phone();
+  const lead = expectStatus(await sales.post('/admin/leads').send({
+    name: `Visit ${uid()}`, phone: customerPhone, assignedToId: salesUser.id, ...(serviceId ? { serviceId } : {}),
+  }), 201).data;
+  const body = expectStatus(await sales.post(`/admin/leads/${lead.id}/convert`).send({
+    createNewCustomer: true,
+    preferredLocale: locale,
+    site: { label: 'Home', address: `House ${uid()}, Jhamsikhel, Lalitpur`, area: 'Jhamsikhel' },
+    createInspectionJob: true,
+    scheduledStart: start.toISOString(),
+    scheduledEnd: new Date(start.getTime() + hours * 3_600_000).toISOString(),
+    surveyorId: await technicianIdFor('SURVEYOR'),
+    ...(contactPhone ? { siteContactName: 'Ram Bahadur (caretaker)', siteContactPhone: contactPhone } : {}),
+    landmark: 'Opposite the Bhatbhateni, blue gate',
+  }), 201).data;
+  const job = await prisma.job.findUnique({ where: { id: body.job.id } });
+  return { lead, job, survey: body.survey, token: job.visitToken, customerPhone, customer: body.customer };
+}

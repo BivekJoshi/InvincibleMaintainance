@@ -57,6 +57,8 @@ export const SETTINGS = [
   { group: 'sla', key: 'pipeline.quoteUnansweredDays', label: 'Follow up a sent quotation after (days)', type: 'number', value: 3, sortOrder: 9,
     hint: 'Sending a quotation books this follow-up, and the reminder repeats daily while it stays unanswered.' },
   { group: 'sla', key: 'pipeline.quoteExpiringDays', label: 'Warn this many days before a quotation lapses', type: 'number', value: 2, sortOrder: 10 },
+  { group: 'sla', key: 'visits.reminderHour', label: 'Remind customers of tomorrow\'s site visit at (hour, Kathmandu)', type: 'number', value: 17, sortOrder: 11,
+    hint: 'The customer and the site contact get one reminder SMS with the window and the confirm link.' },
 
   { group: 'finance', key: 'finance.vatRate', label: 'VAT rate (%)', type: 'number', value: 13, sortOrder: 0 },
   { group: 'finance', key: 'finance.paymentTermDays', label: 'Default payment term (days)', type: 'number', value: 15, sortOrder: 1 },
@@ -494,6 +496,15 @@ export const MESSAGE_TEMPLATES = [
   { key: 'survey_returned', channel: 'sms', locale: 'en', body: 'Survey {{number}} was sent back: {{note}} - {{appName}}' },
   { key: 'job_scheduled', channel: 'sms', locale: 'en', body: 'Hi {{customerName}}, job {{number}} is booked for {{date}}, {{time}}. We will call before we come. - {{appName}}' },
   { key: 'job_scheduled', channel: 'sms', locale: 'ne', body: 'नमस्ते {{customerName}}, काम {{number}} को लागि {{date}}, {{time}} मा समय मिलाइएको छ। आउनुअघि फोन गर्नेछौं। - {{appName}}' },
+  // Phase L5: the site visit — booked (and re-booked in a new window), and the reminder the evening before.
+  { key: 'visit_booked', channel: 'sms', locale: 'en',
+    body: 'Hi {{name}}, your site visit {{number}} is booked for {{date}}, {{window}}. {{surveyor}} will come. Confirm or ask for another time: {{link}} - {{appName}}' },
+  { key: 'visit_booked', channel: 'sms', locale: 'ne',
+    body: 'नमस्ते {{name}}, तपाईंको साइट निरीक्षण {{number}} {{date}}, {{window}} मा तय भएको छ। {{surveyor}} आउनुहुनेछ। पुष्टि गर्न वा अर्को समय माग्न: {{link}} - {{appName}}' },
+  { key: 'visit_reminder', channel: 'sms', locale: 'en',
+    body: 'Hi {{name}}, a reminder: {{surveyor}} visits tomorrow, {{date}}, {{window}} ({{number}}). Confirm or ask for another time: {{link}} - {{appName}}' },
+  { key: 'visit_reminder', channel: 'sms', locale: 'ne',
+    body: 'नमस्ते {{name}}, सम्झना: {{surveyor}} भोलि {{date}}, {{window}} मा आउनुहुनेछ ({{number}})। पुष्टि गर्न वा अर्को समय माग्न: {{link}} - {{appName}}' },
   { key: 'job_en_route', channel: 'sms', locale: 'en', body: 'Hi {{customerName}}, our technician is on the way for job {{number}}. - {{appName}}' },
   { key: 'job_en_route', channel: 'sms', locale: 'ne', body: 'नमस्ते {{customerName}}, काम {{number}} का लागि हाम्रो प्राविधिक बाटोमा हुनुहुन्छ। - {{appName}}' },
   { key: 'job_completed', channel: 'sms', locale: 'en', body: 'Job {{number}} is complete. Your work carries a {{warrantyDays}}-day warranty: {{warrantyLink}} - {{appName}}' },
@@ -546,6 +557,27 @@ export const JOB_TEMPLATES = [
       { title: 'Measure the affected area' },
       { title: 'Explain the likely cause to the customer' },
       { title: 'Record the scope for quotation' },
+    ],
+  },
+];
+
+/**
+ * Site checklists (Phase L5): what the surveyor answers on the site, per service. The damp one is how an
+ * engineer reads a wet wall — a high reading low down and a lower one higher up with salt is rising damp;
+ * a wet room behind the wall is a plumbing or lateral source. Flags put the answers the office must see first.
+ */
+export const INSPECTION_TEMPLATES = [
+  {
+    service: 'seepage-and-damp-treatment', name: 'Seepage & damp — site checklist', sortOrder: 0,
+    questions: [
+      { key: 'moisture_low', label: 'Moisture 300 mm above the floor', labelNe: 'भुइँबाट ३०० मिमि माथि चिस्यान', type: 'NUMBER', unit: '%', metric: 'moisture', flag: { above: 20 }, required: true, photoRequired: true },
+      { key: 'moisture_high', label: 'Moisture 1 m above the floor', labelNe: 'भुइँबाट १ मिटर माथि चिस्यान', type: 'NUMBER', unit: '%', metric: 'moisture', flag: { above: 16 }, required: true, photoRequired: false },
+      { key: 'salt', label: 'Salt deposits (white bloom)', labelNe: 'नुनिलो दाग (सेतो धुलो)', type: 'CHOICE', options: ['None', 'Light', 'Heavy'], flag: { values: ['Heavy'] }, required: true, photoRequired: true },
+      { key: 'dpc_visible', label: 'Damp-proof course visible at the plinth?', labelNe: 'प्लिन्थमा डीपीसी देखिन्छ?', type: 'YES_NO', flag: { equals: 'no' }, required: true, photoRequired: false },
+      { key: 'water_source', label: 'Likely source of the water', labelNe: 'पानी कहाँबाट आएको हुन सक्छ', type: 'CHOICE', options: ['Rising damp', 'Roof or terrace', 'Plumbing leak', 'Neighbour\'s wall', 'Rain through the wall', 'Not sure'], required: true, photoRequired: false },
+      { key: 'wet_room_behind', label: 'Bathroom or kitchen on the other side?', labelNe: 'भित्ताको अर्को पट्टि बाथरुम वा भान्सा छ?', type: 'YES_NO', flag: { equals: 'yes' }, required: false, photoRequired: false },
+      { key: 'hollow_plaster', label: 'Plaster sounds hollow when tapped?', labelNe: 'ठोक्दा प्लास्टर खोक्रो आवाज आउँछ?', type: 'YES_NO', flag: { equals: 'yes' }, required: false, photoRequired: false },
+      { key: 'customer_story', label: 'When it started, and whether it is worse after rain', labelNe: 'कहिलेदेखि सुरु भयो, पानी परेपछि बढ्छ कि', type: 'TEXT', required: false, photoRequired: false },
     ],
   },
 ];

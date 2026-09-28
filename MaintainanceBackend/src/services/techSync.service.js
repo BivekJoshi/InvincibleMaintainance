@@ -79,7 +79,11 @@ export async function applySync(mutations, { user, technician }) {
       logger.warn({ err: err.message, mutation: m.kind, jobId: m.jobId, surveyId: m.surveyId }, 'sync mutation rejected');
       // A payload that fails its schema will fail every time: INVALID_MUTATION tells the phone to stop retrying.
       const code = err instanceof ZodError ? 'INVALID_MUTATION' : err.code ?? 'SYNC_FAILED';
-      results.push({ idempotencyKey: m.idempotencyKey, status: 'failed', error: err.message, code });
+      // `details` names what to fix — SURVEY_INCOMPLETE's missing answers and photos (Phase L5).
+      results.push({
+        idempotencyKey: m.idempotencyKey, status: 'failed', error: err.message, code,
+        ...(err.details ? { details: err.details } : {}),
+      });
     }
   }
 

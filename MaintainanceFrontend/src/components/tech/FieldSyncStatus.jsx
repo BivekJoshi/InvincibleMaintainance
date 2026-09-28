@@ -85,6 +85,13 @@ export function SyncBanner({ sync, copy }) {
               <Link to={`/tech/jobs/${note.jobId}`} className="mt-0.5 inline-block font-medium underline underline-offset-2">
                 {copy.today.open}
               </Link>
+            ) : note.surveyId ? (
+              <Link
+                to={`/tech/surveys/${note.surveyId}${note.code === 'SURVEY_INCOMPLETE' ? '?step=checklist' : ''}`}
+                className="mt-0.5 inline-block font-medium underline underline-offset-2"
+              >
+                {copy.sync.openSurvey}
+              </Link>
             ) : null}
           </div>
           <Button

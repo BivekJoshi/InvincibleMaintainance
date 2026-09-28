@@ -72,10 +72,13 @@ describe('technicians (technician.service, D5)', () => {
   it('filters by skill and service area', async () => {
     const id = await freshTechnician();
     const skill = `skill-${uid()}`;
-    expectStatus(await dispatcher.put(`/admin/technicians/${id}`).send({ skills: [skill], serviceAreas: ['ललितपुर'] }), 200);
+    // A Devanagari area of this run's own: on a reused test database, every earlier run's technicians are in
+    // plain "ललितपुर" too, and the new one fell off the first page.
+    const area = `ललितपुर ${uid()}`;
+    expectStatus(await dispatcher.put(`/admin/technicians/${id}`).send({ skills: [skill], serviceAreas: [area] }), 200);
     expect(expectStatus(await dispatcher.get(`/admin/technicians?skill=${skill}`), 200).data.map((t) => t.id)).toEqual([id]);
-    const byArea = expectStatus(await dispatcher.get(`/admin/technicians?area=${encodeURIComponent('ललितपुर')}`), 200).data;
-    expect(byArea.map((t) => t.id)).toContain(id);
+    const byArea = expectStatus(await dispatcher.get(`/admin/technicians?area=${encodeURIComponent(area)}`), 200).data;
+    expect(byArea.map((t) => t.id)).toEqual([id]);
   });
 
   it('switches availability, trashes and restores, and keeps the person fixed', async () => {

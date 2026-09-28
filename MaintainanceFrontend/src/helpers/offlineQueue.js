@@ -24,9 +24,14 @@ export const MUTATION_KINDS = [
   'status', 'task', 'material', 'time_start', 'time_stop', 'complete', 'survey_draft', 'survey_submit',
 ];
 
-/** A `failed` result with one of these codes will fail the same way every time. */
+/**
+ * A `failed` result with one of these codes will fail the same way every time. `INVALID_MUTATION` is the
+ * server's word for a payload that fails its schema; `SURVEY_INCOMPLETE` (Phase L5) a submit with a required
+ * answer or photo missing — the surveyor has to add it, sending it again will not help.
+ */
 export const TERMINAL_CODES = new Set([
   'INVALID_TRANSITION', 'UNPROCESSABLE', 'NOT_FOUND', 'FORBIDDEN', 'BAD_REQUEST', 'CONFLICT', 'VALIDATION_ERROR',
+  'INVALID_MUTATION', 'SURVEY_INCOMPLETE',
 ]);
 
 /** After this many refusals that were not terminal, an entry is dropped and reported anyway. */
@@ -80,6 +85,18 @@ export const pending = () => readAll(STORE);
 
 export const drop = (keys) => remove(STORE, keys);
 
+/**
+ * Forgets the waiting entries `predicate` picks — a change a newer one replaces in full (a survey's
+ * `survey_draft`, Phase L5: each save is the whole survey, so only the newest is worth sending).
+ * @param {(entry: object) => boolean} predicate
+ * @returns {Promise<number>} how many were dropped
+ */
+export async function dropPending(predicate) {
+  const stale = (await pending()).filter(predicate);
+  if (stale.length) await drop(stale.map((e) => e.idempotencyKey));
+  return stale.length;
+}
+
 export const clear = () => clearStore(STORE);
 
 /** The entry as `/tech/sync` takes it — the queue's own bookkeeping (`seq`, `meta`, `attempts`) stays here. */
@@ -98,10 +115,13 @@ export function toWire(entry) {
  *
  * @param {object[]} batch the entries sent
  * @param {{ results?: Array<{ idempotencyKey: string, status: string, code?: string, error?: string }> }} answer
- * @returns {{ done: object[], refused: Array<{ entry: object, code: string, message: string|null }>, retry: object[] }}
+ * @returns {{ done: object[], refused: Array<{ entry: object, code: string, message: string|null, details?: any }>, retry: object[] }}
  *   `done` — applied, or applied before (`duplicate`); `refused` — to drop and report; `retry` — to keep,
  *   `attempts` already counted
  */
+/** What the server listed with a refusal — a submit's missing answers (`SURVEY_INCOMPLETE`, Phase L5). */
+const detailsOf = (result) => (result.details ? { details: result.details } : {});
+
 export function settle(batch, answer) {
   const byKey = new Map((answer?.results ?? []).map((r) => [r.idempotencyKey, r]));
   const done = [];
@@ -114,33 +134,68 @@ export function settle(batch, answer) {
     } else if (result.status === 'applied' || result.status === 'duplicate') {
       done.push(entry);
     } else if (TERMINAL_CODES.has(result.code)) {
-      refused.push({ entry, code: result.code, message: result.error ?? null });
+      refused.push({ entry, code: result.code, message: result.error ?? null, ...detailsOf(result) });
     } else {
       const attempts = (entry.attempts ?? 0) + 1;
-      if (attempts >= MAX_ATTEMPTS) refused.push({ entry, code: result.code ?? 'SYNC_FAILED', message: result.error ?? null });
-      else retry.push({ ...entry, attempts, lastError: result.error ?? null });
+      if (attempts >= MAX_ATTEMPTS) {
+        refused.push({ entry, code: result.code ?? 'SYNC_FAILED', message: result.error ?? null, ...detailsOf(result) });
+      } else {
+        retry.push({ ...entry, attempts, lastError: result.error ?? null });
+      }
     }
   }
   return { done, refused, retry };
 }
 
+/** The record an entry changes — entries for the same one keep their order when one of them has to wait. */
+const scopeOf = (entry) => (entry.surveyId ? `survey:${entry.surveyId}` : entry.jobId ? `job:${entry.jobId}` : null);
+
 /**
  * Sends the oldest `BATCH_SIZE` entries through `send` and settles the queue by the answer.
  *
+ * `resolve` (Phase L5) prepares each entry for the wire: it may rewrite the wire shape (a survey reading's
+ * `photoUploadId` → the uploaded picture's `mediaId`) or answer null — **not yet**: the entry waits, and so
+ * does every later entry for the same job or survey, so a survey's submit never overtakes the save it follows.
+ * Entries for other records still go.
+ *
  * @param {(mutations: object[]) => Promise<{ results: object[] }>} send receives the mutation ARRAY
  *   (wire shape) — the transport wraps it as `{ mutations }`
- * @returns {Promise<{ sent: number, applied: object[], refused: object[], remaining: number }>}
+ * @param {{ resolve?: (wire: object, entry: object) => Promise<object|null>|object|null }} [options]
+ * @returns {Promise<{ sent: number, applied: object[], refused: object[], remaining: number, held: number }>}
+ *   `held` — entries left waiting by `resolve`
  * @throws the transport's error when there was no answer (`failureKind(err) !== 'refused'`) — the
  *   queue is untouched, apart from a 5xx counting an attempt
  */
-export async function flush(send) {
+export async function flush(send, { resolve } = {}) {
   const queue = await pending();
-  if (!queue.length) return { sent: 0, applied: [], refused: [], remaining: 0 };
-  const batch = queue.slice(0, BATCH_SIZE);
+  if (!queue.length) return { sent: 0, applied: [], refused: [], remaining: 0, held: 0 };
+  let batch = queue.slice(0, BATCH_SIZE);
+  let wire = batch.map(toWire);
+  let held = 0;
+
+  if (resolve) {
+    const ready = [];
+    const readyWire = [];
+    const waiting = new Set();
+    for (const entry of batch) {
+      const scope = scopeOf(entry);
+      const out = scope && waiting.has(scope) ? null : await resolve(toWire(entry), entry);
+      if (out) {
+        ready.push(entry);
+        readyWire.push(out);
+      } else {
+        held += 1;
+        if (scope) waiting.add(scope);
+      }
+    }
+    batch = ready;
+    wire = readyWire;
+    if (!batch.length) return { sent: 0, applied: [], refused: [], remaining: queue.length, held };
+  }
 
   let answer;
   try {
-    answer = await send(batch.map(toWire));
+    answer = await send(wire);
   } catch (error) {
     const kind = failureKind(error);
     if (kind === 'offline') throw error;
@@ -153,12 +208,12 @@ export async function flush(send) {
     await drop(refused.map((r) => r.entry.idempotencyKey));
     for (const entry of retry) await write(STORE, entry);
     if (kind === 'server') throw error;
-    return { sent: batch.length, applied: [], refused, remaining: (await pending()).length };
+    return { sent: batch.length, applied: [], refused, remaining: (await pending()).length, held };
   }
 
   const { done, refused, retry } = settle(batch, answer);
   await drop([...done, ...refused.map((r) => r.entry)].map((e) => e.idempotencyKey));
   for (const entry of retry) if (entry.attempts) await write(STORE, entry);
 
-  return { sent: batch.length, applied: done, refused, remaining: (await pending()).length };
+  return { sent: batch.length, applied: done, refused, remaining: (await pending()).length, held };
 }

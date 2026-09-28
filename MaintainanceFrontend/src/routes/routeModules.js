@@ -34,6 +34,7 @@ export const ProjectDetailPage = route(() => import('@/pages/public/ProjectDetai
 export const QuotationPublicPage = route(() => import('@/pages/public/QuotationPublicPage/QuotationPublicPage'));
 export const InvoicePublicPage = route(() => import('@/pages/public/InvoicePublicPage/InvoicePublicPage'));
 export const WarrantyPublicPage = route(() => import('@/pages/public/WarrantyPublicPage/WarrantyPublicPage'));
+export const VisitPublicPage = route(() => import('@/pages/public/VisitPublicPage/VisitPublicPage'));
 export const BlogPage = route(() => import('@/pages/public/BlogPage/BlogPage'));
 export const BlogPostPage = route(() => import('@/pages/public/BlogPostPage/BlogPostPage'));
 export const GenericPage = route(() => import('@/pages/public/GenericPage/GenericPage'));
@@ -75,7 +76,7 @@ export const MessageTemplateEditPage = route(() => import('@/pages/admin/Message
 // Field app
 export const TechTodayPage = route(() => import('@/pages/tech/TechTodayPage'));
 export const SurveyListPage = route(() => import('@/pages/tech/SurveyListPage'));
-export const SurveyFormPage = route(() => import('@/pages/tech/SurveyFormPage'));
+export const SurveyFormPage = route(() => import('@/pages/tech/SurveyFormPage/SurveyFormPage'));
 export const TechJobPage = route(() => import('@/pages/tech/TechJobPage/TechJobPage'));
 export const TechHistoryPage = route(() => import('@/pages/tech/TechHistoryPage'));
 

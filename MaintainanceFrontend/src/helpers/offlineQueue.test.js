@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetFieldDbForTests } from '@/helpers/fieldDb';
 import {
-  MAX_ATTEMPTS, enqueue, failureKind, flush, pending, settle, toWire,
+  MAX_ATTEMPTS, dropPending, enqueue, failureKind, flush, pending, settle, toWire,
 } from '@/helpers/offlineQueue';
 
 /** jsdom has no IndexedDB, so the queue runs on `fieldDb`'s in-memory stores — the same code above them. */
@@ -150,5 +150,52 @@ describe('settle', () => {
   it('toWire leaves out an absent jobId, surveyId and taskId', () => {
     expect(toWire({ idempotencyKey: 'k', at: 'a', kind: 'survey_submit', surveyId: 's1', seq: 3, attempts: 0 }))
       .toEqual({ idempotencyKey: 'k', at: 'a', kind: 'survey_submit', surveyId: 's1', payload: {} });
+  });
+});
+
+describe('offline queue — survey saves (Phase L5)', () => {
+  it('drops the drafts a newer full save replaces', async () => {
+    const old = await enqueue({ kind: 'survey_draft', surveyId: 's1', payload: { diagnosis: 'first' } });
+    await enqueue({ kind: 'task', jobId: 'j1', taskId: 't1', payload: { isDone: true } });
+    await enqueue({ kind: 'survey_draft', surveyId: 's2', payload: { diagnosis: 'other survey' } });
+
+    expect(await dropPending((e) => e.kind === 'survey_draft' && e.surveyId === 's1')).toBe(1);
+    expect((await pending()).map((e) => e.idempotencyKey)).not.toContain(old);
+    expect(await pending()).toHaveLength(2);
+  });
+
+  it('holds what `resolve` is not ready to send — and everything after it for the same survey — while the rest goes', async () => {
+    const draft = await enqueue({ kind: 'survey_draft', surveyId: 's1', payload: { readings: [{ label: 'Moisture', value: 24, photoUploadId: 'u1' }] } });
+    const submit = await enqueue({ kind: 'survey_submit', surveyId: 's1', payload: {} });
+    const task = await enqueue({ kind: 'task', jobId: 'j1', taskId: 't1', payload: { isDone: true } });
+    let ready = false;
+    const resolve = (wire) => {
+      if (!wire.payload.readings?.some((r) => r.photoUploadId)) return wire;
+      if (!ready) return null;
+      return { ...wire, payload: { readings: [{ label: 'Moisture', value: 24, mediaId: 'm1' }] } };
+    };
+    const sends = [];
+    const send = async (mutations) => {
+      sends.push(mutations);
+      return answer(mutations.map((m) => ({ idempotencyKey: m.idempotencyKey, status: 'applied' })));
+    };
+
+    const first = await flush(send, { resolve });
+    expect(first).toMatchObject({ sent: 1, held: 2, remaining: 2 });
+    expect(sends[0].map((m) => m.idempotencyKey)).toEqual([task]);
+
+    ready = true;
+    const second = await flush(send, { resolve });
+    expect(second).toMatchObject({ sent: 2, held: 0, remaining: 0 });
+    expect(sends[1].map((m) => m.idempotencyKey)).toEqual([draft, submit]);
+    expect(sends[1][0].payload.readings[0]).toEqual({ label: 'Moisture', value: 24, mediaId: 'm1' });
+  });
+
+  it('drops a submit the server calls incomplete, with the missing items it named', async () => {
+    const key = await enqueue({ kind: 'survey_submit', surveyId: 's1', payload: {} });
+    const details = [{ questionKey: 'dpc_visible', label: 'DPC visible', missing: 'answer' }];
+    const result = await flush(async () => answer([{ idempotencyKey: key, status: 'failed', code: 'SURVEY_INCOMPLETE', error: 'Not finished', details }]));
+    expect(result.refused).toEqual([expect.objectContaining({ code: 'SURVEY_INCOMPLETE', details })]);
+    expect(await pending()).toEqual([]);
   });
 });

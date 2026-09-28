@@ -3,10 +3,10 @@ import { useDispatch, useSelector } from 'react-redux';
 import { current } from '@reduxjs/toolkit';
 import { techApi } from '@/api/techApi';
 import { newKey } from '@/helpers/fieldDb';
-import { enqueue, failureKind, flush, pending } from '@/helpers/offlineQueue';
-import { addUpload, describeUpload, drainUploads, pendingUploads } from '@/helpers/uploadQueue';
+import { dropPending, enqueue, failureKind, flush, pending } from '@/helpers/offlineQueue';
+import { addUpload, describeUpload, drainUploads, getUpload, pendingUploads } from '@/helpers/uploadQueue';
 import { applyPending } from '@/helpers/fieldJob';
-import { rememberSent } from '@/helpers/sentPhotos';
+import { mediaIdForUpload, rememberSent } from '@/helpers/sentPhotos';
 import {
   fieldNoteDismissed, fieldNotesAdded, fieldOnlineChanged, fieldQueueLoaded, fieldSyncFinished, fieldSyncStarted,
   selectFieldSync,
@@ -27,6 +27,10 @@ import {
  *   3. the mutations again, which sends that `complete` after everything that was queued before it.
  * No answer (offline) stops the sync and keeps everything. What the server refused for good leaves the
  * queue and becomes a note the header shows.
+ *
+ * A survey reading may wait for its photo (Phase L5): it names the upload (`photoUploadId`) and is sent with
+ * the picture's `mediaId` once step 2 has uploaded it (`resolveSurveyPhotos`); until then that survey's saves
+ * and its submit wait together, in order, so step 3 sends them.
  */
 
 export const SYNC_RETRY_MS = 30_000;
@@ -49,7 +53,7 @@ export async function loadFieldQueue(dispatch) {
   if (mine === loadSeq) dispatch(fieldQueueLoaded({ mutations, uploads: uploads.map(describeUpload) }));
 }
 
-const note = (source, { entry, code, message }) => ({
+const note = (source, { entry, code, message, details }) => ({
   id: newKey(),
   source,
   kind: entry.kind ?? null,
@@ -59,8 +63,37 @@ const note = (source, { entry, code, message }) => ({
   completes: entry.then?.kind === 'complete',
   code: code ?? null,
   message: message ?? null,
+  // A survey submit's SURVEY_INCOMPLETE names what is missing, when the server says (Phase L5).
+  details: Array.isArray(details) ? details : null,
   at: new Date().toISOString(),
 });
+
+/**
+ * A survey save or submit on its way to the wire: each reading's `photoUploadId` becomes the uploaded
+ * picture's `mediaId`. Null — hold it — while the picture is still in the upload queue; a picture that will
+ * never arrive (refused) is left off the reading, and the server's submit check says what is missing.
+ * Anything else passes untouched.
+ *
+ * @param {object} wire the entry as `/tech/sync` takes it
+ * @returns {Promise<object|null>}
+ */
+export async function resolveSurveyPhotos(wire) {
+  const readings = wire.payload?.readings;
+  if (!Array.isArray(readings) || !readings.some((r) => r?.photoUploadId)) return wire;
+  const out = [];
+  for (const reading of readings) {
+    if (!reading?.photoUploadId) {
+      out.push(reading);
+      continue;
+    }
+    const { photoUploadId, ...rest } = reading;
+    const mediaId = mediaIdForUpload(photoUploadId);
+    if (mediaId) out.push({ ...rest, mediaId });
+    else if (await getUpload(photoUploadId)) return null;
+    else out.push(rest);
+  }
+  return { ...wire, payload: { ...wire.payload, readings: out } };
+}
 
 /** Writes applied changes into the cached job and today's list, so nothing flickers back before the refetch. */
 function patchCaches(dispatch, applied) {
@@ -76,14 +109,19 @@ function patchCaches(dispatch, applied) {
   }
 }
 
-function sendUpload(dispatch, entry) {
+async function sendUpload(dispatch, entry) {
   const body = new FormData();
-  // Text fields before the file, so the server has them whatever order it reads in.
-  if (entry.target === 'job' && entry.kind) body.append('kind', entry.kind);
+  // Text fields before the file, so the server has them whatever order it reads in. A survey photo without a
+  // kind is filed as ISSUE by the API; SKETCH (Phase L5) is sent as such, and so is its area.
+  if (entry.kind) body.append('kind', entry.kind);
   if (entry.caption) body.append('caption', entry.caption);
+  if (entry.area) body.append('area', entry.area);
   body.append('files', entry.file, entry.name ?? 'photo.jpg');
   const endpoint = entry.target === 'survey' ? techApi.endpoints.uploadSurveyPhotos : techApi.endpoints.uploadMyJobPhotos;
-  return dispatch(endpoint.initiate({ id: entry.targetId, body })).unwrap();
+  const answer = await dispatch(endpoint.initiate({ id: entry.targetId, body })).unwrap();
+  // Remembered before the queue forgets the upload, so a reading waiting for this picture finds its id.
+  rememberSent(describeUpload(entry), answer?.media);
+  return answer;
 }
 
 /** Step 1 and 3: flush the mutation queue until it is empty or stops moving. Throws when offline. */
@@ -91,7 +129,10 @@ async function flushMutations(dispatch, touched, notes) {
   for (let round = 0; round < 20; round += 1) {
     let result;
     try {
-      result = await flush((batch) => dispatch(techApi.endpoints.syncOffline.initiate(batch)).unwrap());
+      result = await flush(
+        (batch) => dispatch(techApi.endpoints.syncOffline.initiate(batch)).unwrap(),
+        { resolve: resolveSurveyPhotos },
+      );
     } catch (error) {
       if (failureKind(error) === 'offline') throw error;
       return; // the server broke — the uploads may still go
@@ -135,10 +176,7 @@ async function syncOnce(dispatch) {
   try {
     await flushMutations(dispatch, touched, notes);
     const drained = await drainUploads((entry) => sendUpload(dispatch, entry), { followUp: (mutation) => enqueue(mutation) });
-    for (const { entry, answer } of drained.sent) {
-      touched.add(entry);
-      rememberSent(entry, answer?.media);
-    }
+    for (const { entry } of drained.sent) touched.add(entry);
     for (const refusal of drained.refused) {
       touched.add(refusal.entry);
       notes.push(note('upload', refusal));
@@ -244,15 +282,20 @@ export function useOfflineQueue() {
 export function useFieldQueue() {
   const dispatch = useDispatch();
 
-  /** @param {{ kind: string, jobId?: string, surveyId?: string, taskId?: string, payload?: object, meta?: object }} mutation */
-  const queueMutation = useCallback(async (mutation) => {
+  /**
+   * @param {{ kind: string, jobId?: string, surveyId?: string, taskId?: string, payload?: object, meta?: object }} mutation
+   * @param {{ supersede?: (entry: object) => boolean }} [options] waiting entries this one replaces in full — dropped
+   *   first (a survey's older `survey_draft`)
+   */
+  const queueMutation = useCallback(async (mutation, { supersede } = {}) => {
+    if (supersede) await dropPending(supersede);
     const key = await enqueue(mutation);
     await loadFieldQueue(dispatch);
     if (isOnline()) syncFieldQueue(dispatch);
     return key;
   }, [dispatch]);
 
-  /** @param {{ target: 'job'|'survey', targetId: string, kind?: string, caption?: string, file: Blob, name?: string, then?: object }} upload */
+  /** @param {{ target: 'job'|'survey', targetId: string, kind?: string, caption?: string, area?: string, file: Blob, name?: string, then?: object }} upload */
   const queueUpload = useCallback(async (upload) => {
     const entry = await addUpload(upload);
     await loadFieldQueue(dispatch);

@@ -37,6 +37,8 @@ sudo -u postgres psql -c "CREATE DATABASE maintainance OWNER maintainance;"
 | `dispatch@gharjatan.com.np` | DISPATCHER | jobs, the dispatch board, technicians, materials and stock; reads the service catalogue |
 | `accounts@gharjatan.com.np` | ACCOUNTANT | invoices, payments, reports |
 | `hari@gharjatan.com.np` | TECHNICIAN | only jobs assigned to them |
+| `suresh@gharjatan.com.np` | TECHNICIAN | a second technician, for crews and the dispatch board |
+| `survey@gharjatan.com.np` | SURVEYOR | site visits and surveys assigned to them (the field app's survey stepper) |
 
 The seed builds a browsable demo: 18 services, 3 projects, a rate card, 10 materials with
 opening stock, a blog (2 published posts in 2 categories), an About page at `/about`, and a complete pipeline — leads (one already SLA-breached, one at risk) →
@@ -74,6 +76,18 @@ warranty entry), gives the BOQ demo a 50/40/10 schedule, a 6-day duration and ex
 quotation priced under the minimum margin, waiting for approval (customer Sunil Maharjan) — approving it
 asks for the acknowledgement. Dependency: **exceljs** (the quotation's Excel export); `package.json` overrides its
 `uuid` to ^11.1.1 (GHSA-w5hq-g745-h8pq — exceljs only uses uuid v4, but the patched version costs nothing).
+
+Phase L5 adds the **site-visit kit's** demo: the `visit_booked` and `visit_reminder` SMS templates in English
+and Nepali; a **"Seepage & damp — site checklist"** inspection template on the seepage service (moisture at
+300 mm and 1 m with flag thresholds, salt deposits, DPC visible, source of water, a wet room behind the wall,
+hollow plaster, the customer's story — the moisture and salt answers need a photo); a visit tomorrow that the
+customer has confirmed (Ramesh Shrestha, Sanepa — two photos he sent with the enquiry), one the day after
+that nobody has answered (a Nepali customer abroad, her brother-in-law as the site contact); and a submitted
+survey (Laxmi Karki, Sitapaila) with the checklist answered — three flagged answers, the meter's photo on its
+reading — two rooms measured with the door and window deducted, photos by room and a paper sketch. The
+photos are generated placeholder images stored through the media service. The **`visits:remind`** task
+(every 15 min) sends tomorrow's visit reminders from `visits.reminderHour` (17:00 Kathmandu, a setting in the
+SLA group), once per visit and window.
 
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
@@ -145,7 +159,8 @@ src/
   routes/              public · auth · tech · admin/{cms,crm,ops,finance,aftercare,platform}
                        admin/historyRoute.js — GET …/:id/history for any model
   queues/ crons/       SLA sweep, overdue invoices, quotation expiry, AMC visits, reminders,
-                       lead follow-ups + morning digest, stale-pipeline reminders (Phase L1)
+                       lead follow-ups + morning digest, stale-pipeline reminders (Phase L1),
+                       tomorrow's site-visit reminders (visits:remind, Phase L5)
 prisma/                schema.prisma · seed.js · seed-data.js
 tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging,
                        notification links (a source scan: staff links are /admin/…, field links /tech/…),

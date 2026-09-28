@@ -1,10 +1,10 @@
 import { prisma } from '../lib/prisma.js';
 import { recordEvent } from './audit.service.js';
 import { env } from '../config/env.js';
-import { conflict, forbidden, notFound, unprocessable } from '../utils/AppError.js';
+import { AppError, conflict, forbidden, notFound, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, dateRange } from '../utils/pagination.js';
 import { lineAmount, toRupees } from '../utils/money.js';
-import { effectiveQty } from '../utils/quantity.js';
+import { effectiveQty, measurementQty } from '../utils/quantity.js';
 import { withSections } from './boq.service.js';
 import { nextNumber } from '../utils/numbering.js';
 import { SURVEY_TRANSITIONS, JOB_TRANSITIONS, assertTransition, canTransition } from '../shared/stateMachines.js';
@@ -13,6 +13,7 @@ import { createQuotation } from './quotation.service.js';
 import { bookNextAction } from './lead.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { resolveMediaMap } from './media.service.js';
+import { makeCrud } from './crud.service.js';
 
 /**
  * A site survey is the report a surveyor fills in while standing on the site.
@@ -20,17 +21,25 @@ import { resolveMediaMap } from './media.service.js';
  * attached once, at review time, by priceSurvey() below.
  */
 
+const PHOTO = { id: true, mediaId: true, kind: true, caption: true, area: true, createdAt: true };
+const SITE = {
+  id: true, label: true, address: true, area: true, lat: true, lng: true, accessNotes: true,
+  landmark: true, contactName: true, contactPhone: true,
+};
+/** The photos the customer sent with the enquiry — what the surveyor looks at before setting off (Phase L5). */
+const LEAD_PHOTOS = { orderBy: { sortOrder: 'asc' }, select: { id: true, mediaId: true, caption: true } };
+
 const INCLUDE = {
   job: {
     select: {
       id: true, number: true, type: true, status: true, title: true,
-      scheduledStart: true, actualEnd: true,
-      photos: { select: { id: true, mediaId: true, kind: true, caption: true } },
+      scheduledStart: true, scheduledEnd: true, actualEnd: true,
+      photos: { orderBy: { createdAt: 'asc' }, select: PHOTO },
     },
   },
   customer: { select: { id: true, name: true, phone: true, email: true } },
-  site: { select: { id: true, label: true, address: true, area: true, lat: true, lng: true } },
-  lead: { select: { id: true, name: true, status: true, message: true } },
+  site: { select: SITE },
+  lead: { select: { id: true, name: true, status: true, message: true, qualification: true, photos: LEAD_PHOTOS } },
   service: { select: { id: true, name: true, slug: true, priceUnit: true } },
   surveyor: { select: { id: true, employeeCode: true, user: { select: { id: true, name: true, phone: true } } } },
   submittedBy: { select: { id: true, name: true } },
@@ -51,17 +60,121 @@ const INCLUDE = {
 const FIELD_INCLUDE = {
   job: {
     select: {
-      id: true, number: true, type: true, status: true, title: true, scheduledStart: true,
+      id: true, number: true, type: true, status: true, title: true, scheduledStart: true, scheduledEnd: true,
       // The surveyor sees the evidence they sent (Phase H2) — pictures, never a price.
-      photos: { select: { id: true, mediaId: true, kind: true, caption: true } },
+      photos: { orderBy: { createdAt: 'asc' }, select: PHOTO },
     },
   },
   customer: { select: { id: true, name: true, phone: true } },
-  site: { select: { id: true, label: true, address: true, area: true, lat: true, lng: true } },
+  site: { select: SITE },
+  // What the customer wrote and sent (Phase L5). The qualification is picked in `fieldLead`, without the budget.
+  lead: { select: { id: true, message: true, qualification: true, photos: LEAD_PHOTOS } },
   service: { select: { id: true, name: true, priceUnit: true } },
   readings: { orderBy: { sortOrder: 'asc' } },
   items: { orderBy: { sortOrder: 'asc' } },
 };
+
+// ── inspection templates (Phase L5)
+
+/** A service's site checklist. A registry resource (/admin/inspection-templates). */
+export const inspectionTemplates = makeCrud({
+  model: 'inspectionTemplate', label: 'Inspection template', searchFields: ['name'],
+  include: { service: { select: { id: true, name: true } } },
+  filter: (q) => (q.serviceId ? { serviceId: q.serviceId } : {}),
+});
+
+/**
+ * The checklist a survey answers: its service's active template (the first by sort order), else the
+ * general one (`serviceId` null), else none. Resolved when read, so a template edited mid-survey applies
+ * from the next save; the readings keep their own labels.
+ * @param {string|null|undefined} serviceId
+ * @returns {Promise<{ id: string, name: string, serviceId: string|null, questions: object[] }|null>}
+ */
+export async function templateFor(serviceId, client = prisma) {
+  const find = (sid) => client.inspectionTemplate.findFirst({
+    where: { serviceId: sid, isActive: true, deletedAt: null },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, name: true, serviceId: true, questions: true },
+  });
+  return (serviceId ? await find(serviceId) : null) ?? find(null);
+}
+
+/** Whether an answer crosses its question's flag. A TEXT answer, or a question with no flag, never does. */
+export function isFlagged(question, reading) {
+  const flag = question?.flag;
+  if (!flag) return false;
+  if (question.type === 'NUMBER') {
+    const v = reading.value;
+    if (v === undefined || v === null || !Number.isFinite(Number(v))) return false;
+    return (flag.above !== undefined && flag.above !== null && Number(v) > flag.above)
+      || (flag.below !== undefined && flag.below !== null && Number(v) < flag.below);
+  }
+  const text = String(reading.textValue ?? '').trim().toLowerCase();
+  if (question.type === 'YES_NO') return Boolean(flag.equals) && text === flag.equals;
+  if (question.type === 'CHOICE') return (flag.values ?? []).some((v) => v.toLowerCase() === text);
+  return false;
+}
+
+/** Whether a reading answers its question — a number for NUMBER, yes/no for YES_NO, text otherwise. */
+function isAnswered(question, reading) {
+  if (!reading) return false;
+  if (question.type === 'NUMBER') return reading.value !== undefined && reading.value !== null;
+  const text = String(reading.textValue ?? '').trim();
+  if (question.type === 'YES_NO') return ['yes', 'no'].includes(text.toLowerCase());
+  return text.length > 0;
+}
+
+/**
+ * What a survey still lacks for its checklist: each required question without an answer, and each
+ * photo-required question answered without a photo (an optional one left unanswered needs none). The
+ * stepper points at these (SURVEY_INCOMPLETE).
+ * @returns {{ questionKey: string, label: string, missing: 'answer'|'photo' }[]}
+ */
+export function checklistGaps(template, readings) {
+  if (!template) return [];
+  const byKey = new Map(readings.filter((r) => r.questionKey).map((r) => [r.questionKey, r]));
+  const gaps = [];
+  for (const q of template.questions ?? []) {
+    const reading = byKey.get(q.key);
+    const answered = isAnswered(q, reading);
+    if (q.required && !answered) gaps.push({ questionKey: q.key, label: q.label, missing: 'answer' });
+    else if (q.photoRequired && answered && !reading.mediaId) gaps.push({ questionKey: q.key, label: q.label, missing: 'photo' });
+  }
+  return gaps;
+}
+
+/** The lead as the field sees it: the message, the photos, the house — never the budget. */
+function fieldLead(lead) {
+  if (!lead) return lead;
+  const { qualification, ...rest } = lead;
+  const qual = qualification ?? {};
+  return {
+    ...rest,
+    qualification: qualification
+      ? { propertyType: qual.propertyType ?? null, floors: qual.floors ?? null, buildingAgeYears: qual.buildingAgeYears ?? null }
+      : null,
+  };
+}
+
+/**
+ * A survey as a screen needs it: its checklist template, `media` (every picture it shows — the site
+ * photos, the customer's, the checklist answers' — by media id), and the customer's photos with their urls.
+ */
+async function present(survey, { field }) {
+  const template = await templateFor(survey.serviceId);
+  const media = await resolveMediaMap([
+    ...(survey.job?.photos ?? []).map((p) => p.mediaId),
+    ...(survey.lead?.photos ?? []).map((p) => p.mediaId),
+    ...(survey.readings ?? []).map((r) => r.mediaId),
+  ]);
+  const lead = survey.lead
+    ? {
+        ...survey.lead,
+        photos: survey.lead.photos.map((p) => ({ ...p, url: media[p.mediaId]?.url ?? null, thumb: media[p.mediaId]?.thumb ?? null })),
+      }
+    : survey.lead;
+  return { ...survey, lead: field ? fieldLead(lead) : lead, template, media };
+}
 
 export async function listSurveys(query = {}) {
   const { page, limit, skip, take, orderBy, q } = parseListQuery(query, { defaultSort: '-createdAt' });
@@ -113,16 +226,18 @@ export async function getSurvey(id, { field = false } = {}) {
     include: field ? FIELD_INCLUDE : INCLUDE,
   });
   if (!survey) throw notFound('Survey');
-  return { ...survey, media: await resolveMediaMap(survey.job?.photos?.map((p) => p.mediaId) ?? []) };
+  return present(survey, { field });
 }
 
+/** The surveyor's queue, each survey as `getSurvey` gives it — the phone caches these for offline use. */
 export async function mySurveys(technicianId, { status } = {}) {
-  return prisma.siteSurvey.findMany({
+  const rows = await prisma.siteSurvey.findMany({
     where: { surveyorId: technicianId, deletedAt: null, ...(status ? { status } : {}) },
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     take: 100,
     include: FIELD_INCLUDE,
   });
+  return Promise.all(rows.map((row) => present(row, { field: true })));
 }
 
 export async function assertOwnSurvey(surveyId, technicianId) {
@@ -202,25 +317,40 @@ export async function saveDraft(id, input, { userId } = {}) {
     );
   }
 
-  const { readings, items, ...fields } = input;
+  const { readings, items, sitePin, ...fields } = input;
+  const template = readings ? await templateFor(survey.serviceId) : null;
+  const questions = new Map((template?.questions ?? []).map((q) => [q.key, q]));
+  const measured = items?.map(measuredItem);
 
   return prisma.$transaction(async (tx) => {
     if (readings) {
       await tx.surveyReading.deleteMany({ where: { surveyId: id } });
       if (readings.length) {
         await tx.surveyReading.createMany({
-          data: readings.map((r, i) => ({ ...r, surveyId: id, sortOrder: r.sortOrder ?? i })),
+          data: readings.map(({ flagged: _client, ...r }, i) => {
+            const question = r.questionKey ? questions.get(r.questionKey) : null;
+            return {
+              ...r,
+              metric: question?.metric || r.metric,
+              unit: r.unit ?? question?.unit ?? undefined,
+              // The server's call, from the template's threshold — never the phone's.
+              flagged: isFlagged(question, r),
+              surveyId: id,
+              sortOrder: r.sortOrder ?? i,
+            };
+          }),
         });
       }
     }
-    if (items) {
+    if (measured) {
       await tx.surveyItem.deleteMany({ where: { surveyId: id } });
-      if (items.length) {
+      if (measured.length) {
         await tx.surveyItem.createMany({
-          data: items.map((it, i) => ({ ...it, surveyId: id, sortOrder: it.sortOrder ?? i })),
+          data: measured.map((it, i) => ({ ...it, surveyId: id, sortOrder: it.sortOrder ?? i })),
         });
       }
     }
+    if (sitePin) await pinSite(tx, survey, sitePin, userId);
     return tx.siteSurvey.update({
       where: { id },
       data: {
@@ -232,6 +362,42 @@ export async function saveDraft(id, input, { userId } = {}) {
       include: FIELD_INCLUDE,
     });
   });
+}
+
+/**
+ * A survey line ready to store: with a measurement sheet, its quantity is the sheet's (the phone's `qty`
+ * is only a fallback for an old client). A sheet that nets to nothing — a deduction larger than the wall —
+ * is refused, as a quotation row would be.
+ */
+function measuredItem(item, index) {
+  const { measurements, ...rest } = item;
+  if (!measurements?.length) {
+    if (rest.qty === undefined) throw unprocessable(`Line ${index + 1} ("${rest.description}") needs a quantity`);
+    return rest;
+  }
+  const qty = measurementQty(measurements);
+  if (!(qty > 0)) {
+    throw new AppError(422, 'NEGATIVE_LINE',
+      `Line ${index + 1} ("${rest.description}") measures ${qty}. Check its deductions — they are larger than the area.`,
+      [{ path: ['items', index, 'measurements'], message: 'The measurements come to zero or less' }]);
+  }
+  return { ...rest, qty, measurements };
+}
+
+/**
+ * "Arrived" (Phase L5): the phone's GPS fix becomes the site's pin. A replay of the same draft sets the same
+ * pin, so nothing is recorded twice; a moved pin is recorded with the fix's accuracy.
+ */
+async function pinSite(tx, survey, { lat, lng, accuracy }, userId) {
+  if (!survey.siteId) return;
+  const site = await tx.customerSite.findUnique({ where: { id: survey.siteId }, select: { lat: true, lng: true } });
+  if (!site || (site.lat === lat && site.lng === lng)) return;
+  await tx.customerSite.update({ where: { id: survey.siteId }, data: { lat, lng } });
+  await recordEvent('site.pinned', {
+    model: 'CustomerSite', recordId: survey.siteId,
+    before: { lat: site.lat, lng: site.lng }, after: { lat, lng },
+    meta: { surveyId: survey.id, accuracy: accuracy ?? null, userId: userId ?? null },
+  }, tx);
 }
 
 /**
@@ -277,9 +443,16 @@ export async function submitSurvey(id, input = {}, actor = {}) {
 
   const survey = await prisma.siteSurvey.findFirst({
     where: { id, deletedAt: null },
-    include: { items: true, job: { select: { id: true, number: true, status: true, type: true } } },
+    include: { items: true, readings: true, job: { select: { id: true, number: true, status: true, type: true } } },
   });
   if (!survey) throw notFound('Survey');
+  // The checklist first (Phase L5): every required answer, every required photo — each one named, so the
+  // stepper can take the surveyor to it.
+  const gaps = checklistGaps(await templateFor(survey.serviceId), survey.readings);
+  if (gaps.length) {
+    throw new AppError(422, 'SURVEY_INCOMPLETE',
+      `The checklist is not finished: ${gaps.map((g) => `${g.label} (${g.missing})`).join(', ')}`, gaps);
+  }
   if (!survey.items.length) {
     throw unprocessable('Add at least one material or labour line before submitting the survey');
   }
@@ -447,6 +620,7 @@ export async function priceSurvey(id) {
       unit: item.unit,
       qty,
       rawQty: item.qty,
+      measurements: item.measurements ?? null,
       wastagePct: item.wastagePct,
       isOptional: item.isOptional,
       note: item.note,
@@ -477,6 +651,8 @@ const toQuotationLine = (line) => ({
   spec: line.note ?? null,
   unit: line.unit ?? undefined,
   qty: line.rawQty,
+  // The surveyor's measurement sheet travels with the line (Phase L5): the BOQ derives the same quantity.
+  measurements: line.measurements?.length ? line.measurements : undefined,
   wastagePct: line.wastagePct ?? 0,
   isOptional: Boolean(line.isOptional),
   rate: toRupees(line.ratePaisa ?? 0),
@@ -527,8 +703,9 @@ export async function buildQuotationFromSurvey(id, input = {}, userId) {
       customerId: survey.customerId,
       siteId: survey.siteId ?? undefined,
       leadId: survey.leadId ?? undefined,
-      // Grouped by rate-card or material category unless the reviewer set the sections.
-      items: await withSections(items, service?.name ?? 'Works'),
+      // Grouped by the room a line was measured in, else by rate-card or material category, unless the
+      // reviewer set the sections (Phase L5).
+      items: await withSections(items, service?.name ?? 'Works', { byArea: true }),
     },
     userId,
   );

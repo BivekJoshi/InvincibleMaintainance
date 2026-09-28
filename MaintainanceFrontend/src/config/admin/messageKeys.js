@@ -16,6 +16,14 @@ export const MESSAGE_KEYS = {
   quotation_accepted_staff: { audience: 'staff', when: 'A customer accepted — to sales and dispatch.' },
   quotation_changes_requested_staff: { audience: 'staff', when: 'A customer asked for changes — to sales.' },
   quotation_rejected_staff: { audience: 'staff', when: 'A customer declined — to sales.' },
+  visit_booked: {
+    audience: 'customer',
+    when: 'A site visit is booked or moved — the window, who is coming and the link to confirm or ask for another time; also to the site contact (a caretaker) when that is another number.',
+  },
+  visit_reminder: {
+    audience: 'customer',
+    when: 'At 17:00 the evening before a site visit, once — the same link to confirm or ask for another time.',
+  },
   survey_returned: { audience: 'staff', when: 'The office sends a survey back — to the surveyor.' },
   job_assigned: { audience: 'staff', when: 'A job is assigned — to each technician.' },
   job_scheduled: { audience: 'customer', when: 'Dispatch puts the job on the calendar, or moves it.' },
@@ -59,6 +67,8 @@ export const SAMPLE_VARS = {
   body: 'QT-2083-0001 v2 · NPR 45,200',
   hours: '72',
   time: '10:00–12:00',
+  window: '10:00–12:00',
+  surveyor: 'Ram Thapa (9841000000)',
   link: 'https://gharjatan.com.np/quotation/abc123',
 };
 

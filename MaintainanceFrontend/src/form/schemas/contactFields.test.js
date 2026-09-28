@@ -85,6 +85,21 @@ describe('customers', () => {
     expect(customerSiteSchema.safeParse({ ...site, lat: 95 }).success).toBe(false);
   });
 
+  it('sites: the site contact and landmark (Phase L5) — Devanagari kept, the number normalised, empty cleared', () => {
+    const site = { label: 'Home', address: 'Jhamsikhel', isPrimary: true };
+    expect(customerSiteSchema.parse({
+      ...site, contactName: 'हरि बहादुर', contactPhone: '+977 9841234567', landmark: 'भाटभटेनी अगाडि',
+    })).toMatchObject({ contactName: 'हरि बहादुर', contactPhone: '9841234567', landmark: 'भाटभटेनी अगाडि' });
+    expect(customerSiteSchema.parse({ ...site, contactPhone: '01-5407720' }).contactPhone).toBe('01-5407720');
+    // Empty — or null, as the API returns it — is "no value"; the site form sends it as null to clear the column.
+    const empty = customerSiteSchema.parse({ ...site, contactName: '', contactPhone: null, landmark: null });
+    expect(empty).toMatchObject({ contactName: undefined, contactPhone: undefined, landmark: undefined });
+    const bad = customerSiteSchema.safeParse({ ...site, contactPhone: '5407720' });
+    expect(bad.success).toBe(false);
+    expect(bad.error.issues[0]).toMatchObject({ path: ['contactPhone'], message: expect.stringMatching(/9808338255 or 01-5407720/) });
+    expect(customerSiteSchema.safeParse({ ...site, landmark: 'x'.repeat(201) }).success).toBe(false);
+  });
+
   it('reads a pin copied from a map app', () => {
     expect(parseMapPin('27.6712, 85.3240')).toEqual({ lat: 27.6712, lng: 85.324 });
     expect(parseMapPin(' 27.6712 85.3240 ')).toEqual({ lat: 27.6712, lng: 85.324 });

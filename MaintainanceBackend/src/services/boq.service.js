@@ -240,13 +240,22 @@ export async function takeoffFor(rows) {
   };
 }
 
+/** The one room or area all of a row's measurement rows are in, or null (none named, or several). */
+export function singleArea(measurements) {
+  const areas = new Set((measurements ?? []).map((m) => m.area?.trim()).filter(Boolean));
+  return areas.size === 1 ? [...areas][0] : null;
+}
+
 /**
  * Sections for rows that have none — a survey's lines grouped by their rate-card or material category, in
- * the order first seen (`fallback` for a line with neither). Rows that already carry a SECTION are kept.
+ * the order first seen (`fallback` for a line with neither). With `byArea` (a survey, Phase L5), a line
+ * measured in one room goes under that room first, as the surveyor walked the site. Rows that already
+ * carry a SECTION are kept.
  * @param {object[]} items  request rows
  * @param {string} [fallback]
+ * @param {{ byArea?: boolean }} [opts]
  */
-export async function withSections(items, fallback = 'General') {
+export async function withSections(items, fallback = 'General', { byArea = false } = {}) {
   if (items.some((i) => i.rowType === 'SECTION')) return items;
   const [cards, mats] = await Promise.all([
     prisma.rateCardItem.findMany({ where: { id: { in: items.map((i) => i.rateCardItemId).filter(Boolean) } }, select: { id: true, category: true } }),
@@ -256,7 +265,8 @@ export async function withSections(items, fallback = 'General') {
   const materialCategory = new Map(mats.map((m) => [m.id, m.category?.name]));
   const groups = new Map();
   for (const item of items) {
-    const title = cardCategory.get(item.rateCardItemId) || materialCategory.get(item.materialId) || fallback;
+    const title = (byArea && singleArea(item.measurements))
+      || cardCategory.get(item.rateCardItemId) || materialCategory.get(item.materialId) || fallback;
     if (!groups.has(title)) groups.set(title, []);
     groups.get(title).push(item);
   }

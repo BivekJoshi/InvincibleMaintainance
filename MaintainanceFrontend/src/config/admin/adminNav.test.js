@@ -84,7 +84,7 @@ describe('admin nav', () => {
     expect(Object.keys(nav)).toEqual(['Overview', 'Sales', 'Operations', 'Aftercare', 'Catalog']);
     expect(nav.Sales).toEqual(['SLA board', 'Leads', 'Pipeline', 'Customers', 'Site surveys', 'Quotations', 'Lost leads']);
     // SALES reads jobs, templates and technicians (to pick a surveyor); dispatch and stock are not theirs.
-    expect(nav.Operations).toEqual(['Jobs', 'Technicians']);
+    expect(nav.Operations).toEqual(['Jobs', 'Technicians', 'Inspection templates']);
     expect(nav.Catalog).toEqual(['Rate library', 'Trades & wages', 'Terms library', 'Job templates']);
     expect(landingPathFor('SALES')).toBe('/admin');
     expect(contentHomeFor('SALES')).toBe('/admin');
@@ -102,7 +102,7 @@ describe('admin nav', () => {
 
   it('gives the dispatcher the whole of Operations (Phase H1)', () => {
     const nav = navOf('DISPATCHER');
-    expect(nav.Operations).toEqual(['Jobs', 'Dispatch board', 'Technicians', 'Stock']);
+    expect(nav.Operations).toEqual(['Jobs', 'Dispatch board', 'Technicians', 'Stock', 'Inspection templates']);
     expect(nav.Catalog).toEqual(['Job templates', 'Materials', 'Material categories', 'Suppliers']);
     expect(navOf('ACCOUNTANT').Operations).toEqual(['Jobs']);
     expect(breadcrumbsFor('/admin/jobs/cl1')).toEqual([{ label: 'Operations' }, { label: 'Jobs', to: '/admin/jobs' }, { label: 'Details' }]);
@@ -110,6 +110,19 @@ describe('admin nav', () => {
     expect(breadcrumbsFor('/admin/material-categories/new').at(-2)).toEqual({ label: 'Material categories', to: '/admin/material-categories' });
     expect(breadcrumbsFor('/admin/materials/cl1').at(-1)).toEqual({ label: 'Edit' });
     expect(activeNavPath('/admin/dispatch')).toBe('/admin/dispatch');
+  });
+
+  it('lists the inspection templates under Operations for whoever reads surveys (Phase L5)', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SALES', 'DISPATCHER']) {
+      expect(navOf(role).Operations, role).toContain('Inspection templates');
+    }
+    for (const role of ['ACCOUNTANT', 'EDITOR', 'SURVEYOR', 'TECHNICIAN']) {
+      expect(navOf(role).Operations ?? [], role).not.toContain('Inspection templates');
+    }
+    expect(breadcrumbsFor('/admin/inspection-templates/new')).toEqual([
+      { label: 'Operations' }, { label: 'Inspection templates', to: '/admin/inspection-templates' }, { label: 'New' },
+    ]);
+    expect(breadcrumbsFor('/admin/inspection-templates/it1').at(-1)).toEqual({ label: 'Edit' });
   });
 
   it('builds the breadcrumb from the path', () => {

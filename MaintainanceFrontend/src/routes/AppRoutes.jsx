@@ -4,7 +4,7 @@ import { RequireAuth } from './RequireAuth';
 import { RouteFallback } from './PageOutlet';
 import {
   HomePage, ServicesPage, ServiceDetailPage, PricingPage, ContactPage, BookingPage,
-  ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage,
+  ProjectsPage, ProjectDetailPage, QuotationPublicPage, InvoicePublicPage, WarrantyPublicPage, VisitPublicPage,
   BlogPage, BlogPostPage, GenericPage, SettingsPage,
   LoginPage, LeadsPage, SlaBoardPage, LeadDetailPage, LeadBoardPage, LostReportPage, CustomersPage, CustomerDetailPage, SurveysPage,
   SurveyReviewPage, QuotationsPage, QuotationBuilderPage, QuotationPrintPage, ResourceListPage, ResourceEditPage,
@@ -53,6 +53,8 @@ export function AppRoutes() {
           <Route path="/quotation/:token" element={<QuotationPublicPage />} />
           <Route path="/invoice/:token" element={<InvoicePublicPage />} />
           <Route path="/warranty/:token" element={<WarrantyPublicPage />} />
+          {/* The customer confirms a booked site visit, or asks for another time (Phase L5) */}
+          <Route path="/visit/:token" element={<VisitPublicPage />} />
           <Route path="/blog" element={<BlogPage />} />
           <Route path="/blog/:slug" element={<BlogPostPage />} />
           {/* A CMS page, e.g. /about. Last: a static public route of the same name wins, and
@@ -93,6 +95,10 @@ export function AppRoutes() {
             <Route element={<RequireAuth capability="surveys:read" />}>
               <Route path="/admin/surveys" element={<SurveysPage />} />
               <Route path="/admin/surveys/:id" element={<SurveyReviewPage />} />
+              {/* Inspection templates (Phase L5): a registry entry with its own address (its basePath) */}
+              <Route path="/admin/inspection-templates" element={<ResourceListPage resource="inspection-templates" />} />
+              <Route path="/admin/inspection-templates/new" element={<ResourceEditPage resource="inspection-templates" />} />
+              <Route path="/admin/inspection-templates/:id" element={<ResourceEditPage resource="inspection-templates" />} />
             </Route>
             <Route element={<RequireAuth capability="quotations:read" />}>
               <Route path="/admin/quotations" element={<QuotationsPage />} />

@@ -12,10 +12,11 @@ import { PERMISSIONS } from '@/helpers/permissions';
 const readApi = (file) => readFileSync(resolve(cwd(), '../MaintainanceBackend/src/routes/admin', file), 'utf8');
 const mounter = readApi('mountResource.js');
 /**
- * Every file that mounts registry resources through `mountResource`: content, operations (since H1), and
- * the rate library and its trades (crm.routes.js, since L2 — the last hand-mounted resource moved over).
+ * Every file that mounts registry resources through `mountResource`: content, operations (since H1),
+ * the rate library and its trades (crm.routes.js, since L2 — the last hand-mounted resource moved over), and
+ * the inspection templates (surveys.routes.js, since L5).
  */
-const MOUNTING_FILES = ['cms.routes.js', 'ops.routes.js', 'crm.routes.js'].map(readApi);
+const MOUNTING_FILES = ['cms.routes.js', 'ops.routes.js', 'crm.routes.js', 'surveys.routes.js'].map(readApi);
 const MOUNTED = new Set(MOUNTING_FILES.flatMap((src) => [...src.matchAll(/mountResource\(router, '([a-z-]+)'/g)].map((m) => m[1])));
 const isMounted = (r) => MOUNTED.has(r);
 

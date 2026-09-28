@@ -52,7 +52,7 @@ uploads the Playwright trace when it fails.
   the only kind `useBlocker` works in — with `signedInAs(role)` for capability checks.
 - Money, phone numbers and Nepali text are the three things that break (CLAUDE.md rule 5). Test them.
 
-### End-to-end tests (Phases F2, H1, L3, H2)
+### End-to-end tests (Phases F2, H1, L3, H2, L5)
 
 `npm run test:e2e` runs [Playwright](https://playwright.dev) over four flows in a real browser:
 
@@ -70,7 +70,12 @@ uploads the Playwright trace when it fails.
   New quotation sheet, builds a section by keyboard, pastes 15 rows from `e2e/fixtures/boq-paste.tsv` (two text
   rows become sections), adds a rate-library row with `/`, measures a line in feet-inches and marks one optional,
   saves — the server's totals must equal what the builder showed — and submits; a MANAGER sees the margin,
-  approves and sends, and the customer's link shows the sections and the optional row.
+  approves and sends, and the customer's link shows the sections and the optional row. Its second test (Phase L5)
+  books a site visit from a lead with a caretaker contact, has the customer confirm it in Nepali at `/visit/:token`
+  on a 360 px phone, drives the survey stepper as the surveyor (`survey@gharjatan.com.np`, 360 px, the GPS granted,
+  **offline** — the seepage checklist with a flagged reading and its photos, two rooms in feet-inches with a door
+  deducted, a sketch — submitted on the phone, synced when the signal is back) and builds the quotation from the survey, whose BOQ row carries the same measurements and quantity. The quotation
+  loop answers the seeded seepage checklist over the API (`e2e/support/survey.js`) before it submits its survey.
 - `e2e/field-flow.spec.js` — the field app (Phase H2), as Hari (`hari@gharjatan.com.np`) on a 360 px phone: on my
   way, start, a tick and the timer; then with the browser offline a photo (`e2e/fixtures/site-photo.jpg`), a material
   and a tick wait on the phone; back online the queue drains by itself; the last tick, a drawn signature, complete —

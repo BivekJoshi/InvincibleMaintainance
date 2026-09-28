@@ -22,10 +22,12 @@ import { jobTemplates } from './resources/jobTemplates';
 import { materials } from './resources/materials';
 import { materialCategories } from './resources/materialCategories';
 import { suppliers } from './resources/suppliers';
+import { inspectionTemplates } from './resources/inspectionTemplates';
 
 /**
- * Every registry resource — the CMS, the rate library and its trades (Phase L2), the terms library (Phase L4) and, since Phase H1,
- * the operations lists (technicians, job templates, materials, material categories, suppliers) — the back office manages
+ * Every registry resource — the CMS, the rate library and its trades (Phase L2), the terms library (Phase L4), the inspection
+ * templates (Phase L5) and, since Phase H1, the operations lists (technicians, job templates, materials, material categories,
+ * suppliers) — the back office manages
  * through the generic pages
  * (`pages/admin/ResourceListPage`, `ResourceEditPage`). One file per resource under
  * `resources/`; register it here and give it a nav item in `adminNav.js`.
@@ -127,7 +129,7 @@ export const RESOURCES = Object.fromEntries(
   [
     serviceCategories, services, heroSlides, projects, offers, pricingPlans, testimonials, faqs, galleryImages,
     features, listItems, contentBlocks, processSteps, posts, postCategories, pages, rateCard, trades, quotationTerms,
-    technicians, jobTemplates, materials, materialCategories, suppliers,
+    technicians, jobTemplates, materials, materialCategories, suppliers, inspectionTemplates,
   ].map((entry) => [entry.resource, entry]),
 );
 

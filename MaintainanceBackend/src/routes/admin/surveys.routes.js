@@ -7,6 +7,7 @@ import { idParam } from '../../shared/schemas/common.js';
 import * as surveys from '../../services/survey.service.js';
 import * as s from '../../shared/schemas/survey.js';
 import { costWall } from '../../middleware/costWall.js';
+import { mountResource } from './mountResource.js';
 
 const router = Router();
 // Building a quotation from a survey answers with the quotation, whose rows carry cost (L-D4).
@@ -38,6 +39,11 @@ router.post('/surveys/:id/quotation', writeQuotations,
   validate({ params: idParam, body: s.surveyQuotationSchema }),
   asyncHandler(async (req, res) =>
     created(res, await surveys.buildQuotationFromSurvey(req.params.id, req.body, req.user.id))));
+
+// ── inspection templates (Phase L5): a service's site checklist, a registry resource
+mountResource(router, 'inspection-templates', surveys.inspectionTemplates, s.inspectionTemplateSchema, {
+  capability: 'surveys', query: s.inspectionTemplateListQuery,
+});
 
 router.delete('/surveys/:id', writeSurveys, validate({ params: idParam }), asyncHandler(async (req, res) => {
   await surveys.deleteSurvey(req.params.id);

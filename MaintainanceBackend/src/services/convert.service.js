@@ -7,6 +7,7 @@ import { createFromJob } from './survey.service.js';
 import { createQuotation } from './quotation.service.js';
 import { bookNextAction, transitionLead } from './lead.service.js';
 import { recordEvent } from './audit.service.js';
+import { announceVisit } from './visit.service.js';
 
 /** Funnel order. Convert only ever moves a lead forward along it, never back. */
 const FUNNEL = ['NEW', 'CONTACTED', 'INSPECTION_SCHEDULED', 'QUOTED', 'WON'];
@@ -120,6 +121,14 @@ export async function convertLead(leadId, input, userId) {
       data: { customerId: customer.id, firstResponseAt: lead.firstResponseAt ?? new Date() },
     });
 
+    // Who opens the door and how to find the house (Phase L5) belong to the site: the next job there knows them.
+    const siteDetails = Object.fromEntries(Object.entries({
+      contactName: input.siteContactName, contactPhone: input.siteContactPhone, landmark: input.landmark,
+    }).filter(([, v]) => v));
+    if (site && Object.keys(siteDetails).length) {
+      Object.assign(site, await tx.customerSite.update({ where: { id: site.id }, data: siteDetails }));
+    }
+
     const out = { customer, customerCreated: created, site, quotation: null, job: null, survey: null };
 
     if (input.createQuotation) {
@@ -206,5 +215,7 @@ export async function convertLead(leadId, input, userId) {
   if (result.job?.assignments?.length) {
     await announceAssignment(result.job, result.job.assignments.map((a) => a.technicianId));
   }
+  // The customer (and the site contact) hear about the visit only once it is committed (Phase L5).
+  if (result.job) await announceVisit(result.job.id);
   return result;
 }

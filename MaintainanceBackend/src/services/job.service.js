@@ -15,6 +15,7 @@ import { recordEvent } from './audit.service.js';
 import { webUrl } from '../utils/links.js';
 import { makeCrud } from './crud.service.js';
 import { resolveMediaMap } from './media.service.js';
+import { VISIT_ANSWER_RESET, announceVisit } from './visit.service.js';
 
 /** Job templates: a named checklist, optionally for one service. A registry resource. */
 export const jobTemplates = makeCrud({
@@ -25,7 +26,12 @@ export const jobTemplates = makeCrud({
 
 const INCLUDE = {
   customer: { select: { id: true, name: true, phone: true, email: true, preferredLocale: true } },
-  site: { select: { id: true, label: true, address: true, area: true, lat: true, lng: true, accessNotes: true } },
+  site: {
+    select: {
+      id: true, label: true, address: true, area: true, lat: true, lng: true, accessNotes: true,
+      landmark: true, contactName: true, contactPhone: true,
+    },
+  },
   quotation: { select: { id: true, number: true, total: true, status: true } },
   assignments: {
     include: { technician: { include: { user: { select: { id: true, name: true, phone: true } } } } },
@@ -67,7 +73,8 @@ export async function listJobs(query) {
 
 /** The field app's job (GET /tech/jobs/:id): the job, and its photos' images by media id (Phase H2). */
 export async function getFieldJob(id) {
-  const job = await getJob(id);
+  // The visit link answers for the customer: it is theirs, not the field's (Phase L5).
+  const { visitToken: _token, visitAnswerIp: _ip, ...job } = await getJob(id);
   return { ...job, media: await resolveMediaMap(job.photos.map((p) => p.mediaId)) };
 }
 
@@ -147,6 +154,8 @@ export async function createJob(input, userId, client = prisma) {
         ...rest,
         number,
         status,
+        // The customer's /visit/:token link (Phase L5).
+        ...(rest.type === 'INSPECTION' ? { visitToken: publicToken() } : {}),
         createdById: userId ?? null,
         ...(tasks.length ? { tasks: { create: tasks } } : {}),
         ...(technicianIds.length
@@ -642,6 +651,8 @@ export const DISPATCH_HOURS = { start: 8, end: 18 };
 const CARD = {
   id: true, number: true, title: true, type: true, status: true, priority: true,
   scheduledStart: true, scheduledEnd: true, quotationId: true, createdAt: true,
+  // An inspection the customer has not confirmed, or asked to move, is flagged on the card (Phase L5).
+  visitAnswer: true, visitAnswerNote: true, visitAnsweredAt: true, customerConfirmedAt: true,
   customer: { select: { id: true, name: true, phone: true } },
   site: { select: { id: true, area: true, address: true } },
   assignments: { select: { technicianId: true, isLead: true } },
@@ -852,7 +863,11 @@ export async function scheduleJob(id, input, userId) {
     }
     const row = await tx.job.update({
       where: { id },
-      data: { scheduledStart, scheduledEnd, status: nextStatus, ...(job.status === 'ON_HOLD' ? { holdReason: null } : {}) },
+      data: {
+        scheduledStart, scheduledEnd, status: nextStatus, ...(job.status === 'ON_HOLD' ? { holdReason: null } : {}),
+        // A visit in a new window is answered afresh, and reminded of for its new day (Phase L5).
+        ...(moved && job.type === 'INSPECTION' ? VISIT_ANSWER_RESET : {}),
+      },
       include: INCLUDE,
     });
     const when = `${local(scheduledStart, 'D MMM YYYY HH:mm')}–${local(scheduledEnd, 'HH:mm')}`;
@@ -870,7 +885,10 @@ export async function scheduleJob(id, input, userId) {
   });
 
   if (added.length) await announceAssignment(updated, added);
-  if (moved && notifyCustomer && updated.customer?.phone) {
+  // A site visit's customer gets the visit message — its window, the surveyor, the link to confirm.
+  if (moved && notifyCustomer && updated.type === 'INSPECTION') {
+    await announceVisit(id);
+  } else if (moved && notifyCustomer && updated.customer?.phone) {
     await notify({
       templateKey: 'job_scheduled', channel: 'sms', to: updated.customer.phone, locale: updated.customer.preferredLocale,
       vars: {

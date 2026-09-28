@@ -164,14 +164,23 @@ router.post('/surveys/:id/submit', validate({ params: idParam, body: sv.surveySu
     ok(res, await surveys.getSurvey(req.params.id, { field: true }));
   }));
 
-/** Survey evidence is a JobPhoto of kind ISSUE on the parent inspection job. */
+/**
+ * Survey evidence is a JobPhoto on the parent inspection job: ISSUE, or SKETCH for a photo of a paper
+ * sketch, with the room or area it shows (Phase L5). Append-only, like the upload queue that sends it.
+ */
 router.post('/surveys/:id/photos', validate({ params: idParam }), writeSurvey, uploadImages.array('files', 10),
   asyncHandler(async (req, res) => {
+    // Multipart fields arrive after validate() has run, so they are checked here.
+    const parsed = sv.surveyPhotoFields.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw badRequest('Check the photo details', parsed.error.issues.map((i) => ({ path: i.path, message: i.message })));
+    }
+    const fields = parsed.data;
     const survey = await surveys.getSurvey(req.params.id, { field: true });
     const uploaded = await media.uploadFiles(req.files, { uploadedBy: req.user.id });
     const rows = [];
     for (const m of uploaded) {
-      rows.push(await jobs.addPhoto(survey.job.id, { mediaId: m.id, kind: 'ISSUE', caption: req.body.caption }));
+      rows.push(await jobs.addPhoto(survey.job.id, { mediaId: m.id, kind: fields.kind, caption: fields.caption, area: fields.area }));
     }
     created(res, { photos: rows, media: uploaded });
   }));

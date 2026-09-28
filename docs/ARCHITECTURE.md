@@ -68,6 +68,12 @@ pino-http (genReqId → X-Request-Id, redacted request line)
   without surveys, unquoted surveys, waiting approvals, and unanswered or expiring quotations — once per
   day while each holds. Every reminder carries `Notification.dedupeKey` (`<rule>:<record>:<day>:<userId>`,
   unique; inserted with `skipDuplicates`), so a second run or a second instance sends nothing.
+- **`services/visit.service.js`** (Phase L5) — the site visit as the customer sees it. A booked INSPECTION job
+  sends `visit_booked` (window, surveyor, `/visit/:token`) to the customer and the site contact; the public
+  page takes Confirm · Need another time (latest answer wins, IP and time kept; a new window clears it).
+  `visits:remind` (every 15 min, from `visits.reminderHour` 17:00 Kathmandu) reminds tomorrow's visits once:
+  the job's `visitReminderSentAt` is claimed compare-and-swap before the SMS goes — an SMS has no
+  `Notification` row to carry a dedupeKey, so the claim is on the job, and a new window clears it.
 
 ## State machines
 
@@ -180,6 +186,20 @@ As built in Phase H2 (2026-09-27):
   pending count with "Sync now". The queue belongs to the device, not the user — a follow-up is to scope it per
   signed-in user.
 - Conflicts on scalar fields resolve last-write-wins, with every attempt recorded in `JobStatusEvent`.
+
+The survey stepper, as built in Phase L5 (2026-09-27):
+- **Every write is a `survey_draft`**, online or not — a full replace of the survey's fields, its readings
+  (checklist answers carry `questionKey`; the server works out `flagged`), its items with their `measurements`
+  rows as plain numbers (the phone turns 12'6" into 12.5; the server derives the quantity) and `sitePin`. It saves
+  1.2 s after the last tap, on every step change and when the screen closes; a newer draft replaces one still
+  waiting, and the form as typed rides in the queue entry's `meta`, so the stepper reopens where it was.
+- **A checklist photo is an ordinary upload** (with its kind — ISSUE or SKETCH — and room). Its reading carries
+  the upload's `photoUploadId`; the sync engine swaps that for the uploaded picture's `mediaId` before sending,
+  and holds that survey's later entries (its save, its submit) until the picture is up, so a submit never
+  overtakes the save it depends on.
+- **`survey_submit` is queued after the last draft.** The phone checks the checklist first with the server's rule;
+  a server refusal `SURVEY_INCOMPLETE` comes back through `/tech/sync` with its `details` and is terminal: the
+  stepper jumps to the checklist and marks each missing answer or photo.
 
 ## Security
 
