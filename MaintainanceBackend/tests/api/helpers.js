@@ -224,3 +224,16 @@ export async function bookVisit({ start = daysFromNow(3), hours = 2, locale = 'e
   const job = await prisma.job.findUnique({ where: { id: body.job.id } });
   return { lead, job, survey: body.survey, token: job.visitToken, customerPhone, customer: body.customer };
 }
+
+/**
+ * Pays a job's advance invoice in full as the accountant (Phase L6), so a test can schedule, assign or move
+ * the job the gate holds. A job with no advance, or one already paid, is left alone.
+ */
+export async function payAdvance(jobId) {
+  const job = await prisma.job.findUnique({ where: { id: jobId }, include: { advanceInvoice: true } });
+  const inv = job?.advanceInvoice;
+  if (!inv || ['PAID', 'VOID'].includes(inv.status)) return null;
+  const accountant = await as('ACCOUNTANT');
+  expectStatus(await accountant.post(`/admin/invoices/${inv.id}/payments`).send({ amount: (inv.total - inv.paidAmount) / 100, method: 'BANK' }), 201);
+  return prisma.invoice.findUnique({ where: { id: inv.id } });
+}

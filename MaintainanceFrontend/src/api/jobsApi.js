@@ -9,15 +9,20 @@ import { apiSlice, tagList } from '@/api/apiSlice';
  * invalidates `Dispatch`, `Dashboard` and `History`. Issuing or reversing material changes
  * stock (`Stock`), and every part that costs money changes the costing (`{ type: 'Job',
  * id: 'costing:<id>' }`).
+ *
+ * Phase L6: the Plan tab's `getJobPlan` (`{ type: 'Job', id: 'plan:<id>' }` — refreshed by every move, since the crew,
+ * the window and the advance are on it) and `overrideJobAdvance`. Recording or voiding a payment (`financeApi`)
+ * invalidates `Job` and `Dispatch` too, because the advance gate follows the advance invoice.
  */
 
 const jobTag = (id) => ({ type: 'Job', id });
 const costingTag = (id) => ({ type: 'Job', id: `costing:${id}` });
+const planTag = (id) => ({ type: 'Job', id: `plan:${id}` });
 const LIST = { type: 'Job', id: 'LIST' };
 
 /** A move of status, window or people. */
 const moveTags = (result, error, { id }) => [
-  jobTag(id), LIST, costingTag(id), 'Dispatch', 'Dashboard', 'History', 'Notification',
+  jobTag(id), LIST, costingTag(id), planTag(id), 'Dispatch', 'Dashboard', 'History', 'Notification',
   { type: 'Job', id: 'TECH_TODAY' },
 ];
 /** A change to one of the job's parts. */
@@ -39,7 +44,8 @@ export const jobsApi = apiSlice.injectEndpoints({
     createJob: build.mutation({
       query: (body) => ({ url: '/admin/jobs', method: 'POST', body }),
       transformResponse: (r) => r.data,
-      invalidatesTags: [LIST, 'Dispatch', 'Dashboard', { type: 'Quotation', id: 'LIST' }],
+      // From a quotation it runs the hand-off (Phase L6), which may raise the advance invoice.
+      invalidatesTags: [LIST, 'Dispatch', 'Dashboard', { type: 'Quotation', id: 'LIST' }, { type: 'Invoice', id: 'LIST' }],
     }),
     /** Details only — never the status. */
     updateJob: build.mutation({
@@ -130,6 +136,25 @@ export const jobsApi = apiSlice.injectEndpoints({
       query: ({ id, logId }) => ({ url: `/admin/jobs/${id}/time-logs/${logId}`, method: 'DELETE' }),
       invalidatesTags: costTags,
     }),
+    /**
+     * The Plan tab (Phase L6, `jobs:read`): quantities only — `{ job, advance, sections, lineCount, materials,
+     * labour, labourDays, crew, readiness }`. A job with no lines is not a BOQ job (`lineCount: 0`).
+     */
+    getJobPlan: build.query({
+      query: (id) => `/admin/jobs/${id}/plan`,
+      transformResponse: (r) => r.data,
+      providesTags: (result, error, id) => [planTag(id)],
+    }),
+    /**
+     * `POST /admin/jobs/:id/advance-override { reason }` (`jobs:advance-override`: MANAGER, ADMIN) — the job may be
+     * scheduled before its advance is paid. Answers the job detail; 422 when no advance is required, it is paid or
+     * already overridden.
+     */
+    overrideJobAdvance: build.mutation({
+      query: ({ id, reason }) => ({ url: `/admin/jobs/${id}/advance-override`, method: 'POST', body: { reason } }),
+      transformResponse: (r) => r.data,
+      invalidatesTags: moveTags,
+    }),
     getJobCosting: build.query({
       query: (id) => `/admin/jobs/${id}/costing`,
       transformResponse: (r) => r.data,
@@ -168,6 +193,6 @@ export const {
   useAddJobPhotoMutation, useDeleteJobPhotoMutation,
   useIssueJobMaterialMutation, useReverseJobMaterialMutation,
   useAddJobTimeLogMutation, useDeleteJobTimeLogMutation,
-  useGetJobCostingQuery, usePublishCaseStudyMutation,
+  useGetJobCostingQuery, usePublishCaseStudyMutation, useGetJobPlanQuery, useOverrideJobAdvanceMutation,
   useGetDispatchBoardQuery, useGetUnassignedJobsQuery, useGetDispatchTechniciansQuery,
 } = jobsApi;

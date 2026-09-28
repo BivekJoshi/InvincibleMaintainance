@@ -118,6 +118,31 @@ has is refused. The customer's three answers are service functions (`acceptQuota
 `requestQuotationChanges`, `declineQuotation`), not route code, so a customer account (Phase K) reuses them.
 Notifications go to named people once each (`notify.service.js#notifyUsers`), after the commit.
 
+**Won → hand-off (Phase L6, `services/handoff.service.js`).** Accept (and a staff convert-to-job) is one transaction:
+
+1. SENT → APPROVED, guarded (`claimAnswer`) — a double tap or a replayed decide claims nothing and stops here;
+2. the lead → WON (`transitionLead`; a staff convert wins it too);
+3. the job — typed from the service's `jobType`, `plannedDays` from the estimate — whose creation claims
+   APPROVED → CONVERTED, guarded (`markConverted`): the second guard;
+4. `JobLine`s from the non-optional BOQ rows — unique `(jobId, quotationItemId)`;
+5. `JobRequirement`s from the take-off — material packs and labour days by trade, no rates (L-D4);
+6. the ADVANCE invoice for the ON_ACCEPT stage — `paymentStageId` unique (a stage is billed once), and
+   `Job.advanceInvoiceId` unique — its total the stage's to the paisa (`money.js#stageDocument` uses the
+   schedule's own VAT split, never VAT recomputed on the part).
+
+The library, the templates and the take-off are read before the transaction (`handOffPlan`). After it commits the
+customer is asked for the advance (`advance_due`, SMS in their language and email) and the dispatchers are told.
+
+**The advance gate (L-D3).** `job.service.js#assertAdvanceCleared` runs in `scheduleJob`, `assignTechnicians`,
+`changeStatus` (every move but CANCELLED and ON_HOLD) and `completeJob`: while the job's advance invoice is neither
+PAID nor VOID, there is no override and `job.advanceGate` is on, it answers 422 `ADVANCE_UNPAID`. A MANAGER or
+ADMIN may override with a reason (`job.advance_overridden`). Paying the advance in full tells the dispatchers.
+
+**Billing a job billed in stages.** `invoice.service.js#createFromJob` on a quoted job that has stage bills (the
+advance; running bills from L8) makes a FINAL invoice: the quotation's lines less one line per stage bill, with the
+VAT left over (`money.js#finalBillDocument` on `finalBillTotals`), so the stage bills and the final add up to the
+quotation to the paisa, VAT included.
+
 Every lead status change goes through `lead.service.js#transitionLead(tx, leadId, to, opts)`, which
 asserts the transition, stamps `closedAt` and writes the `status_change` timeline entry inside the
 caller's transaction. A quotation's `validUntil` is checked when the customer opens the link, when

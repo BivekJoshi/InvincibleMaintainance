@@ -85,6 +85,8 @@ export const INSPECTION_QUESTION_TYPES = ['YES_NO', 'NUMBER', 'CHOICE', 'TEXT'];
 /** The customer's answer on the /visit/:token page (Phase L5). */
 export const VISIT_ANSWERS = ['CONFIRMED', 'RESCHEDULE_REQUESTED'];
 export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 'VOID'];
+/** What an invoice bills (Phase L6): ordinary work, the advance on acceptance, a running bill, the final bill. */
+export const INVOICE_KINDS = ['STANDARD', 'ADVANCE', 'RUNNING', 'FINAL'];
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const STOCK_MOVEMENT_TYPES = ['PURCHASE', 'ISSUE_TO_JOB', 'RETURN', 'ADJUSTMENT', 'WASTAGE'];
 export const WARRANTY_STATUSES = ['ACTIVE', 'EXPIRED', 'VOID', 'CLAIMED'];
@@ -165,6 +167,8 @@ export const AUDIT_EVENTS = Object.freeze({
   JOB_SCHEDULED: 'job.scheduled',
   JOB_COMPLETED: 'job.completed',
   JOB_VERIFIED: 'job.verified',
+  /** A manager let the work go ahead before the advance was paid (L-D3, Phase L6). */
+  JOB_ADVANCE_OVERRIDDEN: 'job.advance_overridden',
   /** The customer's answer on the /visit/:token page (Phase L5). */
   VISIT_CONFIRMED: 'visit.confirmed',
   VISIT_RESCHEDULE_REQUESTED: 'visit.reschedule_requested',

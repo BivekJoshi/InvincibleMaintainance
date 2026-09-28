@@ -1,5 +1,5 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatNpr } from '@/helpers/format';
+import { formatSignedNpr } from '@/helpers/format';
 import { formatQty } from '@/helpers/measurements';
 import { cn } from '@/helpers/utils';
 import { documentCopy } from './quotationDocumentCopy';
@@ -20,7 +20,8 @@ import { documentCopy } from './quotationDocumentCopy';
 export function LineItemsTable({ items = [], showSymbol = true, locale = 'en', sections = [] }) {
   if (!items.length) return null;
   const copy = documentCopy(locale).rows;
-  const money = (paisa) => formatNpr(paisa, { symbol: showSymbol });
+  // A deduction line (a final bill's "Less: advance …", Phase L6) reads "− Rs. …", never "Rs. -…".
+  const money = (paisa) => formatSignedNpr(paisa, { symbol: showSymbol });
   const numbered = items.some((item) => item.number);
   const subtotalAt = new Map((sections ?? []).filter((s) => s.index != null).map((s) => [s.index, s.subtotal]));
   const columns = numbered ? 5 : 4;

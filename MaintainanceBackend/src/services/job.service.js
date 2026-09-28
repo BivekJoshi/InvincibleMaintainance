@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 import { AppError, notFound, badRequest, forbidden, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
-import { lineAmount, margin, sum } from '../utils/money.js';
+import { formatNpr, lineAmount, margin, outstanding, sum } from '../utils/money.js';
 import { addDays, dayjs, kathmanduDayRange, local, startOfDay, endOfDay } from '../utils/dates.js';
 import { JOB_TRANSITIONS, QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
@@ -65,17 +65,115 @@ export async function listJobs(query) {
   // A status preset and the not-invoiced filter both name statuses; the preset wins.
   if (query.status) where.status = query.status;
   const [items, total] = await Promise.all([
-    prisma.job.findMany({ where, orderBy: [orderBy, { id: 'asc' }], skip, take, include: INCLUDE }),
+    prisma.job.findMany({ where, orderBy: [orderBy, { id: 'asc' }], skip, take, include: { ...INCLUDE, advanceInvoice: ADVANCE_BRIEF } }),
     prisma.job.count({ where }),
   ]);
-  return { items, meta: meta({ page, limit, total }) };
+  return { items: await withAdvanceFlags(items), meta: meta({ page, limit, total }) };
 }
 
 /** The field app's job (GET /tech/jobs/:id): the job, and its photos' images by media id (Phase H2). */
 export async function getFieldJob(id) {
-  // The visit link answers for the customer: it is theirs, not the field's (Phase L5).
-  const { visitToken: _token, visitAnswerIp: _ip, ...job } = await getJob(id);
+  // The visit link answers for the customer: it is theirs, not the field's (Phase L5). The advance is the
+  // office's business (Phase L6).
+  const {
+    visitToken: _token, visitAnswerIp: _ip, advanceInvoice: _advance, advanceOverrideBy: _by, advanceOverrideReason: _reason, ...job
+  } = await getJob(id);
   return { ...job, media: await resolveMediaMap(job.photos.map((p) => p.mediaId)) };
+}
+
+// ── the advance (L-D3, Phase L6)
+
+/** A list row's view of the advance invoice. */
+const ADVANCE_BRIEF = { select: { id: true, number: true, status: true } };
+const ADVANCE_FULL = {
+  select: { id: true, number: true, status: true, total: true, paidAmount: true, dueDate: true, publicToken: true },
+};
+
+/** `job.advanceGate` — on unless the owner switched it off. */
+async function advanceGateOn() {
+  const value = await getSetting('job.advanceGate', true);
+  return value === true || value === 'true';
+}
+
+const holds = (gateOn, job) => Boolean(gateOn && job.advanceInvoice && !['PAID', 'VOID'].includes(job.advanceInvoice.status) && !job.advanceOverriddenAt);
+
+/** Job rows with `awaitingAdvance` — the "Awaiting advance" chip — worked out once for the whole list. */
+async function withAdvanceFlags(rows) {
+  const gateOn = await advanceGateOn();
+  return rows.map((j) => ({ ...j, awaitingAdvance: holds(gateOn, j) }));
+}
+
+/**
+ * The job's advance as its page shows it: required (the job has one), the invoice with its balance and link,
+ * paid, overridden (by whom, why, when), and `awaitingAdvance` — the gate holding. A VOID advance no longer
+ * holds the job: nothing is asked for any more.
+ */
+export async function advanceState(job) {
+  const gateOn = await advanceGateOn();
+  const inv = job.advanceInvoice ?? null;
+  return {
+    required: Boolean(job.advanceInvoiceId),
+    gateOn,
+    invoice: inv ? {
+      id: inv.id, number: inv.number, status: inv.status, total: inv.total, paidAmount: inv.paidAmount,
+      balance: inv.status === 'VOID' ? 0 : outstanding(inv.total, inv.paidAmount), dueDate: inv.dueDate,
+      publicUrl: inv.publicToken ? webUrl(`/invoice/${inv.publicToken}`) : null,
+    } : null,
+    paid: inv?.status === 'PAID',
+    overridden: Boolean(job.advanceOverriddenAt),
+    override: job.advanceOverriddenAt
+      ? { by: job.advanceOverrideBy ?? null, reason: job.advanceOverrideReason, at: job.advanceOverriddenAt }
+      : null,
+    awaitingAdvance: holds(gateOn, job),
+  };
+}
+
+/**
+ * The advance gate (L-D3): scheduling, assigning, starting or completing a job whose advance invoice is unpaid is
+ * 422 ADVANCE_UNPAID — until it is PAID, or a manager overrides (`overrideAdvance`), or the owner switches
+ * `job.advanceGate` off. A job with no advance is never held.
+ * @param {{ id: string, number: string, advanceInvoiceId?: string|null, advanceOverriddenAt?: Date|null }} job
+ */
+export async function assertAdvanceCleared(job, client = prisma) {
+  if (!job.advanceInvoiceId || job.advanceOverriddenAt) return;
+  if (!(await advanceGateOn())) return;
+  const inv = await client.invoice.findUnique({ where: { id: job.advanceInvoiceId }, select: { id: true, number: true, status: true, total: true, paidAmount: true } });
+  if (!inv || ['PAID', 'VOID'].includes(inv.status)) return;
+  const balance = outstanding(inv.total, inv.paidAmount);
+  throw new AppError(422, 'ADVANCE_UNPAID',
+    `Job ${job.number} waits for its advance: invoice ${inv.number}, ${formatNpr(balance)} still to pay. `
+    + 'Record the payment on the invoice, or a manager can override.',
+    { invoiceId: inv.id, invoiceNumber: inv.number, balance });
+}
+
+/**
+ * POST /admin/jobs/:id/advance-override (jobs:advance-override — MANAGER, ADMIN): the job may go ahead before the
+ * advance is paid, with the reason recorded and audited as `job.advance_overridden`. The invoice stays owed.
+ */
+export async function overrideAdvance(id, { reason }, userId) {
+  const job = await getJob(id);
+  if (!job.advanceInvoiceId) throw unprocessable(`Job ${job.number} has no advance to wait for`);
+  if (job.advanceOverriddenAt) throw unprocessable('The advance on this job is already overridden');
+  if (['PAID', 'VOID'].includes(job.advanceInvoice?.status)) throw unprocessable('The advance is already settled — nothing to override');
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.job.updateMany({
+      where: { id, advanceOverriddenAt: null },
+      data: { advanceOverriddenAt: new Date(), advanceOverrideById: userId ?? null, advanceOverrideReason: reason },
+    });
+    if (!count) throw unprocessable('The advance on this job is already overridden');
+    await recordEvent('job.advance_overridden', {
+      model: 'Job', recordId: id,
+      before: { advanceOverriddenAt: null }, after: { advanceOverriddenAt: new Date() },
+      meta: { reason, invoiceId: job.advanceInvoiceId, invoiceNumber: job.advanceInvoice?.number },
+    }, tx);
+  });
+  return getJobDetail(id);
+}
+
+/** GET /admin/jobs/:id — the job with its hand-off: lines, requirements and the advance (Phase L6). */
+export async function getJobDetail(id) {
+  const job = await getJob(id);
+  return { ...job, advance: await advanceState(job) };
 }
 
 export async function getJob(id) {
@@ -94,6 +192,11 @@ export async function getJob(id) {
       survey: { select: { id: true, number: true, status: true } },
       project: { select: { id: true, title: true, isActive: true } },
       createdBy: { select: { id: true, name: true } },
+      // The hand-off (Phase L6): the accepted BOQ as lines, what it needs, and the advance it waits for.
+      lines: { orderBy: { sortOrder: 'asc' } },
+      requirements: { orderBy: [{ kind: 'asc' }, { description: 'asc' }] },
+      advanceInvoice: ADVANCE_FULL,
+      advanceOverrideBy: { select: { id: true, name: true } },
     },
   });
   if (!job) throw notFound('Job');
@@ -190,35 +293,6 @@ export async function createJob(input, userId, client = prisma) {
   return job;
 }
 
-/**
- * The work order that carries out an approved quotation.
- *
- * The quotation already knows the customer, the site and the lead, so the
- * dispatcher supplies only what it does not: when, who, and which checklist.
- * createJob asserts APPROVED -> CONVERTED, so a draft or a declined quotation
- * cannot become work by this route either.
- */
-export async function createJobFromQuotation(quotationId, input, userId) {
-  const quotation = await prisma.quotation.findFirst({
-    where: { id: quotationId, deletedAt: null },
-    include: {
-      lead: { select: { service: { select: { name: true } } } },
-      items: { orderBy: { sortOrder: 'asc' }, take: 1, select: { description: true } },
-    },
-  });
-  if (!quotation) throw notFound('Quotation');
-  const { title, ...rest } = input;
-  const what = quotation.lead?.service?.name ?? quotation.items.find((i) => i.rowType === 'ITEM')?.description ?? 'Work';
-  return createJob({
-    ...rest,
-    customerId: quotation.customerId,
-    siteId: quotation.siteId,
-    leadId: quotation.leadId,
-    quotationId: quotation.id,
-    title: title ?? `${what} — ${quotation.number}`,
-  }, userId);
-}
-
 /** Notifies each assigned technician in-app and by SMS. Call only after the job has committed. */
 export async function announceAssignment(job, technicianIds) {
   const techs = await prisma.technician.findMany({
@@ -266,6 +340,8 @@ export async function changeStatus(id, { status, note, lat, lng }, userId) {
   const job = await prisma.job.findFirst({ where: { id, deletedAt: null } });
   if (!job) throw notFound('Job');
   assertTransition(JOB_TRANSITIONS, job.status, status, 'job');
+  // Holding or cancelling a job is always allowed; moving it on waits for its advance (Phase L6).
+  if (!['CANCELLED', 'ON_HOLD'].includes(status) && status !== job.status) await assertAdvanceCleared(job);
 
   if (status === 'COMPLETED') {
     return completeJob(id, { note }, userId);
@@ -312,6 +388,7 @@ export async function completeJob(id, input, userId) {
     throw new AppError(422, 'INVALID_TRANSITION', 'This job is already completed.');
   }
   assertTransition(JOB_TRANSITIONS, job.status, 'COMPLETED', 'job');
+  await assertAdvanceCleared(job);
 
   const pending = job.tasks.filter((t) => !t.isDone && !t.isSkipped);
   if (pending.length) {
@@ -435,6 +512,7 @@ export async function assignTechnicians(id, { technicianIds, leadTechnicianId, n
   if (['COMPLETED', 'VERIFIED', 'CANCELLED'].includes(job.status)) {
     throw unprocessable('This job is closed and cannot be reassigned');
   }
+  await assertAdvanceCleared(job);
   const found = await prisma.technician.count({ where: { id: { in: technicianIds }, deletedAt: null } });
   if (found !== technicianIds.length) throw badRequest('One or more technicians do not exist');
 
@@ -653,6 +731,10 @@ const CARD = {
   scheduledStart: true, scheduledEnd: true, quotationId: true, createdAt: true,
   // An inspection the customer has not confirmed, or asked to move, is flagged on the card (Phase L5).
   visitAnswer: true, visitAnswerNote: true, visitAnsweredAt: true, customerConfirmedAt: true,
+  // The "Awaiting advance" chip (Phase L6).
+  advanceInvoiceId: true, advanceOverriddenAt: true, advanceInvoice: { select: { id: true, number: true, status: true } },
+  // The Schedule dialog's default end (Phase L6).
+  plannedDays: true,
   customer: { select: { id: true, name: true, phone: true } },
   site: { select: { id: true, area: true, address: true } },
   assignments: { select: { technicianId: true, isLead: true } },
@@ -733,8 +815,9 @@ export async function dispatchBoard({ date, view = 'day', technicianId, role }) 
     prisma.job.count({ where: unassignedWhere }),
   ]);
 
+  const [flagged, unscheduled] = await Promise.all([withAdvanceFlags(jobs), withAdvanceFlags(unscheduledAssigned)]);
   const lanes = technicians.map((t) => {
-    const laneJobs = jobs.filter((j) => j.assignments.some((a) => a.technicianId === t.id));
+    const laneJobs = flagged.filter((j) => j.assignments.some((a) => a.technicianId === t.id));
     return {
       technician: {
         id: t.id, name: t.user.name, phone: t.user.phone, role: t.user.role, employeeCode: t.employeeCode,
@@ -747,7 +830,7 @@ export async function dispatchBoard({ date, view = 'day', technicianId, role }) 
   });
 
   return {
-    from, to, view, days, hours: DISPATCH_HOURS, lanes, unscheduledAssigned, unassignedCount,
+    from, to, view, days, hours: DISPATCH_HOURS, lanes, unscheduledAssigned: unscheduled, unassignedCount,
   };
 }
 
@@ -768,7 +851,7 @@ export async function listUnassigned(query = {}) {
     prisma.job.findMany({ where, select: CARD, orderBy, skip, take }),
     prisma.job.count({ where }),
   ]);
-  return { items, meta: meta({ page, limit, total }) };
+  return { items: await withAdvanceFlags(items), meta: meta({ page, limit, total }) };
 }
 
 /**
@@ -825,10 +908,19 @@ export async function scheduleWarnings({ jobId, number, scheduledStart, schedule
  * @returns {Promise<{ job: object, warnings: object[] }>}
  */
 export async function scheduleJob(id, input, userId) {
-  const { scheduledStart, scheduledEnd, technicianIds, leadTechnicianId, note, notifyCustomer = true } = input;
+  const { scheduledStart, technicianIds, leadTechnicianId, note, notifyCustomer = true } = input;
   const job = await getJob(id);
   if (['EN_ROUTE', 'IN_PROGRESS', 'COMPLETED', 'VERIFIED', 'CANCELLED'].includes(job.status)) {
     throw unprocessable(`A job that is ${job.status.toLowerCase().replace('_', ' ')} cannot be rescheduled`);
+  }
+  await assertAdvanceCleared(job);
+  // Without an end, the planned days from the quotation's estimate set it (Phase L6).
+  let { scheduledEnd } = input;
+  if (!scheduledEnd) {
+    if (!job.plannedDays) {
+      throw badRequest('Set when the work ends — this job has no planned days to go by', [{ path: ['scheduledEnd'], message: 'Set the end' }]);
+    }
+    scheduledEnd = new Date(new Date(scheduledStart).getTime() + job.plannedDays * 86_400_000);
   }
   if (technicianIds) {
     const found = await prisma.technician.count({ where: { id: { in: technicianIds }, deletedAt: null } });

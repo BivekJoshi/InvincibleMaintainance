@@ -38,6 +38,9 @@ function eventDetail({ event, before, after, changes }) {
       return after?.assignedToId ? null : 'Unassigned';
     case 'customer.email_confirmed':
       return `${before?.email ?? 'no email'} → ${after?.email}`;
+    case 'job.advance_overridden':
+      // Phase L6: why the job may go ahead before its advance is paid, and which invoice it was.
+      return [changes?.invoiceNumber, changes?.reason].filter(Boolean).join(' · ') || null;
     default:
       return changes?.note ?? null;
   }

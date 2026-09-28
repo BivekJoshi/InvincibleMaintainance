@@ -1025,12 +1025,44 @@ syncs; the quotation arrives with the same sections and quantities; the `/tech` 
 - Tests hardened against the reused `_test` database: `15-operations-admin › filters by skill and service area`
   uses a Devanagari area of its own (more than a page of earlier runs' technicians shared "ललितपुर").
 
-**L6 · Won → hand-off (≈4 days, after I)** — `handoff.service.js` inside the accept transaction: lead WON, job typed
+**L6 · Won → hand-off (≈4 days, after I) · ✅ done 2026-09-28** — `handoff.service.js` inside the accept transaction: lead WON, job typed
 from the service with planned days, job lines, requirements, ADVANCE invoice; the advance gate
 (`ADVANCE_UNPAID`) with an audited manager override; the job's Plan tab (advance, BOQ, materials vs stock, crew
 plan, readiness). *Acceptance:* accepting a 50/40/10 quote creates the BOQ lines, requirements and one advance
 invoice; stages sum to the quotation total to the paisa; a double tap creates one job and one invoice; scheduling
 is 422 until paid or overridden (audited; dispatcher 403 on override).
+
+**Deviations (Phase L6, 2026-09-28)**
+- **CONVERTED is claimed with the job**, not as a separate last step: `createJob` marks the quotation CONVERTED
+  (guarded) as it creates the job, inside the same transaction — the effect of the planned order, with one guard less
+  to get wrong. The transaction's steps as built are in ARCHITECTURE "Won → hand-off".
+- **The advance invoice uses the stage's own VAT** (`money.js#stageDocument`): VAT recomputed on the stage's taxable
+  part can land a paisa away from the schedule's split, and the stages must add up to the quotation. A property test
+  runs 1,000 random schedules.
+- **A job billed in stages is closed by a FINAL invoice now, not in L8:** with the advance on every accepted quotation,
+  `createFromJob` would otherwise have billed the whole quotation again. It bills the quotation's lines less one
+  "Less: advance" line per stage bill, with the VAT left over (`money.js#finalBillDocument` on L2's
+  `finalBillTotals`); L8 extends it to measured quantities and variations. InvoiceItem gains no `kind` yet — a
+  deduction is a negative line; L8 adds the kind with DEDUCTION.
+- **A staff convert that dates or crews a job while an advance will be due is refused before anything is written**
+  (422 `ADVANCE_UNPAID`), rather than creating a job that is then stuck; POST /admin/jobs with a `quotationId` is the
+  same hand-off as convert-to-job, so there is one way to turn a quotation into work.
+- **A VOID advance no longer holds the job** (nothing is asked for any more); the void is audited with its reason.
+  The gate applies to `completeJob` and the field app's moves too, and never to CANCELLED or ON_HOLD.
+- **Scheduling:** without an end, start + `plannedDays` (calendar days); the longest window is 90 days (was 14) — a
+  renovation runs weeks.
+- **Payment details** in the `advance_due` SMS come from two new settings, `finance.bankAccount` and
+  `finance.fonepayNumber` (illustrative seed values), labelled in the customer's language.
+- **A stage or closing bill's lines are locked** (422 `INVOICE_LINES_LOCKED`): its money is the quotation's and the
+  stage bills'; a draft's due date, note and terms still change.
+- **Frontend:** a held job's dispatch card has no drag handle (the drop would be refused); its Schedule… opens the
+  dialog, which explains the lock, so drag is never the only way. The advance invoice links to `/admin/invoices/:id`
+  for `invoices:read` only; a dispatcher sees its number and the customer's payment page. The Plan tab shows when the
+  job has lines. E2E fixes on the way: the L5 test finds the seepage service by slug (the grown test database held
+  more than 100 services), and field-flow's customer phone no longer risks starting "977" (read as the country code).
+- **Tests adjusted for the gate:** the API suite's `payAdvance` helper pays a job's advance where a test schedules an
+  accepted job (06-tech, 07-finance); the 03-crm convert test's quotation is paid on completion (no advance), since
+  the gate is 19-handoff's to test; 07-finance's defect #16 test now expects advance + FINAL = the quotation.
 
 **L7 · Execution (≈5 days)** — offline site diary (weather, headcount by trade, progress per BOQ line, materials
 received with challan no., issues and lost hours, photos), BOQ & progress, planned vs issued vs logged, purchase
@@ -1141,7 +1173,7 @@ Prompt: `docs/prompts/PHASE-K-customer-account.md`. Decision D8.
 | H2 Operations — field app ✅ 2026-09-27 | 3 | 52 | Photos, materials and job mutations offline |
 | L5 Site-visit kit ✅ 2026-09-27 | 4 | 56 | Confirmed visits, checklists, measurement sheet |
 | I Finance & aftercare ✅ 2026-09-28 | 6 | 62 | Billing and retention |
-| L6 Won → hand-off | 4 | 66 | Job with its BOQ, material list and advance gate |
+| L6 Won → hand-off ✅ 2026-09-28 | 4 | 66 | Job with its BOQ, material list and advance gate |
 | L7 Execution | 5 | 71 | Site diary, planned vs actual, purchases, variations |
 | L8 Close-out & final bill | 3 | 74 | Lump-sum and item-rate final bills |
 | J1 Nepali UI | 2 | 76 | Field app, site, customer pages in Nepali |

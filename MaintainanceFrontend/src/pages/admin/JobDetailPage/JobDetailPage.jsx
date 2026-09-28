@@ -9,6 +9,7 @@ import { PriorityBadge, StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AwaitingAdvanceChip } from '@/components/jobs/AwaitingAdvanceChip';
 import { PageTransition } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useJobActions } from '@/hooks/useJobActions';
@@ -16,7 +17,9 @@ import { JOB_STATUS_LABELS, JOB_TYPE_LABELS } from '@/config/constants';
 import { jobActions, jobWaitingFor, openTasks } from '@/helpers/jobActions';
 import { ktmDay } from '@/helpers/dispatchBoard';
 import { JobActionBar } from './sections/JobActionBar';
+import { JobAdvanceCard } from './sections/JobAdvanceCard';
 import { JobOverviewTab } from './sections/JobOverviewTab';
+import { JobPlanTab } from './sections/JobPlanTab';
 import { JobChecklistTab } from './sections/JobChecklistTab';
 import { JobPhotosTab } from './sections/JobPhotosTab';
 import { JobMaterialsTab } from './sections/JobMaterialsTab';
@@ -25,10 +28,14 @@ import { JobCostingTab } from './sections/JobCostingTab';
 import { JobEventsTab } from './sections/JobEventsTab';
 
 /**
- * One job: the actions its state allows, and the tabs — Overview · Checklist · Photos · Materials ·
+ * One job: the actions its state allows, and the tabs — Overview · Plan · Checklist · Photos · Materials ·
  * Time · Costing · Events · History. The open tab is in the URL (`?tab=`). Status changes only
  * through the action bar's endpoints, never by editing the record. Costing is cost and margin, so it
  * is there only for `costs:read` (the money wall, Phase L2) — the API answers 403 to anyone else.
+ *
+ * Phase L6: the **Plan** tab is there only on a BOQ job (one with job lines from its accepted quotation); the
+ * advance card sits above the tabs and the "Awaiting advance" chip in the header while the advance gate holds —
+ * Schedule, Assign and the moves on stay on the bar, disabled with the reason (`helpers/jobActions`).
  */
 export default function JobDetailPage() {
   const { id } = useParams();
@@ -40,8 +47,11 @@ export default function JobDetailPage() {
   const [runAction, actionDialogs] = useJobActions({ onDeleted });
 
   const canWrite = can('jobs:write');
+  // A BOQ job: its accepted quotation's rows became job lines (Phase L6). Only such a job has a plan.
+  const lineCount = job?.lines?.length ?? 0;
   const tabs = [
     { value: 'overview', label: 'Overview' },
+    ...(lineCount > 0 ? [{ value: 'plan', label: 'Plan' }] : []),
     { value: 'checklist', label: 'Checklist' },
     { value: 'photos', label: 'Photos' },
     { value: 'materials', label: 'Materials' },
@@ -57,6 +67,7 @@ export default function JobDetailPage() {
   if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
 
   const counts = {
+    plan: lineCount || null,
     checklist: job.tasks?.length ? `${job.tasks.length - openTasks(job).length}/${job.tasks.length}` : null,
     photos: job.photos?.length || null,
     materials: job.materials?.length || null,
@@ -87,8 +98,11 @@ export default function JobDetailPage() {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <StatusBadge status={job.status} label={JOB_STATUS_LABELS[job.status]} />
           <PriorityBadge priority={job.priority} />
+          <AwaitingAdvanceChip job={job} />
         </div>
       </PageHeader>
+
+      <JobAdvanceCard job={job} can={can} />
 
       <Tabs value={tab} onValueChange={setTab}>
         <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -102,6 +116,9 @@ export default function JobDetailPage() {
         </div>
 
         <TabsContent value="overview"><JobOverviewTab job={job} can={can} /></TabsContent>
+        {lineCount > 0 ? (
+          <TabsContent value="plan">{tab === 'plan' ? <JobPlanTab job={job} /> : null}</TabsContent>
+        ) : null}
         <TabsContent value="checklist"><JobChecklistTab job={job} canWrite={canWrite} /></TabsContent>
         <TabsContent value="photos"><JobPhotosTab job={job} canWrite={canWrite} /></TabsContent>
         <TabsContent value="materials"><JobMaterialsTab job={job} canWrite={canWrite} /></TabsContent>

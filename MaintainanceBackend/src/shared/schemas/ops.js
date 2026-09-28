@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { isActive, listQuery, optionalRupees, optionalText, rupees, sortOrder, unit } from './common.js';
 import {
-  AMC_BILLING_CYCLES, AMC_STATUSES, CLAIM_STATUSES, INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES,
+  AMC_BILLING_CYCLES, AMC_STATUSES, CLAIM_STATUSES, INVOICE_KINDS, INVOICE_STATUSES, JOB_PHOTO_KINDS, JOB_STATUSES, JOB_TYPES,
   MESSAGE_CHANNELS, MESSAGE_STATUSES, PAYMENT_METHODS, PRIORITIES, REMINDER_STATUSES, REVENUE_GROUPS, ROLES,
   STOCK_MOVEMENT_TYPES, WARRANTY_STATUSES,
 } from '../enums.js';
@@ -29,7 +29,8 @@ export const jobTemplateSchema = z.object({
 });
 
 export const jobSchema = z.object({
-  type: z.enum(JOB_TYPES).default('REPAIR'),
+  // Left out, REPAIR — or, for a job made from a quotation, the service's jobType (Phase L6).
+  type: z.enum(JOB_TYPES).optional(),
   customerId: z.string().min(1),
   siteId: z.string().optional().nullable(),
   leadId: z.string().optional().nullable(),
@@ -60,8 +61,9 @@ export const jobUpdateSchema = z.object({
 });
 
 /** POST /admin/quotations/:id/convert-to-job — only what the quotation does not already know. */
+/** Converting an approved quotation (Phase L6: the hand-off). The type defaults to the service's jobType. */
 export const quotationToJobSchema = z.object({
-  type: z.enum(JOB_TYPES).default('REPAIR'),
+  type: z.enum(JOB_TYPES).optional(),
   title: z.string().trim().min(2).max(250).optional(),
   description: optionalText,
   priority: z.enum(PRIORITIES).default('NORMAL'),
@@ -191,18 +193,25 @@ export const unassignedQuery = listQuery.pick({ page: true, limit: true, q: true
  * POST /admin/jobs/:id/schedule — the board's drop and its Schedule dialog. `technicianIds`
  * replaces the assignment when given (the first one leads unless `leadTechnicianId` says).
  */
+/**
+ * POST /admin/jobs/:id/schedule. Without `scheduledEnd` the job's planned days set it (Phase L6). A window runs
+ * 90 days at most — a renovation runs weeks (it was 14).
+ */
 export const jobScheduleSchema = z.object({
   scheduledStart: z.coerce.date(),
-  scheduledEnd: z.coerce.date(),
+  scheduledEnd: z.coerce.date().optional(),
   technicianIds: z.array(z.string().min(1)).min(1, 'Choose at least one technician').max(20).optional(),
   leadTechnicianId: z.string().min(1).optional(),
   note: z.string().trim().max(1000).optional(),
   notifyCustomer: z.boolean().default(true),
-}).refine((v) => v.scheduledEnd > v.scheduledStart, {
+}).refine((v) => !v.scheduledEnd || v.scheduledEnd > v.scheduledStart, {
   message: 'End time must be after the start time', path: ['scheduledEnd'],
-}).refine((v) => v.scheduledEnd - v.scheduledStart <= 14 * 86_400_000, {
-  message: 'A visit cannot be longer than 14 days', path: ['scheduledEnd'],
+}).refine((v) => !v.scheduledEnd || v.scheduledEnd - v.scheduledStart <= 90 * 86_400_000, {
+  message: 'A job cannot be scheduled for longer than 90 days', path: ['scheduledEnd'],
 });
+
+/** POST /admin/jobs/:id/advance-override (L-D3) — the reason is required and kept. */
+export const advanceOverrideSchema = z.object({ reason: z.string().trim().min(5, 'Say why the work may start before the advance').max(500) }).strict();
 
 /** GET /admin/jobs. `from` / `to` are Kathmandu days; `invoiced=false` is finished billable work not yet invoiced. */
 export const jobListQuery = z.object({
@@ -365,6 +374,8 @@ export const invoiceListQuery = z.object({
   sort: z.enum(['number', '-number', 'issuedAt', '-issuedAt', 'dueDate', '-dueDate', 'total', '-total', 'createdAt', '-createdAt']).optional(),
   q: z.string().trim().max(200).optional(),
   status: z.enum(INVOICE_STATUSES).optional(),
+  /** ADVANCE, RUNNING, FINAL (Phase L6) or STANDARD. */
+  kind: z.enum(INVOICE_KINDS).optional(),
   customerId: z.string().optional(),
   overdueOnly: flag.optional(),
   from: day.optional(),

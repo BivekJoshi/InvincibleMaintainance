@@ -19,6 +19,10 @@ const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: titleCase(p) 
  * must be the customer's and accepted — most accepted quotations already became a job when the
  * customer said yes, so the list is usually empty.
  *
+ * Phase L6: the type may be left out — the API then uses REPAIR, or the quotation's service's `jobType`. A job made
+ * from a quotation runs the hand-off (lines, requirements, the advance invoice); with a time or people and an unpaid
+ * advance the API answers 422 ADVANCE_UNPAID, which the form shows above its fields.
+ *
  * @param {{ open: boolean, onOpenChange: (open: boolean) => void, onCreated?: (job: object) => void, defaults?: object }} props
  */
 export function JobFormSheet({ open, onOpenChange, onCreated, defaults }) {
@@ -42,9 +46,12 @@ export function JobFormSheet({ open, onOpenChange, onCreated, defaults }) {
     ...(can('quotations:read') ? [{
       name: 'quotationId', type: 'relation', label: 'From an accepted quotation',
       relation: { path: '/admin/quotations', labelKey: (q) => `${q.number} · ${q.customer?.name ?? ''}`, params: { status: 'APPROVED', ...(customerId ? { customerId } : {}) } },
-      description: 'Optional. It becomes “accepted · job created”.',
+      description: 'Optional. It becomes “accepted · job created”, with its lines and plan — and, when its payment schedule asks for an advance, the advance invoice: leave the time and people empty, the job is scheduled once that is paid.',
     }] : []),
-    { name: 'type', type: 'select', label: 'Type', required: true, span: 'half', options: TYPE_OPTIONS },
+    {
+      name: 'type', type: 'select', label: 'Type', span: 'half', options: TYPE_OPTIONS,
+      noneLabel: 'Repair — or the quotation service’s type',
+    },
     { name: 'priority', type: 'select', label: 'Priority', required: true, span: 'half', options: PRIORITY_OPTIONS },
     { name: 'title', type: 'text', label: 'Title', required: true, maxLength: 250, placeholder: 'Terrace waterproofing — Jhamsikhel' },
     { name: 'description', type: 'textarea', label: 'What needs doing', rows: 3 },
@@ -80,7 +87,7 @@ export function JobFormSheet({ open, onOpenChange, onCreated, defaults }) {
       description="Work to be done for a customer."
       schema={jobCreateSchema}
       fields={fields}
-      defaultValues={{ type: 'REPAIR', priority: 'NORMAL', isBillable: true, technicianIds: [], ...defaults }}
+      defaultValues={{ priority: 'NORMAL', isBillable: true, technicianIds: [], ...defaults }}
       onValuesChange={setValues}
       submitLabel="Create job"
       onSubmit={submit}

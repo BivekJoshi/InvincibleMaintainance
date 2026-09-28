@@ -71,11 +71,17 @@ export const quotationsApi = apiSlice.injectEndpoints({
     sendQuotation: move(build, 'send'),
     /** A new DRAFT version; the answer is that version. */
     reviseQuotation: move(build, 'revise'),
-    /** Quotations the customer approved before Phase F only — acceptance now creates the job itself. */
+    /**
+     * The staff way to win the work (the customer said yes by phone) — acceptance on the link creates the job itself.
+     * Since Phase L6 it runs the same hand-off: the job with its lines and plan, the lead WON, and the advance invoice
+     * when the schedule has an ON_ACCEPT stage. Answers the job detail (with `advance`).
+     */
     convertQuotationToJob: build.mutation({
       query: ({ id, ...body }) => ({ url: `/admin/quotations/${id}/convert-to-job`, method: 'POST', body }),
       transformResponse: (r) => r.data,
-      invalidatesTags: (result, error, arg) => [...MOVE_TAGS(result, error, arg), { type: 'Job', id: 'LIST' }],
+      invalidatesTags: (result, error, arg) => [
+        ...MOVE_TAGS(result, error, arg), { type: 'Job', id: 'LIST' }, 'Dispatch', { type: 'Invoice', id: 'LIST' },
+      ],
     }),
     deleteQuotation: build.mutation({
       query: (id) => ({ url: `/admin/quotations/${id}`, method: 'DELETE' }),

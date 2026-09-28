@@ -14,7 +14,7 @@ import { getSetting } from './settings.service.js';
 import { notify, notifyUsers, userIdsWithRoles } from './notify.service.js';
 import { bookNextAction, transitionLead } from './lead.service.js';
 import { recordEvent } from './audit.service.js';
-import { createJob } from './job.service.js';
+import { advanceFor, announceAdvance, handOff, handOffPlan } from './handoff.service.js';
 import { adminJobPath, adminLeadMarkLostPath, adminQuotationPath, webUrl } from '../utils/links.js';
 import { addDays } from '../utils/dates.js';
 import { buildLines, costSummary, decorateBoq, takeoffFor, totalsFor } from './boq.service.js';
@@ -183,7 +183,7 @@ async function moveStatus(tx, q, to, data = {}) {
   if (!count) throw conflict('This quotation changed a moment ago. Reload and try again.');
 }
 
-async function findQuotation(id, include = {}) {
+export async function findQuotation(id, include = {}) {
   const q = await prisma.quotation.findFirst({ where: { id, deletedAt: null }, include: { ...INCLUDE, ...include } });
   if (!q) throw notFound('Quotation');
   return q;
@@ -795,6 +795,8 @@ async function publicView(q) {
     }))(await documentFields(q)),
     replaced: await replacementFor(q),
     actions: q.status === 'SENT' ? [...QUOTATION_DECISIONS] : [],
+    // Once accepted (Phase L6): the advance to pay, and the link to its invoice.
+    advance: ['APPROVED', 'CONVERTED'].includes(q.status) ? await advanceFor(q.id) : null,
   };
 }
 
@@ -869,7 +871,7 @@ async function leadNote(tx, q, summary) {
  * - NEW passes through CONTACTED first (the customer was plainly contacted);
  * - a lead already WON or LOST keeps its status and gets a note instead.
  */
-async function winLeadOnAcceptance(tx, q, summary) {
+export async function winLeadOnAcceptance(tx, q, summary) {
   const lead = await tx.lead.findFirst({ where: { id: q.leadId, deletedAt: null }, select: { id: true, status: true } });
   if (!lead) return;
   if (lead.status === 'WON' || lead.status === 'LOST') {
@@ -884,7 +886,7 @@ async function winLeadOnAcceptance(tx, q, summary) {
 }
 
 /** Earlier versions' ids too: a survey points at the version it was first priced into. */
-async function lineageIds(q) {
+export async function lineageIds(q) {
   const ids = [q.id];
   for (let cur = q, i = 0; cur.parentId && i < 50; i += 1) {
     cur = await prisma.quotation.findUnique({ where: { id: cur.parentId }, select: { id: true, parentId: true } });
@@ -894,37 +896,6 @@ async function lineageIds(q) {
   return ids;
 }
 
-/**
- * The work order an accepted quotation becomes: unscheduled, unassigned, titled after
- * the service, with that service's checklist when it has a template. No mapping from a
- * service to a job type exists, so it is REPAIR.
- */
-async function jobPlanFor(q) {
-  const survey = await prisma.siteSurvey.findFirst({
-    where: { quotationId: { in: await lineageIds(q) }, deletedAt: null },
-    select: { urgency: true, service: { select: { id: true, name: true } } },
-  });
-  const lead = q.leadId
-    ? await prisma.lead.findFirst({ where: { id: q.leadId }, select: { service: { select: { id: true, name: true } } } })
-    : null;
-  const service = survey?.service ?? lead?.service ?? null;
-  const template = service
-    ? await prisma.jobTemplate.findFirst({
-      where: { serviceId: service.id, isActive: true, deletedAt: null },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    })
-    : null;
-  const what = service?.name ?? q.items.find((i) => i.rowType === 'ITEM')?.description ?? 'Work';
-  return {
-    type: 'REPAIR',
-    title: `${what} — ${q.number}`.slice(0, 200),
-    description: `Accepted by the customer (${label(q)}, ${npr(q.total)}). Schedule and assign.`,
-    priority: survey?.urgency ?? 'NORMAL',
-    ...(template ? { templateId: template.id } : {}),
-  };
-}
-
 /** The salesperson and the quotation's author — the people who answer the customer. */
 const salesRecipients = (q, email = true) => [
   { userId: q.lead?.assignedToId, email },
@@ -932,29 +903,28 @@ const salesRecipients = (q, email = true) => [
 ];
 
 /**
- * Customer accepts (D3). One transaction: SENT → APPROVED → CONVERTED, the lead WON,
- * one DRAFT job. Then, once each: the customer (SMS + email in their language), the
- * salesperson and the author, every dispatcher (linking the job), and the manager who
- * approved it (not when the system did).
+ * Customer accepts (D3). One transaction — the hand-off (Phase L6, `handoff.service.js`): SENT → APPROVED, the
+ * lead WON, the job with its BOQ lines and requirements, the ADVANCE invoice for the ON_ACCEPT stage, and
+ * APPROVED → CONVERTED. Then, once each: the customer (SMS + email in their language, and the advance they are
+ * asked for), the salesperson and the author, every dispatcher (linking the job), and the manager who approved
+ * it (not when the system did).
  * @param {string} id
  * @param {{ note?: string, ip?: string|null, userAgent?: string|null }} answer
  */
 export async function acceptQuotation(id, answer = {}) {
   const q = await openForAnswer(id);
-  const plan = await jobPlanFor(q);
+  // The library, the take-off and the service are read before the transaction opens.
+  const plan = await handOffPlan(q);
   const summary = `Customer accepted ${label(q)} · ${npr(q.total)}`;
 
-  const job = await prisma.$transaction(async (tx) => {
+  const { job, advance } = await prisma.$transaction(async (tx) => {
     await claimAnswer(tx, q, 'APPROVED', answer);
     await recordEvent('quotation.customer_approved', {
       model: 'Quotation', recordId: q.id, before: { status: 'SENT' }, after: { status: 'APPROVED' },
       ...(answer.note ? { meta: { note: answer.note } } : {}),
     }, tx);
     if (q.leadId) await winLeadOnAcceptance(tx, q, summary);
-    // createJob asserts APPROVED → CONVERTED and marks it, guarded, inside this transaction.
-    return createJob({
-      ...plan, customerId: q.customerId, siteId: q.siteId, leadId: q.leadId, quotationId: q.id,
-    }, undefined, tx);
+    return handOff(tx, q, plan);
   }, { timeout: 20_000 });
 
   const vars = {
@@ -976,6 +946,8 @@ export async function acceptQuotation(id, answer = {}) {
     });
   }
 
+  if (advance) await announceAdvance(advance, q);
+
   const dispatchers = await userIdsWithRoles(['DISPATCHER']);
   await notifyUsers([
     ...salesRecipients(q),
@@ -985,7 +957,9 @@ export async function acceptQuotation(id, answer = {}) {
     type: 'quotation_accepted',
     templateKey: 'quotation_accepted_staff',
     title: `${q.customer.name} accepted ${label(q)}`,
-    body: `${npr(q.total)} · job ${job.number} is waiting to be scheduled`,
+    body: advance
+      ? `${npr(q.total)} · job ${job.number} waits for the advance (${npr(advance.total)}, invoice ${advance.number})`
+      : `${npr(q.total)} · job ${job.number} is waiting to be scheduled`,
     link: adminQuotationPath(q.id),
     vars,
     related: { model: 'Quotation', id: q.id },

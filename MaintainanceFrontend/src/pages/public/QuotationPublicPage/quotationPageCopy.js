@@ -2,7 +2,8 @@ import { QUOTATION_DOCUMENT_COPY } from '@/components/documents/quotationDocumen
 
 /**
  * Every word the customer's quotation page shows, in English and Nepali (Phase L4), so the page follows the
- * site's language and J1 has nothing left to extract. The document's own words (letterhead, rows, totals,
+ * site's language and J1 has nothing left to extract. Phase L6 added `advance` — "Pay the advance of Rs X by <date>"
+ * once an accepted quotation has raised its advance invoice — and `outcome.accepted.bodyAdvance`. The document's own words (letterhead, rows, totals,
  * schedule, contract, annex) live with it in `components/documents/quotationDocumentCopy.js` and are spread in.
  * Functions take the values they print (a formatted total, a job number, a phone).
  *
@@ -59,6 +60,7 @@ export const QUOTATION_PAGE_COPY = {
       accepted: {
         title: 'Thank you — quotation accepted',
         body: 'Our team will call you to schedule the work.',
+        bodyAdvance: 'Our team will call you to schedule the work once the advance is paid.',
         job: (number) => `Your job number is ${number}.`,
       },
       changes: {
@@ -88,6 +90,14 @@ export const QUOTATION_PAGE_COPY = {
         title: 'This quotation is not open for an answer',
         body: 'Please call us if you have a question about it.',
       },
+    },
+    advance: {
+      due: (amount, date) => `Pay the advance of ${amount} by ${date}`,
+      dueNoDate: (amount) => `Pay the advance of ${amount}`,
+      body: (number) => `We start scheduling the work once the advance is paid. Invoice ${number} shows the ways to pay.`,
+      pay: 'Pay the advance',
+      paid: 'Advance received — thank you',
+      paidBody: (number) => `We have recorded the payment on invoice ${number}. Our team will call you to schedule the work.`,
     },
     error: 'We could not record your answer. Please try again.',
   },
@@ -140,6 +150,7 @@ export const QUOTATION_PAGE_COPY = {
       accepted: {
         title: 'धन्यवाद — दरभाउपत्र स्वीकार भयो',
         body: 'काम मिलाउन हाम्रो टोलीले तपाईंलाई फोन गर्नेछ।',
+        bodyAdvance: 'अग्रिम भुक्तानी भएपछि काम मिलाउन हाम्रो टोलीले तपाईंलाई फोन गर्नेछ।',
         job: (number) => `तपाईंको कामको नम्बर ${number} हो।`,
       },
       changes: {
@@ -169,6 +180,14 @@ export const QUOTATION_PAGE_COPY = {
         title: 'यो दरभाउपत्रमा अहिले जवाफ दिन मिल्दैन',
         body: 'यसबारे केही सोध्नु छ भने हामीलाई फोन गर्नुहोस्।',
       },
+    },
+    advance: {
+      due: (amount, date) => `${date} भित्र ${amount} अग्रिम भुक्तानी गर्नुहोस्`,
+      dueNoDate: (amount) => `${amount} अग्रिम भुक्तानी गर्नुहोस्`,
+      body: (number) => `अग्रिम भुक्तानी भएपछि हामी काम मिलाउन सुरु गर्छौं। भुक्तानी गर्ने तरिका बिल ${number} मा छ।`,
+      pay: 'अग्रिम भुक्तानी गर्नुहोस्',
+      paid: 'अग्रिम भुक्तानी प्राप्त भयो — धन्यवाद',
+      paidBody: (number) => `बिल ${number} मा भुक्तानी दर्ता भयो। काम मिलाउन हाम्रो टोलीले तपाईंलाई फोन गर्नेछ।`,
     },
     error: 'तपाईंको जवाफ रेकर्ड गर्न सकिएन। कृपया फेरि प्रयास गर्नुहोस्।',
   },

@@ -9,6 +9,8 @@
 //   { sed -n '1,/^\/\/ ═══/p' docs/DATA-MODEL.prisma; cat MaintainanceBackend/prisma/schema.prisma; } \
 //     > /tmp/dm && mv /tmp/dm docs/DATA-MODEL.prisma
 //
+// Phase L6 (2026-09-28): Service.jobType, Job plan/advance fields, JobLine, JobRequirement, InvoiceKind and
+// Invoice.kind/jobId/paymentStageId — edited in by hand.
 // Phase L5 (2026-09-27): VisitAnswer, the Job visit fields, CustomerSite contact/landmark, InspectionTemplate,
 // SurveyReading.questionKey/flagged, SurveyItem.measurements, JobPhoto.area — edited in by hand.
 // Last regenerated 2026-09-16 (Phase F1: Role.MANAGER, the approval QuotationStatus values and the Quotation approval fields).
@@ -71,6 +73,7 @@ model User {
   submittedQuotes  Quotation[]      @relation("QuotationSubmitter")
   approvedQuotes   Quotation[]      @relation("QuotationApprover")
   createdJobs      Job[]            @relation("JobCreator")
+  advanceOverrides Job[]            @relation("JobAdvanceOverride")
   jobEvents        JobStatusEvent[]
   submittedSurveys SiteSurvey[]     @relation("SurveySubmitter")
   reviewedSurveys  SiteSurvey[]     @relation("SurveyReviewer")
@@ -270,6 +273,8 @@ model Service {
   priceFrom       Int?
   priceTo         Int?
   priceUnit       String?
+  /// What kind of job an accepted quotation for this service becomes (Phase L6); REPAIR until set.
+  jobType         JobType   @default(REPAIR)
   warrantyDays    Int?
   isFeatured      Boolean   @default(false)
   sortOrder       Int       @default(0)
@@ -835,6 +840,7 @@ model Trade {
   deletedAt DateTime?
 
   components RateCardComponent[]
+  requirements JobRequirement[]
 
   @@index([isActive, sortOrder])
 }
@@ -960,6 +966,7 @@ model QuotationPaymentStage {
   sortOrder   Int            @default(0)
 
   quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  invoice   Invoice?
 
   @@index([quotationId, sortOrder])
 }
@@ -1128,6 +1135,13 @@ model Job {
   customerConfirmedAt DateTime?
   /// The `visits:remind` SMS for the current window went (once — compare-and-swap on this column).
   visitReminderSentAt DateTime?
+  /// The work's planned length in days — the quotation's estimate (Phase L6). A schedule without an end uses it.
+  plannedDays         Float?
+  /// The ADVANCE invoice the job waits for (L-D3): until it is PAID (or overridden) it cannot be scheduled.
+  advanceInvoiceId      String?   @unique
+  advanceOverrideById   String?
+  advanceOverrideReason String?
+  advanceOverriddenAt   DateTime?
   createdById      String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -1138,6 +1152,11 @@ model Job {
   lead         Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
   quotation    Quotation?       @relation(fields: [quotationId], references: [id], onDelete: SetNull)
   createdBy    User?            @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  advanceInvoice    Invoice?     @relation("JobAdvanceInvoice", fields: [advanceInvoiceId], references: [id], onDelete: SetNull)
+  advanceOverrideBy User?        @relation("JobAdvanceOverride", fields: [advanceOverrideById], references: [id], onDelete: SetNull)
+  invoices          Invoice[]    @relation("JobInvoices")
+  lines             JobLine[]
+  requirements      JobRequirement[]
   parentJob    Job?             @relation("JobRework", fields: [parentJobId], references: [id], onDelete: SetNull)
   childJobs    Job[]            @relation("JobRework")
   tasks        JobTask[]
@@ -1171,6 +1190,69 @@ model JobTask {
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId, sortOrder])
+}
+
+/// Where a job line came from: the accepted quotation, or an accepted variation (Phase L7).
+enum JobLineSource {
+  QUOTATION
+  VARIATION
+}
+
+enum JobRequirementKind {
+  MATERIAL
+  LABOUR
+}
+
+/// The job's bill of quantities (Phase L6): the accepted quotation's non-optional rows, then variations (L7).
+/// progressPct and measuredQty are filled on site (L7) and at close-out (L8). One row per quotation row.
+model JobLine {
+  id              String          @id @default(cuid())
+  jobId           String
+  source          JobLineSource   @default(QUOTATION)
+  quotationItemId String?
+  /// The BOQ number (A.1) and section title the row had on the quotation.
+  number          String?
+  section         String?
+  kind            SurveyItemKind?
+  description     String
+  unit            String?
+  quotedQty       Float
+  /// Paisa per unit, as accepted.
+  rate            Int
+  measurements    Json?
+  measuredQty     Float?
+  progressPct     Float           @default(0)
+  isProvisional   Boolean         @default(false)
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, quotationItemId])
+  @@index([jobId, sortOrder])
+}
+
+/// What the job needs (Phase L6), from the take-off: material in its unit and packs, labour days by trade.
+/// Quantities only — no rate, no cost (L-D4).
+model JobRequirement {
+  id          String             @id @default(cuid())
+  jobId       String
+  kind        JobRequirementKind
+  materialId  String?
+  tradeId     String?
+  description String
+  unit        String?
+  qty         Float
+  packs       Int?
+  source      JobLineSource      @default(QUOTATION)
+  createdAt   DateTime           @default(now())
+
+  job      Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  material Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  trade    Trade?    @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+
+  @@index([jobId, kind])
 }
 
 model JobAssignment {
@@ -1437,8 +1519,9 @@ model Material {
   movements    StockMovement[]
   jobMaterials JobMaterial[]
   surveyItems  SurveyItem[]
-  recipeLines  RateCardComponent[]
-  quotationItems QuotationItem[]
+  recipeLines     RateCardComponent[]
+  quotationItems  QuotationItem[]
+  jobRequirements JobRequirement[]
 
   @@index([isActive, sortOrder])
 }
@@ -1487,11 +1570,25 @@ enum InvoiceStatus {
   VOID
 }
 
+/// What an invoice bills (Phase L6): an ordinary invoice, the advance on acceptance, a running (stage) bill
+/// or the final bill (L8).
+enum InvoiceKind {
+  STANDARD
+  ADVANCE
+  RUNNING
+  FINAL
+}
+
 model Invoice {
   id          String        @id @default(cuid())
   number      String        @unique
   customerId  String
   quotationId String?
+  kind        InvoiceKind   @default(STANDARD)
+  /// The job a stage bill belongs to (Phase L6).
+  jobId       String?
+  /// The payment-schedule stage it bills — once: unique.
+  paymentStageId String?    @unique
   status      InvoiceStatus @default(DRAFT)
   issuedAt    DateTime      @default(now())
   dueDate     DateTime?
@@ -1512,12 +1609,16 @@ model Invoice {
   deletedAt   DateTime?
 
   customer  Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  quotation Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
-  items     InvoiceItem[]
-  payments  Payment[]
+  quotation    Quotation?             @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  job          Job?                   @relation("JobInvoices", fields: [jobId], references: [id], onDelete: SetNull)
+  paymentStage QuotationPaymentStage? @relation(fields: [paymentStageId], references: [id], onDelete: SetNull)
+  advanceFor   Job?                   @relation("JobAdvanceInvoice")
+  items        InvoiceItem[]
+  payments     Payment[]
 
   @@index([status, dueDate])
   @@index([customerId])
+  @@index([jobId])
 }
 
 model InvoiceItem {

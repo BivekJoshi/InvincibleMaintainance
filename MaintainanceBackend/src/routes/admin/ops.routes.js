@@ -6,6 +6,7 @@ import { historyRoute } from './historyRoute.js';
 import { ok, created, noContent } from '../../utils/response.js';
 import { idParam, toPartial } from '../../shared/schemas/common.js';
 import * as jobs from '../../services/job.service.js';
+import { convertQuotationToJob, jobPlan } from '../../services/handoff.service.js';
 import * as materials from '../../services/material.service.js';
 import * as technicians from '../../services/technician.service.js';
 import * as s from '../../shared/schemas/ops.js';
@@ -32,11 +33,22 @@ router.get('/dispatch/unassigned', dispatch, validate({ query: s.unassignedQuery
   ok(res, items, meta);
 }));
 
+// A job for a quotation is its hand-off (Phase L6) — the same as convert-to-job; any other job is made as asked.
 router.post('/jobs', writeJobs, validate({ body: s.jobSchema }),
-  asyncHandler(async (req, res) => created(res, await jobs.createJob(req.body, req.user.id))));
+  asyncHandler(async (req, res) => created(res, req.body.quotationId
+    ? await convertQuotationToJob(req.body.quotationId, req.body, req.user.id)
+    : await jobs.createJob(req.body, req.user.id))));
 
 router.get('/jobs/:id', readJobs, validate({ params: idParam }),
-  asyncHandler(async (req, res) => ok(res, await jobs.getJob(req.params.id))));
+  asyncHandler(async (req, res) => ok(res, await jobs.getJobDetail(req.params.id))));
+
+// The Plan tab (Phase L6): the hand-off checklist — quantities only.
+router.get('/jobs/:id/plan', readJobs, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await jobPlan(req.params.id))));
+
+// L-D3: go ahead before the advance is paid — a manager's call, with the reason, audited.
+router.post('/jobs/:id/advance-override', requires('jobs:advance-override'), validate({ params: idParam, body: s.advanceOverrideSchema }),
+  asyncHandler(async (req, res) => ok(res, await jobs.overrideAdvance(req.params.id, req.body, req.user.id))));
 
 router.get('/jobs/:id/history', ...historyRoute('Job', 'jobs:history'));
 

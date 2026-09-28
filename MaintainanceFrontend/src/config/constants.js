@@ -308,6 +308,15 @@ export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 
 export const INVOICE_STATUS_LABELS = {
   DRAFT: 'Draft', SENT: 'Sent', PARTIAL: 'Part paid', PAID: 'Paid', OVERDUE: 'Overdue', VOID: 'Void',
 };
+/**
+ * What an invoice bills (Phase L6): STANDARD — work done (the default); ADVANCE — the ON_ACCEPT stage of a quotation's
+ * payment schedule, raised by the customer's Accept (it gates scheduling until paid); RUNNING and FINAL — later
+ * stages (L7–L8).
+ */
+export const INVOICE_KINDS = ['STANDARD', 'ADVANCE', 'RUNNING', 'FINAL'];
+export const INVOICE_KIND_LABELS = {
+  STANDARD: 'Standard', ADVANCE: 'Advance', RUNNING: 'Running bill', FINAL: 'Final bill',
+};
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'ESEWA', 'KHALTI', 'FONEPAY', 'CHEQUE'];
 export const PAYMENT_METHOD_LABELS = {
   CASH: 'Cash', BANK: 'Bank transfer', ESEWA: 'eSewa', KHALTI: 'Khalti', FONEPAY: 'Fonepay', CHEQUE: 'Cheque',

@@ -4,11 +4,16 @@ import { useAssignJobMutation, useGetDispatchTechniciansQuery } from '@/api/jobs
 import { FormDialog } from '@/components/common/FormDialog';
 import { jobAssignSchema } from '@/form/schemas/job.schema';
 import { technicianOption } from '@/config/admin/jobViews';
+import { advanceRefusal } from '@/helpers/handoff';
 import { toastSuccess } from '@/redux/slices/uiSlice';
+import { AdvanceNotice } from './AdvanceNotice';
 
 /**
  * Who works a job, without touching its window. Newly added technicians get an SMS and a
  * notification. (Scheduling can set the people too — this is for a change of crew.)
+ *
+ * Phase L6: assigning waits for the advance too — a held job says so above the form (`AdvanceNotice`), and a 422
+ * **ADVANCE_UNPAID** keeps the dialog open with the server's words and the invoice.
  *
  * @param {{ job: object|null, onOpenChange: (open: boolean) => void }} props
  */
@@ -17,7 +22,13 @@ export function AssignJobDialog({ job, onOpenChange }) {
   const [assign] = useAssignJobMutation();
   const { data: people } = useGetDispatchTechniciansQuery({ limit: 100 }, { skip: !job });
   const [values, setValues] = useState(null);
-  useEffect(() => setValues(null), [job?.id]);
+  const [refusal, setRefusal] = useState(null);
+  const [overridden, setOverridden] = useState(false);
+  useEffect(() => {
+    setValues(null);
+    setRefusal(null);
+    setOverridden(false);
+  }, [job?.id]);
 
   const defaultValues = useMemo(() => {
     const ids = [...(job?.assignments ?? [])].sort((a, b) => Number(b.isLead) - Number(a.isLead)).map((a) => a.technicianId);
@@ -39,12 +50,22 @@ export function AssignJobDialog({ job, onOpenChange }) {
   ];
 
   const submit = async (body) => {
-    await assign({
-      id: job.id,
-      technicianIds: body.technicianIds,
-      ...(body.leadTechnicianId && body.technicianIds.includes(body.leadTechnicianId) ? { leadTechnicianId: body.leadTechnicianId } : {}),
-      ...(body.note ? { note: body.note } : {}),
-    }).unwrap();
+    setRefusal(null);
+    try {
+      await assign({
+        id: job.id,
+        technicianIds: body.technicianIds,
+        ...(body.leadTechnicianId && body.technicianIds.includes(body.leadTechnicianId) ? { leadTechnicianId: body.leadTechnicianId } : {}),
+        ...(body.note ? { note: body.note } : {}),
+      }).unwrap();
+    } catch (err) {
+      const refused = advanceRefusal(err);
+      if (refused) {
+        setOverridden(false);
+        setRefusal(refused);
+      }
+      throw err;
+    }
     dispatch(toastSuccess(`${job.number} assigned`, 'Anyone new on it has been told.'));
   };
 
@@ -60,6 +81,10 @@ export function AssignJobDialog({ job, onOpenChange }) {
       onValuesChange={setValues}
       submitLabel="Save technicians"
       onSubmit={submit}
-    />
+    >
+      {job && !overridden ? (
+        <AdvanceNotice job={job} refusal={refusal} onOverridden={() => { setOverridden(true); setRefusal(null); }} />
+      ) : null}
+    </FormDialog>
   );
 }

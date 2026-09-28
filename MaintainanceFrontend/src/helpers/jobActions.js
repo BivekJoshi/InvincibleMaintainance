@@ -1,4 +1,5 @@
 import { JOB_TRANSITIONS } from '@/config/constants';
+import { ADVANCE_LOCK_REASON, awaitingAdvanceOf } from '@/helpers/handoff';
 
 /**
  * What may be done to a job now, and by whom — the single table the job detail's action bar
@@ -7,6 +8,10 @@ import { JOB_TRANSITIONS } from '@/config/constants';
  *
  * Status moves go through `PATCH /status` (`to`), except completion (`complete`, which takes a
  * sign-off) and verification (`verify`). Scheduling and assigning have their own endpoints.
+ *
+ * The advance gate (Phase L6): while the job waits for its advance (`helpers/handoff#awaitingAdvanceOf`), schedule,
+ * assign, every status move but hold and cancel, and complete stay on the bar, disabled with
+ * `ADVANCE_LOCK_REASON` — the API would answer 422 ADVANCE_UNPAID.
  *
  * @typedef {object} JobAction
  * @property {string} key       schedule | assign | status | complete | verify | publish | openCaseStudy | delete
@@ -40,30 +45,32 @@ export function jobActions(job, { can }) {
   const actions = [];
   const write = can('jobs:write');
   const dispatch = can('jobs:dispatch');
+  // The advance gate: these stay offered, but disabled with the reason, until the advance is paid or overridden.
+  const lock = awaitingAdvanceOf(job) ? { disabledReason: ADVANCE_LOCK_REASON } : {};
+  const needsPeople = people ? {} : { disabledReason: 'Assign a technician first' };
 
   if (dispatch && SCHEDULABLE.includes(status)) {
     actions.push({
       key: 'schedule',
       label: job.scheduledStart ? 'Reschedule' : 'Schedule',
       primary: status === 'DRAFT' || status === 'ON_HOLD' || !job.scheduledStart,
+      ...lock,
     });
   }
   if (dispatch && !CLOSED.includes(status) && !['EN_ROUTE', 'IN_PROGRESS'].includes(status)) {
-    actions.push({ key: 'assign', label: people ? 'Change technicians' : 'Assign technicians' });
+    actions.push({ key: 'assign', label: people ? 'Change technicians' : 'Assign technicians', ...lock });
   }
 
   if (write) {
     if (allowed(status, 'EN_ROUTE')) {
-      actions.push({
-        key: 'status', to: 'EN_ROUTE', label: 'Mark on the way',
-        ...(people ? {} : { disabledReason: 'Assign a technician first' }),
-      });
+      actions.push({ key: 'status', to: 'EN_ROUTE', label: 'Mark on the way', ...needsPeople, ...lock });
     }
     if (allowed(status, 'IN_PROGRESS') && status !== 'COMPLETED') {
       actions.push({
         key: 'status', to: 'IN_PROGRESS', label: status === 'ON_HOLD' ? 'Resume work' : 'Start work',
         primary: status === 'EN_ROUTE',
-        ...(people ? {} : { disabledReason: 'Assign a technician first' }),
+        ...needsPeople,
+        ...lock,
       });
     }
     if (allowed(status, 'COMPLETED')) {
@@ -71,11 +78,12 @@ export function jobActions(job, { can }) {
       actions.push({
         key: 'complete', label: 'Complete', primary: true,
         ...(open ? { disabledReason: `${open} checklist item${open === 1 ? ' is' : 's are'} still open` } : {}),
+        ...lock,
       });
     }
     if (allowed(status, 'VERIFIED')) actions.push({ key: 'verify', label: 'Verify', primary: true });
     if (status === 'COMPLETED') {
-      actions.push({ key: 'status', to: 'IN_PROGRESS', label: 'Reopen', note: true });
+      actions.push({ key: 'status', to: 'IN_PROGRESS', label: 'Reopen', note: true, ...lock });
     }
     if (allowed(status, 'ON_HOLD')) {
       actions.push({ key: 'status', to: 'ON_HOLD', label: 'Put on hold', note: true, noteRequired: true });
@@ -101,6 +109,9 @@ export function jobActions(job, { can }) {
 export function jobWaitingFor(job) {
   if (!job) return '';
   const people = job.assignments?.length ?? 0;
+  if (awaitingAdvanceOf(job) && ['DRAFT', 'SCHEDULED', 'ASSIGNED', 'ON_HOLD'].includes(job.status)) {
+    return 'Waiting for the customer’s advance';
+  }
   switch (job.status) {
     case 'DRAFT': return people ? 'Waiting for a date' : 'Waiting for a date and a technician';
     case 'SCHEDULED': return people ? 'Scheduled' : 'Scheduled — nobody is on it yet';

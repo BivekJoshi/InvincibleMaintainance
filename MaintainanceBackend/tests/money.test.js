@@ -241,3 +241,69 @@ describe('outstanding and rupeesText (Phase I)', () => {
     expect(rupeesText(null)).toBe('0.00');
   });
 });
+
+describe('stageDocument — a payment stage as an invoice (Phase L6)', () => {
+  it('bills the stage exactly: its own VAT, never VAT recomputed on the part', async () => {
+    const { documentTotals, paymentSchedule, stageDocument } = await import('../src/utils/money.js');
+    // A total where 13 % of each part rounds differently from the split of the whole's VAT.
+    let found = null;
+    for (let subtotal = 1001; subtotal < 5000 && !found; subtotal += 1) {
+      const t = documentTotals([{ qty: 1, rate: subtotal }], { vatRate: 13 });
+      const stages = paymentSchedule(t, [{ basisPoints: 3333 }, { basisPoints: 3333 }, { basisPoints: 3334 }]);
+      if (stages.some((st) => Math.round((st.taxable * 13) / 100) !== st.vat)) found = { t, stages };
+    }
+    expect(found).not.toBeNull();
+    const docs = found.stages.map((st) => stageDocument(st, { description: 'Stage', vatRate: 13 }));
+    docs.forEach((d, i) => {
+      expect(d.total).toBe(found.stages[i].total);
+      expect(d.vatAmount).toBe(found.stages[i].vat);
+      expect(d.lines).toEqual([{ description: 'Stage', unit: 'lump', qty: 1, rate: found.stages[i].taxable, amount: found.stages[i].taxable, sortOrder: 0 }]);
+    });
+    expect(docs.reduce((a, d) => a + d.total, 0)).toBe(found.t.total);
+    expect(docs.reduce((a, d) => a + d.vatAmount, 0)).toBe(found.t.vatAmount);
+  });
+
+  it('1,000 random schedules: the stage invoices add up to the quotation to the paisa', async () => {
+    const { documentTotals, paymentSchedule, stageDocument } = await import('../src/utils/money.js');
+    let seed = 42;
+    const rand = (n) => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed % n; };
+    for (let run = 0; run < 1000; run += 1) {
+      const lines = Array.from({ length: 1 + rand(6) }, () => ({ qty: (1 + rand(5000)) / 10, rate: 100 + rand(90_000) }));
+      const t = documentTotals(lines, { discount: rand(2) ? rand(50_000) : 0, vatApplied: rand(5) > 0, vatRate: 13 });
+      const n = 1 + rand(4);
+      const cuts = Array.from({ length: n - 1 }, () => 1 + rand(9998)).sort((a, b) => a - b);
+      const bps = [...cuts, 10000].map((c, i) => c - (i ? cuts[i - 1] : 0)).filter((b) => b > 0);
+      const docs = paymentSchedule(t, bps.map((basisPoints) => ({ basisPoints })))
+        .map((st) => stageDocument(st, { description: 'x', vatApplied: t.vatApplied }));
+      expect(docs.reduce((a, d) => a + d.total, 0), `run ${run}`).toBe(t.total);
+    }
+  });
+});
+
+describe('finalBillDocument — the closing bill after stage bills (Phase L6)', () => {
+  it('the contract less the advance: VAT reconciles, and advance + final = contract to the paisa', async () => {
+    const { documentTotals, finalBillDocument, paymentSchedule, stageDocument } = await import('../src/utils/money.js');
+    const lines = [
+      { description: 'Crystalline treatment', unit: 'sq.ft', qty: 210.5, rate: 22000 },
+      { description: 'Waterproof plaster', unit: 'sq.ft', qty: 210.5, rate: 9500 },
+      { description: 'Anti-fungal paint', unit: 'sq.ft', qty: 210.5, rate: 4500 },
+    ];
+    const contract = documentTotals(lines, { discount: 150_000, vatRate: 13 });
+    const [advance] = paymentSchedule(contract, [{ basisPoints: 5000 }, { basisPoints: 4000 }, { basisPoints: 1000 }]);
+    const advanceBill = stageDocument(advance, { description: 'Advance' });
+    const final = finalBillDocument(lines, [{ description: 'Less: advance', taxable: advance.taxable, vat: advance.vat }], { discount: 150_000, vatRate: 13 });
+    expect(advanceBill.total + final.total).toBe(contract.total);
+    expect(advanceBill.vatAmount + final.vatAmount).toBe(contract.vatAmount);
+    expect(final.total).toBe(final.subtotal - final.discount + final.vatAmount);
+    expect(final.lines.at(-1)).toMatchObject({ description: 'Less: advance', qty: 1, rate: -advance.taxable, amount: -advance.taxable });
+    expect(final.lines.reduce((a, l) => a + l.amount, 0)).toBe(final.subtotal);
+  });
+
+  it('with no earlier bill it is the contract itself', async () => {
+    const { documentTotals, finalBillDocument } = await import('../src/utils/money.js');
+    const lines = [{ description: 'Lump', qty: 1, rate: 1_234_567 }];
+    const a = finalBillDocument(lines, [], { discount: 1000 });
+    const b = documentTotals(lines, { discount: 1000 });
+    expect([a.subtotal, a.discount, a.vatAmount, a.total]).toEqual([b.subtotal, b.discount, b.vatAmount, b.total]);
+  });
+});

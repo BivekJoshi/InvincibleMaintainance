@@ -539,7 +539,14 @@ describe('quotations', () => {
         customerId: customer.id,
         items: [{ description: 'Terrace waterproofing', unit: 'sq.ft', qty: 400, rate: 180 }],
       }), 201).data;
-      await prisma.quotation.update({ where: { id: approved.id }, data: { status: 'APPROVED', sentAt: new Date(), decidedAt: new Date() } });
+      // Paid on completion: no advance, so the convert may date the job at once (the advance gate is 19-handoff's).
+      await prisma.quotation.update({
+        where: { id: approved.id },
+        data: {
+          status: 'APPROVED', sentAt: new Date(), decidedAt: new Date(),
+          stages: { deleteMany: {}, create: [{ label: 'On completion', basisPoints: 10000, trigger: 'ON_COMPLETION', sortOrder: 0 }] },
+        },
+      });
     });
 
     it('POST /admin/jobs refuses to convert a quotation nobody approved', async () => {

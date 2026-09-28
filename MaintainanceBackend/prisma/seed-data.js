@@ -93,6 +93,12 @@ export const SETTINGS = [
   { group: 'finance', key: 'job.advanceGate', label: 'Hold scheduling until the advance is paid', type: 'boolean', value: true, sortOrder: 15,
     hint: 'A job from an accepted quotation cannot be scheduled before its advance invoice is paid; a manager may override with a reason (Phase L6).' },
   { group: 'finance', key: 'finance.advanceDueDays', label: 'Advance invoices are due in (days)', type: 'number', value: 7, sortOrder: 16 },
+  // Where a customer pays the advance (Phase L6): printed in the advance_due SMS and email. Illustrative — set your own.
+  { group: 'finance', key: 'finance.bankAccount', label: 'Bank account for advances (shown to the customer)', type: 'string', sortOrder: 17,
+    value: 'Nabil Bank, Baneshwor · A/C 0101017500123 · Ghar Jatan Pvt. Ltd.',
+    hint: 'Bank, branch, account number and account name, as the customer should type them. Leave empty to leave it out.' },
+  { group: 'finance', key: 'finance.fonepayNumber', label: 'Fonepay number for advances', type: 'string', sortOrder: 18, value: '9801234567',
+    hint: 'The number or merchant ID a customer pays by Fonepay QR. Leave empty to leave it out.' },
   { group: 'finance', key: 'finance.invoiceTerms', label: 'Default invoice terms', type: 'richtext', sortOrder: 4,
     value: 'Payment is due within 15 days. Please quote the invoice number with your transfer.' },
 
@@ -505,6 +511,13 @@ export const MESSAGE_TEMPLATES = [
     body: 'Hi {{name}}, a reminder: {{surveyor}} visits tomorrow, {{date}}, {{window}} ({{number}}). Confirm or ask for another time: {{link}} - {{appName}}' },
   { key: 'visit_reminder', channel: 'sms', locale: 'ne',
     body: 'नमस्ते {{name}}, सम्झना: {{surveyor}} भोलि {{date}}, {{window}} मा आउनुहुनेछ ({{number}})। पुष्टि गर्न वा अर्को समय माग्न: {{link}} - {{appName}}' },
+  // Phase L6: the advance asked for on acceptance (L-D3); the job waits for it.
+  { key: 'advance_due', channel: 'sms', locale: 'en',
+    body: 'Thank you {{customerName}}. To start the work on {{quotation}}, please pay the advance of {{amount}} by {{dueDate}}: {{link}} {{payTo}} - {{appName}}' },
+  { key: 'advance_due', channel: 'sms', locale: 'ne',
+    body: 'धन्यवाद {{customerName}}। {{quotation}} को काम सुरु गर्न {{dueDate}} भित्र {{amount}} अग्रिम भुक्तानी गर्नुहोस्: {{link}} {{payTo}} - {{appName}}' },
+  { key: 'advance_due', channel: 'email', locale: 'en', subject: 'Advance for quotation {{quotation}} — {{amount}}',
+    body: 'Dear {{customerName}},\n\nThank you for accepting quotation {{quotation}}. To start the work, please pay the advance of {{amount}} by {{dueDate}}.\n\nInvoice {{number}}: {{link}}\n{{payTo}}\n\nWe will call you to fix the dates once it is in.\n\n{{appName}}' },
   { key: 'job_en_route', channel: 'sms', locale: 'en', body: 'Hi {{customerName}}, our technician is on the way for job {{number}}. - {{appName}}' },
   { key: 'job_en_route', channel: 'sms', locale: 'ne', body: 'नमस्ते {{customerName}}, काम {{number}} का लागि हाम्रो प्राविधिक बाटोमा हुनुहुन्छ। - {{appName}}' },
   { key: 'job_completed', channel: 'sms', locale: 'en', body: 'Job {{number}} is complete. Your work carries a {{warrantyDays}}-day warranty: {{warrantyLink}} - {{appName}}' },
@@ -581,3 +594,22 @@ export const INSPECTION_TEMPLATES = [
     ],
   },
 ];
+
+/**
+ * The job an accepted quotation for each service becomes (Phase L6, Service.jobType), by service name. A service
+ * not listed stays REPAIR.
+ */
+export const SERVICE_JOB_TYPES = {
+  'Modular Kitchen Design & Fitting': 'INSTALLATION',
+  'Interior Design & Furnishing': 'RENOVATION',
+  'House Renovation & Remodelling': 'RENOVATION',
+  'Pre-Engineered Steel Buildings': 'INSTALLATION',
+  'Plastering & Wall Finishing': 'RENOVATION',
+  'Tile & Marble Laying': 'RENOVATION',
+  'Painting & Texture Work': 'RENOVATION',
+  'False Ceiling Installation': 'INSTALLATION',
+  'Aluminium & uPVC Windows': 'INSTALLATION',
+  'Grill & Railing Fabrication': 'INSTALLATION',
+  'Boundary Wall & Gate Work': 'RENOVATION',
+  'Demolition & Debris Removal': 'RENOVATION',
+};

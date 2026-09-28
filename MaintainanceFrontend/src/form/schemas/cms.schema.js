@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { rupees } from './fields';
-import { UNITS } from '@/config/constants';
+import { JOB_TYPES, UNITS } from '@/config/constants';
 
 /**
  * Mirrors MaintainanceBackend/src/shared/schemas/cms.js, one schema per CMS resource.
@@ -73,6 +73,8 @@ export const serviceSchema = z.object({
   icon: z.string().trim().max(60).optional(),
   imageId: optionalImage,
   type: z.enum(['standard', 'other_civil']).default('standard'),
+  // Phase L6: what an accepted quotation for the service becomes (JobType), REPAIR until set.
+  jobType: z.enum(JOB_TYPES).default('REPAIR'),
   priceFrom: optionalRupees,
   priceTo: optionalRupees,
   priceUnit: unit.optional(),

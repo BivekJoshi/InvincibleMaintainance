@@ -14,10 +14,10 @@ import { costWall } from '../../middleware/costWall.js';
 import * as rateLibrary from '../../services/rateLibrary.service.js';
 import { quotationTerms } from '../../services/quotationTerms.service.js';
 import { exportQuotationXlsx } from '../../services/quotationExport.service.js';
+import { convertQuotationToJob } from '../../services/handoff.service.js';
 import { can } from '../../shared/permissions.js';
 import { recordEvent } from '../../services/audit.service.js';
 import * as s from '../../shared/schemas/crm.js';
-import * as jobs from '../../services/job.service.js';
 import { quotationToJobSchema } from '../../shared/schemas/ops.js';
 
 const router = Router();
@@ -202,7 +202,7 @@ router.post('/quotations/:id/revise', writeQ, validate({ params: idParam }),
 // that, and refuses one that already has its job.
 router.post('/quotations/:id/convert-to-job', requires('jobs:write'),
   validate({ params: idParam, body: quotationToJobSchema }),
-  asyncHandler(async (req, res) => created(res, await jobs.createJobFromQuotation(req.params.id, req.body, req.user.id))));
+  asyncHandler(async (req, res) => created(res, await convertQuotationToJob(req.params.id, req.body, req.user.id))));
 router.delete('/quotations/:id', writeQ, validate({ params: idParam }),
   asyncHandler(async (req, res) => { await quotations.deleteQuotation(req.params.id); noContent(res); }));
 

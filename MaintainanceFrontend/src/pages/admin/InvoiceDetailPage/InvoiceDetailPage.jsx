@@ -10,17 +10,28 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { RecordHistory } from '@/components/common/RecordHistory';
 import { InvoiceDocument } from '@/components/documents/InvoiceDocument';
 import { InvoiceLinkCard } from '@/components/finance/InvoiceLinkCard';
+import { InvoiceKindBadge } from '@/components/finance/InvoiceKindBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageTransition } from '@/three/motion/motionKit';
 import { INVOICE_STATUS_LABELS } from '@/config/constants';
-import { canEditInvoice, invoiceActions } from '@/helpers/finance';
+import { canEditInvoice, invoiceActions, invoiceStageLine } from '@/helpers/finance';
 import { formatBalance, formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 import { InvoiceEditForm } from './sections/InvoiceEditForm';
 import { InvoicePaymentsTab } from './sections/InvoicePaymentsTab';
+
+/**
+ * The jobs an invoice bills: the lines' `jobs`, and (Phase L6) the job an advance or a stage bill belongs to — `job`,
+ * which has no lines of its own on that job — once each.
+ */
+const jobsOf = (invoice) => {
+  const jobs = [...(invoice.jobs ?? [])];
+  if (invoice.job && !jobs.some((j) => j.id === invoice.job.id)) jobs.unshift(invoice.job);
+  return jobs;
+};
 
 const ACTION_LOOK = {
   send: { icon: Send },
@@ -35,6 +46,11 @@ const ACTION_LOOK = {
  * INVOICE_LOCKED is told in words), **Send** (then the customer's link, copy and WhatsApp), **Record payment**
  * (rupees, no more than the balance), **Void** (why), the payments with **Void payment** (voided ones struck
  * through), **History** (`invoices:history`) and **Print**. Every figure is the server's.
+ *
+ * Phase L6: a stage or closing bill's draft edits only its due date, note and terms — its lines, discount and VAT are
+ * locked (`helpers/finance#invoiceLinesLocked`, `sections/InvoiceEditForm`). An advance invoice wears **Advance** by its
+ * status, links its job (`job`) and names the payment stage it
+ * bills (`helpers/finance#invoiceStageLine`: "Advance — on acceptance (50%)"); recording its payment in full lifts the job's advance gate.
  */
 export default function InvoiceDetailPage() {
   const { id } = useParams();
@@ -76,6 +92,7 @@ export default function InvoiceDetailPage() {
             <span>Invoice</span>
             <span aria-hidden>·</span>
             <span data-testid="invoice-status">{INVOICE_STATUS_LABELS[invoice.status] ?? invoice.status}</span>
+            <InvoiceKindBadge kind={invoice.kind} />
           </>
         )}
         title={invoice.number}
@@ -89,9 +106,12 @@ export default function InvoiceDetailPage() {
                 <Phone className="h-4 w-4 text-muted-foreground" aria-hidden /> {invoice.customer.phone}
               </a>
             ) : null}
-            {(invoice.jobs ?? []).map((job) => (
+            {jobsOf(invoice).map((job) => (
               <Link key={job.id} to={`/admin/jobs/${job.id}`} className="font-mono text-xs hover:text-primary hover:underline" title={job.title}>{job.number}</Link>
             ))}
+            {invoiceStageLine(invoice) ? (
+              <span data-testid="invoice-stage" className="text-xs">{invoiceStageLine(invoice)}</span>
+            ) : null}
             {invoice.quotation ? (
               <Link to={`/admin/quotations/${invoice.quotation.id}`} className="font-mono text-xs hover:text-primary hover:underline">{invoice.quotation.number}</Link>
             ) : null}

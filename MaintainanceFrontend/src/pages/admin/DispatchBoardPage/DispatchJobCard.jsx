@@ -6,8 +6,10 @@ import {
   ScanSearch, ShieldCheck, Wrench,
 } from 'lucide-react';
 import { PriorityBadge } from '@/components/ui/badge';
+import { AwaitingAdvanceChip } from '@/components/jobs/AwaitingAdvanceChip';
 import { JOB_STATUS_LABELS, JOB_TYPE_LABELS } from '@/config/constants';
 import { jobToneStyle, visitFlag, windowLabel } from '@/helpers/dispatchBoard';
+import { awaitingAdvanceOf } from '@/helpers/handoff';
 import { cn } from '@/helpers/utils';
 
 /** Statuses a card can still be moved from; work under way stays where it is. */
@@ -107,6 +109,7 @@ export const JobCardFace = forwardRef(function JobCardFace({ job, handle, action
           </span>
         )}
         <PriorityBadge priority={job.priority} />
+        <AwaitingAdvanceChip job={job} className="px-1.5 py-px text-[11px]" />
         {clash ? (
           <span className="inline-flex items-center gap-0.5 font-semibold text-destructive"><AlertTriangle className="h-3 w-3" aria-hidden /> Clash</span>
         ) : null}
@@ -127,18 +130,24 @@ const startsOnControl = (event) => Boolean(event.target.closest('a, button'));
  * "Schedule…" opens the same move as a dialog (the screen-reader path). Work already under way
  * is not draggable.
  *
+ * Phase L6: a job waiting for its advance wears "Awaiting advance" and cannot be dragged — the API would refuse the
+ * drop (422 ADVANCE_UNPAID). Its "Schedule…" still opens the dialog, which says why and links the invoice (and offers
+ * the override to those who may).
+ *
  * @param {{ job: object, laneId?: string|null, clash?: boolean, compact?: boolean, pending?: boolean,
  *   onSchedule: (job: object) => void }} props
  */
 export function DispatchJobCard({ job, laneId = null, clash, compact, pending, onSchedule }) {
   const movable = MOVABLE.includes(job.status);
+  // Held by its advance: the dialog is the way in, and it explains the lock.
+  const draggable = movable && !awaitingAdvanceOf(job);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${laneId ?? 'queue'}:${job.id}`,
     data: { job, laneId },
-    disabled: !movable || pending,
+    disabled: !draggable || pending,
   });
 
-  const handle = movable ? (
+  const handle = draggable ? (
     <button
       type="button"
       className="-mr-0.5 cursor-grab touch-none rounded p-0.5 text-muted-foreground/60 transition-opacity hover:bg-muted hover:text-foreground active:cursor-grabbing motion-reduce:transition-none"
@@ -162,7 +171,7 @@ export function DispatchJobCard({ job, laneId = null, clash, compact, pending, o
     </button>
   ) : null;
 
-  const onPointerDown = movable && !pending && listeners?.onPointerDown
+  const onPointerDown = draggable && !pending && listeners?.onPointerDown
     ? (event) => { if (!startsOnControl(event)) listeners.onPointerDown(event); }
     : undefined;
 
@@ -177,7 +186,7 @@ export function DispatchJobCard({ job, laneId = null, clash, compact, pending, o
       dragging={isDragging}
       onPointerDown={onPointerDown}
       className={cn(
-        movable && !pending && 'cursor-grab active:cursor-grabbing',
+        draggable && !pending && 'cursor-grab active:cursor-grabbing',
         pending && 'animate-pulse motion-reduce:animate-none',
       )}
       aria-busy={pending || undefined}

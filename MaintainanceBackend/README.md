@@ -96,6 +96,12 @@ with an open claim for the claims queue, an AMC contract due for renewal within 
 SMS provider refused. Aftercare routes now check capabilities (`warranties:*`, `amc:*`, `reminders:*`) instead of
 role lists — the same access as before (see the table above). Every report downloads as CSV with `?format=csv`.
 
+Phase L6 adds the **won → hand-off** demo: two BOQ quotations accepted through the real Accept — Rabin Maharjan's
+job waits for its advance (the gate holds it), Sabina Shakya's advance is paid (Fonepay) and her job is ready to
+schedule. Services carry a job type (renovation, installation…). New settings `finance.bankAccount` and
+`finance.fonepayNumber` (illustrative values — set your own) print in the new **`advance_due`** SMS (en/ne) and
+email the customer gets on accepting.
+
 **Staff accounts.** An admin never sets a password. A user created from the Users screen gets a 72-hour
 "choose your password" email; a forgotten password is the normal reset link, which an admin can also send.
 Both links open `<PUBLIC_WEB_ORIGIN>/reset-password`. With no `SMTP_HOST`, the email — link included — is
@@ -195,7 +201,10 @@ warranty and opens the job for invoicing. A quotation is never sent without **in
 SALES submits it, a MANAGER or ADMIN who did not write it approves it (or it auto-approves below
 `quotation.autoApproveBelow`), and only then can it be sent. On the link the customer can Accept, Ask for
 changes or Decline; a change request loops into a revision — a new version that is approved again — and
-an acceptance converts the quotation, wins the lead and creates the job in one transaction.
+an acceptance converts the quotation, wins the lead and creates the job in one transaction — since Phase L6 with
+the accepted BOQ as its lines, the take-off as its requirements and, when the payment schedule has an advance, the
+ADVANCE invoice. **The job cannot be scheduled, assigned or started until that advance is paid** (422
+`ADVANCE_UNPAID`); a manager may override, with a reason, audited. `job.advanceGate` switches the gate off.
 
 ---
 

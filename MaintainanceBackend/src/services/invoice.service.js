@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { AppError, notFound, badRequest, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
-import { documentTotals, toPaisa, toRupees, formatNpr, outstanding, sum } from '../utils/money.js';
+import { documentTotals, finalBillDocument, stageDocument, toPaisa, toRupees, formatNpr, outstanding, sum } from '../utils/money.js';
 import { nextNumber } from '../utils/numbering.js';
 import { publicToken } from '../utils/tokens.js';
 import { INVOICE_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
@@ -10,7 +10,7 @@ import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
 import { addDays, kathmanduDayRange, local } from '../utils/dates.js';
 import { recordEvent } from './audit.service.js';
-import { webUrl } from '../utils/links.js';
+import { adminJobPath, webUrl } from '../utils/links.js';
 import { makeCrud } from './crud.service.js';
 import { resolveMediaMap, uploadFiles } from './media.service.js';
 
@@ -19,6 +19,9 @@ const INCLUDE = {
   items: { orderBy: { sortOrder: 'asc' } },
   payments: { orderBy: { receivedAt: 'desc' } },
   quotation: { select: { id: true, number: true } },
+  // A stage bill's job and stage (Phase L6).
+  job: { select: { id: true, number: true } },
+  paymentStage: { select: { id: true, label: true, basisPoints: true, trigger: true } },
 };
 
 /** The customer's invoice page. */
@@ -62,6 +65,7 @@ export async function listInvoices(query) {
   const issued = kathmanduDayRange(query.from, query.to);
   const base = {
     deletedAt: null,
+    ...(query.kind ? { kind: query.kind } : {}),
     ...(query.customerId ? { customerId: query.customerId } : {}),
     ...(query.overdueOnly ? { status: { in: ['SENT', 'PARTIAL', 'OVERDUE'] }, dueDate: { lt: new Date() } } : {}),
     ...(issued ? { issuedAt: issued } : {}),
@@ -105,8 +109,9 @@ export async function getInvoice(id) {
  * @param {{ description: string, unit?: string, qty: number, rate: number, jobId?: string }[]} items rate in paisa
  * @param {{ discount?: number, vatApplied?: boolean, vatRate: number }} opts discount in paisa
  */
-async function insertInvoice(tx, header, items, { discount = 0, vatApplied = true, vatRate }) {
-  const totals = documentTotals(
+async function insertInvoice(tx, header, items, { discount = 0, vatApplied = true, vatRate }, presetTotals) {
+  // A closing bill after stage bills (Phase L6) comes with its totals worked out by money.js#finalBillDocument.
+  const totals = presetTotals ?? documentTotals(
     items.map((i, idx) => ({ ...i, qty: Number(i.qty), sortOrder: i.sortOrder ?? idx })),
     { discount, vatApplied, vatRate },
   );
@@ -125,6 +130,42 @@ async function insertInvoice(tx, header, items, { discount = 0, vatApplied = tru
     model: 'Invoice',
     recordId: invoice.id,
     after: { number, status: invoice.status, total: invoice.total, customerId: invoice.customerId, quotationId: invoice.quotationId },
+  }, tx);
+  return invoice;
+}
+
+/**
+ * One payment-schedule stage as an invoice, inside the caller's transaction (Phase L6: the ADVANCE on
+ * acceptance; L8: RUNNING bills). Its totals are the stage's — `money.js#stageDocument`, never VAT worked out
+ * again — so the stage bills add up to the quotation to the paisa. `paymentStageId` is unique: a stage is
+ * billed once, whatever replays. Sent at once (it has a public link) unless `status` says DRAFT.
+ *
+ * @param {import('@prisma/client').Prisma.TransactionClient} tx
+ * @param {{ kind: 'ADVANCE'|'RUNNING', quotation: object, stage: object, jobId: string, dueDate: Date, status?: 'SENT'|'DRAFT' }} opts
+ *   `stage` is a `paymentSchedule` stage with its stored id and label
+ */
+export async function createStageInvoice(tx, { kind, quotation: q, stage, jobId, dueDate, status = 'SENT' }) {
+  const share = `${stage.basisPoints / 100}%`;
+  const totals = stageDocument(stage, {
+    description: `${stage.label} — ${share} of quotation ${q.number} v${q.version}`, vatApplied: q.vatApplied, vatRate: q.vatRate,
+  });
+  const number = await nextNumber(tx, 'INV');
+  const sent = status === 'SENT';
+  const invoice = await tx.invoice.create({
+    data: {
+      number, kind, status, customerId: q.customerId, quotationId: q.id, jobId, paymentStageId: stage.id, dueDate,
+      subtotal: totals.subtotal, discount: 0, vatApplied: totals.vatApplied, vatRate: totals.vatRate,
+      vatAmount: totals.vatAmount, total: totals.total,
+      note: `${stage.label} (${share}) of quotation ${q.number}`,
+      ...(sent ? { sentAt: new Date(), publicToken: publicToken() } : {}),
+      items: { create: totals.lines.map((l) => ({ ...l, jobId })) },
+    },
+    include: INCLUDE,
+  });
+  await recordEvent('invoice.created', {
+    model: 'Invoice', recordId: invoice.id,
+    after: { number, kind, status, total: invoice.total, customerId: invoice.customerId, quotationId: q.id },
+    meta: { jobId, paymentStageId: stage.id },
   }, tx);
   return invoice;
 }
@@ -210,16 +251,33 @@ export async function createFromJob(jobId, opts = {}) {
     : await actualLines(job, opts);
 
   const [vatRate, dueDate] = await Promise.all([currentVatRate(), opts.dueDate ?? defaultDueDate()]);
-  const header = { customerId: job.customerId, quotationId: job.quotationId ?? null, dueDate, note: `Invoice for job ${job.number}` };
+  const discount = opts.discount != null ? toPaisa(opts.discount) : (quote?.discount ?? 0);
+  const vatApplied = opts.vatApplied ?? quote?.vatApplied ?? true;
+
+  // Billed in stages (Phase L6): the advance (and, from L8, running bills) already asked for part of the
+  // quotation, so this closing bill is the quotation less each of them — never the whole again.
+  const stageBills = quote
+    ? await prisma.invoice.findMany({
+      where: { jobId, kind: { in: ['ADVANCE', 'RUNNING'] }, deletedAt: null, status: { notIn: ['DRAFT', 'VOID'] } },
+      orderBy: { issuedAt: 'asc' },
+    })
+    : [];
+  const final = stageBills.length
+    ? finalBillDocument(items.map((i, idx) => ({ ...i, sortOrder: idx })), stageBills.map((b) => ({
+      description: `Less: ${b.kind === 'ADVANCE' ? 'advance' : 'running bill'} ${b.number}`,
+      taxable: b.subtotal - b.discount, vat: b.vatAmount,
+    })), { discount, vatApplied, vatRate: quote.vatRate })
+    : null;
+
+  const header = {
+    customerId: job.customerId, quotationId: job.quotationId ?? null, jobId, dueDate, note: `Invoice for job ${job.number}`,
+    ...(final ? { kind: 'FINAL' } : {}),
+  };
   return prisma.$transaction(async (tx) => {
     // Claimed first, so two accountants pressing at once get one invoice.
     const { count } = await tx.job.updateMany({ where: { id: jobId, invoicedAt: null }, data: { invoicedAt: new Date() } });
     if (!count) throw unprocessable('This job has already been invoiced');
-    return insertInvoice(tx, header, items, {
-      discount: opts.discount != null ? toPaisa(opts.discount) : (quote?.discount ?? 0),
-      vatApplied: opts.vatApplied ?? quote?.vatApplied ?? true,
-      vatRate,
-    });
+    return insertInvoice(tx, header, items, { discount, vatApplied, vatRate }, final ? { ...final, lines: final.lines.map((l) => ({ ...l, jobId })) } : undefined);
   });
 }
 
@@ -235,6 +293,13 @@ export async function updateInvoice(id, input) {
   }
 
   const { items, discount, vatApplied, ...rest } = input;
+  // A stage or closing bill's lines are the quotation's and the stage bills' (Phase L6): its dates, note and terms
+  // may change while it is a draft, its money may not — void it and bill again instead.
+  if (existing.kind !== 'STANDARD' && (items || discount !== undefined || vatApplied !== undefined)) {
+    throw new AppError(422, 'INVOICE_LINES_LOCKED',
+      `The lines of ${existing.kind.toLowerCase()} invoice ${existing.number} come from the quotation and its stage bills. `
+      + 'Edit the due date, note or terms; to change the money, void it and invoice the job again.');
+  }
   if (!items && discount === undefined && vatApplied === undefined) {
     return getInvoice((await prisma.invoice.update({ where: { id }, data: rest })).id);
   }
@@ -316,7 +381,8 @@ export async function recordPayment(invoiceId, input, userId) {
     throw badRequest(`Payment exceeds the outstanding balance of ${formatNpr(balance)}`);
   }
 
-  return prisma.$transaction(async (tx) => {
+  const paidAfter = inv.paidAmount + amount;
+  const payment = await prisma.$transaction(async (tx) => {
     const payment = await tx.payment.create({
       data: {
         invoiceId, amount, method: input.method, reference: input.reference ?? null,
@@ -335,6 +401,20 @@ export async function recordPayment(invoiceId, input, userId) {
       meta: { invoiceStatus: deriveStatus(inv, paidAmount), paidAmount },
     }, tx);
     return payment;
+  });
+  if (inv.kind === 'ADVANCE' && deriveStatus(inv, paidAfter) === 'PAID') await advancePaid(inv);
+  return payment;
+}
+
+/** The advance is in (L-D3): the job it held back can be scheduled — the dispatchers are told. */
+async function advancePaid(inv) {
+  const job = await prisma.job.findFirst({ where: { advanceInvoiceId: inv.id, deletedAt: null }, select: { id: true, number: true, title: true } });
+  if (!job) return;
+  await notifyRoles(['DISPATCHER'], {
+    type: 'advance_paid',
+    title: `Advance paid — ${job.number} is ready to schedule`,
+    body: `${inv.customer.name} · ${formatNpr(inv.total)} · ${job.title}`,
+    link: adminJobPath(job.id),
   });
 }
 
@@ -419,6 +499,8 @@ export async function getByPublicToken(token) {
       items: { orderBy: { sortOrder: 'asc' } },
       // Voided payments stay visible to the customer, marked, so the history never changes silently.
       payments: { select: { amount: true, method: true, receivedAt: true, voidedAt: true }, orderBy: { receivedAt: 'asc' } },
+      // "Advance — 50 % on acceptance" (Phase L6).
+      paymentStage: { select: { label: true, basisPoints: true, trigger: true } },
     },
   });
   if (!inv) throw notFound('Invoice');

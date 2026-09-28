@@ -96,20 +96,40 @@ POST /public/quotations/:token/decide decisionLimiter (20 per IP per 15 min) · 
                                         422 QUOTATION_REPLACED  a newer version superseded it
                                         422 QUOTATION_NOT_OPEN  any other status
                                       -> 200 the public view above.
-                                      approve — ONE transaction: SENT → APPROVED → CONVERTED, the lead → WON
-                                        through the state machine (NEW via CONTACTED; the timeline entry reads
-                                        "Customer accepted QT-… vN · NPR …"; a lead already WON or LOST keeps its
-                                        status and gets a note — the lead never fails the acceptance), and one
-                                        job: DRAFT, unscheduled, unassigned, type REPAIR, titled
-                                        "<service> — <number>" (the survey's service, else the lead's, else the
-                                        first line), the service's job-template checklist, priority from the
-                                        survey's urgency. The answer is claimed with a guarded update, so a
-                                        double tap creates exactly one job. Response adds job { id, number }.
+                                      approve — ONE transaction, the hand-off (Phase L6, handoff.service.js):
+                                        1. SENT → APPROVED, claimed with a guarded update (a double tap or a
+                                           replay claims nothing: 422, and nothing below happens twice);
+                                        2. the lead → WON through the state machine (NEW via CONTACTED; the
+                                           timeline entry reads "Customer accepted QT-… vN · NPR …"; a lead
+                                           already WON or LOST keeps its status and gets a note);
+                                        3. one job: DRAFT, unscheduled, unassigned, typed from the service's
+                                           jobType (the survey's service, else the lead's; REPAIR without
+                                           one), plannedDays = the quotation's estimatedDays, titled
+                                           "<service> — <number>", the service's job-template checklist,
+                                           priority from the survey's urgency — which claims APPROVED →
+                                           CONVERTED (guarded) as it is made;
+                                        4. JobLines from the non-optional ITEM rows (number, section, kind,
+                                           quotedQty, rate, measurements, provisional) — unique per row;
+                                        5. JobRequirements from the take-off: materials (qty, packs) and labour
+                                           days by trade — quantities, no rates;
+                                        6. when the payment schedule has an ON_ACCEPT stage: the ADVANCE invoice
+                                           — its total the stage's to the paisa (the stage's own VAT,
+                                           money.js#stageDocument), SENT with a public link, due in
+                                           finance.advanceDueDays (7), paymentStageId unique — and
+                                           job.advanceInvoiceId (unique). No ON_ACCEPT stage: no invoice, no gate.
+                                        Library, template and take-off reads happen before the transaction.
+                                        Response adds job { id, number } and advance { number, total, balance,
+                                        dueDate, status, url } | null (also on GET once accepted).
                                         Then, once each: the customer (SMS quotation_accepted, and email when on
                                         file, in their preferredLocale), the lead's salesperson and the
                                         quotation's author (in-app + email), every active DISPATCHER (in-app +
                                         email, linking /admin/jobs/:id) and the approving manager (in-app;
                                         nobody when it was auto-approved). Notification type quotation_accepted.
+                                        With an advance, the customer is also sent advance_due — SMS in their
+                                        language ({{customerName}} {{quotation}} {{amount}} (formatNpr)
+                                        {{dueDate}} {{link}} {{payTo}} — the finance.bankAccount and
+                                        finance.fonepayNumber settings, labelled in their language), and email
+                                        when on file — and the dispatchers read "waits for the advance".
                                       request_changes — SENT → CHANGES_REQUESTED, decisionNote = the message, a
                                         lead timeline note "Customer asked for changes to QT-… vN: …" (the lead
                                         keeps its status); the salesperson and author get in-app + email
@@ -142,7 +162,8 @@ POST /public/visits/:token/respond    visitLimiter (10 per IP per 15 min) · { a
                                       /admin/jobs/:id). 422 VISIT_CLOSED once canAnswer is false. A new window
                                       (POST /admin/jobs/:id/schedule) clears the answer.
 GET  /public/invoices/:token          customer views an invoice (read-only; paid offline) — with `balance`, the
-                                      office's figure (Phase I)
+                                      office's figure (Phase I), and `kind` with paymentStage { label, basisPoints,
+                                      trigger } | null — "Advance — on acceptance (50 %)" (Phase L6)
                                       payments[] include voided ones with voidedAt set (shown struck
                                       through); paidAmount already excludes them
 GET  /public/warranties/:token
@@ -213,7 +234,8 @@ A slug derived from a title (`slugFrom`) keeps Devanagari as-is, vowel signs and
 ```
 /admin/hero-slides
 /admin/service-categories
-/admin/services
+/admin/services                 + jobType (Phase L6: INSPECTION|REPAIR|INSTALLATION|RENOVATION|AMC_VISIT|WARRANTY,
+                                  default REPAIR) — the job an accepted quotation for the service becomes
 /admin/projects                 + POST /:id/images { mediaId, caption?, sortOrder? } -> 201 the image,
                                   PATCH /:id/images/reorder { items: [{ id, sortOrder }] } -> 204,
                                   DELETE /:id/images/:imageId -> 204 (400 when the image is not this project's)
@@ -633,14 +655,17 @@ POST   /admin/quotations/:id/revise     quotations:write · from SENT, CHANGES_R
                                     which closes its link (its GET shows replaced once the new version is
                                     sent). Events quotation.revised (new) + quotation.superseded (parent).
                                     The new version is submitted and approved again.
-POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only — quotations the customer
-                                    approved before Phase F; since then acceptance creates the job itself.
-                                    CONVERTED (a job exists) is 422 INVALID_TRANSITION, so it never makes a
-                                    second job.
-                                    { type?, title?, description?, priority?, scheduledStart?,
-                                      scheduledEnd?, templateId?, technicianIds?, leadTechnicianId? }
-                                    -> 201 job. Customer, site and lead come from the quotation, which
-                                    becomes CONVERTED. SALES can win the work but not schedule it.
+POST   /admin/quotations/:id/convert-to-job      jobs:write · APPROVED only — a quotation the customer
+                                    accepted by phone. The same hand-off as the customer's Accept (steps 2–6
+                                    above; Phase L6): the lead is WON too, the lines, requirements and the
+                                    advance are made. CONVERTED (a job exists) is 422 INVALID_TRANSITION, so
+                                    it never makes a second job.
+                                    { type? (default the service's jobType), title?, description?, priority?,
+                                      scheduledStart?, scheduledEnd?, templateId?, technicianIds?,
+                                      leadTechnicianId? }
+                                    -> 201 the job (as GET /admin/jobs/:id). While an advance will be due, a
+                                    convert that dates or crews the job is 422 ADVANCE_UNPAID before anything
+                                    is written. SALES can win the work but not schedule it.
 ```
 
 ### Record history
@@ -743,17 +768,47 @@ GET    /admin/jobs                  ?page&limit&q&status&type&priority&technicia
                                     (a status filter narrows it further)
                                     sort: createdAt|scheduledStart|number|priority|status|updatedAt, "-" for desc
                                     anything else is 400 BAD_REQUEST
-POST   /admin/jobs                  a quotationId must belong to the customer and be APPROVED
-                                    (it becomes CONVERTED); a templateId pulls its checklist
+POST   /admin/jobs                  a templateId pulls its checklist; type defaults to REPAIR. With a
+                                    quotationId it is the quotation's hand-off, as convert-to-job (Phase L6):
+                                    the quotation must be the customer's (400) and APPROVED (422)
 GET    /admin/jobs/:id              + lead, quotation (with status), survey { id, number, status },
                                     project { id, title, isActive } (its case study), parentJob, childJobs,
                                     createdBy, tasks, photos, timeLogs, materials, events (newest first), warranty
+                                    Phase L6: plannedDays; lines [{ id, source QUOTATION|VARIATION,
+                                    quotationItemId, number, section, kind, description, unit, quotedQty, rate,
+                                    measurements, measuredQty, progressPct, isProvisional, sortOrder }];
+                                    requirements [{ id, kind MATERIAL|LABOUR, materialId, tradeId, description,
+                                    unit, qty, packs, source }] (no rates); advance { required, gateOn,
+                                    invoice { id, number, status, total, paidAmount, balance, dueDate,
+                                    publicUrl } | null, paid, overridden, override { by { id, name }, reason,
+                                    at } | null, awaitingAdvance }
+GET    /admin/jobs/:id/plan         jobs:read · the Plan tab (Phase L6) — quantities only: { job { id, number,
+                                    plannedDays, scheduledStart, scheduledEnd }, advance (as above), sections
+                                    [{ title, lines [{ id, number, description, unit, quotedQty,
+                                    isProvisional }] }], lineCount, materials [{ id, materialId, code, name,
+                                    unit, qty, packs, packSize, packLabel, onHand, shortfall }], labour [{ id,
+                                    tradeId, code, name, days }], labourDays, crew { size, lead { technicianId,
+                                    name } | null, technicians [{ technicianId, name, isLead }] }, readiness
+                                    [{ key advance|boq|materials|crew|schedule|site, label, done, detail }] }
+POST   /admin/jobs/:id/advance-override   jobs:advance-override (MANAGER, ADMIN; DISPATCHER 403) ·
+                                    { reason 5–500 } → the job (as GET /:id). The work may go ahead before
+                                    the advance is paid; the invoice stays owed. Audited job.advance_overridden
+                                    (reason, invoice). 422: no advance on the job, already paid or void, or
+                                    already overridden.
 GET    /admin/jobs/:id/history      jobs:history (DISPATCHER, ADMIN) · see "Record history"
 PUT    /admin/jobs/:id              details only (type, site, title, description, priority, window, isBillable);
                                     422 once COMPLETED, VERIFIED or CANCELLED
 DELETE /admin/jobs/:id              DRAFT or CANCELLED only (400 otherwise); soft
 PATCH  /admin/jobs/:id/status       validated transition, writes JobStatusEvent;
                                     ON_HOLD and CANCELLED need a note
+
+**The advance gate (L-D3, Phase L6).** While a job's ADVANCE invoice is neither PAID nor VOID, there is no
+override and `job.advanceGate` is on, `POST …/schedule`, `POST …/assign`, `PATCH …/status` (any move but
+CANCELLED and ON_HOLD), `POST …/complete` and the field app's moves answer **422 `ADVANCE_UNPAID`** — `details:
+{ invoiceId, invoiceNumber, balance }`. A job without an advance is never held. When the advance invoice becomes
+PAID, every dispatcher is told in-app ("Advance paid — JOB-… is ready to schedule", type advance_paid, linking the
+job). Job lists — GET /admin/jobs rows, the dispatch board's JobCards, /dispatch/unassigned — carry
+`awaitingAdvance` and `advanceInvoice { id, number, status } | null`.
 POST   /admin/jobs/:id/schedule     jobs:dispatch · see "Scheduling" below
 POST   /admin/jobs/:id/assign       jobs:dispatch · { technicianIds, leadTechnicianId }
 POST   /admin/jobs/:id/tasks        + PATCH /tasks/:taskId + DELETE /tasks/:taskId
@@ -795,7 +850,8 @@ The `:taskId`, `:photoId`, `:jobMaterialId` and `:logId` params are validated (4
 put a job on the calendar:
 
 ```
-{ scheduledStart, scheduledEnd,            required; end after start, at most 14 days apart (400)
+{ scheduledStart, scheduledEnd?,           end after start, at most 90 days apart (400; it was 14). Without
+                                           an end, start + the job's plannedDays (Phase L6; 400 when it has none)
   technicianIds?: [id, …],                 1–20; replaces the assignment. Left out, the assignment stays
   leadTechnicianId?,                       must be one of technicianIds (400); default the first
   note?,                                   the status event's note (default "Scheduled for …" / "Rescheduled to …")
@@ -816,6 +872,7 @@ put a job on the calendar:
   An INSPECTION job gets **`visit_booked`** instead (and the site contact too — see convert), and a new window
   clears the customer's answer and the reminder, so the new one is confirmed and reminded afresh (Phase L5).
 - **Audit:** `job.scheduled` — status, window and technician ids before → after.
+- **The advance gate** (Phase L6): 422 `ADVANCE_UNPAID` while the job's advance is unpaid — see Operations above.
 
 ### Dispatch
 
@@ -843,7 +900,7 @@ The board:
   unscheduledAssigned: [JobCard],    open jobs with people but no window (first 50)
   unassignedCount }                  the side list pages /dispatch/unassigned itself
 
-JobCard = { id, number, title, type, status, priority, scheduledStart, scheduledEnd, quotationId,
+JobCard = { id, number, title, type, status, priority, scheduledStart, scheduledEnd, plannedDays, quotationId,
             createdAt, visitAnswer, visitAnswerNote, visitAnsweredAt, customerConfirmedAt,
             customer: { id, name, phone }, site: { id, area, address } | null,
             assignments: [{ technicianId, isLead }] }
@@ -1004,7 +1061,7 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
 ## Admin — Finance (`ADMIN`, `ACCOUNTANT`)
 
 ```
-/admin/invoices                     GET ?status&customerId&overdueOnly=true|false&from&to&q&page&limit&sort, POST,
+/admin/invoices                     GET ?status&kind&customerId&overdueOnly=true|false&from&to&q&page&limit&sort, POST,
                                     GET /:id, PUT /:id · no DELETE — an invoice is voided, never removed
                                     from/to: Kathmandu days (YYYY-MM-DD, 400 otherwise) on issuedAt. sort:
                                     number|issuedAt|dueDate|total|createdAt, - for descending (400 otherwise).
@@ -1013,8 +1070,15 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
                                     null until sent). The list's meta adds counts { all, DRAFT, SENT, PARTIAL,
                                     OVERDUE, PAID, VOID } under the other filters (the status tabs). GET /:id
                                     adds jobs [{ id, number, title }] — the jobs its lines bill.
+                                    Phase L6: kind STANDARD|ADVANCE|RUNNING|FINAL (?kind= filters), jobId,
+                                    paymentStageId (unique — a stage is billed once), and on every read
+                                    job { id, number } | null and paymentStage { id, label, basisPoints,
+                                    trigger } | null. An ADVANCE invoice is the hand-off's; paying it in full
+                                    frees its job (the advance gate).
                                     PUT /:id: a DRAFT only — 422 INVOICE_LOCKED once sent (void it and issue
-                                    another). A change to the discount or the VAT choice alone re-prices the
+                                    another). An ADVANCE, RUNNING or FINAL draft takes dueDate, note and terms
+                                    only: items, discount or vatApplied is 422 INVOICE_LINES_LOCKED (Phase L6 —
+                                    its money is the quotation's and the stage bills'). A change to the discount or the VAT choice alone re-prices the
                                     stored lines through documentTotals.
 GET    /admin/invoices/:id/history  invoices:history (ACCOUNTANT, ADMIN) · see "Record history"
 POST   /admin/invoices/:id/send
@@ -1026,6 +1090,11 @@ POST   /admin/invoices/from-job/:jobId          once per job — a second is 422
                                                   choice (the invoice total equals the quotation's);
                                                   includeMaterials / includeLabour → 422
                                                   QUOTED_JOB_BILLS_SCOPE
+                                                · quoted job billed in stages (Phase L6: an ADVANCE, later
+                                                  RUNNING bills) → kind FINAL: the quotation's lines, less
+                                                  one "Less: advance INV-…" line per stage bill not DRAFT or
+                                                  VOID, with the VAT left over (money.js#finalBillDocument),
+                                                  so the stage bills + this one = the quotation to the paisa
                                                 · unquoted job → billable materials at their issued rate
                                                   + logged time at the rate-card item named by
                                                   finance.labourRateCode (per hour; default LABOUR-SKILL,
@@ -1404,6 +1473,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `job.scheduled` | `POST /admin/jobs/:id/schedule` (the dispatch board) | status, scheduledStart, scheduledEnd, technicianIds → the same |
 | `job.completed` | a job is completed (admin, field app, survey submit) | status → COMPLETED · customerRating |
 | `job.verified` | `POST /admin/jobs/:id/verify` | COMPLETED → VERIFIED |
+| `job.advance_overridden` | `POST /admin/jobs/:id/advance-override` (Phase L6) | advanceOverriddenAt null → set · reason, invoiceId, invoiceNumber |
 | `invoice.created` | an invoice is created (admin or from a job) | → number, status, total, customerId, quotationId |
 | `invoice.sent` | `POST /admin/invoices/:id/send` | status → SENT |
 | `invoice.voided` | `POST /admin/invoices/:id/void` | status → VOID · reason |

@@ -59,3 +59,25 @@ describe('the dispatch card — the customer’s answer to an inspection (Phase 
     expect(screen.queryByText('Wants another time')).not.toBeInTheDocument();
   });
 });
+
+describe('the dispatch card — the advance gate (Phase L6)', () => {
+  const HELD = {
+    ...INSPECTION, id: 'j9', number: 'JOB-2083-0090', type: 'RENOVATION', status: 'DRAFT', scheduledStart: null, scheduledEnd: null,
+    assignments: [], awaitingAdvance: true, advanceInvoice: { id: 'inv-adv', number: 'INV-2083-0077', status: 'SENT' },
+  };
+
+  it('says "Awaiting advance" — on a compact card too — and offers the dialog, not a drag', () => {
+    card(HELD, { compact: true });
+    const chip = screen.getByTestId('awaiting-advance');
+    expect(chip).toHaveTextContent('Awaiting advance');
+    expect(chip.closest('[title]')).toHaveAttribute('title', 'Scheduling is locked until the advance (INV-2083-0077) is paid');
+    expect(screen.queryByRole('button', { name: 'Drag JOB-2083-0090' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Schedule JOB-2083-0090' })).toBeEnabled();
+  });
+
+  it('shows nothing once the advance is paid or overridden', () => {
+    card({ ...HELD, awaitingAdvance: false, advanceInvoice: { ...HELD.advanceInvoice, status: 'PAID' } });
+    expect(screen.queryByTestId('awaiting-advance')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Drag JOB-2083-0090' })).toBeInTheDocument();
+  });
+});

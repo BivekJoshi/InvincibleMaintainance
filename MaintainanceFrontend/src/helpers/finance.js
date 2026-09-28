@@ -1,5 +1,6 @@
 import { formatNpr, kathmanduDay } from '@/helpers/format';
 import { bsToAd, fiscalYear } from '@/helpers/nepaliDate';
+import { INVOICE_KIND_LABELS } from '@/config/constants';
 
 /**
  * The finance screens without a DOM (Phase I). Pure; every figure these read is the server's — nothing here adds,
@@ -54,6 +55,13 @@ export function invoiceActions(invoice, { can }) {
   return actions;
 }
 
+/**
+ * Whether a draft's lines, discount and VAT are fixed (Phase L6): a stage or closing bill — any `kind` but STANDARD —
+ * bills what the quotation and its stage bills say; `PUT` takes only its due date, note and terms (422
+ * INVOICE_LINES_LOCKED otherwise). An invoice from before L6 has no kind and is a STANDARD one.
+ */
+export const invoiceLinesLocked = (invoice) => Boolean(invoice?.kind) && invoice.kind !== 'STANDARD';
+
 /** Whether the edit controls are shown: a DRAFT only, to `invoices:write` (the API answers 422 INVOICE_LOCKED otherwise). */
 export const canEditInvoice = (invoice, { can }) => Boolean(invoice) && invoice.status === 'DRAFT' && can('invoices:write');
 
@@ -61,14 +69,21 @@ export const canEditInvoice = (invoice, { can }) => Boolean(invoice) && invoice.
  * How a finished job will be billed — the API's one rule (defect #16): a quoted job bills **its quotation**, an
  * unquoted one **what it used** (billable materials at their issued rate, and logged labour).
  *
- * @param {{ quotation?: { number: string, total: number }|null }} job  a row of `GET /admin/jobs`
+ * Phase L6: a quoted job whose advance was billed gets a **final** bill — the quotation less the advance (the
+ * server's "Less: advance INV-…" line), never the whole again. The detail says so by the advance's number; the
+ * amount is the server's once the draft exists.
+ *
+ * @param {{ quotation?: { number: string, total: number }|null, advanceInvoice?: { number: string, status: string }|null }} job
+ *   a row of `GET /admin/jobs`
  */
 export function billingRuleOf(job) {
   if (job?.quotation) {
+    const advance = job.advanceInvoice && !['DRAFT', 'VOID'].includes(job.advanceInvoice.status) ? job.advanceInvoice : null;
+    const accepted = job.quotation.total != null ? `${formatNpr(job.quotation.total)} as accepted` : 'as accepted';
     return {
       kind: 'quotation',
       label: `Bills quotation ${job.quotation.number}`,
-      detail: job.quotation.total != null ? `${formatNpr(job.quotation.total)} as accepted` : 'as accepted',
+      detail: advance ? `${accepted}, less the advance ${advance.number}` : accepted,
     };
   }
   return { kind: 'actuals', label: 'Bills what it used', detail: 'Billable materials and logged labour' };
@@ -114,4 +129,29 @@ export function csvFileName(disposition, name, { from, to } = {}) {
   const plain = /filename="?([^";]+)"?/i.exec(disposition ?? '');
   if (plain) return plain[1];
   return `${[name, from, to].filter(Boolean).join('-')}.csv`;
+}
+
+/** When a stage falls due, in the words under an invoice's number. */
+const STAGE_WHEN = { ON_ACCEPT: 'on acceptance', MILESTONE: 'at a milestone', ON_COMPLETION: 'on completion' };
+
+/**
+ * The payment stage an invoice bills, as one line (Phase L6): "Advance — on acceptance (50%)", "Advance — Mobilisation
+ * (40%)", "Running bill — Running bill 1 (30%)". The stage's own label is left out when it only repeats the kind (the
+ * default schedule's first stage is called "Advance"). The share is the stage's basis points as a percentage — a
+ * share, not money. Null for an ordinary invoice.
+ *
+ * @param {{ kind?: string, paymentStage?: { label?: string, basisPoints?: number, trigger?: string }|null }} invoice
+ * @returns {string|null}
+ */
+export function invoiceStageLine(invoice) {
+  const stage = invoice?.paymentStage ?? null;
+  const kind = invoice?.kind && invoice.kind !== 'STANDARD' ? invoice.kind : null;
+  if (!stage && !kind) return null;
+  const heading = INVOICE_KIND_LABELS[kind] ?? 'Payment stage';
+  const own = stage?.label?.trim();
+  const label = own && own.toLowerCase() !== heading.toLowerCase()
+    ? own
+    : STAGE_WHEN[stage?.trigger ?? (kind === 'ADVANCE' ? 'ON_ACCEPT' : '')] ?? null;
+  const share = stage?.basisPoints != null ? ` (${Number((stage.basisPoints / 100).toFixed(2))}%)` : '';
+  return label ? `${heading} — ${label}${share}` : `${heading}${share}`;
 }

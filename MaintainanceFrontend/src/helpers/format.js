@@ -18,6 +18,16 @@ export function formatNpr(paisa, { symbol = true, compact = false } = {}) {
 }
 
 /**
+ * Money that may be below zero, as a document writes a deduction — "− Rs. 50,000.00", the way the totals write a
+ * discount — never "Rs. -50,000.00". Phase L6: a FINAL invoice's "Less: advance INV-…" line is a negative rate and
+ * amount (the server's paisa); nothing is worked out here but the sign.
+ */
+export function formatSignedNpr(paisa, opts) {
+  const value = Number(paisa) || 0;
+  return value < 0 ? `− ${formatNpr(-value, opts)}` : formatNpr(value, opts);
+}
+
+/**
  * Money short enough for a chart axis, in the units Nepal counts in:
  * 4 500 000 paisa → `Rs 45K`, 1 250 000 00 → `Rs 12.5L`, 3 × 10⁹ → `Rs 3Cr`.
  */

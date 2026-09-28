@@ -25,8 +25,9 @@ test('field: a job finished on a phone, partly offline — everything reaches th
   const [sales, dispatcher] = await Promise.all([apiAs('SALES'), apiAs('DISPATCHER')]);
 
   // ── set-up: a job on Hari's today, with a three-item checklist
+  // 96…, not 97…: a tail starting with 7 made "977…", which the API reads as the country code and strips.
   const customer = await sales.post('/admin/customers', {
-    name: `ग्राहक Field ${tag}`, phone: `97${String(Date.now()).slice(-8)}`, preferredLocale: 'ne',
+    name: `ग्राहक Field ${tag}`, phone: `96${String(Date.now()).slice(-8)}`, preferredLocale: 'ne',
   });
   const hari = (await dispatcher.list('/admin/technicians?q=hari&limit=10')).data.find((t) => t.user.email === 'hari@gharjatan.com.np');
   // A minute ago: whatever the hour, it is on Hari's Kathmandu today.

@@ -14,8 +14,13 @@ import { apiSlice, tagList } from '@/api/apiSlice';
  */
 
 const invoiceTag = (id) => ({ type: 'Invoice', id });
+/**
+ * Since Phase L6 a payment can lift a job's advance gate (and voiding one can put it back), so money moving also
+ * refreshes the jobs — their "Awaiting advance" chip, the job page's advance card, the Plan tab — and the board.
+ */
 const MONEY_MOVED = [
   { type: 'Invoice', id: 'LIST' }, { type: 'Payment', id: 'LIST' }, 'Report', 'Customer', 'History', 'Dashboard',
+  'Job', 'Dispatch',
 ];
 const listOf = (r) => ({ items: r.data, meta: r.meta });
 const dataOf = (r) => r.data;
@@ -30,7 +35,7 @@ const report = (build, path) => build.query({
 export const financeApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({
     // ── invoices
-    /** `?status&customerId&overdueOnly&from&to&q&page&limit&sort`; `meta.counts` feeds the status tabs. */
+    /** `?status&kind&customerId&overdueOnly&from&to&q&page&limit&sort`; `meta.counts` feeds the status tabs. */
     getInvoices: build.query({
       query: (params = {}) => ({ url: '/admin/invoices', params }),
       transformResponse: listOf,

@@ -23,7 +23,7 @@ This is **not** a clone. The marketing page is one deliverable out of nine modul
 | Ops depth | Full: leads → quotations → jobs → materials → invoices → warranty → AMC |
 | Auth | JWT access (15m) + httpOnly refresh cookie (30d), RBAC by role |
 | Roles | ADMIN, EDITOR, SALES, **MANAGER** (SALES + `quotations:approve`), DISPATCHER, TECHNICIAN, SURVEYOR, ACCOUNTANT |
-| Quotation approval | **No quotation is sent without internal approval** — MANAGER/ADMIN, never your own (`quotation.makerChecker`), or auto below `quotation.autoApproveBelow`. Every revision is approved again. The customer answers Accept · Ask for changes · Decline with no login; Accept creates the job. |
+| Quotation approval | **No quotation is sent without internal approval** — MANAGER/ADMIN, never your own (`quotation.makerChecker`), or auto below `quotation.autoApproveBelow`. Every revision is approved again. The customer answers Accept · Ask for changes · Decline with no login; Accept creates the job — with the accepted BOQ as its lines and, when the payment schedule has an advance, the ADVANCE invoice, which gates scheduling until it is paid (a manager may override, audited). |
 | Language | English + Nepali (`en` / `ne`), UTF-8 everywhere, day one |
 | Money | Integer **paisa** (NPR × 100). Never floats. |
 | Dates | UTC in DB; display in Asia/Kathmandu (+05:45). BS dates display-only. |

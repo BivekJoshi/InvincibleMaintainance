@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
-  billingRuleOf, canEditInvoice, csvFileName, defaultReportRange, invoiceActions, reportRangePresets, standingPayments,
+  billingRuleOf, canEditInvoice, csvFileName, defaultReportRange, invoiceActions, invoiceLinesLocked, reportRangePresets,
+  standingPayments,
 } from '@/helpers/finance';
 import { can as roleCan } from '@/helpers/permissions';
 import {
-  fiscalYearOf, formatBalance, formatDateAdBs, formatDateBs, formatNpr, formatRupees,
+  fiscalYearOf, formatBalance, formatDateAdBs, formatDateBs, formatNpr, formatRupees, formatSignedNpr,
 } from '@/helpers/format';
-import { INVOICE_STATUSES, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INVOICE_STATUS_LABELS } from '@/config/constants';
+import {
+  INVOICE_KINDS, INVOICE_KIND_LABELS, INVOICE_STATUSES, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INVOICE_STATUS_LABELS,
+} from '@/config/constants';
 import { INVOICE_TABS, REPORT_GROUPS } from '@/config/admin/financeViews';
 import { ADMIN_NAV } from '@/config/admin/adminNav';
 // The API's own lists. Outside `src/`, so `@/` cannot reach them.
@@ -29,6 +32,13 @@ describe('money on screen — Nepali grouping and never a negative balance', () 
     expect(formatBalance(0)).toBe('Rs. 0.00');
     expect(formatBalance(-50_000)).toBe('Rs. 0.00');
     expect(formatBalance(undefined)).toBe('Rs. 0.00');
+  });
+
+  it('writes a deduction line with a leading minus, never "Rs. -" (Phase L6: a final bill’s "Less: advance")', () => {
+    expect(formatSignedNpr(-3_645_000)).toBe('− Rs. 36,450.00');
+    expect(formatSignedNpr(-3_645_000, { symbol: false })).toBe('− 36,450.00');
+    expect(formatSignedNpr(3_645_000)).toBe('Rs. 36,450.00');
+    expect(formatSignedNpr(0)).toBe('Rs. 0.00');
   });
 });
 
@@ -128,6 +138,31 @@ describe('the finance words mirror the API', () => {
     expect(Object.keys(INVOICE_STATUS_LABELS).sort()).toEqual([...INVOICE_STATUSES].sort());
     expect(Object.keys(PAYMENT_METHOD_LABELS)).toEqual(PAYMENT_METHODS);
     expect(INVOICE_TABS.map((t) => t.status).filter(Boolean).sort()).toEqual([...INVOICE_STATUSES].sort());
+  });
+
+  it('has words for every invoice kind the API knows (Phase L6)', () => {
+    expect(INVOICE_KINDS).toEqual(API_ENUMS.INVOICE_KINDS);
+    expect(Object.keys(INVOICE_KIND_LABELS)).toEqual(INVOICE_KINDS);
+  });
+});
+
+describe('invoiceLinesLocked — a stage or closing bill’s money is fixed (Phase L6)', () => {
+  it('locks every kind but STANDARD; an invoice from before L6 has no kind and is not locked', () => {
+    expect(['ADVANCE', 'RUNNING', 'FINAL'].map((kind) => invoiceLinesLocked({ kind }))).toEqual([true, true, true]);
+    expect(invoiceLinesLocked({ kind: 'STANDARD' })).toBe(false);
+    expect(invoiceLinesLocked({})).toBe(false);
+    expect(invoiceLinesLocked(null)).toBe(false);
+  });
+});
+
+describe('billingRuleOf — a job billed in stages (Phase L6)', () => {
+  it('says the final bill is the quotation less the advance, by the advance’s number', () => {
+    const quoted = { quotation: { number: 'QT-2083-0031', total: 8_237_700 } };
+    expect(billingRuleOf({ ...quoted, advanceInvoice: { id: 'a', number: 'INV-2083-0077', status: 'PAID' } }).detail)
+      .toBe('Rs. 82,377.00 as accepted, less the advance INV-2083-0077');
+    // A void advance billed nothing; the whole quotation is billed.
+    expect(billingRuleOf({ ...quoted, advanceInvoice: { id: 'a', number: 'INV-2083-0077', status: 'VOID' } }).detail)
+      .toBe('Rs. 82,377.00 as accepted');
   });
 });
 

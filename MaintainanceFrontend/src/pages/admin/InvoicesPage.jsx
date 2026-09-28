@@ -14,7 +14,8 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageTransition } from '@/three/motion/motionKit';
-import { INVOICE_STATUS_LABELS } from '@/config/constants';
+import { INVOICE_KINDS, INVOICE_KIND_LABELS, INVOICE_STATUS_LABELS } from '@/config/constants';
+import { InvoiceKindBadge } from '@/components/finance/InvoiceKindBadge';
 import { INVOICE_TABS } from '@/config/admin/financeViews';
 import { CUSTOMER_RELATION } from '@/config/admin/jobViews';
 import { invoiceActions } from '@/helpers/finance';
@@ -30,10 +31,18 @@ const columns = [
     cell: (r) => (
       <div className="min-w-0">
         <p className="font-mono text-xs font-medium">{r.number}</p>
-        <StatusBadge status={r.status} label={INVOICE_STATUS_LABELS[r.status]} className="mt-1" />
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <StatusBadge status={r.status} label={INVOICE_STATUS_LABELS[r.status]} />
+          <InvoiceKindBadge kind={r.kind} />
+        </div>
       </div>
     ),
     exportValue: (r) => r.number,
+  },
+  {
+    key: 'kind', header: 'Kind', hidden: true,
+    cell: (r) => <span className="text-xs">{INVOICE_KIND_LABELS[r.kind] ?? INVOICE_KIND_LABELS.STANDARD}</span>,
+    exportValue: (r) => INVOICE_KIND_LABELS[r.kind] ?? INVOICE_KIND_LABELS.STANDARD,
   },
   {
     key: 'customer', header: 'Customer',
@@ -72,6 +81,8 @@ const columns = [
 ];
 
 const filters = [
+  // Phase L6: `?kind=` — the advance invoices a customer's Accept raised, or the running and final bills.
+  { key: 'kind', label: 'Kind', type: 'enum', allLabel: 'Every kind', options: INVOICE_KINDS.map((k) => ({ value: k, label: INVOICE_KIND_LABELS[k] })) },
   { key: 'customerId', label: 'Customer', type: 'relation', relation: CUSTOMER_RELATION },
   { key: 'issued', label: 'Issued', type: 'dateRange' },
   // The API filters only for `true` (the overdue notification's link, `?overdueOnly=true`).
@@ -85,7 +96,8 @@ function TabCount({ n }) {
 }
 
 /**
- * `/admin/invoices` (Phase I1, `invoices:read`): status tabs with the server's counts, filters customer · issued between
+ * `/admin/invoices` (Phase I1, `invoices:read`): status tabs with the server's counts, filters kind (Phase L6, `?kind=`
+ * — an advance invoice wears an "Advance" badge by its number) · customer · issued between
  * (Kathmandu days) · overdue only (`?overdueOnly=true` — the overdue notification's link), and every invoice's number,
  * customer, issue and due dates in AD and BS, total, paid and balance — each the server's figure. **Create from job**
  * (a finished, billable, not-yet-invoiced job, billed by its one rule) and **New invoice** (the manual one — AMC fees,

@@ -15,7 +15,11 @@ import { SITE_PHOTO } from './support/survey.js';
  * Nepali on a phone, the surveyor fills the stepper at 360 px with no signal — checklist with a flagged reading and
  * its photos, the site pin, two rooms measured in feet-inches with a door deducted, a sketch — submits on the phone,
  * and the queue drains once the signal is back; the office builds the
- * quotation from the survey, whose BOQ row carries the same measurements and quantity. Phases L6–L8 extend it.
+ * quotation from the survey, whose BOQ row carries the same measurements and quantity. Phase L6 continues the first
+ * test past the Accept: the customer is asked for the 50 % advance (amount, date, a pay button), the job carries the
+ * BOQ as lines; the dispatcher sees "Awaiting advance" on the queue and the job, and scheduling is refused (the
+ * button held, the API 422 ADVANCE_UNPAID); the accountant records the whole advance on its invoice through the
+ * Record payment sheet; the dispatchers are told it is ready, and the dispatcher schedules it. L7–L8 extend it.
  *
  * Set-up that is not under test runs over the API; everything is keyed to a unique name and phone.
  */
@@ -296,9 +300,112 @@ test('SALES builds a 3-section BOQ by keyboard, paste, library and a measured li
     expect(costKeys(await sales.get(`/public/quotations/${link.split('/').pop()}`))).toEqual([]);
   });
 
+  // ── Phase L6: won → hand-off. The Accept raised the advance; the job waits for it.
+  const [dispatcher, accountant] = await Promise.all(['DISPATCHER', 'ACCOUNTANT'].map((r) => apiAs(r)));
+  let job;
+  let advance;
+
+  await test.step('L6: the customer is asked for the 50% advance; the job carries the BOQ and waits for it', async () => {
+    const record = await sales.get(`/admin/quotations/${quotationId}`);
+    const [stage1] = record.paymentStages;
+    const block = customerPage.getByTestId('advance-due');
+    await expect(block).toBeVisible();
+    await expect(block.getByRole('heading')).toContainText(`Pay the advance of ${rupeesText(stage1.total)} by `);
+    await expect(block.getByRole('link', { name: 'Pay the advance' })).toHaveAttribute('href', /\/invoice\/[^/]+$/);
+    // A reload shows it again — the page reads it from the API, not from the tap.
+    await customerPage.reload();
+    await expect(customerPage.getByTestId('advance-due')).toContainText(rupeesText(stage1.total));
+
+    [job] = (await dispatcher.list(`/admin/jobs?customerId=${customer.id}&limit=5`)).data;
+    expect(job).toMatchObject({ status: 'DRAFT', awaitingAdvance: true });
+    const detail = await dispatcher.get(`/admin/jobs/${job.id}`);
+    advance = detail.advance.invoice;
+    expect(advance.total).toBe(stage1.total);
+    expect(detail.advance).toMatchObject({ required: true, awaitingAdvance: true, paid: false });
+    // The BOQ's priced, non-optional rows became the job's lines; the optional one did not.
+    const priced = record.items.filter((r) => r.rowType === 'ITEM' && !r.isOptional);
+    expect(detail.lines).toHaveLength(priced.length);
+    expect(detail.lines.some((l) => l.description === 'Exterior weather coat')).toBe(false);
+  });
+
+  const dispatchCtx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const dpage = await dispatchCtx.newPage();
+
+  await test.step('L6: as the dispatcher, "Awaiting advance" on the queue and the job — scheduling is refused', async () => {
+    await signIn(dpage, 'DISPATCHER');
+    await dpage.goto('/admin/dispatch');
+    await dpage.getByRole('textbox', { name: 'Search unassigned jobs' }).fill(job.number);
+    const card = dpage.locator('article').filter({ hasText: job.number });
+    await expect(card.getByTestId('awaiting-advance')).toBeVisible();
+    // Held: it cannot be dragged; its Schedule… opens the dialog, which says why.
+    await expect(dpage.getByRole('button', { name: `Drag ${job.number}` })).toHaveCount(0);
+
+    await dpage.goto(`/admin/jobs/${job.id}`);
+    await expect(dpage.getByTestId('awaiting-advance')).toBeVisible();
+    await expect(dpage.getByTestId('advance-title')).toHaveText('Waiting for the advance — scheduling is locked');
+    await expect(dpage.getByTestId('advance-card')).toContainText(advance.number);
+    await expect(dpage.getByRole('button', { name: 'Schedule…' })).toBeDisabled();
+    await expect(dpage.getByText(/the advance is not paid yet\./)).toBeVisible();
+
+    // The Plan tab: the BOQ is in; the advance is what it waits for.
+    await dpage.getByRole('tab', { name: /Plan/ }).click();
+    await expect(dpage.getByTestId('ready-boq')).toHaveAttribute('data-done', 'true');
+    await expect(dpage.getByTestId('ready-advance')).toHaveAttribute('data-done', 'false');
+
+    // And the API refuses it outright.
+    const suresh = (await dispatcher.list('/admin/technicians?q=suresh&limit=10')).data[0];
+    await expect(dispatcher.post(`/admin/jobs/${job.id}/schedule`, {
+      scheduledStart: new Date(Date.now() + 86_400_000).toISOString(), technicianIds: [suresh.id],
+    })).rejects.toThrow(/→ 422 .*ADVANCE_UNPAID/);
+  });
+
+  await test.step('L6: as the accountant, record the whole advance on its invoice', async () => {
+    const accountsCtx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    const apage = await accountsCtx.newPage();
+    await signIn(apage, 'ACCOUNTANT');
+    await apage.goto(`/admin/invoices/${advance.id}`);
+    await expect(apage.getByTestId('invoice-kind')).toHaveText('Advance');
+    await expect(apage.getByTestId('invoice-stage')).toContainText('Advance');
+    await expect(apage.getByRole('link', { name: job.number })).toHaveAttribute('href', `/admin/jobs/${job.id}`);
+    await apage.getByRole('button', { name: 'Record payment' }).first().click();
+    const sheet = apage.getByRole('dialog', { name: /Record a payment/ });
+    await sheet.getByLabel(/Amount received/).fill((advance.balance / 100).toFixed(2));
+    await sheet.getByRole('combobox', { name: /Method/ }).click();
+    await apage.getByRole('option', { name: 'Bank transfer' }).click();
+    await sheet.getByLabel(/Reference/).fill(`ADV-${tag}`);
+    await sheet.getByRole('button', { name: 'Record payment' }).click();
+    await expect(apage.getByTestId('invoice-status')).toHaveText('Paid');
+    expect(await accountant.get(`/admin/invoices/${advance.id}`)).toMatchObject({ status: 'PAID', balance: 0 });
+    await accountsCtx.close();
+  });
+
+  await test.step('L6: the dispatchers are told; as the dispatcher, scheduling now works', async () => {
+    const notes = (await dispatcher.list('/admin/notifications?limit=50')).data;
+    expect(notes.some((n) => n.title === `Advance paid — ${job.number} is ready to schedule`)).toBe(true);
+
+    await dpage.goto(`/admin/jobs/${job.id}`);
+    await expect(dpage.getByTestId('advance-card')).toHaveAttribute('data-state', 'paid');
+    await expect(dpage.getByTestId('awaiting-advance')).toHaveCount(0);
+    await dpage.getByRole('button', { name: 'Schedule…' }).click();
+    const dialog = dpage.getByRole('dialog', { name: `Schedule ${job.number}` });
+    await expect(dialog.getByTestId('advance-notice')).toHaveCount(0);
+    // Suresh, not Hari: the other specs plan Hari's days.
+    await dialog.getByRole('checkbox', { name: /Suresh Technician/ }).check();
+    await dialog.getByRole('button', { name: 'Schedule', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    const scheduled = await dispatcher.get(`/admin/jobs/${job.id}`);
+    expect(scheduled.status).toBe('ASSIGNED');
+    expect(scheduled.scheduledStart).toBeTruthy();
+    expect(scheduled.assignments.map((a) => a.technician?.user?.name)).toEqual(['Suresh Technician']);
+    if (scheduled.plannedDays) {
+      expect(new Date(scheduled.scheduledEnd) - new Date(scheduled.scheduledStart)).toBe(Math.round(scheduled.plannedDays * 86_400_000));
+    }
+  });
+
+  await dispatchCtx.close();
   await customerCtx.close();
   await salesCtx.close();
-  await Promise.all([admin, sales, manager].map((c) => c.dispose()));
+  await Promise.all([admin, sales, manager, dispatcher, accountant].map((c) => c.dispose()));
 });
 
 /** A Kathmandu calendar day, `days` from today, as a date input takes it. */
@@ -312,7 +419,8 @@ test('L5: book the visit with a caretaker; the customer confirms in Nepali; the 
   const visitTag = `${tag}v`;
   const visitName = `E2E Visit ${visitTag}`;
   const visitPhone = `98${String(Date.now() + 11).slice(-8)}`;
-  const services = (await admin.list('/admin/services?limit=100')).data;
+  // By its slug: the shared test database collects the API suite's services, so the seeded one may not be on page 1.
+  const services = (await admin.list('/admin/services?q=seepage-and-damp-treatment&limit=100')).data;
   const seepage = services.find((sv) => sv.slug === 'seepage-and-damp-treatment');
   expect(seepage, 'the seeded seepage service').toBeTruthy();
   const lead = await sales.post('/admin/leads', {

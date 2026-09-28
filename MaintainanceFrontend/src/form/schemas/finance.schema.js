@@ -76,6 +76,12 @@ export const invoiceEditSchema = z.object({
   terms: optionalText,
 });
 
+/**
+ * A stage or closing bill's draft (Phase L6, `kind` ADVANCE, RUNNING or FINAL): its lines, discount and VAT are locked
+ * — the API answers 422 INVOICE_LINES_LOCKED to any of them — so the form sends only the header.
+ */
+export const invoiceHeaderEditSchema = invoiceEditSchema.pick({ dueDate: true, note: true, terms: true });
+
 /** The manual invoice — `POST /admin/invoices` (`invoiceSchema`): the same, for a customer. */
 export const invoiceCreateSchema = invoiceEditSchema.extend({
   customerId: z.string({ required_error: 'Pick the customer' }).min(1, 'Pick the customer'),

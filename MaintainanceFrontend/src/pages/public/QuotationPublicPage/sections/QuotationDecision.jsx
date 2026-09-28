@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Controller } from 'react-hook-form';
 import {
-  CheckCircle2, Clock, FileClock, MessageSquareText, Phone, RefreshCw, XCircle,
+  CheckCircle2, Clock, FileClock, MessageSquareText, Phone, RefreshCw, Wallet, XCircle,
 } from 'lucide-react';
 import { DocumentNotice } from '@/components/documents/DocumentNotice';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,50 @@ import {
 import { useZodForm } from '@/form/useZodForm';
 import { changeRequestSchema, declineSchema } from '@/form/schemas/quotation.schema';
 import { DECLINE_CATEGORIES } from '@/config/constants';
+import { formatDate, formatDateBs, formatNpr } from '@/helpers/format';
+
+/** A due date as the document states dates: AD, then BS in the page's words. */
+const dueWords = (iso, copy) => {
+  const bs = formatDateBs(iso);
+  return `${formatDate(iso)}${bs ? ` (${copy.dates.bs(bs)})` : ''}`;
+};
+
+/**
+ * The advance an accepted quotation raised (Phase L6, L-D3): `advance` on the decide answer and on
+ * `GET /public/quotations/:token` once converted — `{ number, total, dueDate, status, url }`, `url` the invoice's own
+ * public page. "Pay the advance of Rs X by <date>" with a button to that page; "Advance received" once it is PAID;
+ * nothing for a void one, or when the quotation asked for no advance (`advance: null`). The amount is the server's.
+ *
+ * @param {{ advance: { number: string, total: number, dueDate?: string|null, status: string, url?: string|null }|null|undefined,
+ *   copy: object }} props
+ */
+export function AdvanceDue({ advance, copy }) {
+  if (!advance || advance.status === 'VOID') return null;
+  if (advance.status === 'PAID') {
+    return (
+      <div data-testid="advance-due" data-status="PAID">
+        <DocumentNotice tone="success" icon={CheckCircle2} title={copy.advance.paid} animate={false}>
+          {copy.advance.paidBody(advance.number)}
+        </DocumentNotice>
+      </div>
+    );
+  }
+  const amount = formatNpr(advance.total);
+  return (
+    <section data-testid="advance-due" aria-labelledby="q-advance" className="surface-warning space-y-3 rounded-lg border p-4">
+      <h2 id="q-advance" className="flex items-start gap-2 text-base font-semibold">
+        <Wallet className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
+        <span>{advance.dueDate ? copy.advance.due(amount, dueWords(advance.dueDate, copy)) : copy.advance.dueNoDate(amount)}</span>
+      </h2>
+      <p className="text-sm opacity-90">{copy.advance.body(advance.number)}</p>
+      {advance.url ? (
+        <Button size="lg" className="h-12 w-full whitespace-normal text-base sm:w-auto" asChild>
+          <a href={advance.url}><Wallet aria-hidden /> {copy.advance.pay}</a>
+        </Button>
+      ) : null}
+    </section>
+  );
+}
 
 /**
  * The customer's answer, and what happens next — in the page's language (`copy`, from `quotationPageCopy.js`).
@@ -23,7 +67,8 @@ import { DECLINE_CATEGORIES } from '@/config/constants';
  * buttons — Accept is the primary one, because it is the answer the page exists for —
  * each open one confirm step: Accept repeats the total, Ask for changes takes a message,
  * Decline offers reason chips (Phase L4 — a lost category, sent as `category`) and an
- * optional note. No login, no code, no name.
+ * optional note. No login, no code, no name. Once accepted, the advance the Accept raised (Phase L6) is shown with
+ * its amount, due date and a button to pay it (`AdvanceDue`) — straight after the tap, and on every reload.
  *
  * @param {{ state: { kind: string, actions: string[], replacedToken?: string }, quotation: object,
  *   total: string, phone?: string, copy: object,
@@ -54,13 +99,18 @@ function DecisionBody({
   };
 
   switch (state.kind) {
-    case 'accepted':
+    case 'accepted': {
+      const owed = quotation.advance && !['PAID', 'VOID'].includes(quotation.advance.status);
       return (
-        <DocumentNotice tone="success" icon={CheckCircle2} title={copy.outcome.accepted.title}>
-          {copy.outcome.accepted.body}
-          {quotation.job?.number ? ` ${copy.outcome.accepted.job(quotation.job.number)}` : ''}
-        </DocumentNotice>
+        <div className="space-y-4">
+          <DocumentNotice tone="success" icon={CheckCircle2} title={copy.outcome.accepted.title}>
+            {owed ? copy.outcome.accepted.bodyAdvance : copy.outcome.accepted.body}
+            {quotation.job?.number ? ` ${copy.outcome.accepted.job(quotation.job.number)}` : ''}
+          </DocumentNotice>
+          <AdvanceDue advance={quotation.advance} copy={copy} />
+        </div>
       );
+    }
     case 'changes':
       return (
         <div className="space-y-3">

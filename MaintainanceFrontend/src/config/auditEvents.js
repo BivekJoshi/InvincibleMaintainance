@@ -26,6 +26,7 @@ export const AUDIT_EVENT_LABELS = {
   'job.scheduled': 'Job scheduled',
   'job.completed': 'Job completed',
   'job.verified': 'Job verified',
+  'job.advance_overridden': 'Advance overridden',
 
   'invoice.created': 'Invoice created',
   'invoice.sent': 'Invoice sent',

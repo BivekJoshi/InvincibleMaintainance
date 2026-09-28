@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, approveAndSend, expectStatus, createCustomer, createAssignedJob, createCompletedJob, daysFromNow, pngBuffer, prisma, technicianIdFor,
+  anon, as, approveAndSend, expectStatus, createCustomer, createAssignedJob, createCompletedJob, daysFromNow, payAdvance, pngBuffer, prisma, technicianIdFor,
 } from './helpers.js';
 
 let accountant;
@@ -211,18 +211,32 @@ describe('invoices', () => {
       expectStatus(await anon().post(`/public/quotations/${publicToken}/decide`)
         .set('User-Agent', 'Mozilla/5.0 (Linux; Android 14) Mobile').send({ decision: 'approve' }), 200);
       const job = await prisma.job.findFirst({ where: { quotationId: quote.id } });
+      // Accepting asked for the 50 % advance (Phase L6); the job waits for it.
+      const advance = await payAdvance(job.id);
       const technicianId = await technicianIdFor('TECHNICIAN');
       expectStatus(await (await as('DISPATCHER')).post(`/admin/jobs/${job.id}/assign`).send({ technicianIds: [technicianId] }), 200);
       await finish(job, technicianId);
-      return { quote: await prisma.quotation.findUnique({ where: { id: quote.id } }), job };
+      return { quote: await prisma.quotation.findUnique({ where: { id: quote.id } }), job, advance };
     }
 
-    it('a quoted job bills exactly the quotation — not its materials and labour on top', async () => {
-      const { quote, job } = await quotedJob();
+    it('a quoted job bills exactly the quotation — not its materials and labour on top, and not its advance twice', async () => {
+      const { quote, job, advance } = await quotedJob();
       const inv = expectStatus(await accountant.post(`/admin/invoices/from-job/${job.id}`).send({}), 201).data;
-      expect(inv.items.map((i) => i.description)).toEqual(['Terrace membrane waterproofing', 'Epoxy crack injection']);
+      expect(inv.items.map((i) => i.description)).toEqual(['Terrace membrane waterproofing', 'Epoxy crack injection', `Less: advance ${advance.number}`]);
       expect(inv.discount).toBe(quote.discount);
-      expect(inv.total).toBe(quote.total);
+      expect(inv).toMatchObject({ kind: 'FINAL', jobId: job.id });
+      // The advance and the closing bill are the quotation, to the paisa, VAT included.
+      expect(advance.total + inv.total).toBe(quote.total);
+      expect(advance.vatAmount + inv.vatAmount).toBe(quote.vatAmount);
+      expect(inv.total).toBe(inv.subtotal - inv.discount + inv.vatAmount);
+      // Its money is the quotation's and the advance's: the draft's dates and note may change, its lines may not.
+      expect(expectStatus(await accountant.put(`/admin/invoices/${inv.id}`).send({ items: [{ description: 'x', qty: 1, rate: 1 }] }), 422).error.code).toBe('INVOICE_LINES_LOCKED');
+      expect(expectStatus(await accountant.put(`/admin/invoices/${inv.id}`).send({ discount: 0 }), 422).error.code).toBe('INVOICE_LINES_LOCKED');
+      expect(expectStatus(await accountant.put(`/admin/invoices/${inv.id}`).send({ note: 'Final bill after the advance', dueDate: daysFromNow(10).toISOString() }), 200).data)
+        .toMatchObject({ note: 'Final bill after the advance', total: inv.total });
+      // The customer's page names the advance's stage.
+      const advanceSent = expectStatus(await anon().get(`/public/invoices/${advance.publicToken}`), 200).data;
+      expect(advanceSent).toMatchObject({ kind: 'ADVANCE', paymentStage: { label: expect.any(String), basisPoints: 5000, trigger: 'ON_ACCEPT' } });
     });
 
     it('asking for actuals on a quoted job is refused, and leaves it billable', async () => {

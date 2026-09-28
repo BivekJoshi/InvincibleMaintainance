@@ -1,12 +1,15 @@
 import { Badge } from '@/components/ui/badge';
 import { DataIcon } from '@/components/site/DataIcon';
 import { serviceSchema } from '@/form/schemas/cms.schema';
-import { UNITS } from '@/config/constants';
+import { JOB_TYPES, JOB_TYPE_LABELS, UNITS } from '@/config/constants';
 import { formatNpr } from '@/helpers/format';
 import { ICON_OPTIONS } from './iconOptions';
 
 /** Units read as written (`sq.ft`, `rft`) — the select would otherwise title-case them. */
 const UNIT_OPTIONS = UNITS.map((u) => ({ value: u, label: u }));
+
+/** What an accepted quotation for the service becomes (Phase L6) — the office's words for each JobType. */
+const JOB_TYPE_OPTIONS = JOB_TYPES.map((t) => ({ value: t, label: JOB_TYPE_LABELS[t] }));
 
 const TYPES = [
   { value: 'standard', label: 'Service (catalogue page)' },
@@ -64,6 +67,10 @@ export const services = {
       cell: (r) => <span className="whitespace-nowrap text-sm">{r.category?.name ?? '—'}</span>,
     },
     {
+      key: 'jobType', header: 'Job type', hidden: true,
+      cell: (r) => <span className="whitespace-nowrap text-sm">{JOB_TYPE_LABELS[r.jobType] ?? JOB_TYPE_LABELS.REPAIR}</span>,
+    },
+    {
       key: 'priceFrom', header: 'Price', sortable: true,
       cell: (r) => <span className="whitespace-nowrap text-sm tabular-nums">{priceRange(r)}</span>,
     },
@@ -90,6 +97,10 @@ export const services = {
       relation: { path: '/admin/service-categories', labelKey: 'name' },
     },
     { name: 'type', type: 'select', label: 'Type', span: 'half', required: true, options: TYPES },
+    {
+      name: 'jobType', type: 'select', label: 'Job type when won', span: 'half', required: true, options: JOB_TYPE_OPTIONS,
+      description: 'What an accepted quotation for this service becomes on the jobs list and the board. Repair unless you choose.',
+    },
     {
       name: 'excerpt', type: 'textarea', label: 'Card text', required: true, rows: 3, maxLength: 200,
       description: '40–200 characters, on the service card and in search results. Say what you actually do — not “Professional … with expert tools and results.”',
@@ -122,5 +133,5 @@ export const services = {
     },
   ],
 
-  defaultValues: { type: 'standard', isActive: true, isFeatured: false },
+  defaultValues: { type: 'standard', jobType: 'REPAIR', isActive: true, isFeatured: false },
 };

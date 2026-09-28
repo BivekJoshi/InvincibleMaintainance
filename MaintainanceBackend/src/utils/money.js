@@ -176,6 +176,27 @@ export function paymentSchedule(totals, stages) {
 }
 
 /**
+ * One payment stage as an invoice (Phase L6, L-D3): a single line of the stage's taxable amount carrying the
+ * stage's OWN VAT — the schedule's split. VAT worked out again on the part (`documentTotals`) can land a paisa
+ * away from it, and then the stage bills would no longer add up to the quotation. Same shape as
+ * `documentTotals`, so it is stored the same way.
+ * @param {{ taxable: number, vat: number }} stage  a `paymentSchedule` stage
+ * @param {{ description: string, vatApplied?: boolean, vatRate?: number, unit?: string }} opts
+ */
+export function stageDocument(stage, { description, vatApplied = true, vatRate = 13, unit = 'lump' } = {}) {
+  const vatAmount = vatApplied ? stage.vat : 0;
+  return {
+    lines: [{ description, unit, qty: 1, rate: stage.taxable, amount: stage.taxable, sortOrder: 0 }],
+    subtotal: stage.taxable,
+    discount: 0,
+    vatApplied,
+    vatRate,
+    vatAmount,
+    total: stage.taxable + vatAmount,
+  };
+}
+
+/**
  * The final bill (Phase L8): the contract's totals less what was already billed (advance and running
  * bills), in taxable amount and in VAT, so everything invoiced reconciles to the contract to the paisa.
  * A negative `due` is the caller's to refuse (credit notes are deferred).
@@ -190,6 +211,31 @@ export function finalBillTotals(lines, earlierBills, opts = {}) {
   const due = { taxable: contract.subtotal - contract.discount - billed.taxable, vat: contract.vatAmount - billed.vat };
   due.total = due.taxable + due.vat;
   return { contract, billed, due };
+}
+
+/**
+ * The closing bill of a job billed in stages (Phase L6 — the rule Phase L8's FINAL builds on): the contract's
+ * lines, less one line per earlier stage bill (its taxable amount), with the VAT that is left —
+ * `finalBillTotals`, so advance + running bills + this one add up to the contract to the paisa, VAT included.
+ * Same shape as `documentTotals`; its own sums hold (total = subtotal − discount + VAT).
+ * @param {{ description: string, unit?: string, qty: number, rate: number }[]} lines  the contract (paisa)
+ * @param {{ description: string, taxable: number, vat: number }[]} earlierBills
+ * @param {{ discount?: number, vatApplied?: boolean, vatRate?: number }} opts  the contract's
+ */
+export function finalBillDocument(lines, earlierBills, opts = {}) {
+  const { contract, billed, due } = finalBillTotals(lines, earlierBills, opts);
+  const deductions = earlierBills.map((b, i) => ({
+    description: b.description, unit: 'lump', qty: 1, rate: -b.taxable, amount: -b.taxable, sortOrder: contract.lines.length + i,
+  }));
+  return {
+    lines: [...contract.lines.map((l, i) => ({ ...l, sortOrder: l.sortOrder ?? i })), ...deductions],
+    subtotal: contract.subtotal - billed.taxable,
+    discount: contract.discount,
+    vatApplied: contract.vatApplied,
+    vatRate: contract.vatRate,
+    vatAmount: due.vat,
+    total: due.total,
+  };
 }
 
 /** A discount of `pct`% of the subtotal (Phase L3's "%" helper): rounded once, between 0 and the subtotal. */

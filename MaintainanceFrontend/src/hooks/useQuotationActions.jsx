@@ -106,12 +106,16 @@ export function useQuotationActions() {
         case 'convert': {
           const ok = await confirm({
             title: `Create the job for ${name}?`,
-            description: 'An unscheduled job is created from it and waits in the dispatch queue.',
+            description: 'An unscheduled job is created from it, with its lines and plan, and waits in the dispatch queue. When its payment schedule asks for an advance, the advance invoice is raised too and the job waits for it.',
             confirmLabel: 'Create job',
           });
           if (!ok) return false;
           const job = await convert({ id: q.id }).unwrap();
-          dispatch(toastSuccess(`Job ${job.number} created`, 'It is waiting to be scheduled.'));
+          // Phase L6: the hand-off may have raised an advance the job now waits for.
+          const held = job.advance?.awaitingAdvance;
+          dispatch(toastSuccess(`Job ${job.number} created`, held
+            ? `It is scheduled once the advance${job.advance.invoice?.number ? ` ${job.advance.invoice.number}` : ''} is paid.`
+            : 'It is waiting to be scheduled.'));
           return true;
         }
         default:

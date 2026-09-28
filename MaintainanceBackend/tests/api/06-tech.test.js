@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  anon, as, approveAndSend, expectStatus, createAssignedJob, findKeys, pngBuffer, prisma, technicianIdFor, uid, daysFromNow,
+  anon, as, approveAndSend, expectStatus, createAssignedJob, findKeys, payAdvance, pngBuffer, prisma, technicianIdFor, uid, daysFromNow,
 } from './helpers.js';
 
 let tech;
@@ -153,6 +153,7 @@ describe('the field app never carries money (D1, defect #17)', () => {
     expectStatus(await anon().post(`/public/quotations/${publicToken}/decide`)
       .set('User-Agent', 'Mozilla/5.0 (Linux; Android 14) Mobile').send({ decision: 'approve' }), 200);
     const quotedJob = await prisma.job.findFirst({ where: { quotationId: quote.id } });
+    await payAdvance(quotedJob.id); // accepting asked for the advance, and the job waits for it (Phase L6)
     const [me, colleague] = await Promise.all([technicianIdFor('TECHNICIAN'), technicianIdFor('TECHNICIAN2')]);
     expectStatus(await dispatcher.post(`/admin/jobs/${quotedJob.id}/schedule`).send({
       scheduledStart: new Date().toISOString(), scheduledEnd: new Date(Date.now() + 4 * 3600e3).toISOString(),

@@ -1,6 +1,7 @@
 import { test, expect, request } from '@playwright/test';
 import { apiAs, signIn } from './support/api.js';
 import { E2E } from './support/e2eEnv.js';
+import { payAdvance } from './support/handoff.js';
 
 /**
  * Phase H1's manual walk-through, as the dispatcher: the job an accepted quotation made is
@@ -10,7 +11,9 @@ import { E2E } from './support/e2eEnv.js';
  * Costing tab since Phase L2's money wall), completion is blocked while the
  * checklist is open, the job is completed and verified, and an admin publishes the case study.
  *
- * Set-up that is not under test (the quotation loop — Phase F's own spec) runs over the API.
+ * Set-up that is not under test (the quotation loop — Phase F's own spec) runs over the API. Since Phase L6 the
+ * Accept raises an advance invoice that holds the job back until it is paid; the gate is `boq-flow.spec.js`'s
+ * subject, not this one's, so the accountant pays it over the API first (`support/handoff.js#payAdvance`).
  */
 
 const tag = Date.now().toString(36);
@@ -57,7 +60,7 @@ async function drag(page, handle, target) {
 test.describe.configure({ mode: 'serial' });
 
 test('dispatch: schedule, double-book warning, materials, time, costing, complete, verify, case study', async ({ browser }) => {
-  const [admin, sales, manager, dispatcher] = await Promise.all(['ADMIN', 'SALES', 'MANAGER', 'DISPATCHER'].map((r) => apiAs(r)));
+  const [admin, sales, manager, dispatcher, accountant] = await Promise.all(['ADMIN', 'SALES', 'MANAGER', 'DISPATCHER', 'ACCOUNTANT'].map((r) => apiAs(r)));
   await admin.patch('/admin/settings', { values: { 'quotation.makerChecker': true, 'quotation.autoApproveBelow': 0 } });
 
   // ── set-up: a Nepali-speaking customer accepts a quotation → one unscheduled job
@@ -76,6 +79,9 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
   expect(decided.status()).toBe(200);
   const [job] = (await dispatcher.list(`/admin/jobs?customerId=${customer.id}&limit=5`)).data;
   expect(job.status).toBe('DRAFT');
+  // Phase L6: the advance the Accept asked for is paid, so the job may be scheduled.
+  await payAdvance(accountant, job.id);
+  expect((await dispatcher.get(`/admin/jobs/${job.id}`)).advance?.awaitingAdvance ?? false).toBe(false);
   const second = await dispatcher.post('/admin/jobs', { customerId: customer.id, title: `Gutter repair ${tag}` });
 
   const technicians = (await dispatcher.list('/admin/technicians?q=hari&limit=10')).data;

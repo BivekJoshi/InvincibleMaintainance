@@ -156,6 +156,11 @@ async function main() {
       },
       update: { excerpt: rest.excerpt, body: rest.body },
     });
+    // Phase L6: the job type an accepted quotation becomes — set once; an owner's later choice is kept.
+    const jobType = D.SERVICE_JOB_TYPES[s.name];
+    if (jobType && services[slug].jobType === 'REPAIR') {
+      services[slug] = await prisma.service.update({ where: { id: services[slug].id }, data: { jobType } });
+    }
   }
   console.log(`  services: ${Object.keys(services).length}`);
 
@@ -980,6 +985,59 @@ async function main() {
     });
     console.log(`  site-visit demo: ${confirmed.job.number} confirmed, ${pending.job.number} not yet (ne, caretaker), `
       + `${flagged.number} submitted with the ${damp ? 'damp' : 'no'} checklist, 2 rooms measured, 4 photos`);
+  }
+
+  // ═══ won → hand-off demo (Phase L6): two BOQ quotations the customers accepted through the real Accept — one
+  //     job waiting for its advance (gated), one whose advance is paid and is ready to schedule. Guarded on its
+  //     own marker customer.
+
+  if (!(await prisma.customer.findFirst({ where: { phone: '9841910001' } }))) {
+    const { createQuotation, acceptQuotation } = await import('../src/services/quotation.service.js');
+    const { recordPayment } = await import('../src/services/invoice.service.js');
+    const [plaster, paint, damp] = await Promise.all(['PLASTER-INT', 'PAINT-INT', 'SEEP-CHEM'].map((code) => prisma.rateCardItem.findUnique({ where: { code } })));
+    const cement = await prisma.material.findUnique({ where: { code: 'CEM-OPC' } });
+    const renovation = services['house-renovation-and-remodelling'] ?? null;
+    const rupees = (paisa) => paisa / 100;
+    const accepted = async ({ name, phone, area, locale = 'en', paid }) => {
+      const customer = await prisma.customer.create({
+        data: { name, phone, preferredLocale: locale, sites: { create: { label: 'Home', address: `${area}, Lalitpur`, area, isPrimary: true } } },
+        include: { sites: true },
+      });
+      const lead = await prisma.lead.create({
+        data: {
+          name, phone, area, source: 'call', status: 'QUOTED', assignedToId: users.SALES.id, customerId: customer.id,
+          serviceId: renovation?.id ?? null, preferredLocale: locale, firstResponseAt: days(-12), createdAt: days(-12), slaDueAt: days(-12),
+        },
+      });
+      const q = await createQuotation({
+        customerId: customer.id, siteId: customer.sites[0].id, leadId: lead.id, estimatedDays: 8,
+        items: [
+          { rowType: 'SECTION', description: 'Damp treatment' },
+          { rateCardItemId: damp.id, kind: 'SERVICE', description: damp.name, unit: damp.unit, rate: rupees(damp.rate), qty: 180 },
+          { rowType: 'SECTION', description: 'Plaster and paint' },
+          { rateCardItemId: plaster.id, kind: 'SERVICE', description: plaster.name, unit: plaster.unit, rate: rupees(plaster.rate), qty: 420 },
+          { rateCardItemId: paint.id, kind: 'SERVICE', description: paint.name, unit: paint.unit, rate: rupees(paint.rate), qty: 900 },
+          { kind: 'MATERIAL', materialId: cement.id, description: cement.name, unit: cement.unit, qty: 12, rate: rupees(cement.sellRate) },
+        ],
+      }, users.SALES.id);
+      await prisma.quotation.update({
+        where: { id: q.id },
+        data: {
+          status: 'SENT', submittedAt: days(-6), submittedById: users.SALES.id, approvedById: users.MANAGER.id, approvedAt: days(-6),
+          sentAt: days(-5), publicToken: token(), validUntil: days(10),
+        },
+      });
+      await acceptQuotation(q.id, { ip: '127.0.0.1', userAgent: 'seed' });
+      const job = await prisma.job.findFirst({ where: { quotationId: q.id }, include: { advanceInvoice: true } });
+      if (paid && job.advanceInvoice) {
+        await recordPayment(job.advanceInvoice.id, { amount: rupees(job.advanceInvoice.total), method: 'FONEPAY', reference: `FP-${phone.slice(-5)}` }, users.ACCOUNTANT.id);
+      }
+      return { q, job };
+    };
+    const waiting = await accepted({ name: 'Rabin Maharjan', phone: '9841910001', area: 'Jawalakhel' });
+    const ready = await accepted({ name: 'Sabina Shakya', phone: '9841910002', area: 'Pulchowk', locale: 'ne', paid: true });
+    console.log(`  hand-off demo: ${waiting.job.number} waits for its advance ${waiting.job.advanceInvoice?.number}; `
+      + `${ready.job.number}'s advance is paid — ready to schedule`);
   }
 
   // ═══ finance & aftercare demo (Phase I): receivables in every aging bucket, a paid invoice with a voided

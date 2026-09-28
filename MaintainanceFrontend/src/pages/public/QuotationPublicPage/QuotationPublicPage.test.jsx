@@ -363,3 +363,65 @@ describe('the customer quotation page — the document (Phase L4)', () => {
     expect(await screen.findByText('दरभाउपत्र अस्वीकार गरियो')).toBeInTheDocument();
   });
 });
+
+describe('the customer quotation page — the advance (Phase L6)', () => {
+  /** What the API answers once the Accept raised the advance: stage 1 of 50 · 40 · 10, due 5 Oct 2026 in Kathmandu. */
+  const ADVANCE = {
+    number: 'INV-2083-0077', total: 4_118_850, balance: 4_118_850, dueDate: '2026-10-04T18:15:00.000Z', status: 'SENT',
+    url: 'http://localhost:5400/invoice/adv-tok',
+  };
+  const ACCEPTED = { ...QUOTATION, status: 'CONVERTED', actions: [], job: { id: 'j9', number: 'JOB-2083-0090' }, advance: ADVANCE };
+
+  const openIn = (locale, quotation, decide) => {
+    const calls = mockApi((call) => {
+      if (call.method === 'GET') return json({ data: quotation });
+      if (call.method === 'POST' && decide) return decide(call);
+      return undefined;
+    });
+    renderWithProviders(<QuotationPublicPage />, {
+      path: '/quotation/:token', initialPath: '/quotation/tok-1',
+      preloadedState: { ui: { ...uiReducer(undefined, { type: '@@init' }), locale } },
+    });
+    return calls;
+  };
+
+  it('asks for the advance straight after Accept: the amount, the date, a button to pay', async () => {
+    const user = userEvent.setup();
+    openIn('en', QUOTATION, () => json({ data: ACCEPTED }));
+    await user.click(await screen.findByRole('button', { name: 'Accept' }));
+    await user.click(await screen.findByRole('button', { name: 'Yes, accept' }));
+
+    expect(await screen.findByText('Thank you — quotation accepted')).toBeInTheDocument();
+    expect(screen.getByText(/call you to schedule the work once the advance is paid/)).toBeInTheDocument();
+    const block = screen.getByTestId('advance-due');
+    expect(within(block).getByRole('heading')).toHaveTextContent(/^Pay the advance of Rs\. 41,188\.50 by 05 Oct 2026 \(2083-06-\d\d B\.S\.\)$/);
+    expect(block).toHaveTextContent('Invoice INV-2083-0077 shows the ways to pay.');
+    expect(within(block).getByRole('link', { name: 'Pay the advance' })).toHaveAttribute('href', 'http://localhost:5400/invoice/adv-tok');
+  });
+
+  it('shows it again on a reload, in Nepali', async () => {
+    openIn('ne', ACCEPTED);
+    const block = await screen.findByTestId('advance-due');
+    expect(within(block).getByRole('heading')).toHaveTextContent(/^05 Oct 2026 \(वि\.सं\. 2083-06-\d\d\) भित्र Rs\. 41,188\.50 अग्रिम भुक्तानी गर्नुहोस्$/);
+    expect(block).toHaveTextContent('भुक्तानी गर्ने तरिका बिल INV-2083-0077 मा छ।');
+    expect(within(block).getByRole('link', { name: 'अग्रिम भुक्तानी गर्नुहोस्' })).toHaveAttribute('href', 'http://localhost:5400/invoice/adv-tok');
+    expect(screen.getByText(/अग्रिम भुक्तानी भएपछि काम मिलाउन/)).toBeInTheDocument();
+  });
+
+  it('says the advance is received once it is paid', async () => {
+    openIn('en', { ...ACCEPTED, advance: { ...ADVANCE, status: 'PAID', balance: 0 } });
+    const block = await screen.findByTestId('advance-due');
+    expect(block).toHaveAttribute('data-status', 'PAID');
+    expect(block).toHaveTextContent('Advance received — thank you');
+    expect(block).toHaveTextContent('We have recorded the payment on invoice INV-2083-0077.');
+    expect(screen.queryByRole('link', { name: 'Pay the advance' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/once the advance is paid/)).not.toBeInTheDocument();
+  });
+
+  it('asks for nothing when the quotation had no advance', async () => {
+    openIn('en', { ...ACCEPTED, advance: null });
+    expect(await screen.findByText('Thank you — quotation accepted')).toBeInTheDocument();
+    expect(screen.getByText(/Our team will call you to schedule the work\./)).toBeInTheDocument();
+    expect(screen.queryByTestId('advance-due')).not.toBeInTheDocument();
+  });
+});

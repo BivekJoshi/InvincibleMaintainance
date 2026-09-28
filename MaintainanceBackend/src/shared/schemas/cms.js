@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   bullets, isActive, optionalRupees, optionalText, seoFields, sortOrder, unit, locale,
 } from './common.js';
-import { FEATURE_GROUPS, HOME_SECTION_KEYS, LIST_GROUPS } from '../enums.js';
+import { FEATURE_GROUPS, HOME_SECTION_KEYS, JOB_TYPES, LIST_GROUPS } from '../enums.js';
 
 const title = z.string().trim().min(2).max(250);
 
@@ -49,6 +49,8 @@ export const serviceSchema = z.object({
   icon: z.string().trim().max(60).optional(),
   imageId: optionalImage,
   type: z.enum(['standard', 'other_civil']).default('standard'),
+  /** The job an accepted quotation for this service becomes (Phase L6). */
+  jobType: z.enum(JOB_TYPES).default('REPAIR'),
   priceFrom: optionalRupees,
   priceTo: optionalRupees,
   priceUnit: unit.optional(),
