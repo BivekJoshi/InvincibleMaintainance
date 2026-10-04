@@ -18,6 +18,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { PageTransition } from '@/three/motion/motionKit';
 import { cn } from '@/helpers/utils';
+import { displayCalendar } from '@/helpers/displayCalendar';
+import { formatDay } from '@/helpers/format';
+import { DayInput } from '@/components/common/DayInput';
 import { useScheduleCommit } from '@/hooks/useScheduleCommit';
 import {
   boardStats, dropTechnicians, dropWindow, filterLanes, hourLabel, isSameDrop, jobToneStyle, ktmDay, laneOptions, shiftBoardDate,
@@ -33,9 +36,9 @@ const WHO = [
   { value: 'SURVEYOR', label: 'Surveyors' },
 ];
 
-const dayWords = (day) => new Date(`${day}T00:00:00Z`)
-  .toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
-const datePart = (day, opts) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-GB', { ...opts, timeZone: 'UTC' });
+// AD or BS, as the account menu's Calendar switch says (`formatDay`).
+const dayWords = (day) => formatDay(day, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const datePart = (day, opts) => formatDay(day, { day: undefined, month: undefined, year: undefined, ...opts });
 
 /** One figure in the strip above the board. */
 function Stat({ icon: Icon, label, value, tone, children }) {
@@ -154,7 +157,11 @@ export default function DispatchBoardPage() {
               <div className="mt-1 flex items-center gap-1.5">
                 <Button variant={date === ktmDay() ? 'secondary' : 'outline'} size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => setParam({ date: '' })}>Today</Button>
                 <Label htmlFor="board-date" className="sr-only">Date</Label>
-                <Input id="board-date" type="date" value={date} onChange={(e) => setParam({ date: e.target.value })} className="h-6 w-[120px] rounded-full px-2 text-xs" />
+                {displayCalendar() === 'bs' ? (
+                  <DayInput id="board-date" value={date} onChange={(day) => setParam({ date: day })} className="h-6 w-auto rounded-full px-2 text-xs" />
+                ) : (
+                  <Input id="board-date" type="date" value={date} onChange={(e) => setParam({ date: e.target.value })} className="h-6 w-[120px] rounded-full px-2 text-xs" />
+                )}
               </div>
             </div>
           </div>

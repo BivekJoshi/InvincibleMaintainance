@@ -9,7 +9,8 @@ import { ConvertLeadSheet } from '@/components/leads/ConvertLeadSheet';
 import { RecordHistory } from '@/components/common/RecordHistory';
 import { renderWithProviders, signedInAs } from '@/test/renderWithProviders';
 import { json, mockApi, page } from '@/test/mockApi';
-import { ktmToday, otherPeriodLabel, periodLabel, shiftAnchor, spanFor } from '@/helpers/agenda';
+import { ktmToday, otherPeriodLabel, periodLabel } from '@/helpers/calendarDays';
+import { shiftAnchor, spanFor } from '@/helpers/agenda';
 import { CalendarModeSwitch } from '@/components/common/CalendarModeSwitch';
 
 afterEach(() => vi.unstubAllGlobals());

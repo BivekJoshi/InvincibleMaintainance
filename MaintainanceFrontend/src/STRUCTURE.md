@@ -1649,8 +1649,20 @@ The shell around the nav:
 - **Top bar** — the breadcrumb (the screen's name on a phone), the search button, Kathmandu time, the bell, the
   theme toggle and the account menu. The menu sets the theme and the **Calendar** — English (AD) or Nepali (BS),
   `common/CalendarModeSwitch` → `uiSlice.calendar` (`hooks/useCalendarMode`, remembered per browser like the theme,
-  `config/locale.js#CALENDARS`). It is display only: the clock's day (in BS, in Nepali script — "आइत १८ असोज") and the
-  SLA board's calendar read in it; the API and every input stay AD.
+  `config/locale.js#CALENDARS`). It is display only — the API, the URL and every stored value stay AD — but it reaches
+  **every date the back office writes or picks**: `AdminLayout` sets `helpers/displayCalendar.js` as it renders (and
+  AD again when it unmounts) and keys the page on it, so a switch redraws the page. In Nepali:
+  - `helpers/format#formatDate` / `formatDateTime` / `formatDay` write a date **without a `locale`** (the admin's way)
+    in BS, in Nepali script — "१८ असोज २०८३", "आइत १८ असोज", times Latin (`formatBsDay` honours the Intl keys asked
+    for). A call that passes `locale` (the site, the documents, the field app) or `calendar` never moves;
+    `formatDateAdBs` stays AD (BS). `AdBsDate` puts the BS line first. The clock, the dashboard's date, the dispatch
+    board, `leadFollowUp#formatWhen` and the tooltips follow it.
+  - **Every picker** opens `common/DateCalendar` — `ui/calendar` (react-day-picker) in AD, **`common/BsCalendar`** in
+    BS: the BS month (Nepali weekdays, Devanagari days with the AD date under each, month and year lists, arrows / Page
+    Up-Down / Home-End, a range mode, `disabled: { before, after }`, आज · Today). Both take and give Kathmandu
+    `YYYY-MM-DD` days. ResourceForm's `date` / `datetime` fields and CustomTable's `dateRange` filter use it in both
+    calendars; the visit dialog's date and the dispatch board's day keep the browser's date box in AD and open
+    **`common/DayInput`** (a button + `DateCalendar`) in BS.
 - **Command palette** (`CommandPalette`, `hooks/usePaletteHotkey`) — Ctrl/⌘+K anywhere: every screen the role can
   open, your shortcuts, your notes, and shell actions (theme, sidebar, sign out). `uiSlice.commandOpen`.
 - **Shortcuts strip** (`ShortcutBar`) — the user's pinned screens (up to 12), a star that pins the page on screen

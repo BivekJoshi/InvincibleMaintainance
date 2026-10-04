@@ -1,8 +1,10 @@
 import { AgendaChip } from '@/components/agenda/AgendaItem';
 import { AgendaOtherDate } from '@/components/agenda/AgendaOtherDate';
+import { NE_WEEKDAY_NAMES } from '@/config/locale';
 import {
-  HOLIDAY, NE_WEEKDAY_NAMES, WEEKDAY_NAMES, cornerCell, dayHeading, dayNumber, kindStyle, readsBs, sameMonth, weekdayOf,
-} from '@/helpers/agenda';
+  cornerCell, dayHeading, dayNumber, HOLIDAY, readsBs, sameMonth, WEEKDAY_NAMES, weekdayOf,
+} from '@/helpers/calendarDays';
+import { kindStyle } from '@/helpers/agenda';
 import { cn } from '@/helpers/utils';
 
 /** Chips a cell shows before "+N more". */

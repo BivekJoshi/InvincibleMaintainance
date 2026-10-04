@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Timer } from 'lucide-react';
 import { KIND_ICONS } from '@/components/agenda/agendaIcons';
-import { AGENDA_KINDS, bsDate, itemAction, itemDay, itemTime, kindStyle, lateLabel } from '@/helpers/agenda';
+import { bsDate } from '@/helpers/calendarDays';
+import { AGENDA_KINDS, itemAction, itemDay, itemTime, kindStyle, lateLabel } from '@/helpers/agenda';
 import { formatDate, formatDateTime, formatTime, initials } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 

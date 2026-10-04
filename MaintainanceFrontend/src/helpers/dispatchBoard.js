@@ -1,4 +1,4 @@
-import { formatDateTime, fromKathmanduParts, toKathmanduParts } from '@/helpers/format';
+import { formatDateTime, formatDay, fromKathmanduParts, toKathmanduParts } from '@/helpers/format';
 
 /**
  * The dispatch board's rules, without a DOM: Kathmandu days and hours, where a dropped job
@@ -156,8 +156,7 @@ export function scheduleWarnings({ job, window, technicianIds, lanes, days }) {
   return { warnings, unchecked };
 }
 
-const dayWords = (day) => new Date(`${day}T00:00:00Z`)
-  .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+const dayWords = (day) => formatDay(day, { weekday: 'short', day: 'numeric', month: 'short', year: undefined });
 const timeOf = (iso) => toKathmanduParts(iso).time;
 
 /** One warning as a sentence, for the confirm dialog and the toast. */

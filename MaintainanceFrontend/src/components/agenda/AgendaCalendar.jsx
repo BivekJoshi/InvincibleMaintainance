@@ -14,9 +14,12 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
-  AGENDA_KINDS, AGENDA_KIND_ORDER, AGENDA_VIEWS, agendaSummary, bsMonthNameEn, byTime, cornerCell, countByKind,
-  dayHeading, isDay, itemsByDay, itemsInScope, kindStyle, ktmToday, monthDays, monthGrid, otherPeriodLabel,
-  parseHidden, periodLabel, readsBs, serializeHidden, shiftAnchor, spanFor, weekDays,
+  bsMonthNameEn, cornerCell, dayHeading, isDay, ktmToday, monthDays, monthGrid, otherPeriodLabel, periodLabel,
+  readsBs, weekDays,
+} from '@/helpers/calendarDays';
+import {
+  AGENDA_KINDS, AGENDA_KIND_ORDER, AGENDA_VIEWS, agendaSummary, byTime, countByKind, itemsByDay, itemsInScope,
+  kindStyle, parseHidden, serializeHidden, shiftAnchor, spanFor,
 } from '@/helpers/agenda';
 import { loadDevanagariFont } from '@/helpers/devanagariFont';
 import { useCalendarMode } from '@/hooks/useCalendarMode';

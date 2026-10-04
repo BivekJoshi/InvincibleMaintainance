@@ -23,8 +23,9 @@ import { MOD_KEY } from '@/helpers/keys';
 import {
   selectMobileNavOpen, selectSidebarOpen, setCommandOpen, setMobileNav, toggleSidebar,
 } from '@/redux/slices/uiSlice';
-import { dayHeading, ktmToday } from '@/helpers/agenda';
+import { dayHeading, ktmToday } from '@/helpers/calendarDays';
 import { loadDevanagariFont } from '@/helpers/devanagariFont';
+import { setDisplayCalendar } from '@/helpers/displayCalendar';
 import { initials } from '@/helpers/format';
 import { useCalendarMode } from '@/hooks/useCalendarMode';
 import { cn } from '@/helpers/utils';
@@ -81,6 +82,15 @@ export function AdminLayout() {
   usePaletteHotkey();
   const dispatch = useDispatch();
   const { user, role } = useAuth();
+  // The account menu's Calendar switch, for every date the back office writes or picks (`helpers/displayCalendar`):
+  // set as this renders — before the page under it formats a date — and again once mounted (StrictMode runs the
+  // cleanup between two mounts), and AD again once the shell is gone.
+  const { calendar } = useCalendarMode();
+  setDisplayCalendar(calendar);
+  useEffect(() => {
+    setDisplayCalendar(calendar);
+    return () => setDisplayCalendar('ad');
+  }, [calendar]);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [logout] = useLogoutMutation();
@@ -212,7 +222,8 @@ export function AdminLayout() {
           <ShortcutBar />
         </div>
 
-        <main className="flex-1 p-4 sm:p-6"><PageOutlet /></main>
+        {/* Keyed on the calendar: a switch remounts the page, so every date on it is written again in the new one. */}
+        <main className="flex-1 p-4 sm:p-6"><PageOutlet key={calendar} /></main>
       </div>
 
       <CommandPalette role={role} onLogout={onLogout} />

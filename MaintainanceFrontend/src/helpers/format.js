@@ -1,5 +1,6 @@
-import { NE_DISPLAY_DIGITS, TIMEZONE_OFFSET_MINUTES } from '@/config/locale';
-import { fiscalYearLabel, formatBs } from '@/helpers/nepaliDate';
+import { NE_DISPLAY_DIGITS, NE_WEEKDAY_NAMES, TIMEZONE_OFFSET_MINUTES } from '@/config/locale';
+import { displayCalendar } from '@/helpers/displayCalendar';
+import { BS_MONTH_NAMES_NE, adToBs, fiscalYearLabel, formatBs } from '@/helpers/nepaliDate';
 
 /**
  * Display helpers. The API sends money as integer paisa and dates as UTC ISO strings;
@@ -10,6 +11,10 @@ import { fiscalYearLabel, formatBs } from '@/helpers/nepaliDate';
  * (`{ digits: 'deva' | 'latin' }` overrides it). Numbers keep Nepal's lakh grouping in both languages. All of it is
  * display only — what goes into an input or a request is never converted, and `toLatinDigits` reads a Devanagari digit
  * typed on a Nepali keyboard back into the Latin one the API expects.
+ *
+ * The back office's Calendar switch (`helpers/displayCalendar.js`): a date formatted **without** a `locale` — the
+ * admin's way — is written in BS, in Nepali script ("१८ असोज २०८३"), while the switch says Nepali. A call that passes
+ * a `locale` (the site, the documents, the field app) or a `calendar` is never moved by it.
  */
 
 const NPR = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -159,22 +164,61 @@ export function parseDateString(value) {
   return y && m && d ? new Date(y, m - 1, d) : undefined;
 }
 
+/** Whether a date formatted with these options follows the back office's Calendar switch into BS. */
+const followsSwitch = (opts) => opts.locale === undefined && opts.calendar === undefined && displayCalendar() === 'bs';
+
+/**
+ * An instant's Kathmandu day in BS, as the back office's Nepali calendar writes it — in Nepali script, "१८ असोज २०८३".
+ * The Intl keys a caller passes still say which parts it wants: `weekday` adds "आइत", `year: undefined` leaves the
+ * year out, `day: undefined` leaves the month and year ("असोज २०८३"). `null` outside the BS table.
+ *
+ * @param {string|Date|null|undefined} iso
+ * @param {Intl.DateTimeFormatOptions} [opts]
+ */
+export function formatBsDay(iso, opts = {}) {
+  const day = kathmanduDay(iso);
+  if (!day) return null;
+  let bs;
+  try {
+    bs = adToBs(new Date(`${day}T00:00:00.000Z`));
+  } catch {
+    return null;
+  }
+  const wants = (key) => (key in opts ? opts[key] !== undefined : key !== 'weekday');
+  return [
+    wants('weekday') ? NE_WEEKDAY_NAMES[new Date(`${day}T00:00:00.000Z`).getUTCDay()] : null,
+    wants('day') ? toDevanagariDigits(bs.day) : null,
+    wants('month') ? BS_MONTH_NAMES_NE[bs.month - 1] : null,
+    wants('year') ? toDevanagariDigits(bs.year) : null,
+  ].filter(Boolean).join(' ');
+}
+
 /**
  * The Kathmandu calendar day of an instant: `14 Sept 2026`, in Nepali `2026 सेप्टेम्बर 14`. Any other key is an Intl
  * option (`{ weekday: 'short' }`, `{ year: undefined }`). `calendar: 'bs'` gives the Bikram Sambat date instead
- * (`29 भदौ 2083` in Nepali, `29 Bhadra 2083` in English).
+ * (`29 भदौ 2083` in Nepali, `29 Bhadra 2083` in English). Without `locale` or `calendar`, the back office's Calendar
+ * switch decides: in Nepali, `formatBsDay`'s "१८ असोज २०८३".
  *
  * @param {string|Date|null|undefined} iso
- * @param {{ locale?: 'en'|'ne', digits?: 'latin'|'deva', calendar?: 'ad'|'bs' } & Intl.DateTimeFormatOptions} [opts]
+ * @param {{ locale?: 'en'|'ne', digits?: 'latin'|'deva', calendar?: 'ad'|'bs' } & Intl.DateTimeFormatOptions} [options]
  */
-export function formatDate(iso, { locale = 'en', digits, calendar = 'ad', ...opts } = {}) {
+export function formatDate(iso, options = {}) {
   if (!iso) return '—';
+  const { locale = 'en', digits, calendar = 'ad', ...opts } = options;
+  if (followsSwitch(options)) return formatBsDay(iso, opts) || formatDate(iso, { ...options, calendar: 'ad' });
   if (calendar === 'bs') return formatDateBs(iso, { long: true, locale, digits }) || '—';
   const text = new Date(iso).toLocaleDateString(intlLocale(locale), {
     day: '2-digit', month: 'short', year: 'numeric', timeZone: KTM, ...opts,
   });
   return localizeDigits(text, locale, digits);
 }
+
+/**
+ * A Kathmandu calendar day (`YYYY-MM-DD`) written the way `formatDate` writes an instant — the same options, and the
+ * same Calendar switch: `formatDay('2026-10-04', { weekday: 'short', year: undefined })` → "Sun, 04 Oct" / "आइत १८ असोज".
+ * Keys set to `undefined` are left out, so `{ day: undefined, year: undefined, month: 'short' }` is the month alone.
+ */
+export const formatDay = (day, opts) => (day ? formatDate(fromKathmanduParts(day, '12:00'), opts) : '—');
 
 /** The Kathmandu calendar day an instant falls on, `YYYY-MM-DD` (`''` for none). */
 export const kathmanduDay = (iso) => toKathmanduParts(iso).date;
@@ -209,7 +253,7 @@ const BS_ERA = { en: 'BS', ne: 'वि.सं.' };
  */
 export function formatDateAdBs(iso, { locale = 'en', digits } = {}) {
   if (!iso) return '—';
-  const ad = formatDate(iso, { locale, digits });
+  const ad = formatDate(iso, { locale, digits, calendar: 'ad' });
   const bs = formatDateBs(iso, { locale, digits });
   return bs ? `${ad} (${bs} ${BS_ERA[locale] ?? BS_ERA.en})` : ad;
 }
@@ -231,9 +275,17 @@ export function fiscalYearOf(iso) {
  */
 export const formatBalance = (paisa, opts) => formatNpr(Math.max(0, Number(paisa) || 0), opts);
 
-/** @param {{ locale?: 'en'|'ne', digits?: 'latin'|'deva' }} [opts] */
-export function formatDateTime(iso, { locale = 'en', digits } = {}) {
+/**
+ * The day and the Kathmandu time. Without `locale`, the back office's Calendar switch decides the day:
+ * "१८ असोज २०८३, 14:30" in Nepali — the time stays Latin.
+ *
+ * @param {{ locale?: 'en'|'ne', digits?: 'latin'|'deva' }} [options]
+ */
+export function formatDateTime(iso, options = {}) {
   if (!iso) return '—';
+  const { locale = 'en', digits } = options;
+  const bs = followsSwitch(options) ? formatBsDay(iso) : null;
+  if (bs) return `${bs}, ${formatTime(iso)}`;
   return localizeDigits(new Date(iso).toLocaleString(intlLocale(locale), {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: KTM,
   }), locale, digits);

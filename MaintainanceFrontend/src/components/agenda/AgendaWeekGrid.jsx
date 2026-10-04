@@ -1,6 +1,7 @@
 import { AgendaCard } from '@/components/agenda/AgendaItem';
 import { AgendaOtherDate } from '@/components/agenda/AgendaOtherDate';
-import { HOLIDAY, NE_WEEKDAY_NAMES, WEEKDAY_NAMES, cornerCell, dayNumber, readsBs, weekdayOf } from '@/helpers/agenda';
+import { NE_WEEKDAY_NAMES } from '@/config/locale';
+import { cornerCell, dayNumber, HOLIDAY, readsBs, WEEKDAY_NAMES, weekdayOf } from '@/helpers/calendarDays';
 import { cn } from '@/helpers/utils';
 
 /**

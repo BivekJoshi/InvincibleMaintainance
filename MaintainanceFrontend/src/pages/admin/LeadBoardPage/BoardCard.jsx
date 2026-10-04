@@ -12,7 +12,7 @@ import { StageAgeChip } from '@/components/leads/StageAgeChip';
 import { PriorityBadge } from '@/components/ui/badge';
 import { LEAD_STATUS_LABELS } from '@/config/constants';
 import { isGoingCold, leadAgeDays, nextStatuses } from '@/helpers/leadBoard';
-import { initials, shortAge } from '@/helpers/format';
+import { formatDateTime, initials, shortAge } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -74,7 +74,7 @@ export const BoardCardFace = forwardRef(function BoardCardFace({ lead, dragging,
             <Phone className="h-3 w-3" aria-hidden /> {lead.phone}
           </a>
         ) : null}
-        <span className="ml-auto inline-flex shrink-0 items-center gap-1" title={new Date(lead.createdAt).toLocaleString()}>
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1" title={formatDateTime(lead.createdAt)}>
           <Clock className="h-3 w-3" aria-hidden /> {shortAge(lead.createdAt)}
         </span>
         {lead.assignedTo ? (

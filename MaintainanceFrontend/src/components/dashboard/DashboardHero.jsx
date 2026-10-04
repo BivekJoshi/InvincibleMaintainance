@@ -3,11 +3,11 @@ import { CheckCircle2, AlertTriangle, Timer } from 'lucide-react';
 import { AnimatedNumber, motion, useReducedMotion } from '@/three/motion/motionKit';
 import { DASHBOARD_CARDS, cardHref } from '@/config/admin/dashboardCards';
 import { attentionItems, greetingFor, ktmHour } from '@/helpers/dashboard';
+import { formatDate } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
-const todayLabel = () => new Intl.DateTimeFormat('en-GB', {
-  weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kathmandu',
-}).format(new Date());
+// The office's date — AD or BS, as the account menu's Calendar switch says.
+const todayLabel = () => formatDate(new Date().toISOString(), { weekday: 'long', day: 'numeric', month: 'long', year: undefined });
 
 /**
  * The dashboard's opening band: the greeting, the office's date, and the one

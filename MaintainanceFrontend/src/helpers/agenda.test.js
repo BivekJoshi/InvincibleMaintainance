@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  agendaSummary, bsCell, bsDate, bsMonthNameEn, bsSpanLabel, cornerCell, countByKind, dayHeading, dayNumber, isDay, itemAction,
-  itemTime, itemsByDay, itemsInScope, ktmToday, lateLabel, monthDays, monthGrid, monthStart, otherPeriodLabel, parseHidden,
-  periodLabel, sameMonth, serializeHidden, shiftAnchor, spanFor, weekStart,
+  bsCell, bsDate, bsMonthNameEn, bsSpanLabel, cornerCell, dayHeading, dayNumber, isDay, ktmToday, monthDays,
+  monthGrid, monthStart, otherPeriodLabel, periodLabel, sameMonth, weekStart,
+} from '@/helpers/calendarDays';
+import {
+  agendaSummary, countByKind, itemAction, itemTime, itemsByDay, itemsInScope, lateLabel, parseHidden,
+  serializeHidden, shiftAnchor, spanFor,
 } from '@/helpers/agenda';
 
 const item = (extra) => ({ key: `${extra.kind ?? 'followUp'}:${extra.id ?? 'x'}`, kind: 'followUp', allDay: false, state: 'upcoming', ...extra });

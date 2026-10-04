@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import {
   formatNprShort, shortAge, formatRupees, fromKathmanduParts, parseRupees, rupeesInput, rupeesToPaisa, toKathmanduParts,
   formatNumber, formatNpr, formatDate, formatDateBs, formatDateAdBs, formatDateTime, formatTime, formatMinutes,
-  toDevanagariDigits, toLatinDigits, localizeDigits, displayDigits, relativeTime,
+  toDevanagariDigits, toLatinDigits, localizeDigits, displayDigits, relativeTime, formatBsDay, formatDay,
 } from '@/helpers/format';
+import { setDisplayCalendar } from '@/helpers/displayCalendar';
 
 describe('money — paisa from the API, rupees in the form', () => {
   it.each([
@@ -161,5 +162,35 @@ describe('Nepali display (Phase J1)', () => {
     const threeHoursAgo = new Date(Date.now() - 3 * 3600_000).toISOString();
     expect(relativeTime(threeHoursAgo, { locale: 'ne' })).toBe('3 घण्टा पहिले');
     expect(relativeTime(threeHoursAgo)).toBe('3 hours ago');
+  });
+});
+
+describe('the back office’s Calendar switch', () => {
+  // 06:15 UTC on 4 Oct 2026 is 12:00 in Kathmandu — 18 Ashwin 2083.
+  const iso = '2026-10-04T06:15:00.000Z';
+  afterEach(() => setDisplayCalendar('ad'));
+
+  it('in Nepali, an admin date is BS in Nepali script; the time stays Latin', () => {
+    setDisplayCalendar('bs');
+    expect(formatDate(iso)).toBe('१८ असोज २०८३');
+    expect(formatDate(iso, { year: undefined })).toBe('१८ असोज');
+    expect(formatDate(iso, { weekday: 'long', day: 'numeric', month: 'long', year: undefined })).toBe('आइत १८ असोज');
+    expect(formatDate(iso, { day: undefined, year: undefined, month: 'short' })).toBe('असोज');
+    expect(formatDateTime(iso)).toBe('१८ असोज २०८३, 12:00');
+    expect(formatDay('2026-10-04', { weekday: 'short', day: 'numeric', month: 'short', year: undefined })).toBe('आइत १८ असोज');
+  });
+
+  it('never moves a date that names its locale or calendar — the site, the documents, the field app', () => {
+    setDisplayCalendar('bs');
+    expect(formatDate(iso, { locale: 'en' })).toBe('04 Oct 2026');
+    expect(formatDate(iso, { calendar: 'ad' })).toBe('04 Oct 2026');
+    expect(formatDateTime(iso, { locale: 'en' })).toBe('04 Oct 2026, 12:00');
+    expect(formatDateAdBs(iso)).toBe('04 Oct 2026 (2083-06-18 BS)');
+  });
+
+  it('in English, nothing changes', () => {
+    expect(formatDate(iso)).toBe('04 Oct 2026');
+    expect(formatDay('2026-10-04', { weekday: 'short', day: 'numeric', month: 'short', year: undefined })).toBe('Sun 4 Oct');
+    expect(formatBsDay(iso)).toBe('१८ असोज २०८३');
   });
 });

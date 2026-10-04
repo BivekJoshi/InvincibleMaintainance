@@ -14,6 +14,8 @@ export const SUPPORTED_LOCALES = ['en', 'ne'];
  */
 export const CALENDARS = ['ad', 'bs'];
 export const DEFAULT_CALENDAR = 'ad';
+/** The weekdays as a BS date writes them, Sunday first — in Nepali script, like the rest of a Nepali date. */
+export const NE_WEEKDAY_NAMES = ['आइत', 'सोम', 'मङ्गल', 'बुध', 'बिहि', 'शुक्र', 'शनि'];
 export const CALENDAR_LABELS = {
   ad: { label: 'English', hint: 'English calendar (AD)' },
   bs: { label: 'Nepali', hint: 'Nepali calendar (Bikram Sambat, BS)' },

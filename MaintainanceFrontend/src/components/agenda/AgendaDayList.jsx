@@ -2,7 +2,7 @@ import { CalendarCheck2 } from 'lucide-react';
 import { AgendaCard } from '@/components/agenda/AgendaItem';
 import { AgendaOtherDate } from '@/components/agenda/AgendaOtherDate';
 import { EmptyState } from '@/components/common/EmptyState';
-import { cornerCell, dayHeading, readsBs } from '@/helpers/agenda';
+import { cornerCell, dayHeading, readsBs } from '@/helpers/calendarDays';
 import { cn } from '@/helpers/utils';
 
 /**
