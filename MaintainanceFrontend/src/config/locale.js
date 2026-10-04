@@ -8,6 +8,18 @@ export const DEFAULT_LOCALE = 'en';
 export const SUPPORTED_LOCALES = ['en', 'ne'];
 
 /**
+ * The calendar the back office's calendar and clock read in — each person's choice from the account menu, kept
+ * per browser like the theme: `'ad'` (English, Gregorian) or `'bs'` (Nepali, Bikram Sambat). Display only — the
+ * API and every input stay AD.
+ */
+export const CALENDARS = ['ad', 'bs'];
+export const DEFAULT_CALENDAR = 'ad';
+export const CALENDAR_LABELS = {
+  ad: { label: 'English', hint: 'English calendar (AD)' },
+  bs: { label: 'Nepali', hint: 'Nepali calendar (Bikram Sambat, BS)' },
+};
+
+/**
  * The digits Nepali screens print (Phase J1): `'latin'` (1,25,000) or `'deva'` (१,२५,०००). Latin by default — a
  * customer reads an amount, a job number or a phone back to the office, and a technician types Latin digits into
  * every input. Display only: nothing in an input or a request body is ever converted (`helpers/format.js`).

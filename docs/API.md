@@ -361,6 +361,27 @@ GET    /admin/leads/sla-board       leads:read · { breached[], atRisk[], waitin
                                     waiting[] is unanswered and still outside the warning window (a fresh
                                     enquiry lands here); the counts use Kathmandu's day; metToday ≤ answeredToday (first contact
                                     today, inside the deadline)
+GET    /admin/agenda                leads:read · ?from&to (YYYY-MM-DD Kathmandu days, inclusive, ≤ 62; default today + 6) —
+                                    the SLA board's Calendar tab. -> { from, to, kinds[], items[], overdue { total, byKind },
+                                    truncated[] }. items: every dated thing still waiting that falls in the span, AND every
+                                    late one wherever it falls, oldest first:
+                                      response   lead unanswered — slaDueAt                       (leads:read)
+                                      followUp   open lead's next action — nextActionAt           (leads:read)
+                                      visit      open INSPECTION job — scheduledStart             (jobs:read)
+                                      job        any other open job — scheduledStart              (jobs:read)
+                                      quotation  OFFICE_APPROVED|SENT|CHANGES_REQUESTED — validUntil (quotations:read)
+                                      invoice    SENT|PARTIAL|OVERDUE — dueDate, amount = balance (invoices:read)
+                                      amcVisit   pending visit of an active contract — dueDate    (amc:read)
+                                      renewal    active AMC contract — endDate                    (amc:read)
+                                    A kind the role cannot read is left out of kinds[] and items[], not refused.
+                                    Item: { key (kind:id), kind, id, at, endAt, allDay, state overdue|today|upcoming, title,
+                                    detail, number?, href, ownable, ownerId, ownerName, priority?, status?, type?, note?,
+                                    amount? (paisa), people? (technicians), phone? }. A timed item is late once `at` has passed
+                                    (a job or visit once its end has); an allDay one (quotation, invoice, AMC) the Kathmandu
+                                    day after. `ownable` kinds belong to a salesperson (the lead's owner; a quotation without
+                                    a lead, its author) — the board's Mine / Unassigned switch narrows those. Each kind reads
+                                    at most 300 rows for the span and 300 late ones (named in truncated[]); overdue.byKind
+                                    counts every late row
 GET    /admin/leads/export.csv      leads:read · the list filters (every page, up to 10,000 rows), or
                                     ?ids=a,b,c (≤100) for the rows picked in the table
 POST   /admin/leads/merge           leads:write · { primaryId, duplicateIds }   duplicates move to LOST and are

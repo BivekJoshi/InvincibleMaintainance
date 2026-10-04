@@ -9,6 +9,8 @@ import { ConvertLeadSheet } from '@/components/leads/ConvertLeadSheet';
 import { RecordHistory } from '@/components/common/RecordHistory';
 import { renderWithProviders, signedInAs } from '@/test/renderWithProviders';
 import { json, mockApi, page } from '@/test/mockApi';
+import { ktmToday, otherPeriodLabel, periodLabel, shiftAnchor, spanFor } from '@/helpers/agenda';
+import { CalendarModeSwitch } from '@/components/common/CalendarModeSwitch';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -408,6 +410,91 @@ describe('the SLA board', () => {
     await screen.findByText('Late Lead');
     expect(screen.queryByRole('button', { name: /Take it/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Log response/ })).not.toBeInTheDocument();
+  });
+
+  it('the Calendar tab lays out what is late, what is today and what is coming, by kind', async () => {
+    const user = userEvent.setup();
+    const nowIso = new Date().toISOString();
+    const base = { allDay: false, endAt: null, ownable: true, ownerId: null, ownerName: null };
+    const agenda = {
+      kinds: ['response', 'followUp', 'visit', 'job', 'quotation', 'amcVisit', 'renewal'],
+      items: [
+        // Long before any month on screen: only the side panel has it.
+        { ...base, key: 'followUp:old', kind: 'followUp', id: 'old', at: '2020-01-10T05:00:00.000Z', state: 'overdue', title: 'Gita Shrestha', href: '/admin/leads/old', type: 'CALL', note: 'Call back about the roof' },
+        { ...base, key: 'response:new', kind: 'response', id: 'new', at: nowIso, state: 'today', title: 'Ram Thapa', href: '/admin/leads/new', ownerId: 'user-test', ownerName: 'Test User' },
+        { ...base, key: 'job:j1', kind: 'job', id: 'j1', at: nowIso, state: 'today', title: 'Hotel Annapurna', href: '/admin/jobs/j1', number: 'JOB-1', ownable: false, people: ['Hari'] },
+      ],
+      overdue: { total: 1, byKind: { followUp: 1 } },
+      truncated: [],
+    };
+    const calls = mockApi(({ path }) => {
+      if (path === '/admin/leads/sla-board') return json({ data: board });
+      if (path === '/admin/agenda') return json({ data: agenda });
+      return undefined;
+    });
+    const { router } = renderWithProviders(<SlaBoardPage />, { path: '/admin/sla', preloadedState: signedInAs('SALES') });
+
+    await user.click(await screen.findByRole('tab', { name: /Calendar/ }));
+    expect(router.state.location.search).toContain('tab=calendar');
+    const late = await screen.findByRole('region', { name: 'Overdue' });
+    expect(within(late).getByText('Gita Shrestha')).toBeInTheDocument();
+    expect(within(late).getByText(/d late$/)).toBeInTheDocument();
+    // The month's six weeks are what was asked for.
+    const today = ktmToday();
+    expect(calls.find((c) => c.path === '/admin/agenda').query).toEqual(spanFor('month', today));
+
+    // Today is picked to begin with; the side panel has it in full.
+    const day = screen.getByRole('region', { name: /^On / });
+    expect(within(day).getByText('Ram Thapa')).toBeInTheDocument();
+    expect(within(day).getByRole('link', { name: 'Hotel Annapurna' })).toHaveAttribute('href', '/admin/jobs/j1');
+
+    // The legend is the filter.
+    await user.click(screen.getByRole('button', { name: /^Follow-up/ }));
+    expect(router.state.location.search).toContain('hide=followUp');
+    expect(within(late).queryByText('Gita Shrestha')).not.toBeInTheDocument();
+
+    // Mine: the caller's own; a job is nobody's lead.
+    await user.click(screen.getByRole('radio', { name: 'Mine' }));
+    expect(within(day).getByText('Ram Thapa')).toBeInTheDocument();
+    expect(within(day).queryByText('Hotel Annapurna')).not.toBeInTheDocument();
+
+    // The week asks for its seven days.
+    await user.click(screen.getByRole('radio', { name: 'Week' }));
+    await waitFor(() => expect(calls.filter((c) => c.path === '/admin/agenda').at(-1).query).toEqual(spanFor('week', today)));
+    expect(router.state.location.search).toContain('cal=week');
+  });
+
+  it('reads in the Nepali calendar once the account menu says so', async () => {
+    const user = userEvent.setup();
+    const empty = { kinds: ['response', 'followUp'], items: [], overdue: { total: 0, byKind: {} }, truncated: [] };
+    const calls = mockApi(({ path }) => {
+      if (path === '/admin/leads/sla-board') return json({ data: board });
+      if (path === '/admin/agenda') return json({ data: empty });
+      return undefined;
+    });
+    // The switch is the account menu's; here beside the board, as one store holds both.
+    renderWithProviders(<><CalendarModeSwitch /><SlaBoardPage /></>, {
+      path: '/admin/sla', initialPath: '/admin/sla?tab=calendar', preloadedState: signedInAs('SALES'),
+    });
+    const today = ktmToday();
+    const heading = await screen.findByRole('heading', { level: 2 });
+    expect(heading).toHaveTextContent(periodLabel('month', today));
+
+    await user.click(screen.getByRole('button', { name: 'Nepali' }));
+    expect(screen.getByRole('button', { name: 'Nepali' })).toHaveAttribute('aria-pressed', 'true');
+    expect(heading).toHaveTextContent(periodLabel('month', today, 'bs'));
+    expect(screen.getByText(otherPeriodLabel('month', today, 'bs'))).toBeInTheDocument();
+    // The grid is the BS month's six weeks, and the API is asked for them.
+    await waitFor(() => expect(calls.filter((c) => c.path === '/admin/agenda').at(-1).query).toEqual(spanFor('month', today, 'bs')));
+    expect(localStorage.getItem('calendar')).toBe('bs');
+
+    // A step is a BS month.
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(heading).toHaveTextContent(periodLabel('month', shiftAnchor(today, 'month', 1, 'bs'), 'bs'));
+
+    await user.click(screen.getByRole('button', { name: 'English' }));
+    expect(localStorage.getItem('calendar')).toBe('ad');
+    localStorage.removeItem('calendar');
   });
 });
 

@@ -219,6 +219,20 @@ export const assigneeQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+  .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), 'Not a date');
+const dayNumber = (v) => Math.floor(Date.parse(`${v}T00:00:00Z`) / 86_400_000);
+
+/** GET /admin/agenda — the SLA board's calendar: Kathmandu days, inclusive, at most 62 of them (a month grid fits). */
+export const agendaQuery = z.object({
+  from: ymd.optional(),
+  to: ymd.optional(),
+}).refine((v) => !v.from || !v.to || dayNumber(v.to) >= dayNumber(v.from), {
+  message: 'The end comes before the start', path: ['to'],
+}).refine((v) => !v.from || !v.to || dayNumber(v.to) - dayNumber(v.from) < 62, {
+  message: 'Ask for at most 62 days at a time', path: ['to'],
+});
+
 export const customerSchema = z.object({
   type: z.enum(CUSTOMER_TYPES).default('individual'),
   name: z.string().trim().min(2).max(160),

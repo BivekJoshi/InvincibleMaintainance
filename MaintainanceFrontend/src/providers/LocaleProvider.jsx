@@ -1,21 +1,10 @@
 import { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { DEVANAGARI_FONT_URL, isEnglishOnlyPath } from '@/config/locale';
+import { isEnglishOnlyPath } from '@/config/locale';
+import { loadDevanagariFont } from '@/helpers/devanagariFont';
 import { selectLocale } from '@/redux/slices/uiSlice';
 import { LocaleContext } from './localeContext';
-
-const FONT_LINK_ID = 'font-devanagari';
-
-/** Adds the Devanagari font's stylesheet once — `index.html` may already have, for a page that opened in Nepali. */
-function loadDevanagariFont() {
-  if (document.getElementById(FONT_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FONT_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href = DEVANAGARI_FONT_URL;
-  document.head.appendChild(link);
-}
 
 /**
  * The language of the route on screen (Phase J1): English on every `/admin` path (decision D7 — the back office is
