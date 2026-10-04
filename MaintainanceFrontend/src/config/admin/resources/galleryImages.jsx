@@ -15,6 +15,8 @@ export const galleryImages = {
   writeCapability: 'cms:write',
   schema: galleryImageSchema,
   sortable: true,
+  // Phase J1: a caption has a Nepali version, shown on the site in Nepali and read out as the picture's description.
+  translatable: ['caption'],
   titleOf: (record) => record.caption || 'Gallery picture',
   publicHref: () => '/',
   searchPlaceholder: 'Search captions…',

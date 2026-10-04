@@ -1,3 +1,5 @@
+import { toLatinDigits } from '@/helpers/format';
+
 /**
  * The measurement sheet (Phase L3) on the client: reading what a site engineer types, and showing a row's
  * value and the sheet's total **as a preview**. Quantities, never money. The quantity a quotation saves is
@@ -16,7 +18,8 @@ const PLAIN = new RegExp(String.raw`^(${NUM})$`);
 /**
  * A length as typed, in feet-inches or as a number: `12'6"` → 12.5, `12'` → 12, `6"` → 0.5, `12' 6` → 12.5,
  * `12'-6"` → 12.5, `12.5` → 12.5, `1,200` → 1200. A number already is one. Blank → undefined; anything
- * else → NaN, so a form can say it could not read it.
+ * else → NaN, so a form can say it could not read it. Digits typed on a Nepali keyboard read the same (Phase J1):
+ * `१२'६"` → 12.5.
  *
  * Feet and inches become decimal feet, the unit a sheet in feet is measured in (a sheet in metres takes
  * plain numbers).
@@ -27,7 +30,7 @@ const PLAIN = new RegExp(String.raw`^(${NUM})$`);
 export function parseLength(input) {
   if (typeof input === 'number') return Number.isFinite(input) ? input : Number.NaN;
   if (blank(input)) return undefined;
-  const text = String(input).trim().replace(/,/g, '');
+  const text = toLatinDigits(input).trim().replace(/,/g, '');
   let m = text.match(PLAIN);
   if (m) return Number(m[1]);
   m = text.match(FEET_INCHES);

@@ -13,8 +13,10 @@ import { formatTime, imageUrl } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 import { selectFieldSync } from '@/redux/slices/fieldSyncSlice';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
 
-function Tile({ src, kindLabel, caption, area, at, badge, pending }) {
+function Tile({ src, kindLabel, caption, area, at, badge, pending, locale }) {
   return (
     <li className="overflow-hidden rounded-lg border bg-card">
       <div className="relative aspect-[4/3] bg-muted">
@@ -39,15 +41,15 @@ function Tile({ src, kindLabel, caption, area, at, badge, pending }) {
           <p className="flex items-center gap-1 truncate text-muted-foreground"><MapPin className="h-3 w-3 shrink-0" aria-hidden />{area}</p>
         ) : null}
         {caption ? <p className="truncate text-muted-foreground">{caption}</p> : null}
-        {at ? <p className="text-muted-foreground">{formatTime(at)}</p> : null}
+        {at ? <p className="text-muted-foreground">{formatTime(at, { locale })}</p> : null}
       </div>
     </li>
   );
 }
 
-function PendingTile({ upload, badge, kindLabel }) {
+function PendingTile({ upload, badge, kindLabel, locale }) {
   const src = usePendingPicture(upload.id);
-  return <Tile src={src} kindLabel={kindLabel} caption={upload.caption} area={upload.area} at={upload.at} badge={badge} pending />;
+  return <Tile src={src} kindLabel={kindLabel} caption={upload.caption} area={upload.area} at={upload.at} badge={badge} locale={locale} pending />;
 }
 
 /**
@@ -63,12 +65,13 @@ function PendingTile({ upload, badge, kindLabel }) {
  *
  * @param {{ target: 'job'|'survey', targetId: string, kinds?: string[], defaultKind?: string,
  *   areas?: string[]|null, photos?: Array<{ id: string, mediaId: string, kind: string, caption?: string, area?: string,
- *   createdAt?: string }>, media?: Record<string, object>, readOnly?: boolean, copy: object }} props
- *   `areas` — ask for the room (a text box suggesting these); `copy` is the field copy (`config/tech/fieldCopy.js`)
+ *   createdAt?: string }>, media?: Record<string, object>, readOnly?: boolean }} props
+ *   `areas` — ask for the room (a text box suggesting these). Words: `FIELD.photos`, in the technician's language.
  */
 export function PhotoCapture({
-  target, targetId, kinds = [], defaultKind, areas = null, photos, media = {}, readOnly = false, copy,
+  target, targetId, kinds = [], defaultKind, areas = null, photos, media = {}, readOnly = false,
 }) {
+  const t = useT(FIELD);
   const dispatch = useDispatch();
   const { queueUpload } = useFieldQueue();
   const { uploads, syncing, online } = useSelector(selectFieldSync);
@@ -76,7 +79,6 @@ export function PhotoCapture({
   const [caption, setCaption] = useState('');
   const [area, setArea] = useState('');
   const [preparing, setPreparing] = useState(0);
-  const words = copy.photos;
   const askArea = Array.isArray(areas);
 
   const waiting = useMemo(
@@ -117,7 +119,7 @@ export function PhotoCapture({
         });
         queued += 1;
       } catch (err) {
-        dispatch(toastError(words.failed, err?.message));
+        dispatch(toastError(t('photos.failed'), err?.message));
       } finally {
         setPreparing((n) => n - 1);
       }
@@ -125,7 +127,7 @@ export function PhotoCapture({
     if (queued) {
       // The room stays: the next picture is usually taken in the same one.
       setCaption('');
-      if (!navigator.onLine) dispatch(toastSuccess(words.queued(queued)));
+      if (!navigator.onLine) dispatch(toastSuccess(t('photos.queued', { count: queued })));
     }
   };
 
@@ -137,7 +139,7 @@ export function PhotoCapture({
         <div className="space-y-3">
           {kinds.length ? (
             <div className="space-y-1.5">
-              <p className="text-sm font-medium" id={`${inputId}-kind`}>{words.kindLabel}</p>
+              <p className="text-sm font-medium" id={`${inputId}-kind`}>{t('photos.kindLabel')}</p>
               <ToggleGroup
                 type="single"
                 value={kind}
@@ -152,7 +154,7 @@ export function PhotoCapture({
                     variant="outline"
                     className="h-12 text-sm data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
                   >
-                    {words.kinds[k]}
+                    {t(`photos.kinds.${k}`)}
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
@@ -160,14 +162,14 @@ export function PhotoCapture({
           ) : null}
           {askArea ? (
             <div className="space-y-1.5">
-              <Label htmlFor={`${inputId}-area`}>{words.area}</Label>
+              <Label htmlFor={`${inputId}-area`}>{t('photos.area')}</Label>
               <Input
                 id={`${inputId}-area`}
                 value={area}
                 maxLength={80}
                 list={`${inputId}-areas`}
                 onChange={(e) => setArea(e.target.value)}
-                placeholder={words.areaPlaceholder}
+                placeholder={t('photos.areaPlaceholder')}
                 className="h-11 text-base"
               />
               <datalist id={`${inputId}-areas`}>
@@ -176,13 +178,13 @@ export function PhotoCapture({
             </div>
           ) : null}
           <div className="space-y-1.5">
-            <Label htmlFor={`${inputId}-caption`}>{words.caption}</Label>
+            <Label htmlFor={`${inputId}-caption`}>{t('photos.caption')}</Label>
             <Input
               id={`${inputId}-caption`}
               value={caption}
               maxLength={300}
               onChange={(e) => setCaption(e.target.value)}
-              placeholder={words.captionPlaceholder}
+              placeholder={t('photos.captionPlaceholder')}
               className="h-11 text-base"
             />
           </div>
@@ -194,7 +196,7 @@ export function PhotoCapture({
             )}
           >
             {preparing ? <Loader2 className="animate-spin" aria-hidden /> : <Camera aria-hidden />}
-            {preparing ? words.preparing : words.take}
+            {preparing ? t('photos.preparing') : t('photos.take')}
             <input
               id={inputId}
               type="file"
@@ -203,28 +205,32 @@ export function PhotoCapture({
               multiple
               className="sr-only"
               onChange={onFiles}
-              aria-label={words.take}
+              aria-label={t('photos.take')}
             />
           </label>
         </div>
       ) : null}
 
       {waiting.length || sent.length ? (
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label={words.title}>
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label={t('photos.title')}>
           {waiting.map((u) => (
             <PendingTile
               key={u.id}
               upload={u}
-              kindLabel={u.kind ? words.kinds[u.kind] : null}
-              badge={syncing && online ? words.uploading : words.waiting}
+              kindLabel={u.kind ? t(`photos.kinds.${u.kind}`) : null}
+              badge={t(syncing && online ? 'photos.uploading' : 'photos.waiting')}
+              locale={t.locale}
             />
           ))}
           {sent.map((p) => (
-            <Tile key={p.key} src={p.src} kindLabel={p.kind ? words.kinds[p.kind] : null} caption={p.caption} area={p.area} at={p.at} />
+            <Tile
+              key={p.key} src={p.src} kindLabel={p.kind ? t(`photos.kinds.${p.kind}`) : null}
+              caption={p.caption} area={p.area} at={p.at} locale={t.locale}
+            />
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">{words.none}</p>
+        <p className="text-sm text-muted-foreground">{t('photos.none')}</p>
       )}
     </div>
   );

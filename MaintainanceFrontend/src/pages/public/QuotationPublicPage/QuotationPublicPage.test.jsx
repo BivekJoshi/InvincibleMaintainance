@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import QuotationPublicPage from './QuotationPublicPage';
 import { renderWithProviders } from '@/test/renderWithProviders';
 import { json, mockApi } from '@/test/mockApi';
 import uiReducer from '@/redux/slices/uiSlice';
+import { resetI18nWarnings } from '@/helpers/i18n';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -291,7 +292,10 @@ describe('the customer quotation page — the document (Phase L4)', () => {
   it('reads in Nepali at 360 px: the schedule, the words, the contract and the answers', async () => {
     openAt360(DOC, 'ne');
     const doc = await screen.findByTestId('quotation-document');
-    expect(within(doc).getByTestId('quotation-date')).toHaveTextContent('मिति: 26 Sept 2026 (वि.सं. 2083-06-10)');
+    // Phase J1: the AD date in Nepali words, the server's BS date with its era, amounts in रु.
+    expect(within(doc).getByTestId('quotation-date')).toHaveTextContent('मिति: 2026 सेप्टेम्बर 26 (2083-06-10 वि.सं.)');
+    expect(within(doc).getByTestId('quotation-valid-until')).toHaveTextContent('2026 अक्टोबर 26 (2083-07-10 वि.सं.) सम्म मान्य');
+    expect(within(doc).getAllByText('रु. 82,377.00')).toHaveLength(2);
     expect(within(doc).getByTestId('total-in-words')).toHaveTextContent('अक्षरमा रकम: रुपैयाँ बयासी हजार तीन सय सतहत्तर मात्र');
     expect(within(doc).getByTestId('contract-type')).toHaveTextContent('दररेटअनुसार');
     expect(within(doc).getByTestId('estimated-days')).toHaveTextContent('करिब 21 दिन');
@@ -402,7 +406,7 @@ describe('the customer quotation page — the advance (Phase L6)', () => {
   it('shows it again on a reload, in Nepali', async () => {
     openIn('ne', ACCEPTED);
     const block = await screen.findByTestId('advance-due');
-    expect(within(block).getByRole('heading')).toHaveTextContent(/^05 Oct 2026 \(वि\.सं\. 2083-06-\d\d\) भित्र Rs\. 41,188\.50 अग्रिम भुक्तानी गर्नुहोस्$/);
+    expect(within(block).getByRole('heading')).toHaveTextContent(/^2026 अक्टोबर 05 \(2083-06-\d\d वि\.सं\.\) भित्र रु\. 41,188\.50 अग्रिम भुक्तानी गर्नुहोस्$/);
     expect(block).toHaveTextContent('भुक्तानी गर्ने तरिका बिल INV-2083-0077 मा छ।');
     expect(within(block).getByRole('link', { name: 'अग्रिम भुक्तानी गर्नुहोस्' })).toHaveAttribute('href', 'http://localhost:5400/invoice/adv-tok');
     expect(screen.getByText(/अग्रिम भुक्तानी भएपछि काम मिलाउन/)).toBeInTheDocument();
@@ -476,5 +480,163 @@ describe('the customer quotation page — a variation order (Phase L7)', () => {
     expect(await screen.findByText('परिवर्तन आदेश')).toBeInTheDocument();
     expect(screen.getByTestId('variation-notice')).toHaveTextContent('तपाईंको काम JOB-2083-0090 मा परिवर्तन');
     expect(screen.getByRole('button', { name: 'यो परिवर्तन स्वीकार्नुहोस्' })).toBeInTheDocument();
+  });
+});
+
+describe('the customer quotation page in Nepali (Phase J1)', () => {
+  let warn;
+  beforeEach(() => {
+    resetI18nWarnings();
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => warn.mockRestore());
+
+  /** No text was missing: `t()` warns `[i18n] …` for a key with no Nepali (or no words at all). */
+  const expectNoMissingWords = () => {
+    expect(warn.mock.calls.filter(([first]) => String(first).startsWith('[i18n]'))).toEqual([]);
+  };
+
+  const DOC = {
+    ...QUOTATION,
+    requestedChanges: null,
+    createdAt: '2026-09-26T04:00:00.000Z',
+    discount: 50_000,
+    letterhead: { companyName: 'Gharjatan Home Services', phones: ['01-5407720'], email: 'info@gharjatan.com.np', panVatNo: '609876543' },
+    dates: { createdAtBs: '2083-06-10', validUntilBs: '2083-06-15' },
+    totalInWords: { en: 'Rupees Sixty-Eight Thousand Eight Hundred Seventeen Only', ne: 'रुपैयाँ अठसट्ठी हजार आठ सय सत्र मात्र' },
+    contractType: 'LUMP_SUM',
+    estimatedDays: 1,
+    exclusions: 'पानी र बिजुली घरधनीको।',
+    paymentStages: [
+      { label: 'Advance', basisPoints: 5000, trigger: 'ON_ACCEPT', vat: 395_850, total: 3_440_850 },
+      { label: 'Running bill', basisPoints: 5000, trigger: 'MILESTONE', vat: 395_850, total: 3_440_850 },
+    ],
+    items: [
+      { id: 's1', rowType: 'SECTION', number: 'A', description: 'Waterproofing', qty: 0, rate: 0, amount: 0 },
+      {
+        id: 'i1', rowType: 'ITEM', number: 'A.1', description: 'Seepage treatment', unit: 'sq.ft', qty: 240, rate: 22000, amount: 5280000,
+        isProvisional: true, measurements: [{ area: 'छत', description: 'Terrace', nos: 1, l: 20, b: 12 }],
+      },
+      { id: 'i2', rowType: 'ITEM', number: 'A.2', description: 'Parapet coping', unit: 'rft', qty: 40, rate: 50000, amount: 2000000, isOptional: true },
+    ],
+    boq: { sections: [{ index: 0, number: 'A', title: 'Waterproofing', subtotal: 5280000 }], optionalTotal: 2000000 },
+  };
+
+  const openIn = (locale, quotation, decide) => {
+    const calls = mockApi((call) => {
+      if (call.method === 'GET') return json({ data: quotation });
+      if (call.method === 'POST' && decide) return decide(call);
+      return undefined;
+    });
+    renderWithProviders(<QuotationPublicPage />, {
+      path: '/quotation/:token', initialPath: '/quotation/tok-1',
+      preloadedState: { ui: { ...uiReducer(undefined, { type: '@@init' }), locale, toasts: [] } },
+    });
+    return calls;
+  };
+
+  it('says every word of the document and the answer in Nepali, amounts in रु. and dates in वि.सं., with no text missing', async () => {
+    const user = userEvent.setup();
+    openIn('ne', DOC);
+    const doc = await screen.findByTestId('quotation-document');
+    expect(doc).toHaveAttribute('lang', 'ne');
+    expect(within(doc).getByTestId('letterhead')).toHaveTextContent('प्यान / भ्याट नं. 609876543');
+    expect(within(doc).getByText('Anjali Karki · Baneshwor का लागि')).toBeInTheDocument();
+    expect(within(doc).getByText('संस्करण 2')).toBeInTheDocument();
+    // The status badge — a key built at run time.
+    expect(within(doc).getByText('तपाईंको जवाफको प्रतीक्षामा')).toBeInTheDocument();
+    expect(within(doc).getByText('अस्थायी — नापपछि यकिन हुने')).toBeInTheDocument();
+    expect(within(doc).getByText('छुट').parentElement).toHaveTextContent('− रु. 500.00');
+    expect(within(doc).getByText('मूल्य अभिवृद्धि कर 13%')).toBeInTheDocument();
+    expect(within(doc).getByText('ऐच्छिक कामहरू (जम्मामा समावेश छैन)').parentElement).toHaveTextContent('(रु. 20,000.00)');
+    expect(within(doc).getByTestId('total-in-words')).toHaveTextContent('रुपैयाँ अठसट्ठी हजार आठ सय सत्र मात्र');
+    expect(within(doc).getByTestId('contract-type')).toHaveTextContent('एकमुष्ट');
+    expect(within(doc).getByTestId('estimated-days')).toHaveTextContent('करिब 1 दिन');
+    const schedule = within(doc).getByTestId('payment-schedule');
+    expect(schedule).toHaveTextContent('मू.अ.कर रु. 3,958.50 सहित');
+    expect(within(schedule).getByText('काम अघि बढ्दै जाँदा')).toBeInTheDocument();
+    await user.click(within(doc).getByRole('button', { name: 'नापजाँच हेर्नुहोस् (1 काम)' }));
+    const annex = within(doc).getByTestId('measurements-annex');
+    expect(within(annex).getByText('बिलमा: 240 sq.ft')).toBeInTheDocument();
+    expect(within(annex).getByRole('columnheader', { name: 'लम्बाइ' })).toBeInTheDocument();
+    expect(within(doc).getByText('दर र रकम हेर्न तालिकालाई छेउतिर सार्नुहोस्।')).toBeInTheDocument();
+
+    // The answers, and the dialogs they open.
+    await user.click(screen.getByRole('button', { name: 'स्वीकार गर्नुहोस्' }));
+    const accept = await screen.findByRole('dialog', { name: 'यो दरभाउपत्र स्वीकार गर्ने?' });
+    expect(accept).toHaveTextContent('तपाईं यो दरभाउपत्रको काम रु. 68,817.00 मा स्वीकार गर्दै हुनुहुन्छ।');
+    await user.click(within(accept).getByRole('button', { name: 'पछाडि जानुहोस्' }));
+    await user.click(screen.getByRole('button', { name: 'परिवर्तन माग्नुहोस्' }));
+    const changes = await screen.findByRole('dialog', { name: 'के परिवर्तन गर्न चाहनुहुन्छ?' });
+    await user.click(within(changes).getByRole('button', { name: 'अनुरोध पठाउनुहोस्' }));
+    expect(await within(changes).findByText('अलि बढी लेख्नुहोस् (कम्तीमा 5 अक्षर)')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Rs\./);
+    expectNoMissingWords();
+  });
+
+  it('shows a status the customer can reach in either language — the badge is the customer’s words, not the office’s', async () => {
+    openIn('en', { ...DOC, status: 'CHANGES_REQUESTED', actions: [] });
+    expect(await screen.findByText('Changes requested')).toBeInTheDocument();
+    expect(screen.queryByText('Changes asked')).not.toBeInTheDocument();
+    expectNoMissingWords();
+  });
+
+  it('tells an answer that arrived too late in Nepali, and shows what the quotation is now', async () => {
+    const user = userEvent.setup();
+    let answered = false;
+    mockApi((call) => {
+      if (call.method === 'GET') return json({ data: answered ? { ...DOC, status: 'APPROVED', actions: [] } : DOC });
+      answered = true;
+      return json({ error: { code: 'QUOTATION_ANSWERED', message: 'We already have your response to this quotation.' } }, 422);
+    });
+    renderWithProviders(<QuotationPublicPage />, {
+      path: '/quotation/:token', initialPath: '/quotation/tok-1',
+      preloadedState: { ui: { ...uiReducer(undefined, { type: '@@init' }), locale: 'ne', toasts: [] } },
+    });
+    await user.click(await screen.findByRole('button', { name: 'स्वीकार गर्नुहोस्' }));
+    await user.click(await screen.findByRole('button', { name: 'हो, स्वीकार गर्छु' }));
+    expect(await screen.findByText('धन्यवाद — दरभाउपत्र स्वीकार भयो')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('यो दरभाउपत्रमा तपाईंको जवाफ हामीले पाइसकेका छौं।');
+    expectNoMissingWords();
+  });
+
+  it('keeps the page’s own words for a refusal it has none for, never the server’s English', async () => {
+    const user = userEvent.setup();
+    openIn('ne', DOC, () => json({ error: { code: 'SOMETHING_NEW', message: 'An English message' } }, 422));
+    await user.click(await screen.findByRole('button', { name: 'स्वीकार गर्नुहोस्' }));
+    const dialog = await screen.findByRole('dialog', { name: 'यो दरभाउपत्र स्वीकार गर्ने?' });
+    await user.click(within(dialog).getByRole('button', { name: 'हो, स्वीकार गर्छु' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('तपाईंको जवाफ रेकर्ड गर्न सकिएन। कृपया फेरि प्रयास गर्नुहोस्।');
+    expect(document.body.textContent).not.toMatch(/An English message/);
+  });
+
+  it('says a variation order in Nepali: the change, its total repeated, and that it joined the job', async () => {
+    const user = userEvent.setup();
+    const VARIATION = {
+      ...DOC, number: 'VO-2083-0002', version: 1, kind: 'VARIATION', job: { number: 'JOB-2083-0090' }, paymentStages: [],
+      subtotal: -1_200_000, vatAmount: -156_000, total: -1_356_000, discount: 0, contractType: null, estimatedDays: null, exclusions: null,
+    };
+    openIn('ne', VARIATION, () => json({ data: { ...VARIATION, status: 'CONVERTED', actions: [] } }));
+    expect(await screen.findByText('परिवर्तन आदेश')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'तपाईंको काममा यो परिवर्तन ठीक छ?' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'यो परिवर्तन स्वीकार्नुहोस्' }));
+    const dialog = await screen.findByRole('dialog', { name: 'यो परिवर्तन स्वीकार्ने?' });
+    expect(dialog).toHaveTextContent('काम JOB-2083-0090 मा यो परिवर्तनको रकम − रु. 13,560.00 हो।');
+    await user.click(within(dialog).getByRole('button', { name: 'हो, परिवर्तन स्वीकार्छु' }));
+    expect(await screen.findByText('धन्यवाद — परिवर्तन स्वीकार भयो')).toBeInTheDocument();
+    expect(screen.getByText('हामीले यसलाई तपाईंको काम JOB-2083-0090 मा थप्यौं। हाम्रो टोलीले काम जारी राख्नेछ।')).toBeInTheDocument();
+    expectNoMissingWords();
+  });
+
+  it('says the advance is received, in Nepali', async () => {
+    openIn('ne', {
+      ...DOC, status: 'CONVERTED', actions: [], job: { number: 'JOB-2083-0091' },
+      advance: { number: 'INV-2083-0080', total: 3_440_850, dueDate: null, status: 'PAID', url: null },
+    });
+    const block = await screen.findByTestId('advance-due');
+    expect(block).toHaveTextContent('अग्रिम भुक्तानी प्राप्त भयो — धन्यवाद');
+    expect(block).toHaveTextContent('बिल INV-2083-0080 मा भुक्तानी दर्ता भयो।');
+    expect(screen.getByText('काम मिलाउन हाम्रो टोलीले तपाईंलाई फोन गर्नेछ। तपाईंको कामको नम्बर JOB-2083-0091 हो।')).toBeInTheDocument();
+    expectNoMissingWords();
   });
 });

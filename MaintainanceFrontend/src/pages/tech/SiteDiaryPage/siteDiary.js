@@ -1,6 +1,6 @@
 import { newKey } from '@/helpers/fieldDb';
 import { addDaysTo } from '@/helpers/dispatchBoard';
-import { formatDate, formatDateBs } from '@/helpers/format';
+import { formatDate, formatDateBs, toLatinDigits } from '@/helpers/format';
 
 /**
  * The site diary's state and the one payload it queues (Phase L7). Pure: the page holds the state, these turn it into
@@ -35,11 +35,11 @@ const text = (v) => (v === undefined || v === null ? '' : String(v));
 const blank = (v) => text(v).trim() === '';
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
-/** A quantity as typed (`2.5`, `1,200`) → a number; blank → undefined; unreadable → NaN. */
+/** A quantity as typed (`2.5`, `1,200`, `१.५` on a Nepali keyboard) → a number; blank → undefined; unreadable → NaN. */
 export function parseQty(value) {
   if (typeof value === 'number') return value;
   if (blank(value)) return undefined;
-  const cleaned = text(value).replace(/,/g, '').trim();
+  const cleaned = toLatinDigits(value).replace(/,/g, '').trim();
   return /^(\d+\.?\d*|\.\d+)$/.test(cleaned) ? Number(cleaned) : Number.NaN;
 }
 
@@ -86,7 +86,8 @@ const isBlankDelivery = (r) => !r.materialId && blank(r.description) && blank(r.
 /**
  * What is wrong with the form, by where it shows — the API's rules, so a save is never refused for them:
  * `{ received: { [key]: { description?, qty? } }, lostHours?, lostReason?, photos? }`, each a word key of
- * `fieldCopy.diary` (`needWhat`, `invalidQty`, `tooMany`, `needReason`, `max`). Empty when it can be saved.
+ * `FIELD.diary` (`received.needWhat`, `received.invalidQty`, `lost.tooMany`, `lost.needReason`, `photos.max`). Empty when
+ * it can be saved.
  */
 export function diaryProblems(form) {
   const problems = {};
@@ -167,8 +168,11 @@ export function isDiaryDay(day, today) {
   return day >= min && day <= max;
 }
 
-/** A Kathmandu day in words: "Mon, 28 Sept 2026". Noon in Kathmandu, so no timezone moves it. */
-export const dayLabel = (day) => formatDate(`${day}T06:15:00.000Z`, { weekday: 'short' });
+/**
+ * A Kathmandu day in words: "Mon, 28 Sept 2026" (`locale: 'ne'` → Nepali day and month names). Noon in Kathmandu, so
+ * no timezone moves it.
+ */
+export const dayLabel = (day, locale = 'en') => formatDate(`${day}T06:15:00.000Z`, { weekday: 'short', locale });
 /** The same day in BS: "12 Asoj 2083" (`locale: 'ne'` → "12 असोज 2083"). */
 export const dayLabelBs = (day, locale = 'en') => formatDateBs(`${day}T06:15:00.000Z`, { long: true, locale });
 

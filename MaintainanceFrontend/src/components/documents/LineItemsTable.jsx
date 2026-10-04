@@ -1,8 +1,9 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DOCUMENTS } from '@/config/i18n/documents';
+import { useT } from '@/hooks/useT';
 import { formatSignedNpr } from '@/helpers/format';
 import { formatQty } from '@/helpers/measurements';
 import { cn } from '@/helpers/utils';
-import { documentCopy } from './quotationDocumentCopy';
 
 /**
  * Description, quantity, rate, amount — the columns of every priced document we send.
@@ -15,13 +16,15 @@ import { documentCopy } from './quotationDocumentCopy';
  * Figures are tabular so the amounts column reads as a stack of numbers rather than as ragged text, and the
  * table scrolls sideways inside its own box so a long description never widens the page on a phone.
  *
+ * In the screen's language (`DOCUMENTS.document.rows`), or `locale` when given.
+ *
  * @param {{ items?: object[], showSymbol?: boolean, locale?: 'en'|'ne', sections?: { index: number, subtotal: number }[] }} props
  */
-export function LineItemsTable({ items = [], showSymbol = true, locale = 'en', sections = [] }) {
+export function LineItemsTable({ items = [], showSymbol = true, locale, sections = [] }) {
+  const t = useT(DOCUMENTS, { locale });
   if (!items.length) return null;
-  const copy = documentCopy(locale).rows;
   // A deduction line (a final bill's "Less: advance …", Phase L6) reads "− Rs. …", never "Rs. -…".
-  const money = (paisa) => formatSignedNpr(paisa, { symbol: showSymbol });
+  const money = (paisa) => formatSignedNpr(paisa, { symbol: showSymbol, locale: t.locale });
   const numbered = items.some((item) => item.number);
   const subtotalAt = new Map((sections ?? []).filter((s) => s.index != null).map((s) => [s.index, s.subtotal]));
   const columns = numbered ? 5 : 4;
@@ -29,15 +32,15 @@ export function LineItemsTable({ items = [], showSymbol = true, locale = 'en', s
   return (
     <div className="py-6">
       {/* On a phone the rates and amounts sit to the right: the table scrolls in its own box, never the page. */}
-      <p className="mb-2 text-xs text-muted-foreground sm:hidden print:hidden" data-testid="swipe-hint">{copy.swipe}</p>
+      <p className="mb-2 text-xs text-muted-foreground sm:hidden print:hidden" data-testid="swipe-hint">{t('document.rows.swipe')}</p>
       <Table>
         <TableHeader>
           <TableRow>
-            {numbered ? <TableHead className="w-12">{copy.number}</TableHead> : null}
-            <TableHead className="min-w-[9rem]">{copy.description}</TableHead>
-            <TableHead className="text-right">{copy.qty}</TableHead>
-            <TableHead className="text-right">{copy.rate}</TableHead>
-            <TableHead className="text-right">{copy.amount}</TableHead>
+            {numbered ? <TableHead className="w-12">{t('document.rows.number')}</TableHead> : null}
+            <TableHead className="min-w-[9rem]">{t('document.rows.description')}</TableHead>
+            <TableHead className="text-right">{t('document.rows.qty')}</TableHead>
+            <TableHead className="text-right">{t('document.rows.rate')}</TableHead>
+            <TableHead className="text-right">{t('document.rows.amount')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -54,7 +57,7 @@ export function LineItemsTable({ items = [], showSymbol = true, locale = 'en', s
                     {item.spec ? <p className="mt-0.5 whitespace-pre-line text-xs font-normal normal-case tracking-normal text-muted-foreground">{item.spec}</p> : null}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right text-xs font-semibold tabular-nums">
-                    {subtotal != null ? <span title={copy.sectionTotal(item.number ?? '')}>{money(subtotal)}</span> : null}
+                    {subtotal != null ? <span title={t('document.rows.sectionTotal', { number: item.number ?? '' })}>{money(subtotal)}</span> : null}
                   </TableCell>
                 </TableRow>
               );
@@ -72,8 +75,8 @@ export function LineItemsTable({ items = [], showSymbol = true, locale = 'en', s
                 <TableCell className="align-top">
                   <p className="font-medium">{item.description}</p>
                   {item.spec ? <p className="mt-0.5 whitespace-pre-line text-xs text-muted-foreground">{item.spec}</p> : null}
-                  {item.isOptional ? <p className="mt-1 text-xs font-semibold text-warning">{copy.optional}</p> : null}
-                  {item.isProvisional ? <p className="mt-1 text-xs font-semibold text-muted-foreground">{copy.provisional}</p> : null}
+                  {item.isOptional ? <p className="mt-1 text-xs font-semibold text-warning">{t('document.rows.optional')}</p> : null}
+                  {item.isProvisional ? <p className="mt-1 text-xs font-semibold text-muted-foreground">{t('document.rows.provisional')}</p> : null}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right align-top tabular-nums">
                   {formatQty(item.qty)}{item.unit ? <span className="text-muted-foreground"> {item.unit}</span> : null}

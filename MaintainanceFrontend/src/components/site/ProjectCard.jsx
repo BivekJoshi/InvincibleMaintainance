@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { SITE } from '@/config/i18n/site';
+import { useLocale, useT } from '@/hooks/useT';
 import { formatNpr } from '@/helpers/format';
 import { Media } from './Media';
 
@@ -10,6 +12,7 @@ import { Media } from './Media';
  * named customer's job never reaches the public site.
  */
 export function ProjectCard({ project, media }) {
+  const t = useT(SITE);
   const cover = media?.[project.coverId] ?? media?.[project.images?.[0]?.mediaId];
 
   return (
@@ -40,7 +43,7 @@ export function ProjectCard({ project, media }) {
         <div className="flex items-end justify-between gap-3 text-[11px] text-muted-foreground">
           <span>
             {project.location ? <span className="block">{project.location}</span> : null}
-            {project.durationDays ? <span>{project.durationDays} day{project.durationDays === 1 ? '' : 's'}</span> : null}
+            {project.durationDays ? <span>{t('cards.days', { count: project.durationDays })}</span> : null}
           </span>
           {project.costBandMin ? (
             <span className="shrink-0 text-right font-medium text-foreground">
@@ -55,13 +58,15 @@ export function ProjectCard({ project, media }) {
 
 /**
  * A published cost band, formatted the one way. The currency symbol appears on
- * the lower figure only, so the pair reads as one range rather than two prices.
+ * the lower figure only, so the pair reads as one range rather than two prices
+ * (`रु.` in Nepali).
  */
 export function CostBand({ min, max, compact = true }) {
+  const locale = useLocale();
   if (!min) return null;
   return (
     <>
-      {formatNpr(min, { compact })}–{formatNpr(max ?? min, { symbol: false, compact })}
+      {formatNpr(min, { compact, locale })}–{formatNpr(max ?? min, { symbol: false, compact, locale })}
     </>
   );
 }

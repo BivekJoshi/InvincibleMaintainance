@@ -1,4 +1,6 @@
 import { Eyebrow } from '@/components/site/Eyebrow';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /** One stage of the story, skipped when it was never filled in. */
 function Chapter({ eyebrow, title, children }) {
@@ -21,12 +23,14 @@ function Chapter({ eyebrow, title, children }) {
  * nothing.
  */
 export function ProjectStory({ project }) {
+  const t = useT(SITE);
+  const chapter = (key) => ({ eyebrow: t(`project.story.${key}.eyebrow`), title: t(`project.story.${key}.title`) });
   return (
     <>
-      <Chapter eyebrow="The problem" title="What the customer was dealing with">{project.problem}</Chapter>
-      <Chapter eyebrow="The work" title="What we did">{project.solution}</Chapter>
-      <Chapter eyebrow="The result" title="How it ended">{project.outcome}</Chapter>
-      <Chapter eyebrow="Detail" title="More about this job">{project.body}</Chapter>
+      <Chapter {...chapter('problem')}>{project.problem}</Chapter>
+      <Chapter {...chapter('work')}>{project.solution}</Chapter>
+      <Chapter {...chapter('result')}>{project.outcome}</Chapter>
+      <Chapter {...chapter('detail')}>{project.body}</Chapter>
     </>
   );
 }

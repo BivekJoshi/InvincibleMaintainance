@@ -239,7 +239,7 @@ export const PURCHASE_LIST_STATUS_LABELS = {
 
 /**
  * The site diary (Phase L7): the day's weather, and why site hours were lost — the reasons a Kathmandu site stops.
- * The office's words; the field app's (en and ne) are `config/tech/fieldCopy.js#diary`.
+ * The office's words; the field app's (en and ne) are `config/i18n/field.js` (`FIELD.diary`).
  */
 export const WEATHER = ['SUNNY', 'CLOUDY', 'RAIN', 'HEAVY_RAIN', 'COLD'];
 export const WEATHER_LABELS = {
@@ -381,11 +381,11 @@ export const RATE_MODE_LABELS = { MANUAL: 'Manual', DERIVED: 'Recipe' };
 /**
  * How the final bill is worked out (L-D2, Phase L4): LUMP_SUM — the quoted price ± variations the customer
  * approves; ITEM_RATE — the finished work is measured and billed at the quoted rates. The office's words; the
- * sentence the customer reads (en and ne) is `components/documents/quotationDocumentCopy.js#contract`.
+ * sentence the customer reads (en and ne) is `config/i18n/documents.js#document.contract`.
  */
 export const CONTRACT_TYPES = ['LUMP_SUM', 'ITEM_RATE'];
 export const CONTRACT_TYPE_LABELS = { LUMP_SUM: 'Lump sum', ITEM_RATE: 'Item rate (measured)' };
-/** When a payment stage falls due (L-D3, Phase L4). The customer's words are in the document copy. */
+/** When a payment stage falls due (L-D3, Phase L4). The customer's words are `config/i18n/documents.js#document.schedule`. */
 export const PAYMENT_TRIGGERS = ['ON_ACCEPT', 'MILESTONE', 'ON_COMPLETION'];
 export const PAYMENT_TRIGGER_LABELS = { ON_ACCEPT: 'On acceptance (advance)', MILESTONE: 'At a milestone', ON_COMPLETION: 'On completion' };
 /**

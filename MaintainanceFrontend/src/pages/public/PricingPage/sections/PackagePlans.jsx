@@ -3,6 +3,8 @@ import { Eyebrow } from '@/components/site/Eyebrow';
 import { Stagger, StaggerOnView, Tilt } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The packages, priced as bands.
@@ -13,12 +15,14 @@ import { cn } from '@/helpers/utils';
  * difference reads as emphasis rather than as a different product.
  */
 export function PackagePlans({ plans }) {
+  const t = useT(SITE);
+  const { locale } = t;
   if (!plans?.length) return null;
 
   return (
     <section>
-      <Eyebrow>Packages</Eyebrow>
-      <h2 className="mt-3 text-2xl font-bold tracking-tight">Popular packages</h2>
+      <Eyebrow>{t('pricing.packages.eyebrow')}</Eyebrow>
+      <h2 className="mt-3 text-2xl font-bold tracking-tight">{t('pricing.packages.title')}</h2>
 
       <StaggerOnView className="mt-6 grid gap-5 sm:grid-cols-2" stagger={0.07}>
         {plans.map((plan) => {
@@ -48,11 +52,11 @@ export function PackagePlans({ plans }) {
 
                   <p className="mt-5">
                     <span className="text-2xl font-semibold tabular-nums tracking-tight">
-                      {plan.priceMin == null ? 'On inspection' : formatNpr(plan.priceMin, { compact: true })}
+                      {plan.priceMin == null ? t('price.onInspection') : formatNpr(plan.priceMin, { compact: true, locale })}
                     </span>
                     <span className={cn('text-sm', featured ? 'text-ink-muted' : 'text-muted-foreground')}>
                       {plan.priceMin != null && plan.priceMax && plan.priceMax !== plan.priceMin
-                        ? <>{' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false })} </>
+                        ? <>{' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false, locale })} </>
                         : ' '}
                       {plan.unit}
                     </span>

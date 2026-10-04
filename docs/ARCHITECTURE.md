@@ -75,6 +75,22 @@ pino-http (genReqId → X-Request-Id, redacted request line)
   the job's `visitReminderSentAt` is claimed compare-and-swap before the SMS goes — an SMS has no
   `Notification` row to carry a dedupeKey, so the claim is on the job, and a new window clears it.
 
+## Language (English and Nepali)
+
+Two layers, never mixed (decision D7, built in Phase J1):
+
+- **Content** is data. A CMS row keeps its English columns; its Nepali lives in the `Translation` table and the
+  public API overlays it when asked `?locale=ne` (`cms.service.js#withLocale`). Gallery captions joined in J1.
+- **UI words** belong to the SPA: `src/config/i18n/<audience>.js` catalogues (`{ en, ne }`, plain data) read
+  through `useT()`, for the field app, the public site + booking, the login and the customer's document pages.
+  The back office is English. The API's refusals carry stable `code`s the SPA words; the English `message` is a
+  fallback only.
+- **Messages to a customer** follow `Lead.preferredLocale` / `Customer.preferredLocale`: `notify()` loads the
+  `ne` template (every customer message has one since J1; a missing one falls back to `en`), and the values put into
+  it are written for that language — the Bikram Sambat date in Nepali words (`utils/dates.js#customerDate`) and
+  `रु.` amounts (`utils/money.js#formatNpr`). Staff messages are English. Digits stay Latin everywhere a customer
+  might read a figure back over the phone.
+
 ## State machines
 
 Transitions live in `MaintainanceBackend/src/shared/stateMachines.js` and are enforced in the

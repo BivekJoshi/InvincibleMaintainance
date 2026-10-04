@@ -9,6 +9,7 @@ import { json, mockApi } from '@/test/mockApi';
 import { resetFieldDbForTests } from '@/helpers/fieldDb';
 import { fieldSyncSettled } from '@/hooks/useOfflineQueue';
 import uiReducer from '@/redux/slices/uiSlice';
+import { watchI18nWarnings } from '@/test/i18nWarnings';
 import { measureBody, measureProblem, rowsFromLine, sameAsSaved } from './jobMeasure';
 
 vi.mock('@/hooks/useIdlePreload', () => ({ useIdlePreload: () => {} }));
@@ -213,15 +214,49 @@ describe('the final measurement on a phone (Phase L8.2)', () => {
     expect(within(screen.getByTestId('measurement-card')).getByLabelText('Length')).toBeDisabled();
   });
 
-  it('reads in Nepali', async () => {
+  it('reads in Nepali, with no word missing', async () => {
+    const warned = watchI18nWarnings();
     api();
     renderMeasure('/tech/jobs/j9/measure?line=l1', { locale: 'ne' });
-    expect(await screen.findByRole('heading', { name: 'अन्तिम नापजाँच' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'अन्तिम नाप' })).toBeInTheDocument();
     const card = screen.getByTestId('measurement-card');
+    expect(screen.getByRole('group', { name: 'नाप 1 — Terrace' })).toBe(card);
     expect(within(card).getByLabelText('लम्बाइ')).toHaveValue('21');
+    expect(within(card).getByLabelText('गोटा')).toBeInTheDocument();
     expect(within(card).getByTestId('row-value')).toHaveTextContent('= 252 sq.ft');
-    expect(screen.getByTestId('office-qty')).toHaveTextContent('सुरक्षित — अफिसको परिमाण: 252 sq.ft');
-    expect(screen.getByRole('button', { name: 'नाप सुरक्षित गर्नुहोस्' })).toBeInTheDocument();
+    expect(screen.getByTestId('office-qty')).toHaveTextContent('सेभ भयो — अफिसको मात्रा: 252 sq.ft');
+    expect(screen.getByRole('button', { name: 'नाप सेभ गर्नुहोस्' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'पछाडि' })).toBeInTheDocument();
+    expect(warned()).toEqual([]);
+  });
+
+  it('lists the lines in Nepali', async () => {
+    const warned = watchI18nWarnings();
+    api();
+    renderMeasure('/tech/jobs/j9/measure', { locale: 'ne' });
+    expect(await screen.findByTestId('measure-lines')).toHaveTextContent('नाप्ने लाइन छान्नुहोस्।');
+    expect(within(screen.getByTestId('measure-line-l1')).getByText('नापेको: 252 sq.ft')).toBeInTheDocument();
+    expect(within(screen.getByTestId('measure-line-l2')).getByText('नाप्न बाँकी')).toBeInTheDocument();
+    expect(within(screen.getByTestId('measure-line-l3')).getByText('हटाइएको — कोटेसनकै मात्रा रहन्छ')).toBeInTheDocument();
+    expect(warned()).toEqual([]);
+  });
+
+  it('takes sizes typed on a Nepali keyboard — १२\'६" reads as 12.5 ft — and sends Latin numbers', async () => {
+    const user = userEvent.setup();
+    const puts = [];
+    api({ put: (body) => { puts.push(body); return json({ data: { ...JOB.lines[1], measurements: body.measurements, measuredQty: 37.5 } }); } });
+    renderMeasure('/tech/jobs/j9/measure?line=l2', { locale: 'ne' });
+    await user.type(await screen.findByLabelText('कोठा वा ठाउँ'), 'छत');
+    await user.click(screen.getByRole('button', { name: 'कोठा थप्नुहोस्' }));
+    const card = screen.getByTestId('measurement-card');
+    await user.type(within(card).getByLabelText('गोटा'), '२');
+    await user.type(within(card).getByLabelText('लम्बाइ'), '१२\'६"');
+    await user.type(within(card).getByLabelText('उचाइ'), '१.५');
+    expect(within(card).getByText('= 12.5 ft')).toBeInTheDocument();
+    expect(within(card).getByTestId('row-value')).toHaveTextContent('= 37.5 sq.ft');
+    await user.click(screen.getByRole('button', { name: 'नाप सेभ गर्नुहोस्' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ measurements: [{ area: 'छत', nos: 2, l: 12.5, h: 1.5 }] });
   });
 });
 

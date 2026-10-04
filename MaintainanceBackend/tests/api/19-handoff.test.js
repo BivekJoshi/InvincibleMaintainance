@@ -252,8 +252,11 @@ describe('the advance speaks the customer\'s language (L6.3)', () => {
     expectStatus(await accept(q.publicToken), 200);
     const [sms] = await prisma.messageLog.findMany({ where: { templateKey: 'advance_due', toAddress: customer.phone } });
     expect(sms.body).toMatch(/अग्रिम/);
-    expect(sms.body).toMatch(/Rs\. [\d,]+\.\d{2}/);
-    expect(await prisma.messageLog.count({ where: { templateKey: 'advance_due', toAddress: email } })).toBe(1);
+    // Phase J1: a Nepali message writes रु. and the due date in Bikram Sambat, in Nepali words.
+    expect(sms.body).toMatch(/रु\. [\d,]+\.\d{2}/);
+    expect(sms.body).toMatch(/\d{1,2} (बैशाख|जेठ|असार|साउन|भदौ|असोज|कात्तिक|मंसिर|पुष|माघ|फागुन|चैत) \d{4} भित्र/);
+    const [mail] = await prisma.messageLog.findMany({ where: { templateKey: 'advance_due', toAddress: email } });
+    expect(mail.subject).toMatch(/अग्रिम भुक्तानी/);
   });
 });
 

@@ -3,6 +3,8 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { RouteErrorBoundary } from '@/components/common/ErrorBoundary/RouteErrorBoundary';
 import { EASE, motion, useReducedMotion } from '@/three/motion/motionKit';
+import { COMMON } from '@/config/i18n/common';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -58,11 +60,15 @@ export function PageOutlet({ className }) {
   );
 }
 
-/** Holds roughly a screen of height so the footer does not jump up to meet it. */
+/**
+ * Holds roughly a screen of height so the footer does not jump up to meet it. Every shell shows it, so its one word
+ * is `common.js`'s — in the route's language (English under `/admin`).
+ */
 export function RouteFallback({ className }) {
+  const common = useT(COMMON);
   return (
     <div className={cn('flex min-h-[60dvh] items-center justify-center', className)}>
-      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading" />
+      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label={common('loading')} />
     </div>
   );
 }

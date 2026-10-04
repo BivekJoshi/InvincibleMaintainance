@@ -2,25 +2,33 @@ import { useState } from 'react';
 import { AlertTriangle, Check, Copy, ExternalLink, Home, RefreshCw, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IS_DEV } from '@/config/env';
+import { COMMON } from '@/config/i18n/common';
 import { isChunkLoadError, sourceFrame } from '@/helpers/errorDetails';
+import { createT } from '@/helpers/i18n';
 import { cn } from '@/helpers/utils';
 
 /** Leaves the route map alone: the root boundary sits above the router, so this is a plain link. */
 const homeHref = () => (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin') ? '/admin' : '/');
 
 /**
+ * The language on screen, read from `<html lang>` rather than the store: the outermost boundary sits above the store
+ * and the router, and a crash may be the store's own. `LocaleProvider` keeps the attribute in step — English under
+ * `/admin` — so this says what the page around it was saying.
+ */
+const screenLocale = () => (typeof document !== 'undefined' && document.documentElement.lang === 'ne' ? 'ne' : 'en');
+
+/**
  * What a boundary shows in place of a crashed tree.
  *
- * Production users see a short apology and three ways out. In development the same
- * screen carries the error, the JavaScript stack and React's component stack, a
- * one-click copy of all three, and a link that opens the throwing file in the editor.
+ * Production users see a short apology and three ways out, in the screen's language (Phase J1). In development the
+ * same screen carries the error, the JavaScript stack and React's component stack, a one-click copy of all three, and
+ * a link that opens the throwing file in the editor — those stay English, for the developer.
  */
 export function ErrorFallback({ error, componentStack = '', onReset, variant = 'page', className }) {
+  const t = createT(COMMON, screenLocale());
   const chunk = isChunkLoadError(error);
-  const title = chunk ? 'A newer version of this app is available' : 'Something went wrong';
-  const body = chunk
-    ? 'Part of this page could not be loaded, usually because the app was updated while it was open. Reloading fixes it.'
-    : 'This part of the page stopped working. You can try again, reload, or go back to the start.';
+  const title = chunk ? t('errorPage.chunkTitle') : t('errorPage.title');
+  const body = chunk ? t('errorPage.chunkBody') : t('errorPage.body');
 
   return (
     <div
@@ -41,15 +49,15 @@ export function ErrorFallback({ error, componentStack = '', onReset, variant = '
         <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           {!chunk && onReset ? (
             <Button onClick={onReset}>
-              <RotateCcw /> Try again
+              <RotateCcw /> {t('errorPage.tryAgain')}
             </Button>
           ) : null}
           <Button variant={chunk ? 'default' : 'outline'} onClick={() => window.location.reload()}>
-            <RefreshCw /> Reload page
+            <RefreshCw /> {t('errorPage.reload')}
           </Button>
           <Button variant="ghost" asChild>
             <a href={homeHref()}>
-              <Home /> Go home
+              <Home /> {t('errorPage.home')}
             </a>
           </Button>
         </div>

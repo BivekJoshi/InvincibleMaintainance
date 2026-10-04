@@ -40,7 +40,8 @@ export const publicLeadSchema = z.object({
   photoIds: z.array(z.string().min(1)).max(5).optional(),
   turnstileToken: z.string().max(4000).optional(),
   // Honeypot — must stay empty. Bots fill every field they find.
-  website: z.string().max(0, 'Rejected').optional(),
+  // The honeypot: any value is refused by the service as SUBMISSION_REJECTED (Phase J1), not here as a validation error.
+  website: z.string().max(2000).optional(),
   // Milliseconds the form was on screen; humans take longer than 2s.
   elapsedMs: z.coerce.number().int().min(0).optional(),
 });

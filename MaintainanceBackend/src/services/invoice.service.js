@@ -8,7 +8,7 @@ import { publicToken } from '../utils/tokens.js';
 import { INVOICE_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
 import { notify, notifyRoles } from './notify.service.js';
-import { addDays, kathmanduDayRange, local } from '../utils/dates.js';
+import { addDays, customerDate, kathmanduDayRange } from '../utils/dates.js';
 import { recordEvent } from './audit.service.js';
 import { adminJobPath, webUrl } from '../utils/links.js';
 import { makeCrud } from './crud.service.js';
@@ -369,21 +369,22 @@ export async function sendInvoice(id) {
     return row;
   });
 
+  const locale = inv.customer.preferredLocale === 'ne' ? 'ne' : 'en';
   const vars = {
-    customerName: inv.customer.name, number: inv.number, total: formatNpr(inv.total),
-    dueDate: inv.dueDate ? local(inv.dueDate, 'D MMM YYYY') : '-',
+    customerName: inv.customer.name, number: inv.number, total: formatNpr(inv.total, { locale }),
+    dueDate: customerDate(inv.dueDate, locale) ?? '-',
     link: webUrl(`/invoice/${token}`), appName: env.appName,
   };
   if (inv.customer.email) {
     await notify({
-      templateKey: 'invoice_sent', channel: 'email', to: inv.customer.email, vars, locale: inv.customer.preferredLocale,
+      templateKey: 'invoice_sent', channel: 'email', to: inv.customer.email, vars, locale,
       related: { model: 'Invoice', id },
       fallbackSubject: 'Invoice {{number}} from {{appName}}',
-      fallbackBody: 'Dear {{customerName}},\n\nInvoice {{number}} for {{total}} is due on {{dueDate}}.\n{{link}}',
+      fallbackBody: 'Dear {{customerName}},\n\nInvoice {{number}} for {{total}} is due on {{dueDate}}.\n{{link}}\n\n{{appName}}',
     });
   }
   await notify({
-    templateKey: 'invoice_sent', channel: 'sms', to: inv.customer.phone, vars, locale: inv.customer.preferredLocale,
+    templateKey: 'invoice_sent', channel: 'sms', to: inv.customer.phone, vars, locale,
     related: { model: 'Invoice', id },
     fallbackBody: 'Invoice {{number}}: {{total}}, due {{dueDate}}. {{link}} - {{appName}}',
   });
@@ -564,7 +565,7 @@ export async function sweepOverdue() {
         templateKey: 'invoice_overdue', channel: 'sms', to: inv.customer.phone, locale: inv.customer.preferredLocale,
         vars: {
           customerName: inv.customer.name, number: inv.number,
-          outstanding: formatNpr(inv.total - inv.paidAmount), days, appName: env.appName,
+          outstanding: formatNpr(inv.total - inv.paidAmount, { locale: inv.customer.preferredLocale }), days, appName: env.appName,
         },
         related: { model: 'Invoice', id: inv.id },
         fallbackBody: 'Reminder: invoice {{number}} ({{outstanding}}) is {{days}} day(s) overdue. - {{appName}}',

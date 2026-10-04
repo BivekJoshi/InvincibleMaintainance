@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatNprShort, shortAge, formatRupees, fromKathmanduParts, parseRupees, rupeesInput, rupeesToPaisa, toKathmanduParts,
+  formatNumber, formatNpr, formatDate, formatDateBs, formatDateAdBs, formatDateTime, formatTime, formatMinutes,
+  toDevanagariDigits, toLatinDigits, localizeDigits, displayDigits, relativeTime,
 } from '@/helpers/format';
 
 describe('money — paisa from the API, rupees in the form', () => {
@@ -102,5 +104,62 @@ describe('shortAge', () => {
     expect(shortAge(ago(9 * 1440 + 5), t0)).toBe('9d');
     expect(shortAge(ago(150 * 1440), t0)).toBe('5mo');
     expect(shortAge('not a date', t0)).toBe('—');
+  });
+});
+
+describe('Nepali display (Phase J1)', () => {
+  // 14 Sept 2026, 12:00 in Kathmandu = 29 Bhadra 2083 BS.
+  const NOON = '2026-09-14T06:15:00.000Z';
+
+  it('groups numbers the Nepali way in both languages, Latin digits by default', () => {
+    expect(formatNumber(1234567.5)).toBe('12,34,567.5');
+    expect(formatNumber(1234567.5, { locale: 'ne' })).toBe('12,34,567.5');
+    expect(displayDigits('ne')).toBe('latin');
+    expect(displayDigits('en')).toBe('latin');
+    expect(formatNumber('', { locale: 'ne' })).toBe('');
+    expect(formatNumber('abc')).toBe('');
+  });
+
+  it('prints Devanagari digits only when asked, and only for display', () => {
+    expect(formatNumber(1234567.5, { locale: 'ne', digits: 'deva' })).toBe('१२,३४,५६७.५');
+    expect(toDevanagariDigits('JOB-2083-0042')).toBe('JOB-२०८३-००४२');
+    expect(localizeDigits('12', 'en', 'deva')).toBe('१२');
+    expect(localizeDigits('12', 'ne')).toBe('12');
+    // What a Nepali keyboard types is read back as the Latin digits the API expects.
+    expect(toLatinDigits('१२,५००.५०')).toBe('12,500.50');
+    expect(parseRupees('रु. १,२५,०००')).toBe(125000);
+    expect(rupeesToPaisa(parseRupees('१२.५'))).toBe(1250);
+  });
+
+  it('writes money with रु. in Nepali, and the back office keeps Rs.', () => {
+    expect(formatNpr(12345678990)).toBe('Rs. 12,34,56,789.90');
+    expect(formatNpr(12345678990, { locale: 'ne' })).toBe('रु. 12,34,56,789.90');
+    expect(formatNpr(12345678990, { locale: 'ne', digits: 'deva' })).toBe('रु. १२,३४,५६,७८९.९०');
+    expect(formatNpr(500, { locale: 'ne', symbol: false })).toBe('5.00');
+  });
+
+  it('dates in Kathmandu, with Nepali month names and the BS option', () => {
+    expect(formatDate(NOON)).toMatch(/^14 Sept? 2026$/);
+    expect(formatDate(NOON, { locale: 'ne' })).toBe('2026 सेप्टेम्बर 14');
+    expect(formatDate(NOON, { locale: 'ne', digits: 'deva' })).toBe('२०२६ सेप्टेम्बर १४');
+    expect(formatDate(NOON, { locale: 'ne', calendar: 'bs' })).toBe('29 भदौ 2083');
+    expect(formatDate(NOON, { calendar: 'bs' })).toBe('29 Bhadra 2083');
+    expect(formatDateBs(NOON, { locale: 'ne', long: true, digits: 'deva' })).toBe('२९ भदौ २०८३');
+    expect(formatDateAdBs(NOON, { locale: 'ne' })).toBe('2026 सेप्टेम्बर 14 (2083-05-29 वि.सं.)');
+    expect(formatDateAdBs(NOON)).toMatch(/^14 Sept? 2026 \(2083-05-29 BS\)$/);
+    // 23:00 on the 13th UTC is already the 14th in Kathmandu.
+    expect(formatDate('2026-09-13T23:00:00.000Z', { locale: 'ne' })).toBe('2026 सेप्टेम्बर 14');
+    expect(formatTime(NOON, { locale: 'ne' })).toBe('12:00');
+    expect(formatDateTime(NOON, { locale: 'ne' })).toMatch(/2026 सेप्टेम्बर 14.*12:00/);
+  });
+
+  it('says a length of time and a relative time in Nepali', () => {
+    expect(formatMinutes(95)).toBe('1 h 35 min');
+    expect(formatMinutes(0)).toBe('0 min');
+    expect(formatMinutes(95, { locale: 'ne' })).toBe('1 घण्टा 35 मिनेट');
+    expect(formatMinutes(0, { locale: 'ne' })).toBe('0 मिनेट');
+    const threeHoursAgo = new Date(Date.now() - 3 * 3600_000).toISOString();
+    expect(relativeTime(threeHoursAgo, { locale: 'ne' })).toBe('3 घण्टा पहिले');
+    expect(relativeTime(threeHoursAgo)).toBe('3 hours ago');
   });
 });

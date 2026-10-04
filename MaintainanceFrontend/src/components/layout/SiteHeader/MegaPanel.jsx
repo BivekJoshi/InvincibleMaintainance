@@ -3,7 +3,9 @@ import { ArrowRight, CalendarCheck, ChevronRight } from 'lucide-react';
 import { EASE, motion } from '@/three/motion/motionKit';
 import { Button } from '@/components/ui/button';
 import { DataIcon } from '@/components/site/DataIcon';
-import { SITE_PROMISE_LABELS } from '@/config/site/promises';
+import { SITE_PROMISES } from '@/config/site/promises';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -12,6 +14,7 @@ import { cn } from '@/helpers/utils';
  * asked to browse yet.
  */
 export function MegaPanel({ categories, reduced, onEnter, onLeave }) {
+  const t = useT(SITE);
   // Four trades in two columns leaves a hole beside the card; past five, one
   // column is a scroll. The panel picks its own shape from what it holds.
   const wide = categories.length > 5;
@@ -51,7 +54,7 @@ export function MegaPanel({ categories, reduced, onEnter, onLeave }) {
             className="grid gap-4 p-4 sm:grid-cols-[1fr_13rem]"
           >
             <div>
-              <p className="eyebrow px-2.5 text-muted-foreground">Browse by trade</p>
+              <p className="eyebrow px-2.5 text-muted-foreground">{t('mega.browse')}</p>
               <div className={cn('mt-2 grid gap-0.5', wide && 'sm:grid-cols-2')}>
                 {categories.map((c) => (
                   <motion.div key={c.id} variants={row}>
@@ -82,24 +85,24 @@ export function MegaPanel({ categories, reduced, onEnter, onLeave }) {
               <div className="glow-ink absolute inset-0" aria-hidden />
               <div className="blueprint absolute inset-0 opacity-50" aria-hidden />
               <div className="relative">
-                <p className="eyebrow text-gold">No charge</p>
-                <p className="mt-2 text-sm font-semibold leading-snug">Not sure which trade you need?</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
-                  An engineer visits, finds the cause and quotes it — free, within two hours of your call.
-                </p>
+                <p className="eyebrow text-gold">{t('mega.eyebrow')}</p>
+                <p className="mt-2 text-sm font-semibold leading-snug">{t('mega.question')}</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">{t('mega.answer')}</p>
               </div>
-              <Button asChild variant="gold" size="sm" className="relative mt-4 w-full">
-                <Link to="/book"><CalendarCheck className="h-4 w-4" /> Book a visit</Link>
+              <Button asChild variant="gold" size="sm" className="relative mt-4 h-auto min-h-8 w-full whitespace-normal py-1.5 text-center">
+                <Link to="/book"><CalendarCheck className="h-4 w-4" /> {t('nav.bookVisit')}</Link>
               </Button>
             </motion.div>
           </motion.div>
 
           <div className="flex items-center justify-between gap-4 border-t bg-muted/40 px-4 py-2.5">
             <Link to="/services" className="group/all inline-flex items-center gap-2 text-[13px] font-semibold text-primary">
-              Browse the full catalogue
+              {t('mega.catalogue')}
               <ArrowRight aria-hidden className="h-3.5 w-3.5 transition-transform duration-300 group-hover/all:translate-x-1" />
             </Link>
-            <p className="hidden text-xs text-muted-foreground sm:block">{SITE_PROMISE_LABELS.join(' · ')}</p>
+            <p className="hidden text-xs text-muted-foreground sm:block">
+              {SITE_PROMISES.map((p) => t(`promises.${p.key}.label`)).join(' · ')}
+            </p>
           </div>
         </div>
       </div>

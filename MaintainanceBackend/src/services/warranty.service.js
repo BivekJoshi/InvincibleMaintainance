@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 import { AppError, notFound, unprocessable } from '../utils/AppError.js';
 import { parseListQuery, meta } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
-import { addDays, kathmanduDayRange, local } from '../utils/dates.js';
+import { addDays, customerDate, customerDateTime, kathmanduDayRange, local } from '../utils/dates.js';
 import { toPaisa } from '../utils/money.js';
 import { webUrl } from '../utils/links.js';
 import { AUDIT_EVENTS } from '../shared/enums.js';
@@ -118,16 +118,20 @@ export async function getByPublicToken(token) {
   return { ...w, isValid: w.status === 'ACTIVE' && w.endsAt >= new Date() };
 }
 
-/** A customer raises a claim from the certificate link — no login required. */
+/**
+ * A customer raises a claim from the certificate link — no login required. A refusal is 422 with its own code (Phase
+ * J1) — WARRANTY_VOID, WARRANTY_EXPIRED (`details.endsAt`, the Kathmandu day) or CLAIM_OPEN — which the page words.
+ */
 export async function claimByToken(token, { description }) {
   const w = await prisma.warranty.findFirst({ where: { publicToken: token }, include: { customer: true, job: true } });
   if (!w) throw notFound('Warranty');
-  if (w.status === 'VOID') throw unprocessable('This warranty has been voided');
+  if (w.status === 'VOID') throw new AppError(422, 'WARRANTY_VOID', 'This warranty has been voided');
   if (w.endsAt < new Date()) {
-    throw unprocessable(`This warranty expired on ${w.endsAt.toISOString().slice(0, 10)}. We can still help — please call us.`);
+    const endsAt = local(w.endsAt, 'YYYY-MM-DD');
+    throw new AppError(422, 'WARRANTY_EXPIRED', `This warranty expired on ${endsAt}. We can still help — please call us.`, { endsAt });
   }
   const open = await prisma.warrantyClaim.findFirst({ where: { warrantyId: w.id, status: { in: ['open', 'accepted'] } } });
-  if (open) throw unprocessable('You already have an open claim for this job. We will be in touch shortly.');
+  if (open) throw new AppError(422, 'CLAIM_OPEN', 'You already have an open claim for this job. We will be in touch shortly.');
 
   const claim = await prisma.$transaction(async (tx) => {
     const c = await tx.warrantyClaim.create({ data: { warrantyId: w.id, description } });
@@ -295,7 +299,8 @@ export async function decideClaim(claimId, { status, rejectReason, scheduledStar
     templateKey: 'warranty_claim_accepted', channel: 'sms', to: customer.phone, locale: customer.preferredLocale,
     vars: {
       customerName: customer.name, number: job.number,
-      when: scheduledStart ? local(scheduledStart, 'D MMM YYYY HH:mm') : (customer.preferredLocale === 'ne' ? 'छिट्टै' : 'shortly'),
+      when: customerDateTime(scheduledStart, customer.preferredLocale)
+        ?? (customer.preferredLocale === 'ne' ? 'मिति फोन गरेर मिलाउनेछौं' : 'shortly'),
       appName: env.appName,
     },
     related: { model: 'Job', id: job.id },
@@ -463,7 +468,7 @@ export async function materialiseAmcVisits(daysAhead = 7) {
       templateKey: 'amc_visit_due', channel: 'sms', to: contract.customer.phone, locale: contract.customer.preferredLocale,
       vars: {
         customerName: contract.customer.name, planName: contract.planName,
-        date: visit.dueDate.toISOString().slice(0, 10), number: job.number, appName: env.appName,
+        date: customerDate(visit.dueDate, contract.customer.preferredLocale), number: job.number, appName: env.appName,
       },
       related: { model: 'Job', id: job.id },
       fallbackBody: 'Your {{planName}} maintenance visit is due on {{date}}. We will confirm the time. - {{appName}}',

@@ -18,7 +18,7 @@ import {
   advanceFor, announceAdvance, announceVariation, applyVariation, handOff, handOffPlan, variationPlan,
 } from './handoff.service.js';
 import { adminJobPath, adminLeadMarkLostPath, adminQuotationPath, webUrl } from '../utils/links.js';
-import { addDays } from '../utils/dates.js';
+import { addDays, customerDate } from '../utils/dates.js';
 import { buildLines, costSummary, decorateBoq, takeoffFor, totalsFor } from './boq.service.js';
 import { recipeSnapshots } from './rateLibrary.service.js';
 
@@ -681,25 +681,27 @@ export async function sendQuotation(id, userId) {
     await leadQuoted(tx, q, userId);
   });
 
+  // The customer's language decides the words and how the date and total are written (Phase J1).
+  const locale = q.customer.preferredLocale === 'ne' ? 'ne' : 'en';
   const vars = {
     customerName: q.customer.name,
     number: q.number,
     version: q.version,
-    total: formatNpr(q.total),
-    validUntil: q.validUntil ? q.validUntil.toISOString().slice(0, 10) : 'further notice',
+    total: formatNpr(q.total, { locale }),
+    validUntil: customerDate(q.validUntil, locale) ?? (locale === 'ne' ? 'अर्को सूचना नआएसम्म' : 'further notice'),
     link: webUrl(`/quotation/${token}`),
     appName: env.appName,
   };
   if (q.customer.email) {
     await notify({
-      templateKey: 'quotation_sent', channel: 'email', to: q.customer.email, vars, locale: q.customer.preferredLocale,
+      templateKey: 'quotation_sent', channel: 'email', to: q.customer.email, vars, locale,
       related: { model: 'Quotation', id },
       fallbackSubject: 'Your quotation {{number}} from {{appName}}',
       fallbackBody: 'Dear {{customerName}},\n\nYour quotation {{number}} for {{total}} is ready.\nReview and approve it here:\n{{link}}\n\nValid until {{validUntil}}.',
     });
   }
   await notify({
-    templateKey: 'quotation_sent', channel: 'sms', to: q.customer.phone, vars, locale: q.customer.preferredLocale,
+    templateKey: 'quotation_sent', channel: 'sms', to: q.customer.phone, vars, locale,
     related: { model: 'Quotation', id },
     fallbackBody: 'Quotation {{number}} for {{total}} is ready. View and approve: {{link}} - {{appName}}',
   });
@@ -964,11 +966,11 @@ export async function acceptQuotation(id, answer = {}) {
     return handOff(tx, q, plan);
   }, { timeout: 20_000 });
 
+  const locale = q.customer.preferredLocale === 'ne' ? 'ne' : 'en';
   const vars = {
-    customerName: q.customer.name, number: q.number, version: q.version, total: formatNpr(q.total),
+    customerName: q.customer.name, number: q.number, version: q.version, total: formatNpr(q.total, { locale }),
     jobNumber: job.number, appName: env.appName,
   };
-  const locale = q.customer.preferredLocale;
   await notify({
     templateKey: 'quotation_accepted', channel: 'sms', to: q.customer.phone, vars, locale,
     related: { model: 'Quotation', id: q.id },

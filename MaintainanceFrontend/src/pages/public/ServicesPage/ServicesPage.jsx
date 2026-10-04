@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { useGetPublicServicesQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useSeo } from '@/hooks/useSeo';
+import { useApiErrorText, useT } from '@/hooks/useT';
 import { ErrorState } from '@/components/common/ErrorState';
 import { PageHero } from '@/components/site/PageHero';
 import { SectionShell } from '@/components/site/SectionShell';
@@ -22,7 +22,9 @@ import { DEFAULT_SERVICE_SORT, selectServices } from './servicesSort';
  * returned page in `servicesSort.js`.
  */
 export default function ServicesPage() {
-  const locale = useSelector(selectLocale);
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
+  const { locale } = t;
   const [params, setParams] = useSearchParams();
   const category = params.get('category') ?? '';
   const q = params.get('q') ?? '';
@@ -37,8 +39,8 @@ export default function ServicesPage() {
   const services = useMemo(() => selectServices(data?.items, q, sort), [data, q, sort]);
 
   useSeo({
-    title: q ? `Search: ${q}` : (categoryName ?? 'Every service we book online'),
-    description: 'Published rates, a free inspection before any work, and a one-month written warranty after it.',
+    title: q ? t('services.searchTitle', { q }) : (categoryName ?? t('services.title')),
+    description: t('services.description'),
   });
 
   /** Query-string edits, always as a merge — one control never clears another. */
@@ -47,14 +49,21 @@ export default function ServicesPage() {
     setParams(Object.fromEntries(Object.entries(merged).filter(([, v]) => v)));
   };
 
-  if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
+  if (error) {
+    return (
+      <ErrorState
+        error={error} onRetry={refetch} className="min-h-[60dvh]"
+        message={errorText(error)} retryLabel={t('common.tryAgain')}
+      />
+    );
+  }
 
   return (
     <PageTransition>
       <PageHero
-        eyebrow={categoryName ?? 'Catalogue'}
-        title={q ? `Results for “${q}”` : (categoryName ?? 'Every service we book online')}
-        description="Published rates, a free inspection before any work, and a one-month written warranty after it."
+        eyebrow={categoryName ?? t('services.eyebrow')}
+        title={q ? t('services.results', { q }) : (categoryName ?? t('services.title'))}
+        description={t('services.description')}
       />
 
       <SectionShell>

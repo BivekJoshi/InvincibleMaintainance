@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { useGetPublicPostQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
 import { useSeo } from '@/hooks/useSeo';
+import { useApiErrorText, useT } from '@/hooks/useT';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { ErrorState } from '@/components/common/ErrorState';
 import { SectionShell } from '@/components/site/SectionShell';
@@ -22,9 +22,10 @@ import { PostHeader } from './sections/PostHeader';
  */
 export default function BlogPostPage() {
   const { slug } = useParams();
-  const locale = useSelector(selectLocale);
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
   const { name: company } = useSiteSettings();
-  const { data, isLoading, error, refetch } = useGetPublicPostQuery({ slug, locale });
+  const { data, isLoading, error, refetch } = useGetPublicPostQuery({ slug, locale: t.locale });
   const post = data?.post;
   const cover = data?.media?.[post?.coverId];
   const jsonLd = useMemo(() => postJsonLd(post, company, imageUrl(cover, 1200) ?? undefined), [post, company, cover]);
@@ -37,7 +38,14 @@ export default function BlogPostPage() {
   });
 
   if (error?.status === 404) return <NotFoundPage className="min-h-[60dvh]" />;
-  if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
+  if (error) {
+    return (
+      <ErrorState
+        error={error} onRetry={refetch} className="min-h-[60dvh]"
+        message={errorText(error)} retryLabel={t('common.tryAgain')}
+      />
+    );
+  }
   if (isLoading || !post) {
     return (
       <div className="container max-w-3xl space-y-4 py-14" aria-hidden>

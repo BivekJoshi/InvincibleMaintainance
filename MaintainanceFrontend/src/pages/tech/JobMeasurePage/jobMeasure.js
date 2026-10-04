@@ -46,8 +46,8 @@ export function sameAsSaved(rows, line) {
 }
 
 /**
- * Why the cards cannot be saved yet, as a key of `fieldCopy.measure` — `notSaved` (a row whose size does not read),
- * `needRow` (nothing to save — the API takes 1–200 rows), `tooMany` — or null.
+ * Why the cards cannot be saved yet — `notSaved` (a row whose size does not read: `FIELD.sheet.notSaved`), `needRow`
+ * (nothing to save — the API takes 1–200 rows) or `tooMany` (`FIELD.measure.*`) — or null.
  * @param {object[]} rows
  */
 export function measureProblem(rows) {

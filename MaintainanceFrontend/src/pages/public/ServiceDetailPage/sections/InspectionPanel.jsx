@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import { LeadCaptureCard } from '@/components/public/LeadCaptureCard';
 import { LeadForm } from '@/components/public/LeadForm';
 import { PromiseList } from '@/components/site/PromiseList';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The ask, held beside the copy the whole way down the page.
@@ -10,14 +12,16 @@ import { PromiseList } from '@/components/site/PromiseList';
  * far enough to be convinced should not have to scroll back up to act on it.
  */
 export function InspectionPanel({ service, slug }) {
+  const t = useT(SITE);
   return (
     <aside className="lg:sticky lg:top-28 lg:self-start">
       <LeadCaptureCard
-        title="Get a free inspection"
+        title={t('service.inspection.title')}
         description={
           <>
-            Prefer to pick a time?{' '}
-            <Link to={`/book/${slug}`} className="font-medium text-primary hover:underline">Book a slot</Link>.
+            {t.rich('service.inspection.prefer', {}, {
+              link: (words) => <Link to={`/book/${slug}`} className="font-medium text-primary hover:underline">{words}</Link>,
+            })}
             <PromiseList variant="stack" className="mt-3" />
           </>
         }

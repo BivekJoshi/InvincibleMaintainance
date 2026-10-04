@@ -6,10 +6,11 @@ import {
   useGetMyDiaryDayQuery, useGetMyJobQuery, useGetTechMaterialsQuery, useStartJobSurveyMutation,
 } from '@/api/techApi';
 import { CardSkeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/common/ErrorState';
+import { FieldErrorState } from '@/components/tech/FieldErrorState';
 import { PageTransition } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
-import { useFieldCopy } from '@/hooks/useFieldCopy';
+import { useApiErrorText, useT } from '@/hooks/useT';
+import { FIELD } from '@/config/i18n/field';
 import { useFieldQueue } from '@/hooks/useOfflineQueue';
 import { applyPending, completionUpload, isClosed } from '@/helpers/fieldJob';
 import { ktmDay } from '@/helpers/dispatchBoard';
@@ -41,7 +42,8 @@ export default function TechJobPage({ readOnly: fromHistory = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
-  const copy = useFieldCopy();
+  const t = useT(FIELD);
+  const errorText = useApiErrorText(FIELD);
   const { user } = useAuth();
   const { mutations, uploads } = useSelector(selectFieldSync);
   const { queueMutation, queueUpload } = useFieldQueue();
@@ -62,7 +64,7 @@ export default function TechJobPage({ readOnly: fromHistory = false }) {
   const signing = completionUpload(uploads, id);
 
   // With no signal a refetch fails, but the job already on screen is still the one to work from.
-  if (error && !serverJob) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
+  if (error && !serverJob) return <PageTransition><FieldErrorState error={error} onRetry={refetch} /></PageTransition>;
   if (isLoading || !job) return <PageTransition><CardSkeleton /></PageTransition>;
 
   const readOnly = fromHistory || isClosed(job) || Boolean(signing);
@@ -72,26 +74,26 @@ export default function TechJobPage({ readOnly: fromHistory = false }) {
     try {
       await queueMutation({ jobId: id, ...mutation });
       if (!online()) {
-        if (!quiet) dispatch(toastSuccess(copy.savedOffline, copy.savedOfflineBody));
+        if (!quiet) dispatch(toastSuccess(t('savedOffline'), t('savedOfflineBody')));
       } else if (done) {
         dispatch(toastSuccess(done));
       }
       return true;
     } catch (err) {
-      dispatch(toastError(copy.couldNotSave, err?.message));
+      dispatch(toastError(t('couldNotSave'), err?.message));
       return false;
     }
   };
 
   const advance = (status, label) => queue({ kind: 'status', payload: { status } }, { done: label });
-  const hold = (note) => queue({ kind: 'status', payload: { status: 'ON_HOLD', note } }, { done: copy.status.ON_HOLD });
+  const hold = (note) => queue({ kind: 'status', payload: { status: 'ON_HOLD', note } }, { done: t('status.ON_HOLD') });
   const toggle = (task, isDone) => queue({ kind: 'task', taskId: task.id, payload: { isDone } }, { quiet: true });
-  const startTimer = () => queue({ kind: 'time_start' }, { done: copy.job.timer.start });
-  const stopTimer = () => queue({ kind: 'time_stop' }, { done: copy.job.timer.stop });
+  const startTimer = () => queue({ kind: 'time_start' }, { done: t('job.timer.start') });
+  const stopTimer = () => queue({ kind: 'time_stop' }, { done: t('job.timer.stop') });
 
   const logMaterial = async ({ material, qty }) => {
     const ok = await queue({ kind: 'material', payload: { materialId: material.id, qty }, meta: { material } }, { quiet: true });
-    if (ok) dispatch(toastSuccess(copy.materials.logged(qty, material.unit, material.name)));
+    if (ok) dispatch(toastSuccess(t('materials.logged', { qty: String(qty), unit: material.unit, name: material.name })));
   };
 
   /**
@@ -108,8 +110,8 @@ export default function TechJobPage({ readOnly: fromHistory = false }) {
       await queueMutation({ kind: 'complete', jobId: id, payload });
     }
     dispatch(online()
-      ? toastSuccess(copy.job.finish.completedTitle, job.number)
-      : toastSuccess(copy.job.finish.completedTitle, copy.job.finish.completedOffline));
+      ? toastSuccess(t('job.finish.completedTitle'), job.number)
+      : toastSuccess(t('job.finish.completedTitle'), t('job.finish.completedOffline')));
   };
 
   /** An inspection is surveyed, not "completed" — send them to the survey instead. */
@@ -118,43 +120,43 @@ export default function TechJobPage({ readOnly: fromHistory = false }) {
       const survey = job.survey ?? (await startSurvey({ jobId: id }).unwrap());
       navigate(`/tech/surveys/${survey.id}`);
     } catch (err) {
-      dispatch(toastError(copy.job.survey.failed, err?.data?.error?.message));
+      dispatch(toastError(t('job.survey.failed'), errorText(err)));
     }
   };
 
   return (
     <PageTransition>
-      <JobHeader job={job} copy={copy} onBack={() => navigate(fromHistory ? (location.state?.back ?? '/tech/history') : '/tech')} />
+      <JobHeader job={job} onBack={() => navigate(fromHistory ? (location.state?.back ?? '/tech/history') : '/tech')} />
 
       {fromHistory || isClosed(job) ? (
         <p className="mb-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-          {fromHistory ? copy.job.historyView : copy.job.readOnly}
+          {t(fromHistory ? 'job.historyView' : 'job.readOnly')}
         </p>
       ) : null}
 
       <div className="space-y-4">
-        <JobContactCard job={job} copy={copy} onOpenSurvey={openSurvey} openingSurvey={openingSurvey} readOnly={readOnly} />
-        {job.type !== 'INSPECTION' ? <DiaryLinkCard job={job} copy={copy} /> : null}
+        <JobContactCard job={job} onOpenSurvey={openSurvey} openingSurvey={openingSurvey} readOnly={readOnly} />
+        {job.type !== 'INSPECTION' ? <DiaryLinkCard job={job} /> : null}
         {/* Phase L8: a BOQ job's final measurement — its lines, measured from site. */}
-        {job.type !== 'INSPECTION' && job.lines?.length > 0 && !fromHistory ? <MeasureLinkCard job={job} copy={copy} /> : null}
-        <ChecklistSection job={job} copy={copy} readOnly={readOnly} onToggle={toggle} />
+        {job.type !== 'INSPECTION' && job.lines?.length > 0 && !fromHistory ? <MeasureLinkCard job={job} /> : null}
+        <ChecklistSection job={job} readOnly={readOnly} onToggle={toggle} />
         <TimerSection
-          job={job} copy={copy} userId={user?.id} readOnly={readOnly}
+          job={job} userId={user?.id} readOnly={readOnly}
           onStart={startTimer} onStop={stopTimer} onHold={() => setHolding(true)}
         />
-        <PhotosSection job={job} copy={copy} readOnly={readOnly} />
-        <MaterialsSection job={job} copy={copy} readOnly={readOnly} onLog={logMaterial} />
+        <PhotosSection job={job} readOnly={readOnly} />
+        <MaterialsSection job={job} readOnly={readOnly} onLog={logMaterial} />
         {!readOnly && job.type !== 'INSPECTION' ? (
-          <FinishSection job={job} copy={copy} onComplete={complete} />
+          <FinishSection job={job} onComplete={complete} />
         ) : (
-          <CompletedSummary job={job} copy={copy} signing={signing} />
+          <CompletedSummary job={job} signing={signing} />
         )}
       </div>
 
       {!readOnly ? (
-        <NextStepBar job={job} copy={copy} onAdvance={advance} onHold={() => setHolding(true)} />
+        <NextStepBar job={job} onAdvance={advance} onHold={() => setHolding(true)} />
       ) : null}
-      {!readOnly ? <HoldSheet open={holding} onOpenChange={setHolding} onConfirm={hold} copy={copy} /> : null}
+      {!readOnly ? <HoldSheet open={holding} onOpenChange={setHolding} onConfirm={hold} /> : null}
     </PageTransition>
   );
 }

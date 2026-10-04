@@ -4,6 +4,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { StateBadge } from '@/components/common/StateBadge';
 import { isMeasured, isOmission, mustMeasure } from '@/helpers/closeout';
 import { formatQty } from '@/helpers/measurements';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
 import { linesBySection } from '../jobMeasure';
 
 /**
@@ -11,36 +13,37 @@ import { linesBySection } from '../jobMeasure';
  * stands — measured (the server's quantity), to measure (the contract measures it), or an omission, which keeps its
  * quoted quantity and cannot be opened. Quantities only.
  *
- * @param {{ job: object, t: object }} props
+ * @param {{ job: object }} props
  */
-export function MeasureLineList({ job, t }) {
+export function MeasureLineList({ job }) {
+  const t = useT(FIELD);
   const contractType = job.quotation?.contractType ?? null;
   const sections = linesBySection(job.lines ?? []);
-  if (!sections.length) return <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{t.noLines}</p>;
+  if (!sections.length) return <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{t('measure.noLines')}</p>;
 
   return (
     <div className="space-y-4" data-testid="measure-lines">
-      <p className="text-sm text-muted-foreground">{t.pick}</p>
+      <p className="text-sm text-muted-foreground">{t('measure.pick')}</p>
       {sections.map((section, i) => (
-        <section key={`${section.title}-${i}`} aria-label={section.title || t.lines} className="space-y-2">
+        <section key={`${section.title}-${i}`} aria-label={section.title || t('measure.lines')} className="space-y-2">
           {section.title ? <h2 className="text-sm font-semibold">{section.title}</h2> : null}
           <ul className="space-y-2">
             {section.lines.map((line) => {
               const name = [line.number, line.description].filter(Boolean).join(' · ');
               const omission = isOmission(line);
               const status = omission
-                ? <StateBadge tone="muted" className="whitespace-normal">{t.omission}</StateBadge>
+                ? <StateBadge tone="muted" className="whitespace-normal">{t('measure.omission')}</StateBadge>
                 : isMeasured(line)
-                  ? <StateBadge tone="success" className="whitespace-normal">{t.measured(formatQty(line.measuredQty), line.unit ?? '')}</StateBadge>
+                  ? <StateBadge tone="success" className="whitespace-normal">{t('measure.measured', { qty: formatQty(line.measuredQty), unit: line.unit ?? '' })}</StateBadge>
                   : mustMeasure(line, contractType)
-                    ? <StateBadge tone="warning" className="whitespace-normal">{t.toMeasure}</StateBadge>
-                    : <StateBadge tone="muted" className="whitespace-normal">{t.notMeasured}</StateBadge>;
+                    ? <StateBadge tone="warning" className="whitespace-normal">{t('measure.toMeasure')}</StateBadge>
+                    : <StateBadge tone="muted" className="whitespace-normal">{t('measure.notMeasured')}</StateBadge>;
               const body = (
                 <CardContent className="flex min-h-14 items-center gap-3 p-3">
                   <Ruler className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium leading-snug">{name}</p>
-                    <p className="text-xs tabular-nums text-muted-foreground">{t.quoted(formatQty(Math.abs(line.quotedQty)), line.unit ?? '')}</p>
+                    <p className="text-xs tabular-nums text-muted-foreground">{t('measure.quoted', { qty: formatQty(Math.abs(line.quotedQty)), unit: line.unit ?? '' })}</p>
                     <div className="mt-1">{status}</div>
                   </div>
                   {!omission ? <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden /> : null}

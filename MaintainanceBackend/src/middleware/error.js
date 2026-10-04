@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import multer from 'multer';
 import { logger } from '../lib/logger.js';
 import { captureException } from '../lib/sentry.js';
 import { env } from '../config/env.js';
@@ -39,6 +40,23 @@ export function errorHandler(err, req, res, _next) {
       code = `PRISMA_${err.code}`;
       message = 'Database request failed';
     }
+  } else if (err instanceof multer.MulterError) {
+    // multer's own refusals carry no status, so they used to answer 500 (Phase J1): a file over the uploader's size
+    // limit is 413 FILE_TOO_LARGE; more files than the route takes is 400 TOO_MANY_FILES; anything else malformed, 400.
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      status = 413;
+      code = 'FILE_TOO_LARGE';
+      message = 'That file is too large';
+    } else if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+      status = 400;
+      code = 'TOO_MANY_FILES';
+      message = 'Too many files in one upload';
+    } else {
+      status = 400;
+      code = 'UPLOAD_REJECTED';
+      message = 'The upload could not be read';
+    }
+    details = err.field ? { field: err.field } : undefined;
   } else if (err instanceof Prisma.PrismaClientValidationError) {
     status = 400;
     code = 'PRISMA_VALIDATION';

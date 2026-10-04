@@ -1,5 +1,7 @@
 import { Eyebrow } from '@/components/site/Eyebrow';
 import { imageUrl } from '@/helpers/format';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * Site photographs, at a fixed 4:3 so a mixed set of phone snaps still reads
@@ -7,11 +9,12 @@ import { imageUrl } from '@/helpers/format';
  * alt text falls back to the project title so the image is never unlabelled.
  */
 export function ProjectGallery({ images, media, title }) {
+  const t = useT(SITE);
   if (!images?.length) return null;
 
   return (
     <section className="border-t py-8">
-      <Eyebrow>On site</Eyebrow>
+      <Eyebrow>{t('project.gallery')}</Eyebrow>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {images.map((img) => (
           <figure key={img.id} className="overflow-hidden rounded-xl border">

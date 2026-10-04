@@ -2,25 +2,25 @@ import { useParams } from 'react-router-dom';
 import { PageHero } from '@/components/site/PageHero';
 import { PageTransition } from '@/three/motion/motionKit';
 import { BookingWizard } from '@/components/booking/BookingWizard/BookingWizard';
+import { SITE } from '@/config/i18n/site';
 import { useSeo } from '@/hooks/useSeo';
+import { useT } from '@/hooks/useT';
 
 /**
  * `/book` starts from the catalogue; `/book/:slug` starts with that service
  * already chosen, which is where every "Book" button on a service card lands.
  */
 export default function BookingPage() {
+  const t = useT(SITE);
   const { slug } = useParams();
-  useSeo({
-    title: 'Book a free inspection',
-    description: 'Pick a service, a day and a time window. A certified engineer inspects free of charge and gives you a written estimate.',
-  });
+  useSeo({ title: t('booking.title'), description: t('booking.seoDescription') });
 
   return (
     <PageTransition>
       <PageHero
-        eyebrow="Booking"
-        title="Book a visit in four steps"
-        description="Free inspection, published rates, and a written estimate before anything starts."
+        eyebrow={t('booking.eyebrow')}
+        title={t('booking.heading')}
+        description={t('booking.description')}
       />
       <div className="container py-10 md:py-14">
         <BookingWizard slug={slug} />

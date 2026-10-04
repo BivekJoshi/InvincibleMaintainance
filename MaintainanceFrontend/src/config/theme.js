@@ -24,12 +24,8 @@ export const DARK_QUERY = '(prefers-color-scheme: dark)';
  */
 export const THEME_COLORS = { light: '#fbfaf8', dark: '#11191d' };
 
-/** Label and hint for each mode. Icons are picked in the component, not here. */
-export const THEME_MODE_LABELS = {
-  light: { label: 'Light', hint: 'Always the paper palette' },
-  dark: { label: 'Dark', hint: 'Always the ink palette' },
-  system: { label: 'System', hint: 'Follows your device setting' },
-};
+// Each mode's label and hint are words, in English and Nepali: `theme.<mode>` in `config/i18n/common.js` (Phase J1).
+// Icons are picked in the component, not here.
 
 /** Anything that is not a known mode is treated as "system" rather than trusted. */
 export const isThemeMode = (value) => THEME_MODES.includes(value);

@@ -1,17 +1,20 @@
 /**
  * The public site's navigation, in one place, so the header, the mobile drawer
  * and the footer can never drift out of step.
+ *
+ * Phase J1: an item carries a `key`, not its words — the header, drawer and footer say it with
+ * `t(`nav.${item.key}`)` over `config/i18n/site.js`, in the visitor's language.
  */
 
 export const SITE_NAV = [
-  { to: '/services', label: 'Services', mega: true },
-  { to: '/projects', label: 'Our work' },
-  { to: '/pricing', label: 'Pricing' },
-  { to: '/contact', label: 'Contact' },
+  { to: '/services', key: 'services', mega: true },
+  { to: '/projects', key: 'projects' },
+  { to: '/pricing', key: 'pricing' },
+  { to: '/contact', key: 'contact' },
 ];
 
 /** Listed only while the blog has a published post (`nav.blog` from `/public/bootstrap`). */
-export const BLOG_NAV = { to: '/blog', label: 'Blog' };
+export const BLOG_NAV = { to: '/blog', key: 'blog' };
 
 /**
  * The nav for what the site currently has. An empty blog is a dead end, so its link

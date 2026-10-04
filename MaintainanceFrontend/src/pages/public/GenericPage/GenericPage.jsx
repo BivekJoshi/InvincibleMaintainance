@@ -1,8 +1,8 @@
 import { useParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { useGetPublicPageQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
 import { useSeo } from '@/hooks/useSeo';
+import { useApiErrorText, useT } from '@/hooks/useT';
 import { ErrorState } from '@/components/common/ErrorState';
 import { PageHero } from '@/components/site/PageHero';
 import { ProseBody } from '@/components/site/ProseBody';
@@ -18,15 +18,23 @@ import NotFoundPage from '@/pages/NotFoundPage';
  */
 export default function GenericPage() {
   const { slug } = useParams();
-  const locale = useSelector(selectLocale);
-  const { data, isLoading, error, refetch } = useGetPublicPageQuery({ slug, locale });
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
+  const { data, isLoading, error, refetch } = useGetPublicPageQuery({ slug, locale: t.locale });
   const page = data?.page;
 
   // `||`, not `??`: an SEO field left empty in the admin is saved as ''.
   useSeo({ title: page?.metaTitle || page?.title, description: page?.metaDescription || undefined });
 
   if (error?.status === 404) return <NotFoundPage className="min-h-[60dvh]" />;
-  if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
+  if (error) {
+    return (
+      <ErrorState
+        error={error} onRetry={refetch} className="min-h-[60dvh]"
+        message={errorText(error)} retryLabel={t('common.tryAgain')}
+      />
+    );
+  }
   if (isLoading || !page) {
     return (
       <div className="container space-y-4 py-14" aria-hidden>

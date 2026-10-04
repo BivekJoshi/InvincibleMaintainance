@@ -113,3 +113,11 @@ describe('the site diary form (Phase L7)', () => {
     expect(groups.map((g) => [g.title, g.lines.map((l) => l.id)])).toEqual([['Waterproofing', ['a', 'c']], ['Other work', ['b']]]);
   });
 });
+
+describe('the site diary form — typed on a Nepali keyboard (Phase J1)', () => {
+  it('reads a delivery’s quantity in Devanagari digits', () => {
+    expect(parseQty('१.५')).toBe(1.5);
+    expect(parseQty('१,२००')).toBe(1200);
+    expect(parseQty('एक')).toBeNaN();
+  });
+});

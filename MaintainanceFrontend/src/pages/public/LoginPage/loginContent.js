@@ -1,8 +1,11 @@
 import { EASE } from '@/three/motion/motionKit';
 
 /**
- * The words and figures on the sign-in stage. Copy, not logic — kept out of the
+ * The figures on the sign-in stage, and its credo. Copy, not logic — kept out of the
  * components so a change of wording is a one-line edit that touches no markup.
+ *
+ * Phase J1: the screen's words are `login.*` in `config/i18n/site.js`. The credo stays here: it is shown in both
+ * languages at once, whichever one the screen is in, so it is not a translation to pick from.
  */
 
 /** Cycles under the wordmark on the dark panel. Decoration — never the only copy. */
@@ -15,11 +18,12 @@ export const CREDO = [
 /** How long each credo holds before the next one takes over. */
 export const CREDO_INTERVAL = 5600;
 
+/** Each one's label is `login.stats.<key>`; `unit` names the word after the figure (`login.stats.hours`). */
 export const STATS = [
-  { value: 2, suffix: 'h', label: 'Response SLA' },
-  { value: 18, suffix: '', label: 'Services' },
+  { key: 'response', value: 2, unit: 'hours' },
+  { key: 'services', value: 18 },
   // A year is a label, not a quantity — counting up to it looks like a bug.
-  { value: 2016, suffix: '', label: 'Established', plain: true },
+  { key: 'established', value: 2016, plain: true },
 ];
 
 /** Only rendered by `npm run dev`. The seed gives every account the same password. */

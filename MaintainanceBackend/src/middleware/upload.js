@@ -1,5 +1,8 @@
 import multer from 'multer';
-import { badRequest } from '../utils/AppError.js';
+import { AppError } from '../utils/AppError.js';
+
+/** A file of a type this upload does not take — 400 UNSUPPORTED_FILE_TYPE with the type (Phase J1: a code the site words). */
+const unsupported = (type) => new AppError(400, 'UNSUPPORTED_FILE_TYPE', `Unsupported file type: ${type}`, { type });
 
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
 const DOC_MIMES = ['application/pdf'];
@@ -11,7 +14,7 @@ export const uploadImages = multer({
   limits: { fileSize: 15 * 1024 * 1024, files: 20 },
   fileFilter: (_req, file, cb) => {
     if (!IMAGE_MIMES.includes(file.mimetype)) {
-      return cb(badRequest(`Unsupported image type: ${file.mimetype}`));
+      return cb(unsupported(file.mimetype));
     }
     cb(null, true);
   },
@@ -22,7 +25,7 @@ export const uploadAny = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 10 },
   fileFilter: (_req, file, cb) => {
     if (![...IMAGE_MIMES, ...DOC_MIMES].includes(file.mimetype)) {
-      return cb(badRequest(`Unsupported file type: ${file.mimetype}`));
+      return cb(unsupported(file.mimetype));
     }
     cb(null, true);
   },

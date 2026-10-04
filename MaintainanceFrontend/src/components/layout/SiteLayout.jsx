@@ -2,6 +2,8 @@ import { BackToTop, ScrollProgress } from '@/three/motion/motionKit';
 import { useIdlePreload } from '@/hooks/useIdlePreload';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { PageOutlet } from '@/routes/PageOutlet';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { SiteHeader } from './SiteHeader/SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { MobileCallBar } from './MobileCallBar';
@@ -15,6 +17,7 @@ import { MobileCallBar } from './MobileCallBar';
  * page's parts come in. What is left here is exactly that order.
  */
 export function SiteLayout() {
+  const t = useT(SITE);
   useIdlePreload('public');
   const { mobile } = useSiteSettings();
 
@@ -27,7 +30,7 @@ export function SiteLayout() {
 
       <SiteFooter />
       <MobileCallBar mobile={mobile} />
-      <BackToTop />
+      <BackToTop label={t('backToTop')} />
     </div>
   );
 }

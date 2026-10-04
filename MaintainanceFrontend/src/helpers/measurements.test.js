@@ -74,3 +74,14 @@ describe('the measurement sheet preview', () => {
     expect(formatQty('')).toBe('');
   });
 });
+
+describe('parseLength — typed on a Nepali keyboard (Phase J1)', () => {
+  it('reads Devanagari digits as the Latin ones, feet-inches and all', () => {
+    expect(parseLength('१२\'६"')).toBe(12.5);
+    expect(parseLength('१२.५')).toBe(12.5);
+    expect(parseLength('६"')).toBe(0.5);
+    expect(parseLength('१,२००')).toBe(1200);
+    expect(measurementsBody([{ area: 'छत', nos: '२', l: '१२\'६"', h: '१०' }])).toEqual([{ area: 'छत', nos: 2, l: 12.5, h: 10 }]);
+    expect(measurementRowValue({ nos: '२', l: '१२\'६"', h: '१०' })).toBe(250);
+  });
+});

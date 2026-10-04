@@ -1,15 +1,18 @@
 import { cn } from '@/helpers/utils';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The categories that have a published post, as a row of toggles. A handful at most,
  * so chips rather than a select; "All" is always first.
  */
 export function PostCategoryFilter({ categories, value, onChange }) {
+  const t = useT(SITE);
   if (!categories.length) return null;
-  const options = [{ slug: '', name: 'All' }, ...categories];
+  const options = [{ slug: '', name: t('blog.all') }, ...categories];
 
   return (
-    <div role="group" aria-label="Filter by category" className="mb-8 flex flex-wrap gap-2">
+    <div role="group" aria-label={t('blog.filter')} className="mb-8 flex flex-wrap gap-2">
       {options.map((c) => {
         const active = (value || '') === c.slug;
         return (

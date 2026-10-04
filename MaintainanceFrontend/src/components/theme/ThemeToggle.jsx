@@ -2,8 +2,9 @@ import { Monitor, Moon, Sun } from 'lucide-react';
 import { motion, useReducedMotion } from '@/three/motion/motionKit';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { THEME_MODE_LABELS } from '@/config/theme';
+import { COMMON } from '@/config/i18n/common';
 import { useTheme } from '@/hooks/useTheme';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -17,15 +18,18 @@ import { cn } from '@/helpers/utils';
  *
  * `cycle` swaps the click for light → dark → system, for a bar with room for
  * only one control but a user who wants all three.
+ *
+ * Its words are `common.js`'s `theme.*` — the site's visitor hears them in Nepali, the back office in English.
  */
 export function ThemeToggle({ className, cycle: walk = false, size = 'icon', variant = 'ghost' }) {
+  const common = useT(COMMON);
   const { mode, isDark, cycle, toggle } = useTheme();
   const reduced = useReducedMotion();
   const following = mode === 'system';
 
   const label = walk
-    ? `Colour theme: ${THEME_MODE_LABELS[mode].label}. Change`
-    : `Switch to ${isDark ? 'light' : 'dark'} theme`;
+    ? common('theme.cycle', { mode: common(`theme.${mode}.label`) })
+    : common(isDark ? 'theme.toLight' : 'theme.toDark');
 
   return (
     <Tooltip>
@@ -60,7 +64,9 @@ export function ThemeToggle({ className, cycle: walk = false, size = 'icon', var
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {following ? `Following your device · ${isDark ? 'dark' : 'light'}` : THEME_MODE_LABELS[mode].label}
+        {following
+          ? common('theme.following', { mode: common(`theme.${isDark ? 'dark' : 'light'}.label`).toLowerCase() })
+          : common(`theme.${mode}.label`)}
       </TooltipContent>
     </Tooltip>
   );

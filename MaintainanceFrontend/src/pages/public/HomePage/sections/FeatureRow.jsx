@@ -6,6 +6,8 @@ import { SectionShell } from '@/components/site/SectionShell';
 import { Stagger, StaggerOnView, cardRise } from '@/three/motion/motionKit';
 import { titleCase } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * Three different sections arrive here — the promises, the construction offer
@@ -18,19 +20,21 @@ import { cn } from '@/helpers/utils';
  * count from how many items an editor published — six lands as two rows of
  * three, four as one row of four — so a group is never left with a short
  * final row.
+ *
+ * Each group's heading is `home.features.<key>` in `config/i18n/site.js`; a group with none is "Highlights".
  */
-const COPY = {
-  why_choose: { eyebrow: 'Why us', title: 'Four promises, each one measured' },
-  construction: { eyebrow: 'Construction', title: 'Built to a drawing, billed to a line item' },
-  pre_engineered: { eyebrow: 'Steel buildings', title: 'Pre-engineered structures' },
-};
-
 export function FeatureRow({ section, media, tone }) {
+  const t = useT(SITE);
   const items = Array.isArray(section.data) ? section.data : [];
   if (!items.length) return null;
 
-  const heading = COPY[section.key] ?? { title: 'Highlights' };
-  if (section.key === 'why_choose') return <PromiseLedger items={items} heading={heading} tone={tone} />;
+  const at = `home.features.${section.key}`;
+  const heading = t.has(`${at}.title`)
+    ? { eyebrow: t(`${at}.eyebrow`), title: t(`${at}.title`) }
+    : { title: t('home.features.fallback') };
+  if (section.key === 'why_choose') {
+    return <PromiseLedger items={items} heading={{ ...heading, description: t(`${at}.description`) }} tone={tone} />;
+  }
 
   return (
     <SectionShell tone={tone}>
@@ -51,7 +55,7 @@ const clean = (title) => (title && title === title.toUpperCase() ? titleCase(tit
 function PromiseLedger({ items, heading, tone }) {
   return (
     <SectionShell tone={tone}>
-      <SectionHeading {...heading} description="Written into every job sheet, not into the marketing." />
+      <SectionHeading {...heading} />
       <StaggerOnView className="grid border-t sm:grid-cols-2" stagger={0.07}>
         {items.map((f, i) => (
           <Stagger.Item

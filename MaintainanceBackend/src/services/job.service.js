@@ -5,7 +5,7 @@ import { parseListQuery, meta, searchOr } from '../utils/pagination.js';
 import { nextNumber } from '../utils/numbering.js';
 import { formatNpr, lineAmount, margin, outstanding, proRata, sum } from '../utils/money.js';
 import { takeoffFor } from './boq.service.js';
-import { addDays, dayjs, kathmanduDayRange, local, startOfDay, endOfDay } from '../utils/dates.js';
+import { addDays, customerDate, dayjs, kathmanduDayRange, local, startOfDay, endOfDay } from '../utils/dates.js';
 import { JOB_TRANSITIONS, QUOTATION_TRANSITIONS, assertTransition } from '../shared/stateMachines.js';
 import { getSetting } from './settings.service.js';
 import { can } from '../shared/permissions.js';
@@ -1043,7 +1043,8 @@ export async function scheduleJob(id, input, userId) {
       templateKey: 'job_scheduled', channel: 'sms', to: updated.customer.phone, locale: updated.customer.preferredLocale,
       vars: {
         customerName: updated.customer.name, number: updated.number, appName: env.appName,
-        date: local(scheduledStart, 'D MMM YYYY'), time: `${local(scheduledStart, 'HH:mm')}–${local(scheduledEnd, 'HH:mm')}`,
+        date: customerDate(scheduledStart, updated.customer.preferredLocale),
+        time: `${local(scheduledStart, 'HH:mm')}–${local(scheduledEnd, 'HH:mm')}`,
       },
       related: { model: 'Job', id },
       fallbackBody: 'Hi {{customerName}}, job {{number}} is booked for {{date}}, {{time}}. We will call before we come. - {{appName}}',

@@ -1,12 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { quotationPageState } from './quotationPageState';
-import { QUOTATION_PAGE_COPY, pageCopy } from './quotationPageCopy';
+import { DOCUMENTS } from '@/config/i18n/documents';
 import { DECLINE_CATEGORIES } from '@/config/constants';
-
-/** Every key path in a copy object (functions and strings are leaves). */
-const paths = (value, prefix = '') => (value && typeof value === 'object'
-  ? Object.entries(value).flatMap(([k, v]) => paths(v, prefix ? `${prefix}.${k}` : k))
-  : [prefix]);
+import { createT } from '@/helpers/i18n';
 
 const ALL = ['approve', 'request_changes', 'reject'];
 
@@ -36,26 +32,32 @@ describe('the customer quotation page', () => {
     expect(quotationPageState({ status: 'SENT', actions: ['approve'] }).actions).toEqual(['approve']);
   });
 
+  // The page's words are `config/i18n/documents.js` (Phase J1); `config/i18n/catalogues.test.js` holds English and
+  // Nepali to the same keys. What this page asks for at run time is checked here.
   it('has words for every outcome it can show, in English and Nepali', () => {
     for (const locale of ['en', 'ne']) {
+      const t = createT(DOCUMENTS, locale);
       for (const kind of ['accepted', 'changes', 'declined', 'expired', 'replaced', 'replacedPending', 'closed']) {
-        expect(QUOTATION_PAGE_COPY[locale].outcome[kind].title, `${locale} ${kind}`).toBeTruthy();
+        expect(DOCUMENTS[locale].quotationPage.outcome[kind].title, `${locale} ${kind}`).toBeTruthy();
+        expect(t.has(`quotationPage.outcome.${kind}.body`), `${locale} ${kind}`).toBe(true);
       }
     }
-  });
-
-  it('says everything in Nepali that it says in English — the page and the document (Phase L4)', () => {
-    const en = paths(QUOTATION_PAGE_COPY.en).sort();
-    expect(paths(QUOTATION_PAGE_COPY.ne).sort()).toEqual(en);
-    // The Nepali words really are Nepali.
-    expect(QUOTATION_PAGE_COPY.ne.buttons.accept).toMatch(/[\u0900-\u097F]/);
-    expect(QUOTATION_PAGE_COPY.ne.schedule.triggers.ON_ACCEPT).toMatch(/[\u0900-\u097F]/);
-    expect(pageCopy('fr')).toBe(QUOTATION_PAGE_COPY.en);
+    // The Nepali words really are Nepali — the page's and the document's.
+    expect(DOCUMENTS.ne.quotationPage.buttons.accept).toMatch(/[\u0900-\u097F]/);
+    expect(DOCUMENTS.ne.document.schedule.triggers.ON_ACCEPT).toMatch(/[\u0900-\u097F]/);
   });
 
   it('words every decline reason it offers, in both languages', () => {
     for (const locale of ['en', 'ne']) {
-      expect(Object.keys(QUOTATION_PAGE_COPY[locale].declineReasons)).toEqual(DECLINE_CATEGORIES);
+      expect(Object.keys(DOCUMENTS[locale].quotationPage.declineReasons)).toEqual(DECLINE_CATEGORIES);
+    }
+  });
+
+  it('words every refusal the decide answers with, in both languages (docs/API.md)', () => {
+    for (const locale of ['en', 'ne']) {
+      for (const code of ['QUOTATION_EXPIRED', 'QUOTATION_ANSWERED', 'QUOTATION_REPLACED', 'QUOTATION_NOT_OPEN']) {
+        expect(DOCUMENTS[locale].errors[code], `${locale} ${code}`).toBeTruthy();
+      }
     }
   });
 });

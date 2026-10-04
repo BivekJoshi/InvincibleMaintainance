@@ -1,13 +1,15 @@
 import { describe, it, expect } from 'vitest';
+import { translateValidationMessage } from '@/form/zodMessages';
 import {
   activityBody, activityFormSchema, convertSiteSchema, leadActivitySchema, leadOutcomeIssues, lostReasonSchema,
   nextActionSchema, qualificationSchema, visitBookingBody, visitBookingSchema, visitWindowIssue,
 } from '@/form/schemas/lead.schema';
 
 const AT = '2026-09-17T04:15:00.000Z';
+/** Each field's message as an English form shows it — a shared field names its words (`vKey`), resolved here. */
 const errorsOf = (schema, value) => {
   const result = schema.safeParse(value);
-  return result.success ? {} : Object.fromEntries(result.error.issues.map((i) => [i.path.join('.'), i.message]));
+  return result.success ? {} : Object.fromEntries(result.error.issues.map((i) => [i.path.join('.'), translateValidationMessage(i.message)]));
 };
 
 describe('the outcome rules (the API’s addActivity, mirrored)', () => {

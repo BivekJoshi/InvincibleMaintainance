@@ -8,7 +8,7 @@
     <meta name="description" content="Certified engineers for seepage repair, waterproofing, renovation and interiors across Kathmandu and Lalitpur. Free consultation, 2-hour response, 1-month warranty." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
     <!--
       The colour class, before the first paint. React cannot do this: the bundle
@@ -34,6 +34,26 @@
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute('content', dark ? '#11191d' : '#fbfaf8');
         } catch (e) { /* private mode, or no storage at all — light it is */ }
+      })();
+
+      /*
+        The language, before the first paint (Phase J1). A page that opens in Nepali gets <html lang="ne"> and the
+        Devanagari font's stylesheet now, so its first frame is already set in it; an English page never fetches the
+        font. The stored key is uiSlice's 'locale', the back office (/admin) is always English, and the URL is
+        config/locale.js's DEVANAGARI_FONT_URL (a test holds the two equal). providers/LocaleProvider.jsx keeps both
+        in step after this.
+      */
+      (function () {
+        try {
+          var path = window.location.pathname;
+          if (localStorage.getItem('locale') !== 'ne' || path === '/admin' || path.indexOf('/admin/') === 0) return;
+          document.documentElement.lang = 'ne';
+          var link = document.createElement('link');
+          link.id = 'font-devanagari';
+          link.rel = 'stylesheet';
+          link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=optional';
+          document.head.appendChild(link);
+        } catch (e) { /* no storage — English */ }
       })();
     </script>
   </head>

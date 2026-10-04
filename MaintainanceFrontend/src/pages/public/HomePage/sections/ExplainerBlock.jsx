@@ -5,16 +5,19 @@ import { Media } from '@/components/site/Media';
 import { SectionShell } from '@/components/site/SectionShell';
 import { HeadlineReveal, Reveal } from '@/three/motion/motionKit';
 import { Cta } from '@/components/site/Cta';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /** Seepage: the symptom list beside the explanation of what causes it. */
 export function ExplainerBlock({ section, media, tone }) {
+  const t = useT(SITE);
   const { block, checkpoints = [] } = section.data ?? {};
   if (!block) return null;
   return (
     <SectionShell tone={tone}>
       <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
         <Reveal>
-          <Eyebrow>Diagnosis</Eyebrow>
+          <Eyebrow>{t('home.seepage.eyebrow')}</Eyebrow>
           <HeadlineReveal
             as="h2"
             text={block.heading}
@@ -39,7 +42,7 @@ export function ExplainerBlock({ section, media, tone }) {
           {checkpoints.length ? (
             <Card className="overflow-hidden">
               <CardHeader className="border-b bg-muted/50 px-5 py-3">
-                <CardTitle className="text-sm font-semibold">Signs you should book an inspection</CardTitle>
+                <CardTitle className="text-sm font-semibold">{t('home.seepage.signs')}</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <ul className="divide-y">

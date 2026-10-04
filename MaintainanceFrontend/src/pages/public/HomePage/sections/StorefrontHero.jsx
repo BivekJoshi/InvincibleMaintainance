@@ -1,9 +1,9 @@
 import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { ArrowRight, CalendarCheck, Phone, Search, ShieldCheck } from 'lucide-react';
 import { useGetBootstrapQuery, useGetPublicServicesQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { Badge } from '@/components/ui/badge';
 import { DataIcon } from '@/components/site/DataIcon';
 import { Button } from '@/components/ui/button';
@@ -23,11 +23,18 @@ const SectionCutScene = lazy(() =>
   import('@/three/scenes/SectionCutScene/SectionCutScene').then((m) => ({ default: m.SectionCutScene })));
 
 // Four, not five: the row has to survive one line on a phone, and a fifth term
-// is a term nobody reads.
-const POPULAR_SEARCHES = ['Seepage', 'Waterproofing', 'Modular kitchen', 'Rewiring'];
+// is a term nobody reads. Each is shown in the visitor's language (`home.hero.terms`), but searches for `q`: the
+// catalogue's names are English until an editor translates them, and a Nepali word would find nothing in them.
+const POPULAR_SEARCHES = [
+  { key: 'seepage', q: 'Seepage' },
+  { key: 'waterproofing', q: 'Waterproofing' },
+  { key: 'kitchen', q: 'Modular kitchen' },
+  { key: 'rewiring', q: 'Rewiring' },
+];
 
 export function StorefrontHero({ section, settings, media }) {
-  const locale = useSelector(selectLocale);
+  const t = useT(SITE);
+  const { locale } = t;
   const reduced = useReducedMotion();
   const { data: boot } = useGetBootstrapQuery(locale);
   const { data: catalogue } = useGetPublicServicesQuery({ locale });
@@ -65,14 +72,14 @@ export function StorefrontHero({ section, settings, media }) {
                   <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-gold" aria-hidden />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />
                 </span>
-                We call back within 2 hours
+                {t('home.hero.badge')}
               </Badge>
             </motion.div>
 
             <WordReveal
               as="h1"
               delay={0.05}
-              text={slide?.title ?? 'Book a certified engineer for your home'}
+              text={slide?.title ?? t('home.hero.title')}
               className="mt-6 block text-[2.15rem] font-bold leading-[1.06] tracking-tight md:text-[3rem] lg:text-[3.35rem]"
             />
             <motion.p
@@ -80,7 +87,7 @@ export function StorefrontHero({ section, settings, media }) {
               transition={{ duration: 0.5, delay: 0.28, ease: [0.16, 1, 0.3, 1] }}
               className="mx-auto mt-5 max-w-lg text-[15px] leading-relaxed text-muted-foreground lg:mx-0"
             >
-              {slide?.subtitle ?? 'Published prices, a free inspection first, and a one-month written warranty.'}
+              {slide?.subtitle ?? t('home.hero.subtitle')}
             </motion.p>
 
             {/* Search, then the terms people actually search for. The placeholder
@@ -96,22 +103,22 @@ export function StorefrontHero({ section, settings, media }) {
               <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" aria-hidden />
               <Input
                 type="search" name="q"
-                placeholder="What needs fixing?"
-                aria-label="Search services"
-                className="h-14 rounded-xl border-border/80 bg-card pl-11 pr-[6.75rem] text-[15px] shadow-card focus-visible:ring-4 focus-visible:ring-primary/10 focus-visible:ring-offset-0"
+                placeholder={t('home.hero.searchPlaceholder')}
+                aria-label={t('search.label')}
+                className="h-14 rounded-xl border-border/80 bg-card pl-11 pr-28 text-[15px] shadow-card focus-visible:ring-4 focus-visible:ring-primary/10 focus-visible:ring-offset-0"
               />
-              <Button type="submit" className="absolute right-2 top-2 h-10 rounded-lg px-5">Search</Button>
+              <Button type="submit" className="absolute right-2 top-2 h-10 rounded-lg px-4">{t('search.submit')}</Button>
             </motion.form>
 
             <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground lg:justify-start">
-              <span className="text-muted-foreground/70">Popular</span>
+              <span className="text-muted-foreground/70">{t('home.hero.popular')}</span>
               {POPULAR_SEARCHES.map((term) => (
-                <Link key={term} to={`/services?q=${encodeURIComponent(term)}`}>
+                <Link key={term.key} to={`/services?q=${encodeURIComponent(term.q)}`}>
                   <Badge
                     variant="outline"
                     className="border-border/60 bg-card/50 px-2.5 py-0.5 text-[11px] font-normal text-muted-foreground hover:border-primary/40 hover:text-foreground"
                   >
-                    {term}
+                    {t(`home.hero.terms.${term.key}`)}
                   </Badge>
                 </Link>
               ))}
@@ -122,8 +129,9 @@ export function StorefrontHero({ section, settings, media }) {
                 is not a target — but loses the shadow, so only one of the two
                 reads as the thing to press. */}
             <div className="mt-8 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center lg:justify-start">
-              <Cta href={slide?.ctaUrl} size="lg" className="w-full shadow-card sm:w-auto">
-                <CalendarCheck className="h-4 w-4" /> {slide?.ctaLabel ?? 'Book a free inspection'}
+              {/* The label may be longer than a phone is wide in Nepali, so it wraps. */}
+              <Cta href={slide?.ctaUrl} size="lg" className="h-auto min-h-11 w-full whitespace-normal py-2.5 text-center shadow-card sm:w-auto">
+                <CalendarCheck className="h-4 w-4" /> {slide?.ctaLabel ?? t('home.hero.cta')}
               </Cta>
               {mobile ? (
                 <Button asChild size="lg" variant="outline" className="w-full border-border/70 shadow-none sm:w-auto">
@@ -166,7 +174,7 @@ export function StorefrontHero({ section, settings, media }) {
           </div>
 
           {/* ── the proof ── */}
-          <HeroShowcase reduced={Boolean(reduced)} />
+          <HeroShowcase reduced={Boolean(reduced)} certified={t('home.hero.certified')} />
         </div>
 
         {categories.length ? (
@@ -177,12 +185,12 @@ export function StorefrontHero({ section, settings, media }) {
                 {/* Same gold hairline every other section heading opens with. */}
                 <span className="flex items-center gap-2.5">
                   <span className="h-px w-6 shrink-0 bg-gold/70" aria-hidden />
-                  <Eyebrow>Browse by trade</Eyebrow>
+                  <Eyebrow>{t('mega.browse')}</Eyebrow>
                 </span>
-                <h2 className="mt-2 text-xl font-bold tracking-tight">Pick the work you need doing</h2>
+                <h2 className="mt-2 text-xl font-bold tracking-tight">{t('home.hero.browseTitle')}</h2>
               </div>
               <Button asChild variant="link" className="h-auto shrink-0 p-0">
-                <Link to="/services">All services <ArrowRight className="h-3.5 w-3.5" /></Link>
+                <Link to="/services">{t('home.hero.allServices')} <ArrowRight className="h-3.5 w-3.5" /></Link>
               </Button>
             </div>
             <StaggerOnView className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4" stagger={0.05}>
@@ -206,7 +214,7 @@ export function StorefrontHero({ section, settings, media }) {
  * trades the company actually sells, in the colours those materials actually
  * are — and it carries a caption that says what is being shown.
  */
-function HeroShowcase({ reduced }) {
+function HeroShowcase({ reduced, certified }) {
   // The panel's own entrance has to answer prefers-reduced-motion too, not only
   // the scene inside it: the global CSS rule reaches CSS transitions, and these
   // are JS-driven transforms it cannot see.
@@ -238,7 +246,7 @@ function HeroShowcase({ reduced }) {
           edge and the two would sit on top of each other. */}
       <motion.div {...badgeEnter} className="pointer-events-none absolute left-4 top-4">
         <Badge variant="outline" className="gap-2 border-gold/40 bg-card/90 px-3 py-1.5 text-[11px] font-semibold shadow-card backdrop-blur">
-          <ShieldCheck className="h-3.5 w-3.5 text-gold" aria-hidden /> Certified engineers only
+          <ShieldCheck className="h-3.5 w-3.5 text-gold" aria-hidden /> {certified}
         </Badge>
       </motion.div>
     </motion.div>

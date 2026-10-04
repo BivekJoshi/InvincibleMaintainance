@@ -12,36 +12,38 @@ import { formatQty } from '@/helpers/measurements';
 import {
   blankItem, blankMeasurement, groupByArea, lineQty, roomTotal,
 } from '@/pages/tech/SurveyFormPage/surveyForm';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
 
 /** The inline "What are you measuring?" form — a new line that starts measured. */
-function NewLineForm({ onCreate, onCancel, words }) {
-  const t = words.measure;
+function NewLineForm({ onCreate, onCancel }) {
+  const t = useT(FIELD);
   const [description, setDescription] = useState('');
   const [unit, setUnit] = useState('sq.ft');
   return (
     <div className="space-y-3 rounded-lg border bg-card p-3">
       <div className="space-y-1">
-        <Label htmlFor="new-measured-line">{t.newLineTitle}</Label>
+        <Label htmlFor="new-measured-line">{t('survey.measure.newLineTitle')}</Label>
         <Input
           id="new-measured-line"
           value={description}
           maxLength={500}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder={t.newLinePlaceholder}
+          placeholder={t('survey.measure.newLinePlaceholder')}
           className="h-12 text-base"
           autoFocus
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="new-measured-unit">{t.unit}</Label>
+        <Label htmlFor="new-measured-unit">{t('survey.measure.unit')}</Label>
         <Select value={unit} onValueChange={setUnit}>
           <SelectTrigger id="new-measured-unit" className="h-12"><SelectValue /></SelectTrigger>
           <SelectContent>{UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
         </Select>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Button type="button" variant="outline" className="h-12" onClick={onCancel}>{t.cancel}</Button>
-        <Button type="button" className="h-12" disabled={!description.trim()} onClick={() => onCreate(description.trim(), unit)}>{t.create}</Button>
+        <Button type="button" variant="outline" className="h-12" onClick={onCancel}>{t('survey.measure.cancel')}</Button>
+        <Button type="button" className="h-12" disabled={!description.trim()} onClick={() => onCreate(description.trim(), unit)}>{t('survey.measure.create')}</Button>
       </div>
     </div>
   );
@@ -54,10 +56,10 @@ function NewLineForm({ onCreate, onCancel, words }) {
  * is shown once the sheet has synced (`serverQty`). Only quantities — never a rate (D1).
  *
  * @param {{ items: object[], lineKey: string|null, onPickLine: (key: string) => void,
- *   onItems: (items: object[]) => void, serverQty: (item: object) => number|null, readOnly: boolean, words: object }} props
+ *   onItems: (items: object[]) => void, serverQty: (item: object) => number|null, readOnly: boolean }} props
  */
-export function MeasurementsStep({ items, lineKey, onPickLine, onItems, serverQty, readOnly, words }) {
-  const t = words.measure;
+export function MeasurementsStep({ items, lineKey, onPickLine, onItems, serverQty, readOnly }) {
+  const t = useT(FIELD);
   const [adding, setAdding] = useState(false);
   const [room, setRoom] = useState('');
   const selected = items.find((i) => i._key === lineKey) ?? items.find((i) => i.measurements?.length) ?? items[0] ?? null;
@@ -85,10 +87,10 @@ export function MeasurementsStep({ items, lineKey, onPickLine, onItems, serverQt
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">{t.body}</p>
+      <p className="text-sm text-muted-foreground">{t('survey.measure.body')}</p>
 
       <div className="space-y-2">
-        <p className="text-sm font-medium" id="measure-line-label">{t.line}</p>
+        <p className="text-sm font-medium" id="measure-line-label">{t('survey.measure.line')}</p>
         {items.length ? (
           <ToggleGroup
             type="single"
@@ -105,44 +107,44 @@ export function MeasurementsStep({ items, lineKey, onPickLine, onItems, serverQt
                 className="h-12 max-w-full border px-3 text-sm data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
               >
                 <Ruler className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="truncate">{item.description?.trim() || words.lines.line(i + 1)}</span>
+                <span className="truncate">{item.description?.trim() || t('survey.lines.line', { n: i + 1 })}</span>
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
         ) : (
-          <p className="text-sm text-muted-foreground">{t.noLines}</p>
+          <p className="text-sm text-muted-foreground">{t('survey.measure.noLines')}</p>
         )}
         {!readOnly ? (
           adding
-            ? <NewLineForm onCreate={create} onCancel={() => setAdding(false)} words={words} />
+            ? <NewLineForm onCreate={create} onCancel={() => setAdding(false)} />
             : (
               <Button type="button" variant="outline" className="h-12 w-full" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" /> {t.newLine}
+                <Plus className="h-4 w-4" /> {t('survey.measure.newLine')}
               </Button>
             )
         ) : null}
       </div>
 
       {selected ? (
-        <section aria-label={selected.description || t.title} className="space-y-4">
+        <section aria-label={selected.description || t('survey.measure.title')} className="space-y-4">
           {groups.length ? groups.map((group) => (
             <Card key={group.rows[0]._key}>
               <CardContent className="space-y-3 p-3">
                 <div className="flex items-end gap-2">
                   <div className="min-w-0 flex-1 space-y-1">
-                    <Label htmlFor={`room-${group.rows[0]._key}`} className="text-xs">{t.room}</Label>
+                    <Label htmlFor={`room-${group.rows[0]._key}`} className="text-xs">{t('sheet.room')}</Label>
                     <Input
                       id={`room-${group.rows[0]._key}`}
                       value={group.rows[0].area ?? ''}
                       maxLength={80}
                       onChange={(e) => renameRoom(group.area, e.target.value)}
-                      placeholder={t.noRoom}
+                      placeholder={t('sheet.noRoom')}
                       disabled={readOnly}
                       className="h-12 text-base font-semibold"
                     />
                   </div>
                   <p className="shrink-0 pb-3 text-sm font-semibold tabular-nums" data-testid="room-total">
-                    {t.roomTotal(formatQty(roomTotal(group.rows)), selected.unit)}
+                    {t('sheet.roomTotal', { qty: formatQty(roomTotal(group.rows)), unit: selected.unit })}
                   </p>
                 </div>
                 <ol className="space-y-3">
@@ -155,7 +157,6 @@ export function MeasurementsStep({ items, lineKey, onPickLine, onItems, serverQt
                         number={index + 1}
                         unit={selected.unit}
                         readOnly={readOnly}
-                        t={t}
                         onChange={(patch) => setRows(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))}
                         onRemove={() => setRows(rows.filter((r) => r._key !== row._key))}
                       />
@@ -164,25 +165,25 @@ export function MeasurementsStep({ items, lineKey, onPickLine, onItems, serverQt
                 </ol>
                 {!readOnly ? (
                   <Button type="button" variant="outline" className="h-12 w-full" onClick={() => addRowIn(group.area)}>
-                    <Plus className="h-4 w-4" /> {t.addRow(group.area || t.noRoom)}
+                    <Plus className="h-4 w-4" /> {t('sheet.addRow', { room: group.area || t('sheet.noRoom') })}
                   </Button>
                 ) : null}
               </CardContent>
             </Card>
           )) : (
-            <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{t.empty}</p>
+            <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{t('sheet.empty')}</p>
           )}
 
           {!readOnly ? (
             <div className="space-y-2 rounded-lg border border-dashed p-3">
-              <Label htmlFor="new-room">{t.room}</Label>
+              <Label htmlFor="new-room">{t('sheet.room')}</Label>
               <div className="flex gap-2">
                 <Input
                   id="new-room"
                   value={room}
                   maxLength={80}
                   onChange={(e) => setRoom(e.target.value)}
-                  placeholder={t.roomPlaceholder}
+                  placeholder={t('sheet.roomPlaceholder')}
                   className="h-12 text-base"
                 />
                 <Button
@@ -190,19 +191,19 @@ export function MeasurementsStep({ items, lineKey, onPickLine, onItems, serverQt
                   className="h-12 shrink-0"
                   onClick={() => { setRows([...rows, blankMeasurement(room.trim())]); setRoom(''); }}
                 >
-                  <Plus className="h-4 w-4" /> {t.addRoom}
+                  <Plus className="h-4 w-4" /> {t('sheet.addRoom')}
                 </Button>
               </div>
             </div>
           ) : null}
 
           <div className="rounded-lg border bg-muted/40 p-3 text-sm" aria-live="polite">
-            <p className="font-semibold tabular-nums" data-testid="line-total">{t.lineTotal(formatQty(total), selected.unit)}</p>
-            <p className="text-xs text-muted-foreground">{t.preview}</p>
+            <p className="font-semibold tabular-nums" data-testid="line-total">{t('sheet.lineTotal', { qty: formatQty(total), unit: selected.unit })}</p>
+            <p className="text-xs text-muted-foreground">{t('sheet.preview')}</p>
             {office !== null ? (
-              <p className="mt-1 font-medium tabular-nums text-success" data-testid="office-qty">{t.office(formatQty(office), selected.unit)}</p>
+              <p className="mt-1 font-medium tabular-nums text-success" data-testid="office-qty">{t('survey.measure.office', { qty: formatQty(office), unit: selected.unit })}</p>
             ) : rows.length ? (
-              <p className="mt-1 text-xs text-muted-foreground">{t.waiting}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('survey.measure.waiting')}</p>
             ) : null}
           </div>
         </section>

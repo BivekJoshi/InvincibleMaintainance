@@ -1,4 +1,6 @@
 import { AnimatePresence, EASE, motion } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The confirmation wipe. Cosmetic: the redirect happens either way, and under
@@ -8,6 +10,7 @@ import { AnimatePresence, EASE, motion } from '@/three/motion/motionKit';
  * which suits the drawing language the rest of the screen is in.
  */
 export function AccessGranted({ show }) {
+  const t = useT(SITE);
   return (
     <AnimatePresence>
       {show ? (
@@ -28,7 +31,7 @@ export function AccessGranted({ show }) {
               transition={{ duration: 0.45, delay: 0.25, ease: EASE }}
             />
           </svg>
-          <span className="eyebrow text-gold">Access granted</span>
+          <span className="eyebrow text-gold">{t('login.granted')}</span>
         </motion.div>
       ) : null}
     </AnimatePresence>

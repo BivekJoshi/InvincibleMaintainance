@@ -12,9 +12,12 @@ import { imageUrl } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 import { selectFieldUploads } from '@/redux/slices/fieldSyncSlice';
 import { toastError } from '@/redux/slices/uiSlice';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
 import { MAX_PHOTOS } from '../siteDiary';
 
-function PhotoTile({ photo, n, media, uploads, onRemove, readOnly, words }) {
+function PhotoTile({ photo, n, media, uploads, onRemove, readOnly }) {
+  const t = useT(FIELD);
   const waiting = Boolean(photo.uploadId && uploads.some((u) => u.id === photo.uploadId));
   const mediaId = photo.mediaId ?? (photo.uploadId && !waiting ? mediaIdForUpload(photo.uploadId) : null);
   const pendingSrc = usePendingPicture(waiting ? photo.uploadId : null);
@@ -22,13 +25,13 @@ function PhotoTile({ photo, n, media, uploads, onRemove, readOnly, words }) {
   return (
     <li className="overflow-hidden rounded-lg border bg-card" data-testid="diary-photo" data-waiting={waiting ? 'true' : 'false'}>
       <div className="relative aspect-[4/3] bg-muted">
-        {src ? <img src={src} alt={words.photo(n)} className="h-full w-full object-cover" /> : (
+        {src ? <img src={src} alt={t('diary.photos.photo', { n })} className="h-full w-full object-cover" /> : (
           <div className="flex h-full items-center justify-center text-muted-foreground"><ImageIcon className="h-6 w-6" aria-hidden /></div>
         )}
         {!readOnly ? (
           <Button
             type="button" variant="secondary" size="icon" className="absolute right-1 top-1 h-11 w-11 rounded-full"
-            onClick={onRemove} aria-label={words.remove(n)}
+            onClick={onRemove} aria-label={t('diary.photos.remove', { n })}
           >
             <X />
           </Button>
@@ -36,7 +39,7 @@ function PhotoTile({ photo, n, media, uploads, onRemove, readOnly, words }) {
       </div>
       <p className={cn('flex items-center gap-1 px-2 py-1.5 text-xs font-medium', waiting ? 'text-warning' : 'text-success')}>
         {waiting ? <CloudUpload className="h-3.5 w-3.5" aria-hidden /> : null}
-        {waiting ? words.waiting : words.sent}
+        {t(waiting ? 'diary.photos.waiting' : 'diary.photos.sent')}
       </p>
     </li>
   );
@@ -48,8 +51,8 @@ function PhotoTile({ photo, n, media, uploads, onRemove, readOnly, words }) {
  * the sync engine sends the day with the media ids (`useOfflineQueue#resolveDiaryPhotos`) — so a day saved offline
  * waits for its pictures, and is never sent without them.
  */
-export function DiaryPhotos({ jobId, day, photos, media, onChange, problem, readOnly, words }) {
-  const t = words.photos;
+export function DiaryPhotos({ jobId, day, photos, media, onChange, problem, readOnly }) {
+  const t = useT(FIELD);
   const dispatch = useDispatch();
   const { queueUpload } = useFieldQueue();
   const uploads = useSelector(selectFieldUploads);
@@ -67,11 +70,11 @@ export function DiaryPhotos({ jobId, day, photos, media, onChange, problem, read
       try {
         const small = await compressImage(file);
         const entry = await queueUpload({
-          target: 'job', targetId: jobId, kind: 'DURING', caption: t.caption(day), file: small, name: small.name ?? file.name,
+          target: 'job', targetId: jobId, kind: 'DURING', caption: t('diary.photos.caption', { day }), file: small, name: small.name ?? file.name,
         });
         added.push({ _key: newKey(), uploadId: entry.id });
       } catch (err) {
-        dispatch(toastError(t.failed, err?.message));
+        dispatch(toastError(t('diary.photos.failed'), err?.message));
       } finally {
         setPreparing((n) => n - 1);
       }
@@ -81,10 +84,10 @@ export function DiaryPhotos({ jobId, day, photos, media, onChange, problem, read
 
   return (
     <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-base">{t.title}</CardTitle></CardHeader>
+      <CardHeader className="pb-2"><CardTitle className="text-base">{t('diary.photos.title')}</CardTitle></CardHeader>
       <CardContent className="space-y-3 pb-4">
         {photos.length ? (
-          <ul className="grid grid-cols-2 gap-2" aria-label={t.title}>
+          <ul className="grid grid-cols-2 gap-2" aria-label={t('diary.photos.title')}>
             {photos.map((photo, i) => (
               <PhotoTile
                 key={photo._key}
@@ -93,13 +96,12 @@ export function DiaryPhotos({ jobId, day, photos, media, onChange, problem, read
                 media={media}
                 uploads={uploads}
                 readOnly={readOnly}
-                words={t}
                 onRemove={() => onChange(photos.filter((p) => p._key !== photo._key))}
               />
             ))}
           </ul>
-        ) : <p className="text-sm text-muted-foreground">{t.none}</p>}
-        {problem ? <p className="text-sm font-medium text-destructive">{t[problem]}</p> : null}
+        ) : <p className="text-sm text-muted-foreground">{t('diary.photos.none')}</p>}
+        {problem ? <p className="text-sm font-medium text-destructive">{t(`diary.photos.${problem}`, { max: MAX_PHOTOS })}</p> : null}
         {!readOnly ? (
           <label
             className={cn(
@@ -109,7 +111,7 @@ export function DiaryPhotos({ jobId, day, photos, media, onChange, problem, read
             )}
           >
             {preparing ? <Loader2 className="animate-spin" aria-hidden /> : <Camera aria-hidden />}
-            {preparing ? t.preparing : full ? t.max : t.take}
+            {preparing ? t('diary.photos.preparing') : full ? t('diary.photos.max', { max: MAX_PHOTOS }) : t('diary.photos.take')}
             <input
               id={inputId}
               type="file"
@@ -119,7 +121,7 @@ export function DiaryPhotos({ jobId, day, photos, media, onChange, problem, read
               className="sr-only"
               disabled={full}
               onChange={onFiles}
-              aria-label={t.take}
+              aria-label={t('diary.photos.take')}
             />
           </label>
         ) : null}

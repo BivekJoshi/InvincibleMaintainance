@@ -1758,8 +1758,9 @@ engine and the field API stay out of the marketing bundle); `routes/RequireAuth.
 capability. The router is a **data router** (`createBrowserRouter` in `AppProviders`, one splat route
 around `<AppRoutes>`), because `useBlocker` — the unsaved-changes guard — only works in one. The
 route table itself is still plain `<Routes>`. `routes/AdminLanding.jsx` holds the two redirects of the admin
-shell (`/admin` per role, `/admin/content` to the first content screen). `providers/AppProviders` composes store → router → theme → tooltips →
-scroll and session effects, so `main.jsx` stays a mount point.
+shell (`/admin` per role, `/admin/content` to the first content screen). `providers/AppProviders` composes store → router → theme →
+the route's language (`LocaleProvider`, Phase J1 — English under `/admin`, the visitor's choice elsewhere; `<html lang>` and
+the Devanagari font; see "Words — English and Nepali") → tooltips → scroll and session effects, so `main.jsx` stays a mount point.
 
 Render errors are caught in `components/common/ErrorBoundary/` at three levels: `PageOutlet` wraps each page in a
 `RouteErrorBoundary` (the shell stays up, and any navigation clears it); `RouterShell` wraps the route table in
@@ -1831,7 +1832,9 @@ own) and `inspectionTemplate.schema.js` (see "The site-visit kit (Phase L5)"); `
 `visitBookingSchema` / `visitBookingBody` and the site contact on `convertSiteSchema`, `customer.schema.js` the site's
 contact and landmark.
 
-`useZodForm(schema, options)` is the only place `zodResolver` is imported.
+`useZodForm(schema, options)` is the only place `zodResolver` is imported. Since Phase J1 it words every error in the
+screen's language through `form/zodMessages.js` (an error map for unworded issues, and the `vKey('…')` message keys that
+`fields.js` uses) — see "Words — English and Nepali (Phase J1)".
 
 ## config/ vs helpers/
 
@@ -1842,7 +1845,8 @@ activity types, and Phase L1's `LEAD_OUTCOMES` / `REACHED_OUTCOMES`, `NEXT_ACTIO
 API's own files and fails when they drift or a value has no words — plus
 `SHELL_POLL_MS` and status→Tailwind maps), `auditEvents.js` (every `AUDIT_EVENTS` name in words, for History; the same
 test checks the list), `env.js` (the single place `import.meta.env` is read),
-`locale.js` (timezone, currency, the Nepali phone rule), `theme.js` (the colour
+`locale.js` (timezone, currency, the Nepali phone rule; since Phase J1 `NE_DISPLAY_DIGITS`, `DEVANAGARI_FONT_URL` and
+`isEnglishOnlyPath` — `/admin` stays English), `i18n/` (the catalogues — see "Words — English and Nepali (Phase J1)"), `theme.js` (the colour
 modes and how one resolves), and `site/` — the storefront's own copy: `siteNav.js`
 (the nav — `siteNavFor(nav)` adds Blog while `bootstrap.nav.blog` is true — the paths a CMS link is validated
 against, and `RESERVED_SLUGS`, the first segments a generic page may not use), `promises.js` (free
@@ -1912,6 +1916,61 @@ query once and hands back the company's name, numbers and address with the
 fallbacks already applied, so no component writes
 `settings['contact.phonePrimary'] ?? '01-5407720'` a sixth time. It also hands back `nav` (the site nav for what the
 site has now) and `pageSlugs` (the live generic pages), which `Cta` and the admin link checks use.
+
+## Words — English and Nepali (Phase J1)
+
+**Every word a visitor, a customer or a technician reads goes through `t()`.** The field app (`/tech`), the public site,
+booking, the lead forms, the login and the customer's document pages (`/quotation`, `/invoice`, `/warranty`, `/visit`)
+are English and Nepali. **The back office stays English** (decision D7): `providers/LocaleProvider.jsx` makes every
+`/admin` path English whatever the browser chose on the site, so a shared component (a form's validation message, the
+error boundary) is English there by itself. Content — service names, pages, posts, FAQs, gallery captions — is not UI
+text: the API overlays its Nepali with `?locale=ne` (the Translation table), and every public query passes the locale.
+
+- **Catalogues** — `config/i18n/<audience>.js`, one export each, `{ en, ne }`: `common.js` (`COMMON` — the language
+  switch, and the API error codes a visitor can meet), `validation.js` (`VALIDATION` — form messages), `site.js`
+  (`SITE`), `field.js` (`FIELD`), `documents.js` (`DOCUMENTS`). A screen imports only its audience's catalogue, so the
+  marketing bundle never carries the field app's words. A catalogue is **plain data**: nested objects whose leaves are
+  strings with `{name}` placeholders, or plural forms `{ one, other, zero? }` picked by `count` (`Intl.PluralRules` —
+  English and Nepali both use one/other). No functions, no arrays — a translator can read it, and
+  `npm run -s i18n:review > review.csv` prints every text beside its English (the API's Nepali messages and checklist
+  words too) for a native speaker.
+- **`useT(CATALOGUE)`** (`hooks/useT.js`) → `t('sync.waiting', { count: 3 })`. A number in the values is printed with
+  lakh grouping in the locale's digits; pass a string to print it as it is (a job number, a year). `t.rich(key, vars,
+  { link: (children) => <Link …>{children}</Link> })` fills `<link>…</link>` spans in a sentence — the tags are found
+  before the values go in, so a customer's name never becomes markup. `t.locale` feeds the format helpers;
+  `t.has(key)`. `useT(CAT, { locale })` pins a language (a document in the customer's, not the reader's);
+  `LocaleScope` pins one for a subtree. `useLocale()` is the screen's language; `createT(CAT, locale)`
+  (`helpers/i18n.js`) is the same outside React. A key Nepali lacks falls back to English with a development-only
+  `console.warn('[i18n] missing ne text for "…"')`; a key neither has prints itself.
+- **API errors** — `useApiErrorText(CATALOGUE)` → `(error) => words`: the catalogue's `errors.<CODE>`, then `COMMON`'s,
+  then the server's message (English), then `COMMON.errors.generic`; `FETCH_ERROR` is "no internet". The API's codes
+  are the contract (docs/API.md); its messages are only a fallback.
+- **Validation (J1.4)** — `useZodForm` words every zod error in the screen's language: `form/zodMessages.js` gives zod
+  an error map for the issues a schema left unworded (a length, a range, an empty field — `validation.js#issues`), and
+  resolves the message keys a schema chose — `form/schemas/fields.js` writes `vKey('phone')`, not English. A schema's own
+  plain English (the back office's) and a schema-level `required_error` are kept. A message shown outside `useZodForm`
+  goes through `translateValidationMessage(message, locale)`.
+- **Formatting (J1.6)** — `helpers/format.js` takes `{ locale }` (default `'en'`, so admin calls are unchanged):
+  `formatNpr` (`रु.` in Nepali), `formatNumber`, `formatDate` (`2026 सेप्टेम्बर 14`; `calendar: 'bs'` →
+  `29 भदौ 2083`), `formatDateTime`, `formatTime`, `formatDateBs`, `formatDateAdBs` (`… (2083-05-29 वि.सं.)`),
+  `relativeTime`, `formatMinutes` (`1 घण्टा 35 मिनेट`). Numbers keep Nepal's lakh grouping in both languages. Digits
+  stay **Latin** in Nepali (`NE_DISPLAY_DIGITS` in `config/locale.js`; `{ digits: 'deva' }` per call) — an amount, a job
+  number or a phone is read back over the phone — and nothing in an input or a request is ever converted;
+  `toLatinDigits` reads a Devanagari digit typed on a Nepali keyboard (`parseRupees` does).
+- **Font (J1.7)** — Noto Sans Devanagari is fetched only while Nepali is on: `index.html`'s head script adds it before
+  the first paint when the page opens in Nepali, `LocaleProvider` when someone switches (`display=optional`, so a font
+  that is late is skipped rather than swapped in — no reflow; the phone's own Devanagari face stands in). The sans stack
+  is Inter first, so Latin letters in a Nepali sentence stay Inter. `<html lang>` follows the screen's language, and
+  `:lang(ne)` gives h1–h3 room for the vowel signs.
+- **Adding words** — add the key to both `en` and `ne` of the audience's catalogue, then `t('the.key')`.
+  `config/i18n/catalogues.test.js` fails when the two languages differ in keys, placeholders, `<tags>` or kind, when a
+  leaf is not text, and when code asks a translator for a literal key its catalogue lacks.
+
+Tests: `helpers/i18n.test.jsx` (placeholders, plurals, fallback and the one warning, rich text, API errors),
+`config/i18n/catalogues.test.js`, `helpers/format.test.js` (Nepali grouping, Devanagari digits, BS dates, `रु.`),
+`form/zodMessages.test.jsx` (a zod error in Nepali; English under `/admin`), `providers/LocaleProvider.test.jsx`
+(`<html lang>`, the font once, `/admin` English, `index.html`'s URL), and each audience's screens rendered in Nepali with
+no `[i18n]` warning.
 
 ## Tests
 

@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge, PriorityBadge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
-import { ErrorState } from '@/components/common/ErrorState';
+import { FieldErrorState } from '@/components/tech/FieldErrorState';
 import { PageTransition, Stagger } from '@/three/motion/motionKit';
 import { useFieldQueue } from '@/hooks/useOfflineQueue';
-import { useFieldCopy } from '@/hooks/useFieldCopy';
+import { useT } from '@/hooks/useT';
+import { FIELD } from '@/config/i18n/field';
 import { useAuth } from '@/hooks/useAuth';
 import { NEXT_STATUS, applyPending } from '@/helpers/fieldJob';
 import { formatTime } from '@/helpers/format';
@@ -20,11 +21,12 @@ import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 
 const ACTION_ICONS = { EN_ROUTE: Navigation, IN_PROGRESS: Clock };
 
-function JobCard({ job, copy }) {
+function JobCard({ job }) {
+  const t = useT(FIELD);
   const dispatch = useDispatch();
   const { queueMutation } = useFieldQueue();
   const next = NEXT_STATUS[job.status];
-  const label = next ? (job.status === 'ON_HOLD' ? copy.actions.resume : copy.actions[next]) : null;
+  const label = next ? t(job.status === 'ON_HOLD' ? 'actions.resume' : `actions.${next}`) : null;
   const Icon = ACTION_ICONS[next];
 
   /** Queued like every field change: it shows at once, and reaches the office when there is signal. */
@@ -32,14 +34,14 @@ function JobCard({ job, copy }) {
     try {
       await queueMutation({ kind: 'status', jobId: job.id, payload: { status: next } });
       if (navigator.onLine) dispatch(toastSuccess(label, job.number));
-      else dispatch(toastSuccess(copy.savedOffline, copy.savedOfflineBody));
+      else dispatch(toastSuccess(t('savedOffline'), t('savedOfflineBody')));
     } catch (err) {
-      dispatch(toastError(copy.couldNotSave, err?.message));
+      dispatch(toastError(t('couldNotSave'), err?.message));
     }
   };
 
   const address = job.site?.address;
-  const done = (job.tasks ?? []).filter((t) => t.isDone || t.isSkipped).length;
+  const done = (job.tasks ?? []).filter((task) => task.isDone || task.isSkipped).length;
 
   return (
     <Stagger.Item>
@@ -51,11 +53,11 @@ function JobCard({ job, copy }) {
               <h2 className="mt-0.5 font-semibold leading-tight">{job.title}</h2>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
-              <StatusBadge status={job.status} label={copy.status[job.status]} />
-              <PriorityBadge priority={job.priority} />
+              <StatusBadge status={job.status} label={t(`status.${job.status}`)} />
+              <PriorityBadge priority={job.priority} label={job.priority ? t(`priority.${job.priority}`) : null} />
               {job.pendingCount ? (
                 <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <CloudUpload className="h-3 w-3" aria-hidden /> {copy.job.pending}
+                  <CloudUpload className="h-3 w-3" aria-hidden /> {t('job.pending')}
                 </span>
               ) : null}
             </div>
@@ -63,7 +65,7 @@ function JobCard({ job, copy }) {
 
           {job.scheduledStart ? (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Clock className="h-3.5 w-3.5" aria-hidden /> {formatTime(job.scheduledStart)}
+              <Clock className="h-3.5 w-3.5" aria-hidden /> {formatTime(job.scheduledStart, { locale: t.locale })}
             </p>
           ) : null}
 
@@ -82,7 +84,7 @@ function JobCard({ job, copy }) {
           {job.tasks?.length ? (
             <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
               <ClipboardList className="h-3.5 w-3.5" aria-hidden />
-              {copy.today.checklist(done, job.tasks.length)}
+              {t('today.checklist', { done, total: job.tasks.length })}
             </p>
           ) : null}
 
@@ -90,13 +92,13 @@ function JobCard({ job, copy }) {
           <div className="mt-4 grid grid-cols-2 gap-2">
             {job.customer?.phone ? (
               <Button asChild variant="outline" size="lg">
-                <a href={`tel:${job.customer.phone}`}><Phone className="h-4 w-4" /> {copy.today.call}</a>
+                <a href={`tel:${job.customer.phone}`}><Phone className="h-4 w-4" /> {t('today.call')}</a>
               </Button>
             ) : null}
             {address ? (
               <Button asChild variant="outline" size="lg">
                 <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`} target="_blank" rel="noreferrer">
-                  <Navigation className="h-4 w-4" /> {copy.today.navigate}
+                  <Navigation className="h-4 w-4" /> {t('today.navigate')}
                 </a>
               </Button>
             ) : null}
@@ -110,7 +112,7 @@ function JobCard({ job, copy }) {
             ) : null}
             <Button asChild variant={next ? 'ghost' : 'default'} size="lg" className="w-full">
               <Link to={`/tech/jobs/${job.id}`}>
-                {job.status === 'IN_PROGRESS' ? <><CheckCircle2 className="h-4 w-4" /> {copy.today.continue}</> : copy.today.open}
+                {job.status === 'IN_PROGRESS' ? <><CheckCircle2 className="h-4 w-4" /> {t('today.continue')}</> : t('today.open')}
               </Link>
             </Button>
           </div>
@@ -121,7 +123,7 @@ function JobCard({ job, copy }) {
 }
 
 export default function TechTodayPage() {
-  const copy = useFieldCopy();
+  const t = useT(FIELD);
   const { user } = useAuth();
   const mutations = useSelector(selectFieldMutations);
   const { data, isLoading, error, refetch } = useGetMyJobsTodayQuery(undefined, { pollingInterval: 120000 });
@@ -129,13 +131,13 @@ export default function TechTodayPage() {
   const jobs = useMemo(() => (data ?? []).map((job) => applyPending(job, mutations, { userId: user?.id })), [data, mutations, user?.id]);
 
   // With no signal a refetch fails, but the last list is still good to work from.
-  if (error && !data) return <ErrorState error={error} onRetry={refetch} />;
+  if (error && !data) return <FieldErrorState error={error} onRetry={refetch} />;
 
   return (
     <PageTransition>
-      <h1 className="text-xl font-bold">{copy.today.title}</h1>
+      <h1 className="text-xl font-bold">{t('today.title')}</h1>
       <p className="mt-0.5 text-sm text-muted-foreground">
-        {isLoading ? copy.today.loading : copy.today.count(jobs.length)}
+        {isLoading ? t('today.loading') : t('today.count', { count: jobs.length })}
       </p>
 
       {isLoading ? (
@@ -143,10 +145,10 @@ export default function TechTodayPage() {
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-52 rounded-xl" />)}
         </div>
       ) : !jobs.length ? (
-        <EmptyState icon={CheckCircle2} title={copy.today.emptyTitle} description={copy.today.emptyBody} />
+        <EmptyState icon={CheckCircle2} title={t('today.emptyTitle')} description={t('today.emptyBody')} />
       ) : (
         <Stagger className="mt-5 space-y-3">
-          {jobs.map((job) => <JobCard key={job.id} job={job} copy={copy} />)}
+          {jobs.map((job) => <JobCard key={job.id} job={job} />)}
         </Stagger>
       )}
     </PageTransition>

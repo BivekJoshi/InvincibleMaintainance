@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -9,8 +11,9 @@ import { cn } from '@/helpers/utils';
  * @param {{ items: Array<{ label: string, to?: string }>, className?: string }} props
  */
 export function Breadcrumb({ items, className }) {
+  const t = useT(SITE);
   return (
-    <nav aria-label="Breadcrumb" className={cn('flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground', className)}>
+    <nav aria-label={t('breadcrumb')} className={cn('flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground', className)}>
       {items.map((item, i) => (
         <span key={`${item.label}-${i}`} className="flex items-center gap-1.5">
           {i ? <ChevronRight className="h-3 w-3" aria-hidden /> : null}

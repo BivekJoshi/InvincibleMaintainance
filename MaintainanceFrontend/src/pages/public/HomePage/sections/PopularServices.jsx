@@ -5,19 +5,22 @@ import { SectionHeading } from '@/components/site/SectionHeading';
 import { SectionShell } from '@/components/site/SectionShell';
 import { ServiceCard } from '@/components/site/ServiceCard';
 import { Stagger, StaggerOnView, cardRise } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 export function PopularServices({ section, media, tone }) {
+  const t = useT(SITE);
   const services = Array.isArray(section.data) ? section.data : [];
   if (!services.length) return null;
   return (
     <SectionShell tone={tone}>
       <SectionHeading
-        eyebrow="Book online"
-        title="Popular services"
-        description="Published rates, a free inspection before any work, and a one-month written warranty after it."
+        eyebrow={t('home.services.eyebrow')}
+        title={t('home.services.title')}
+        description={t('services.description')}
         action={
           <Button asChild variant="outline">
-            <Link to="/services">Browse all services <ArrowRight className="h-4 w-4" /></Link>
+            <Link to="/services">{t('home.services.action')} <ArrowRight className="h-4 w-4" /></Link>
           </Button>
         }
       />

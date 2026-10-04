@@ -677,7 +677,8 @@ describe('booking the visit — the window, the site contact and the SMS (Phase 
     expect(within(preview).getByRole('radio', { name: 'नेपाली' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('visit-sms')).toHaveAttribute('lang', 'ne');
     expect(smsText()).toContain('नमस्ते Sita Rai');
-    expect(smsText()).toContain('3 Oct 2026, 10:00–12:00');
+    // A Nepali SMS dates the visit in Bikram Sambat, in Nepali words (Phase J1) — 3 Oct 2026 is 17 Ashwin 2083.
+    expect(smsText()).toContain('17 असोज 2083, 10:00–12:00');
     // Nobody picked yet: "our surveyor", in Nepali.
     expect(smsText()).toContain('हाम्रो सर्वेक्षक आउनुहुनेछ');
     expect(smsText()).toMatch(/\/visit\/… - Ghar Jatan$/);

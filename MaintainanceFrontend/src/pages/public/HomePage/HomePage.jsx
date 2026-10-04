@@ -1,7 +1,7 @@
-import { useSelector } from 'react-redux';
 import { useGetHomeQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
 import { useSeo } from '@/hooks/useSeo';
+import { useApiErrorText, useLocale, useT } from '@/hooks/useT';
 import { ErrorState } from '@/components/common/ErrorState';
 import { PageTransition } from '@/three/motion/motionKit';
 import { HomeSkeleton } from './HomeSkeleton';
@@ -78,12 +78,21 @@ function isEmpty(data) {
 }
 
 export default function HomePage() {
-  const locale = useSelector(selectLocale);
+  const locale = useLocale();
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
   const { data, isLoading, error, refetch } = useGetHomeQuery(locale);
   // No title of its own: the default title and description from Settings.
   useSeo();
 
-  if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
+  if (error) {
+    return (
+      <ErrorState
+        error={error} onRetry={refetch} className="min-h-[60dvh]"
+        message={errorText(error)} retryLabel={t('common.tryAgain')}
+      />
+    );
+  }
   if (isLoading) return <HomeSkeleton />;
 
   // Tones are assigned in one pass rather than inside each section, because a

@@ -1,4 +1,5 @@
 import { newKey } from '@/helpers/fieldDb';
+import { toLatinDigits } from '@/helpers/format';
 import {
   answerToReading, hasPhoto, isAnswered, missingAnswers, readingToAnswer,
 } from '@/helpers/inspection';
@@ -37,6 +38,8 @@ export const EDITABLE_STATUSES = ['DRAFT', 'RETURNED'];
 export const AUTOSAVE_MS = 1200;
 
 const text = (v) => (v === undefined || v === null ? '' : String(v));
+/** A number as typed — Latin digits or a Nepali keyboard's (`१२.५`); `''` reads as 0, as `Number('')` does. */
+const num = (v) => Number(toLatinDigits(text(v)).trim());
 
 export const blankReading = () => ({ _key: newKey(), label: '', metric: 'moisture', value: '', unit: '', textValue: '' });
 
@@ -125,7 +128,7 @@ export const isMeasured = (item) => savedMeasurements(item?.measurements).length
 /** A line's quantity on this phone: the sheet's total (a preview — the server derives the saved one) or the typed one. */
 export function lineQty(item) {
   if (isMeasured(item)) return measurementTotal(savedMeasurements(item.measurements));
-  const n = Number(item?.qty);
+  const n = num(item?.qty);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -143,7 +146,7 @@ function itemBody(item, sortOrder) {
     unit: item.unit,
     // Measured: the server derives the quantity from the rows and ignores this one — sent as a fallback.
     qty,
-    wastagePct: Number(item.wastagePct || 0),
+    wastagePct: num(item.wastagePct || 0),
     isOptional: Boolean(item.isOptional),
     ...(text(item.note).trim() ? { note: text(item.note).trim() } : {}),
     ...(measured ? { measurements: measurementsBody(savedMeasurements(item.measurements)) } : {}),
@@ -166,20 +169,20 @@ export function payloadIndexes(items = []) {
 
 const freeReadingBody = (r) => {
   const label = text(r.label).trim();
-  const hasValue = text(r.value).trim() !== '' && Number.isFinite(Number(r.value));
+  const hasValue = text(r.value).trim() !== '' && Number.isFinite(num(r.value));
   const observation = text(r.textValue).trim();
   if (!label || (!hasValue && !observation)) return null;
   return {
     label,
     metric: r.metric || 'observation',
-    ...(hasValue ? { value: Number(r.value) } : {}),
+    ...(hasValue ? { value: num(r.value) } : {}),
     ...(text(r.unit).trim() ? { unit: text(r.unit).trim() } : {}),
     ...(observation ? { textValue: observation } : {}),
   };
 };
 
 const optional = (v) => (text(v).trim() ? text(v).trim() : undefined);
-const optionalNumber = (v) => (text(v).trim() === '' || !Number.isFinite(Number(v)) ? undefined : Number(v));
+const optionalNumber = (v) => (text(v).trim() === '' || !Number.isFinite(num(v)) ? undefined : num(v));
 
 /**
  * The `survey_draft` payload: every field, the readings (the template's answers first, then the others) and the

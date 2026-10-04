@@ -3,16 +3,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Loader2, Save } from 'lucide-react';
 import { useGetMyDiaryDayQuery, useGetMyJobQuery } from '@/api/techApi';
-import { ErrorState } from '@/components/common/ErrorState';
+import { FieldErrorState } from '@/components/tech/FieldErrorState';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { PageTransition } from '@/three/motion/motionKit';
 import { useFieldQueue } from '@/hooks/useOfflineQueue';
-import { useFieldCopy } from '@/hooks/useFieldCopy';
+import { useT } from '@/hooks/useT';
+import { FIELD } from '@/config/i18n/field';
 import { mediaIdForUpload } from '@/helpers/sentPhotos';
 import { pending } from '@/helpers/offlineQueue';
 import { selectFieldSync } from '@/redux/slices/fieldSyncSlice';
-import { selectLocale, toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { DiaryDays } from './sections/DiaryDays';
 import { DiaryHeader } from './sections/DiaryHeader';
 import { WeatherCard } from './sections/WeatherCard';
@@ -33,7 +34,7 @@ const online = () => navigator.onLine !== false;
  * `/tech/jobs/:id/diary/:day` is one Kathmandu day: the weather, who was on site per trade, progress per line of the
  * job's BOQ (steps of 5 %), materials received with the challan number, problems, lost hours with the reason, the
  * day's photos and a note. Built for 360 px and gloves: every control is at least 44 px, the save is pinned at the
- * bottom. English and Nepali (`fieldCopy.diary`).
+ * bottom. English and Nepali (`FIELD.diary`).
  *
  * **Every write is a `diary_save`** through the field queue (`useFieldQueue`), online or not: the whole day, a full
  * replace keyed on the job and the day, so replaying it lands on the same state; a newer save of the same day replaces
@@ -51,9 +52,7 @@ export default function SiteDiaryPage() {
 function DiaryDay({ jobId, day }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const copy = useFieldCopy();
-  const words = copy.diary;
-  const locale = useSelector(selectLocale);
+  const t = useT(FIELD);
   const { data: job } = useGetMyJobQuery(jobId);
   const { data, isLoading, error, refetch } = useGetMyDiaryDayQuery({ jobId, day });
   const { queueMutation } = useFieldQueue();
@@ -104,7 +103,7 @@ function DiaryDay({ jobId, day }) {
     if (hasProblems(found)) {
       if (!quiet) {
         setProblems(found);
-        dispatch(toastError(words.fix));
+        dispatch(toastError(t('diary.fix')));
       }
       return false;
     }
@@ -121,7 +120,7 @@ function DiaryDay({ jobId, day }) {
     dirtyRef.current = false;
     setDirty(false);
     return true;
-  }, [day, dispatch, jobId, queueMutation, readOnly, words.fix]);
+  }, [day, dispatch, jobId, queueMutation, readOnly, t]);
 
   // Leaving the screen, or the phone locking, keeps what was typed — when it can be saved as it is.
   useEffect(() => {
@@ -156,8 +155,10 @@ function DiaryDay({ jobId, day }) {
   if (error && !data) {
     return (
       <PageTransition>
-        <DiaryHeader job={job} day={day} words={words} locale={locale} onBack={() => navigate(`/tech/jobs/${jobId}/diary`)} />
-        <ErrorState error={online() && typeof error?.status === 'number' ? error : words.notLoaded} onRetry={refetch} />
+        <DiaryHeader job={job} day={day} onBack={() => navigate(`/tech/jobs/${jobId}/diary`)} />
+        {online() && typeof error?.status === 'number'
+          ? <FieldErrorState error={error} onRetry={refetch} />
+          : <FieldErrorState message={t('diary.notLoaded')} onRetry={refetch} />}
       </PageTransition>
     );
   }
@@ -170,9 +171,11 @@ function DiaryDay({ jobId, day }) {
     try {
       const ok = await saveNow();
       if (!ok) return;
-      dispatch(online() ? toastSuccess(words.saved, words.savedBody) : toastSuccess(words.savedOffline, words.savedOfflineBody));
+      dispatch(online()
+        ? toastSuccess(t('diary.saved'), t('diary.savedBody'))
+        : toastSuccess(t('diary.savedOffline'), t('diary.savedOfflineBody')));
     } catch (err) {
-      dispatch(toastError(copy.couldNotSave, err?.message));
+      dispatch(toastError(t('couldNotSave'), err?.message));
     } finally {
       setSaving(false);
     }
@@ -183,37 +186,32 @@ function DiaryDay({ jobId, day }) {
       <DiaryHeader
         job={job}
         day={day}
-        words={words}
-        locale={locale}
         waiting={waiting}
         dirty={dirty}
         onBack={() => navigate(`/tech/jobs/${jobId}/diary`)}
       />
 
-      {readOnly ? <p className="mb-3 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{words.closed}</p> : null}
+      {readOnly ? <p className="mb-3 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{t('diary.closed')}</p> : null}
 
       <div className="space-y-4" data-testid="site-diary-day">
-        <WeatherCard value={form.weather} onChange={(weather) => change({ weather })} readOnly={readOnly} words={words} />
+        <WeatherCard value={form.weather} onChange={(weather) => change({ weather })} readOnly={readOnly} />
         <HeadcountCard
           trades={data.trades ?? []}
           headcount={form.headcount}
           onChange={(headcount) => change({ headcount })}
           readOnly={readOnly}
-          words={words}
         />
         <ProgressCard
           lines={data.lines ?? []}
           progress={form.progress}
           onChange={(progress) => change({ progress })}
           readOnly={readOnly}
-          words={words}
         />
         <ReceivedCard
           rows={form.received}
           onChange={(received) => change({ received })}
           problems={problems.received}
           readOnly={readOnly}
-          words={words}
         />
         <LostTimeCard
           hours={form.lostHours}
@@ -221,7 +219,6 @@ function DiaryDay({ jobId, day }) {
           onChange={(patch) => change(patch)}
           problems={problems}
           readOnly={readOnly}
-          words={words}
         />
         <DiaryPhotos
           jobId={jobId}
@@ -231,9 +228,8 @@ function DiaryDay({ jobId, day }) {
           onChange={(photos) => change({ photos })}
           problem={problems.photos}
           readOnly={readOnly}
-          words={words}
         />
-        <NotesCard issues={form.issues} note={form.note} onChange={(patch) => change(patch)} readOnly={readOnly} words={words} />
+        <NotesCard issues={form.issues} note={form.note} onChange={(patch) => change(patch)} readOnly={readOnly} />
       </div>
 
       {!readOnly ? (
@@ -242,7 +238,7 @@ function DiaryDay({ jobId, day }) {
           style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
         >
           <Button type="button" size="xl" className="w-full" onClick={onSave} disabled={saving}>
-            {saving ? <Loader2 className="animate-spin" aria-hidden /> : <Save aria-hidden />} {words.save}
+            {saving ? <Loader2 className="animate-spin" aria-hidden /> : <Save aria-hidden />} {t('diary.save')}
           </Button>
         </div>
       ) : null}

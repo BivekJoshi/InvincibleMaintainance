@@ -10,7 +10,8 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "i18n:review": "node scripts/i18n-review.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

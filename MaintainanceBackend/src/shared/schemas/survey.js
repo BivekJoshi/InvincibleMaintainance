@@ -113,7 +113,8 @@ const threshold = z.preprocess((v) => (v === '' || v === null ? undefined : v), 
  * One checklist question. `flag` marks an answer the office must see first: a NUMBER above or below a
  * threshold, a YES_NO equal to `yes` or `no`, a CHOICE among `values`. A TEXT question is never flagged.
  * `required` blocks submit without an answer; `photoRequired` without a photo on the answer (its reading's
- * mediaId).
+ * mediaId). `optionsNe` (Phase J1) words a CHOICE's options in Nepali for the surveyor's phone, one for each option in
+ * the same order — display only: the answer recorded is still the option itself.
  */
 export const inspectionQuestion = z.object({
   key: questionKey,
@@ -123,6 +124,7 @@ export const inspectionQuestion = z.object({
   unit: z.string().trim().max(20).nullable().optional(),
   metric: z.string().trim().max(60).nullable().optional(),
   options: z.array(z.string().trim().min(1).max(80)).max(20).nullable().optional(),
+  optionsNe: z.array(z.string().trim().min(1).max(80)).max(20).nullable().optional(),
   flag: z.object({
     above: threshold,
     below: threshold,
@@ -134,6 +136,10 @@ export const inspectionQuestion = z.object({
 }).superRefine((q, ctx) => {
   const issue = (path, message) => ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
   if (q.type === 'CHOICE' && (q.options?.length ?? 0) < 2) issue(['options'], 'A choice needs at least two options');
+  if (q.optionsNe?.length) {
+    if (q.type !== 'CHOICE') issue(['optionsNe'], 'Only a choice has options to word in Nepali');
+    else if (q.optionsNe.length !== (q.options?.length ?? 0)) issue(['optionsNe'], 'Give one Nepali word for each option, in the same order');
+  }
   const f = q.flag ?? {};
   if ((f.above !== undefined || f.below !== undefined) && q.type !== 'NUMBER') issue(['flag'], 'Only a number is flagged above or below a value');
   if (f.above !== undefined && f.below !== undefined && f.below > f.above) issue(['flag', 'below'], 'Flag below cannot be higher than flag above');

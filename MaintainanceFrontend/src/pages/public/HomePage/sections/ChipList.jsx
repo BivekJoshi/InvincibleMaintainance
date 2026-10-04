@@ -3,6 +3,8 @@ import { ArrowUpRight } from 'lucide-react';
 import { SectionHeading } from '@/components/site/SectionHeading';
 import { SectionShell } from '@/components/site/SectionShell';
 import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The trades that need a line each rather than a card each — nine of them, so
@@ -10,15 +12,16 @@ import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
  * this is: the rest of the rate card.
  */
 export function ChipList({ section, tone }) {
+  const t = useT(SITE);
   const items = Array.isArray(section.data) ? section.data : [];
   if (!items.length) return null;
 
   return (
     <SectionShell tone={tone}>
       <SectionHeading
-        eyebrow="Also on the books"
-        title="Other civil work"
-        description="Carried out by our own crews, measured and billed against a published rate."
+        eyebrow={t('home.otherCivil.eyebrow')}
+        title={t('home.otherCivil.title')}
+        description={t('home.otherCivil.description')}
       />
       <StaggerOnView className="grid border-t sm:grid-cols-2 sm:gap-x-10 lg:grid-cols-3" stagger={0.03}>
         {items.map((item, i) => (

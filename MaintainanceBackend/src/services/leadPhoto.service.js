@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { badRequest } from '../utils/AppError.js';
+import { AppError } from '../utils/AppError.js';
 import { uploadFiles, decorateMedia } from './media.service.js';
 
 /** Where an anonymous upload lands, so a customer's photo never mixes with the website's library. */
@@ -26,10 +26,13 @@ export async function customerUploadsFolder() {
  * @param {string} [ip]  kept on the media row's `alt` for the office to trace an abusive upload
  */
 export async function uploadCustomerPhotos(files, { ip } = {}) {
-  if (!files?.length) throw badRequest('Choose at least one photo');
-  if (files.length > MAX_LEAD_PHOTOS) throw badRequest(`Up to ${MAX_LEAD_PHOTOS} photos, please`);
-  if (files.some((f) => !f.mimetype?.startsWith('image/'))) throw badRequest('Photos only, please');
-  if (files.some((f) => f.size > MAX_PHOTO_BYTES)) throw badRequest('Each photo must be 10 MB or smaller');
+  // Each refusal has its own code (Phase J1), its limit in `details`, so the site words it in the visitor's language.
+  const refuse = (code, message, details) => new AppError(400, code, message, details);
+  if (!files?.length) throw refuse('PHOTOS_REQUIRED', 'Choose at least one photo');
+  if (files.length > MAX_LEAD_PHOTOS) throw refuse('TOO_MANY_PHOTOS', `Up to ${MAX_LEAD_PHOTOS} photos, please`, { max: MAX_LEAD_PHOTOS });
+  if (files.some((f) => !f.mimetype?.startsWith('image/'))) throw refuse('PHOTOS_ONLY', 'Photos only, please');
+  const maxMb = MAX_PHOTO_BYTES / (1024 * 1024);
+  if (files.some((f) => f.size > MAX_PHOTO_BYTES)) throw refuse('PHOTO_TOO_LARGE', `Each photo must be ${maxMb} MB or smaller`, { maxMb });
   const folder = await customerUploadsFolder();
   const media = await uploadFiles(files, { folderId: folder.id, alt: `Sent by a customer${ip ? ` from ${ip}` : ''}` });
   return media.map((m) => ({ id: m.id, url: m.url, thumb: m.thumb, width: m.width, height: m.height }));

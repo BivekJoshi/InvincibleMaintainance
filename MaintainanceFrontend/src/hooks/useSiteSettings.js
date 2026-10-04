@@ -47,7 +47,7 @@ export function useSiteSettings() {
       isLoading,
       name,
       initial: name.trim()[0]?.toUpperCase() ?? 'H',
-      tagline: read('tagline', COMPANY_FALLBACKS.tagline),
+      tagline: read('tagline'),
       phone: read('phone', COMPANY_FALLBACKS.phone),
       mobile: read('mobile', COMPANY_FALLBACKS.mobile),
       email: read('email', COMPANY_FALLBACKS.email),

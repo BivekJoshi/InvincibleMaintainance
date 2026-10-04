@@ -112,6 +112,16 @@ Phase L8 closes the loop with two jobs billed **advance → running bill → fin
 measurement closed. Each job's three invoices add up to its contract to the paisa, and the Costing tab's
 "invoiced" equals the contract's taxable value.
 
+Phase J1 (the Nepali UI) seeds a **Nepali template for every customer message** — `quotation_sent` (SMS and email),
+`advance_due` by email, `invoice_sent` (SMS and a new email in both languages), `invoice_overdue`,
+`warranty_claim_accepted` / `_rejected`, `amc_visit_due` and the `service_reminder` email's subject — and the Nepali
+`quotation_accepted` / `quotation_changes_received` SMS now greet the customer by name. A Nepali message writes dates
+as the Bikram Sambat day in Nepali words (`29 भदौ 2083`) and amounts as `रु.`; staff messages stay English. The seeded
+seepage checklist words its choices in Nepali (`optionsNe`) and its Nepali labels use Latin digits and units as-is
+(a database seeded earlier keeps its template — the seed only creates a missing one). The public refusals carry
+their own codes (`SUBMITTED_TOO_FAST`, `PHOTO_TOO_LARGE`, `WARRANTY_EXPIRED`…, see docs/API.md), multer's upload
+refusals are 400/413 instead of 500, and gallery captions are translatable. No new env var, script or dependency.
+
 **Billing, in one paragraph.** An accepted quotation raises the ADVANCE (its ON_ACCEPT stage); the accountant raises
 a RUNNING bill for each milestone stage from the job (`POST /admin/jobs/:id/invoices/stage`); when the job is done,
 "invoice the job" raises the FINAL bill by the contract type — lump sum: the contract ± variations; item rate: what
@@ -193,7 +203,8 @@ src/
 prisma/                schema.prisma · seed.js · seed-data.js
 tests/                 unit: money, BS dates, phone, state machines, permissions, SLA, schemas, logging,
                        notification links (a source scan: staff links are /admin/…, field links /tech/…),
-                       message templates (placeholders, preview, address masking)
+                       message templates (placeholders, preview, address masking), i18n (every customer
+                       message has a Nepali template with the same placeholders; BS dates, रु.)
 tests/api/             every route over supertest, against a database whose name ends in _test
 tests/fixtures/        plain-data cases shared with the SPA's tests (the service schema's valid/invalid inputs)
 ```

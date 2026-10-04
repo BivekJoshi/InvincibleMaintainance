@@ -7,11 +7,12 @@
  * cost a round trip per keystroke.
  */
 
+/** Keyed by the value the URL carries; each one's words are `services.sorts.<labelKey>` in `config/i18n/site.js`. */
 export const SERVICE_SORTS = {
-  recommended: { label: 'Recommended', compare: null },
-  'price-asc': { label: 'Price: low to high', compare: (a, b) => (a.priceFrom ?? Infinity) - (b.priceFrom ?? Infinity) },
-  'price-desc': { label: 'Price: high to low', compare: (a, b) => (b.priceFrom ?? -1) - (a.priceFrom ?? -1) },
-  name: { label: 'Name A–Z', compare: (a, b) => a.name.localeCompare(b.name) },
+  recommended: { labelKey: 'recommended', compare: null },
+  'price-asc': { labelKey: 'priceAsc', compare: (a, b) => (a.priceFrom ?? Infinity) - (b.priceFrom ?? Infinity) },
+  'price-desc': { labelKey: 'priceDesc', compare: (a, b) => (b.priceFrom ?? -1) - (a.priceFrom ?? -1) },
+  name: { labelKey: 'name', compare: (a, b) => a.name.localeCompare(b.name) },
 };
 
 export const DEFAULT_SERVICE_SORT = 'recommended';

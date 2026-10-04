@@ -20,7 +20,8 @@ import { useQuotationActions } from '@/hooks/useQuotationActions';
 import { quotationFormSchemaFor } from '@/form/schemas/quotation.schema';
 import { CONTRACT_TYPES, CONTRACT_TYPE_LABELS, QUOTATION_STATUS_LABELS } from '@/config/constants';
 import { VariationBanner } from './sections/VariationBanner';
-import { documentCopy } from '@/components/documents/quotationDocumentCopy';
+import { DOCUMENTS } from '@/config/i18n/documents';
+import { createT } from '@/helpers/i18n';
 import { quotationActions, waitingFor } from '@/helpers/quotationActions';
 import { downloadBase64 } from '@/helpers/download';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
@@ -57,8 +58,11 @@ const FIELD_TAB = {
   showMeasurements: 'customer', summaryOnly: 'customer',
 };
 const CONTRACT_OPTIONS = CONTRACT_TYPES.map((value) => ({ value, label: CONTRACT_TYPE_LABELS[value] }));
-/** What the customer reads for a contract type — the document's own sentence (L-D2). */
-const contractSentence = (type) => documentCopy('en').contract[type]?.body;
+/** What the customer reads for a contract type — the document's own sentence (L-D2), in English as the office is. */
+const CUSTOMER_WORDS = createT(DOCUMENTS, 'en');
+const contractSentence = (type) => (type && CUSTOMER_WORDS.has(`document.contract.${type}.body`)
+  ? CUSTOMER_WORDS(`document.contract.${type}.body`)
+  : undefined);
 
 /**
  * The builder's form, described as data: the BOQ panel (the rows — a `lineItems` field on the kit's EditableGrid —

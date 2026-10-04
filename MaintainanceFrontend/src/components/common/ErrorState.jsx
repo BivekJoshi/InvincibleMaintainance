@@ -2,9 +2,13 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/helpers/utils';
 
-/** Surfaces the API's real message; falls back only when there isn't one. */
-export function ErrorState({ error, onRetry, className }) {
+/**
+ * Surfaces the API's real message; falls back only when there isn't one. A translated screen (Phase J1) passes its
+ * own `message` (`useApiErrorText(CATALOGUE)(error)`) and `retryLabel`; the back office leaves both out.
+ */
+export function ErrorState({ error, onRetry, className, message: shown, retryLabel = 'Try again' }) {
   const message =
+    shown ??
     error?.data?.error?.message ??
     error?.error ??
     (typeof error === 'string' ? error : 'Something went wrong loading this.');
@@ -27,7 +31,7 @@ export function ErrorState({ error, onRetry, className }) {
       {code ? <p className="mt-2 font-mono text-[11px] text-muted-foreground">{code}</p> : null}
       {onRetry ? (
         <Button variant="outline" className="mt-5" onClick={onRetry}>
-          <RefreshCw className="h-4 w-4" /> Try again
+          <RefreshCw className="h-4 w-4" /> {retryLabel}
         </Button>
       ) : null}
     </div>

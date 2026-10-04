@@ -6,6 +6,8 @@ import { PriceRange } from '@/components/site/PriceTag';
 import { PromiseList } from '@/components/site/PromiseList';
 import { Button } from '@/components/ui/button';
 import { imageUrl } from '@/helpers/format';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The top of a service page: where you are, what this is, what it costs and
@@ -16,6 +18,7 @@ import { imageUrl } from '@/helpers/format';
  * something they have to read a paragraph to find.
  */
 export function ServiceMasthead({ service, media, slug }) {
+  const t = useT(SITE);
   const cover = service.imageId && media?.[service.imageId]
     ? imageUrl(media[service.imageId], 1600)
     : null;
@@ -27,8 +30,8 @@ export function ServiceMasthead({ service, media, slug }) {
       <div className="container py-8 md:py-10">
         <Breadcrumb
           items={[
-            { label: 'Home', to: '/' },
-            { label: 'Services', to: '/services' },
+            { label: t('nav.home'), to: '/' },
+            { label: t('nav.services'), to: '/services' },
             { label: service.name },
           ]}
         />
@@ -43,11 +46,11 @@ export function ServiceMasthead({ service, media, slug }) {
 
           <div className="shrink-0 rounded-xl border bg-card p-5 md:min-w-[16rem]">
             {service.priceFrom ? (
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Published rate</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('service.publishedRate')}</p>
             ) : null}
             <PriceRange service={service} className={service.priceFrom ? 'mt-1' : undefined} />
-            <Button asChild className="mt-4 w-full">
-              <Link to={`/book/${slug}`}><CalendarCheck className="h-4 w-4" /> Book this service</Link>
+            <Button asChild className="mt-4 h-auto min-h-9 w-full whitespace-normal py-2 text-center">
+              <Link to={`/book/${slug}`}><CalendarCheck className="h-4 w-4" /> {t('service.book')}</Link>
             </Button>
           </div>
         </div>

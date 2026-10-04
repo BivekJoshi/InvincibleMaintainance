@@ -3,6 +3,8 @@ import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/helpers/utils';
 import { siteMapHref } from '@/pages/tech/SurveyFormPage/surveyForm';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
 
 function CallButton({ phone, label }) {
   return (
@@ -17,10 +19,10 @@ function CallButton({ phone, label }) {
  * caretaker named when the visit was booked), what the customer wrote, and the photos they sent with the
  * enquiry. Nothing here has a price (D1); it is all what the customer told us.
  *
- * @param {{ survey: object, words: object }} props  `words` is `fieldCopy().survey`
+ * @param {{ survey: object }} props
  */
-export function BeforeYouGoStep({ survey, words }) {
-  const t = words.before;
+export function BeforeYouGoStep({ survey }) {
+  const t = useT(FIELD);
   const site = survey.site ?? {};
   const lead = survey.lead ?? {};
   const photos = lead.photos ?? [];
@@ -29,10 +31,10 @@ export function BeforeYouGoStep({ survey, words }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">{t.body}</p>
+      <p className="text-sm text-muted-foreground">{t('survey.before.body')}</p>
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">{t.site}</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('survey.before.site')}</CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
           {site.address ? (
             <p className="flex items-start gap-2">
@@ -43,29 +45,29 @@ export function BeforeYouGoStep({ survey, words }) {
           {site.landmark ? (
             <p className="flex items-start gap-2">
               <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span><span className="text-muted-foreground">{t.landmark}: </span>{site.landmark}</span>
+              <span><span className="text-muted-foreground">{t('survey.before.landmark')}: </span>{site.landmark}</span>
             </p>
           ) : null}
           {site.accessNotes ? <p className="rounded-md bg-muted px-3 py-2">{site.accessNotes}</p> : null}
           {mapHref ? (
             <a href={mapHref} target="_blank" rel="noreferrer" className={cn(buttonVariants({ size: 'lg' }), 'h-12 w-full gap-2')}>
-              <Navigation className="h-4 w-4" aria-hidden /> {t.navigate}
+              <Navigation className="h-4 w-4" aria-hidden /> {t('survey.before.navigate')}
             </a>
           ) : null}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">{t.contact}</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('survey.before.contact')}</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm">
           {survey.customer ? (
             <div className="space-y-2">
               <p className="flex items-center gap-2">
                 <UserRound className="h-4 w-4 text-muted-foreground" aria-hidden />
                 <span className="font-medium">{survey.customer.name}</span>
-                <span className="text-muted-foreground">· {t.customer}</span>
+                <span className="text-muted-foreground">· {t('survey.before.customer')}</span>
               </p>
-              {survey.customer.phone ? <CallButton phone={survey.customer.phone} label={t.call(survey.customer.name)} /> : null}
+              {survey.customer.phone ? <CallButton phone={survey.customer.phone} label={t('survey.before.call', { name: survey.customer.name })} /> : null}
             </div>
           ) : null}
           {site.contactName || contactDiffers ? (
@@ -76,7 +78,7 @@ export function BeforeYouGoStep({ survey, words }) {
                   <span className="font-medium">{site.contactName}</span>
                 </p>
               ) : null}
-              {site.contactPhone ? <CallButton phone={site.contactPhone} label={t.call(site.contactName || site.contactPhone)} /> : null}
+              {site.contactPhone ? <CallButton phone={site.contactPhone} label={t('survey.before.call', { name: site.contactName || site.contactPhone })} /> : null}
             </div>
           ) : null}
         </CardContent>
@@ -85,25 +87,25 @@ export function BeforeYouGoStep({ survey, words }) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
-            <MessageSquareText className="h-4 w-4" aria-hidden /> {t.message}
+            <MessageSquareText className="h-4 w-4" aria-hidden /> {t('survey.before.message')}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {lead.message?.trim()
             ? <p className="whitespace-pre-wrap text-sm leading-relaxed">{lead.message}</p>
-            : <p className="text-sm text-muted-foreground">{t.noMessage}</p>}
+            : <p className="text-sm text-muted-foreground">{t('survey.before.noMessage')}</p>}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
-            <ImageIcon className="h-4 w-4" aria-hidden /> {t.photos}
+            <ImageIcon className="h-4 w-4" aria-hidden /> {t('survey.before.photos')}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {photos.length ? (
-            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label={t.photos}>
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label={t('survey.before.photos')}>
               {photos.map((p, i) => {
                 const media = survey.media?.[p.mediaId];
                 const thumb = p.thumb ?? media?.thumb ?? media?.url ?? p.url;
@@ -113,7 +115,7 @@ export function BeforeYouGoStep({ survey, words }) {
                     <a href={full ?? undefined} target="_blank" rel="noreferrer" className="block">
                       <div className="aspect-[4/3] bg-muted">
                         {thumb ? (
-                          <img src={thumb} alt={p.caption || t.photo(i + 1)} className="h-full w-full object-cover" loading="lazy" />
+                          <img src={thumb} alt={p.caption || t('survey.before.photo', { n: i + 1 })} className="h-full w-full object-cover" loading="lazy" />
                         ) : (
                           <div className="flex h-full items-center justify-center text-muted-foreground"><ImageIcon className="h-6 w-6" aria-hidden /></div>
                         )}
@@ -125,7 +127,7 @@ export function BeforeYouGoStep({ survey, words }) {
               })}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">{t.noPhotos}</p>
+            <p className="text-sm text-muted-foreground">{t('survey.before.noPhotos')}</p>
           )}
         </CardContent>
       </Card>

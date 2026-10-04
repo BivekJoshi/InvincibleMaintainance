@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import TechJobPage from '@/pages/tech/TechJobPage/TechJobPage';
 import TechHistoryPage from '@/pages/tech/TechHistoryPage';
+import TechTodayPage from '@/pages/tech/TechTodayPage';
+import SurveyListPage from '@/pages/tech/SurveyListPage';
 import { TechLayout } from '@/components/layout/TechLayout';
 import { renderWithProviders, signedInAs } from '@/test/renderWithProviders';
 import { json, mockApi } from '@/test/mockApi';
@@ -13,6 +15,7 @@ import { addUpload } from '@/helpers/uploadQueue';
 import { resetSentPhotosForTests } from '@/helpers/sentPhotos';
 import { addDaysTo, ktmDay } from '@/helpers/dispatchBoard';
 import { fieldSyncSettled, syncFieldQueue } from '@/hooks/useOfflineQueue';
+import { watchI18nWarnings } from '@/test/i18nWarnings';
 
 vi.mock('@/hooks/useIdlePreload', () => ({ useIdlePreload: () => {} }));
 
@@ -306,5 +309,171 @@ describe('TechLayout — what is still on the phone', () => {
     expect(note).toHaveTextContent('Status “In progress” — The job was cancelled');
     await user.click(within(note).getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('the field app in Nepali (Phase J1)', () => {
+  const ne = { ...signedInAs('TECHNICIAN'), ui: { locale: 'ne', toasts: [] } };
+
+  it('Today: the jobs, their status, priority, time and one next step — no word missing', async () => {
+    const warned = watchI18nWarnings();
+    mockApi(({ path }) => (path === '/tech/jobs/today' ? json({ data: [{ ...JOB, status: 'ASSIGNED', pendingCount: 1 }] }) : undefined));
+    renderWithProviders(<TechTodayPage />, { path: '/tech', preloadedState: ne });
+
+    expect(await screen.findByText('तपाईंलाई 1 वटा काम दिइएको छ')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'आज' })).toBeInTheDocument();
+    const card = screen.getByRole('article', { name: /JOB-2083-0042/ });
+    expect(within(card).getByText('जिम्मा दिइयो')).toBeInTheDocument();
+    expect(within(card).getByText('जरुरी')).toBeInTheDocument();
+    expect(within(card).getByText('चेकलिस्ट: 3 मध्ये 1 सकियो')).toBeInTheDocument();
+    expect(within(card).getByText('पठाउन बाँकी')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: /बाटोमा छु/ })).toBeInTheDocument();
+    expect(within(card).getByRole('link', { name: /फोन गर्नुहोस्/ })).toHaveAttribute('href', 'tel:9841234567');
+    expect(within(card).getByRole('link', { name: /काम खोल्नुहोस्/ })).toBeInTheDocument();
+    expect(warned()).toEqual([]);
+  });
+
+  it('Today: nothing scheduled, and a failed load, in Nepali', async () => {
+    const warned = watchI18nWarnings();
+    mockApi(({ path }) => (path === '/tech/jobs/today' ? json({ data: [] }) : undefined));
+    renderWithProviders(<TechTodayPage />, { path: '/tech', preloadedState: ne });
+    expect(await screen.findByText('आज तपाईंलाई कुनै काम छैन')).toBeInTheDocument();
+    cleanup();
+
+    mockApi(({ path }) => (path === '/tech/jobs/today' ? json({ error: { code: 'INTERNAL_ERROR', message: 'Boom' } }, 500) : undefined));
+    renderWithProviders(<TechTodayPage />, { path: '/tech', preloadedState: ne });
+    expect(await screen.findByText(/हाम्रो तर्फबाट केही गडबड भयो/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'फेरि प्रयास गर्नुहोस्' })).toBeInTheDocument();
+    expect(warned()).toEqual([]);
+  });
+
+  it('the job sheet: checklist, time, photos, materials, finish and the next step — no word missing', async () => {
+    const warned = watchI18nWarnings();
+    const user = userEvent.setup();
+    online = false;
+    api({ ...JOB, timeLogs: [{ id: 'tl1', minutes: 95, startedAt: at(today, '08:00'), endedAt: at(today, '09:35'), userId: 'other' }] });
+    renderWithProviders(<TechJobPage />, { path: '/tech/jobs/:id', initialPath: '/tech/jobs/j1', preloadedState: ne });
+
+    expect(await screen.findByRole('heading', { name: 'Terrace waterproofing' })).toBeInTheDocument();
+    expect(screen.getByText('काम हुँदैछ')).toBeInTheDocument();
+    expect(screen.getByText('पुग्ने बाटो: Gate code 4')).toBeInTheDocument();
+    expect(screen.getByText('1/3 सकियो')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'सकियो: Apply membrane' })).toBeInTheDocument();
+    expect(screen.getByText('यो काममा लागेको समय: 1 घण्टा 35 मिनेट')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'काम गर्दा' })).toBeInTheDocument();
+    expect(screen.getByLabelText('फोटोबारे (चाहिए भने)')).toBeInTheDocument();
+    expect(screen.getByText('2 वटा चेकलिस्ट बाँकी छ — काम सक्नुअघि टिक लगाउनुहोस्।')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'यहाँ औँलाले हस्ताक्षर गर्नुहोस्' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '5 मा 5' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /काम सकियो/ })).toBeDisabled();
+    expect(screen.getByRole('link', { name: /साइट डायरी/ })).toBeInTheDocument();
+
+    // Materials: the sheet in Nepali, and a quantity typed on a Nepali keyboard.
+    await user.click(screen.getByRole('button', { name: /सामान थप्नुहोस्/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'सामान थप्नुहोस्' });
+    await user.type(within(sheet).getByRole('searchbox', { name: 'नाम वा कोडले खोज्नुहोस्' }), 'cryst');
+    await user.click(within(sheet).getByRole('button', { name: /Crystalline slurry/ }));
+    const qty = within(sheet).getByLabelText('मात्रा (kg)');
+    await user.clear(qty);
+    await user.type(qty, '२.५');
+    expect(qty).toHaveValue('2.5');
+    expect(within(sheet).getByRole('button', { name: 'बन्द गर्नुहोस्' })).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: '2.5 kg थप्नुहोस्' }));
+    await waitFor(async () => expect(await pending()).toEqual([expect.objectContaining({ kind: 'material', payload: { materialId: 'mat1', qty: 2.5 } })]));
+
+    // Hold, in Nepali.
+    await user.click(screen.getAllByRole('button', { name: /रोक्नुहोस्/ })[0]);
+    const hold = await screen.findByRole('dialog', { name: 'यो काम रोक्नुहोस्' });
+    await user.click(within(hold).getByRole('button', { name: 'काम रोक्नुहोस्' }));
+    expect(within(hold).getByText('काम किन रोकिँदैछ लेख्नुहोस्')).toBeInTheDocument();
+    expect(warned()).toEqual([]);
+  });
+
+  it('the job sheet from History, read only, in Nepali', async () => {
+    const warned = watchI18nWarnings();
+    api({ ...JOB, status: 'COMPLETED', completionNote: 'Flood test dry', customerRating: 4, actualEnd: at(today, '15:00') });
+    renderWithProviders(<TechJobPage readOnly />, { path: '/tech/history/:id', initialPath: '/tech/history/j1', preloadedState: ne });
+    expect(await screen.findByText('पुराना कामबाट — हेर्न मात्र।')).toBeInTheDocument();
+    expect(screen.getByText('रेटिङ: 5 मा 4')).toBeInTheDocument();
+    expect(screen.getAllByText('काम सकियो').length).toBeGreaterThan(0);
+    expect(warned()).toEqual([]);
+  });
+
+  it('History: presets, dates and the jobs in Nepali', async () => {
+    const warned = watchI18nWarnings();
+    const jobs = [{ id: 'a', number: 'JOB-a', title: 'Job a', status: 'COMPLETED', customer: { name: 'राम' }, scheduledStart: at(today, '11:00') }];
+    mockApi(({ path }) => (path === '/tech/jobs' ? json({ data: jobs }) : undefined));
+    renderWithProviders(<TechHistoryPage />, { path: '/tech/history', preloadedState: ne });
+    expect(await screen.findByText('Job a')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'पुराना काम' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '30 दिन' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('कहिलेदेखि')).toBeInTheDocument();
+    expect(screen.getByText('1 वटा काम')).toBeInTheDocument();
+    expect(screen.getByText('काम सकियो')).toBeInTheDocument();
+    // The day in Nepali month words, the digits Latin.
+    expect(screen.getByText(/^\d{4} [ऀ-ॿ]+ \d{2} · \d{2}:\d{2}/)).toBeInTheDocument();
+    expect(warned()).toEqual([]);
+  });
+
+  it('the survey list in Nepali', async () => {
+    const warned = watchI18nWarnings();
+    const surveys = [
+      { id: 's1', number: 'SV-1', status: 'RETURNED', customer: { name: 'सीता' }, service: null, returnedReason: 'फोटो धमिलो', job: { scheduledStart: at(today, '10:00'), scheduledEnd: at(today, '12:00') } },
+      { id: 's2', number: 'SV-2', status: 'SUBMITTED', customer: { name: 'राम' }, service: { name: 'Seepage' } },
+    ];
+    mockApi(({ path }) => (path === '/tech/surveys' ? json({ data: surveys }) : undefined));
+    renderWithProviders(<SurveyListPage />, { path: '/tech/surveys', preloadedState: { ...signedInAs('SURVEYOR'), ui: { locale: 'ne', toasts: [] } } });
+    expect(await screen.findByRole('heading', { name: 'तपाईंका सर्भे' })).toBeInTheDocument();
+    expect(screen.getByText('भर्न बाँकी')).toBeInTheDocument();
+    expect(screen.getByText('पठाइसकेको')).toBeInTheDocument();
+    expect(screen.getByText('फिर्ता आयो')).toBeInTheDocument();
+    expect(screen.getByText('पठाइयो')).toBeInTheDocument();
+    expect(screen.getByText(/^सामान्य · \d{4} [ऀ-ॿ]+ \d{2}, 10:00–12:00$/)).toBeInTheDocument();
+    expect(warned()).toEqual([]);
+  });
+
+  it('the shell: the language switch sits in the header and is kept; the tabs, the queue and a refusal in Nepali', async () => {
+    const warned = watchI18nWarnings();
+    const user = userEvent.setup();
+    online = false;
+    await enqueue({ kind: 'status', jobId: 'j1', payload: { status: 'EN_ROUTE' } });
+    mockApi(() => undefined);
+    const { store } = renderWithProviders(
+      <Routes><Route element={<TechLayout />}><Route path="/tech" element={<p>Today’s jobs</p>} /></Route></Routes>,
+      { path: '*', initialPath: '/tech', preloadedState: signedInAs('TECHNICIAN') },
+    );
+
+    expect(await screen.findByRole('button', { name: 'Offline — 1 waiting' })).toBeInTheDocument();
+    const header = screen.getByRole('banner');
+    const switcher = within(header).getByRole('group', { name: 'Language' });
+    // Every control in the header is a 44 px target; the name truncates, never the controls.
+    within(switcher).getAllByRole('button').forEach((b) => expect(b.parentElement.className).toMatch(/\[&>button\]:min-h-11/));
+    await user.click(within(switcher).getByRole('button', { name: /नेपाली/ }));
+
+    expect(store.getState().ui.locale).toBe('ne');
+    expect(await screen.findByRole('button', { name: 'सिग्नल छैन — 1 पठाउन बाँकी' })).toBeInTheDocument();
+    expect(screen.getByText('सिग्नल छैन। 1 परिवर्तन यो फोनमा सेभ छ — सिग्नल आएपछि अफिसमा पुग्छ।')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'पुराना काम' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'साइन आउट' })).toBeInTheDocument();
+    expect(screen.getByText('प्राविधिक')).toBeInTheDocument();
+    expect(warned()).toEqual([]);
+  });
+
+  it('says a refused change in Nepali — the code’s words, not the server’s English', async () => {
+    const warned = watchI18nWarnings();
+    await enqueue({ kind: 'status', jobId: 'j1', payload: { status: 'IN_PROGRESS' } });
+    mockApi(({ path, body }) => (path === '/tech/sync'
+      ? json({ data: { results: body.mutations.map((m) => ({ idempotencyKey: m.idempotencyKey, status: 'failed', code: 'INVALID_TRANSITION', error: 'The job was cancelled' })) } })
+      : undefined));
+    renderWithProviders(
+      <Routes><Route element={<TechLayout />}><Route path="/tech" element={<p>Today’s jobs</p>} /></Route></Routes>,
+      { path: '*', initialPath: '/tech', preloadedState: ne },
+    );
+    const note = await screen.findByRole('alert');
+    expect(note).toHaveTextContent('पठाइएन — अफिसले लिएन');
+    expect(note).toHaveTextContent('स्थिति “काम हुँदैछ” — अफिसले यो काम अगाडि बढाइसक्यो — यो परिवर्तन अब मिल्दैन।');
+    expect(within(note).getByRole('link', { name: 'काम खोल्नुहोस्' })).toHaveAttribute('href', '/tech/jobs/j1');
+    expect(within(note).getByRole('button', { name: 'हटाउनुहोस्' })).toBeInTheDocument();
+    expect(warned()).toEqual([]);
   });
 });

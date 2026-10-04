@@ -16,7 +16,7 @@ import {
   PURCHASE_LIST_STATUSES, PURCHASE_LIST_STATUS_LABELS, PURCHASE_LIST_TRANSITIONS, INVOICE_KINDS, INVOICE_KIND_LABELS,
   INVOICE_ITEM_KINDS, INVOICE_ITEM_KIND_LABELS,
 } from '@/config/constants';
-import { FIELD_COPY } from '@/config/tech/fieldCopy';
+import { FIELD } from '@/config/i18n/field';
 import { MUTATION_KINDS } from '@/helpers/offlineQueue';
 import { AUDIT_EVENT_LABELS } from '@/config/auditEvents';
 import { PERMISSIONS, can } from '@/helpers/permissions';
@@ -173,8 +173,8 @@ describe('the CRM rules mirror the API', () => {
     }
     // The field app words each one in both languages.
     for (const locale of ['en', 'ne']) {
-      for (const w of WEATHER) expect(FIELD_COPY[locale].diary.weather[w], `${locale} ${w}`).toBeTruthy();
-      for (const r of LOST_TIME_REASONS) expect(FIELD_COPY[locale].diary.lost.reasons[r], `${locale} ${r}`).toBeTruthy();
+      for (const w of WEATHER) expect(FIELD[locale].diary.weather[w], `${locale} ${w}`).toBeTruthy();
+      for (const r of LOST_TIME_REASONS) expect(FIELD[locale].diary.lost.reasons[r], `${locale} ${r}`).toBeTruthy();
     }
   });
 

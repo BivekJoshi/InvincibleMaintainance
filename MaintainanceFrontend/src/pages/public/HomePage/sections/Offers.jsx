@@ -7,14 +7,18 @@ import { SectionShell } from '@/components/site/SectionShell';
 import { Reveal } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { Cta } from '@/components/site/Cta';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /** An offer, with room for the picture that sells it. */
 export function Offers({ section, media, tone }) {
+  const t = useT(SITE);
+  const { locale } = t;
   const offers = Array.isArray(section.data) ? section.data : [];
   if (!offers.length) return null;
   return (
     <SectionShell tone={tone}>
-      <SectionHeading eyebrow="Limited time" title="Current offers" />
+      <SectionHeading eyebrow={t('home.offers.eyebrow')} title={t('home.offers.title')} />
       <div className="grid gap-4 lg:grid-cols-2">
         {offers.map((offer, i) => (
           <Reveal key={offer.id} delay={i * 0.06} className="h-full">
@@ -30,14 +34,14 @@ export function Offers({ section, media, tone }) {
               <div className="flex flex-1 flex-col">
                 <CardHeader className="flex-row items-baseline justify-between gap-3 space-y-0 border-b bg-gold/10 px-5 py-3">
                   <Badge variant="gold" className="text-[10px] font-bold uppercase tracking-wide">
-                    {offer.badge ?? 'Offer'}
+                    {offer.badge ?? t('home.offers.badge')}
                   </Badge>
                   {offer.priceMin ? (
                     <span className="text-right leading-none">
-                      <span className="text-[15px] font-bold tabular-nums">{formatNpr(offer.priceMin, { compact: true })}</span>
+                      <span className="text-[15px] font-bold tabular-nums">{formatNpr(offer.priceMin, { compact: true, locale })}</span>
                       {offer.priceMax && offer.priceMax !== offer.priceMin ? (
                         <span className="text-xs text-muted-foreground">
-                          {' – '}{formatNpr(offer.priceMax, { compact: true, symbol: false })}
+                          {' – '}{formatNpr(offer.priceMax, { compact: true, symbol: false, locale })}
                         </span>
                       ) : null}
                     </span>
@@ -56,8 +60,8 @@ export function Offers({ section, media, tone }) {
                       ))}
                     </ul>
                   ) : null}
-                  <Cta href={offer.ctaUrl} className="mt-5 w-full sm:w-auto sm:self-start">
-                    {offer.ctaLabel ?? 'Book now'} <ArrowRight className="h-4 w-4" />
+                  <Cta href={offer.ctaUrl} className="mt-5 h-auto min-h-9 w-full whitespace-normal py-2 text-center sm:w-auto sm:self-start">
+                    {offer.ctaLabel ?? t('home.offers.cta')} <ArrowRight className="h-4 w-4" />
                   </Cta>
                 </CardContent>
               </div>

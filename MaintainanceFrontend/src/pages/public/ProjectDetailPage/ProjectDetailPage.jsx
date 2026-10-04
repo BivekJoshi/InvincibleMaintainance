@@ -1,8 +1,8 @@
 import { useParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { useGetPublicProjectQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
 import { useSeo } from '@/hooks/useSeo';
+import { useApiErrorText, useT } from '@/hooks/useT';
 import { ErrorState } from '@/components/common/ErrorState';
 import { PageHero } from '@/components/site/PageHero';
 import { SectionShell } from '@/components/site/SectionShell';
@@ -19,8 +19,9 @@ import { ProjectStory } from './sections/ProjectStory';
  */
 export default function ProjectDetailPage() {
   const { slug } = useParams();
-  const locale = useSelector(selectLocale);
-  const { data, isLoading, error, refetch } = useGetPublicProjectQuery({ slug, locale });
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
+  const { data, isLoading, error, refetch } = useGetPublicProjectQuery({ slug, locale: t.locale });
   const project = data?.project;
 
   useSeo({
@@ -29,13 +30,21 @@ export default function ProjectDetailPage() {
     description: project?.metaDescription || project?.problem || project?.summary,
   });
 
-  if (error) return <PageTransition><SectionShell><ErrorState error={error} onRetry={refetch} /></SectionShell></PageTransition>;
+  if (error) {
+    return (
+      <PageTransition>
+        <SectionShell>
+          <ErrorState error={error} onRetry={refetch} message={errorText(error)} retryLabel={t('common.tryAgain')} />
+        </SectionShell>
+      </PageTransition>
+    );
+  }
   if (isLoading || !project) return <PageTransition><SectionShell><CardSkeleton /></SectionShell></PageTransition>;
 
   return (
     <PageTransition>
       <PageHero
-        eyebrow={project.service?.name ?? project.category?.name ?? 'Case study'}
+        eyebrow={project.service?.name ?? project.category?.name ?? t('project.eyebrow')}
         title={project.title}
         description={project.summary}
       >
