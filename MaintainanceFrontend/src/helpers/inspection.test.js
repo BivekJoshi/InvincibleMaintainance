@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  answerNumber, answerToReading, flagRule, isAnswered, missingAnswers, predictFlag, questionLabel, readingToAnswer,
+  answerNumber, answerToReading, flagRule, isAnswered, missingAnswers, optionLabel, predictFlag, questionLabel, readingToAnswer,
 } from '@/helpers/inspection';
 
 const moisture = { key: 'moisture_low', label: 'Moisture at 300 mm', labelNe: '300 मिमिमा चिस्यान', type: 'NUMBER', unit: '%', metric: 'moisture', flag: { above: 20 }, required: true, photoRequired: true };
@@ -82,5 +82,23 @@ describe('inspection answers', () => {
     expect(flagRule(dpc)).toEqual({ type: 'equals', value: 'no' });
     expect(flagRule(salt)).toEqual({ type: 'values', values: ['Heavy'] });
     expect(flagRule(story)).toBeNull();
+  });
+});
+
+describe('inspection answers in Nepali (Phase J1)', () => {
+  it('reads a number typed in Devanagari digits, and sends the Latin number', () => {
+    expect(answerNumber('२४.५')).toBe(24.5);
+    expect(predictFlag(moisture, { value: '२४' })).toBe(true);
+    expect(answerToReading(moisture, { value: '२४', mediaId: 'm1' }, 0)).toMatchObject({ value: 24 });
+  });
+
+  it('shows a choice in the office’s Nepali words, and keeps the English option as the answer', () => {
+    const saltNe = { ...salt, optionsNe: ['छैन', 'थोरै', 'धेरै'] };
+    expect(optionLabel(saltNe, 'Heavy', 'ne')).toBe('धेरै');
+    expect(optionLabel(saltNe, 'Heavy', 'en')).toBe('Heavy');
+    expect(optionLabel(salt, 'Heavy', 'ne')).toBe('Heavy');
+    expect(optionLabel({ ...salt, optionsNe: ['छैन', '', null] }, 'Light', 'ne')).toBe('Light');
+    expect(answerToReading(saltNe, { textValue: 'Heavy' }, 0)).toMatchObject({ textValue: 'Heavy' });
+    expect(predictFlag(saltNe, { textValue: 'Heavy' })).toBe(true);
   });
 });

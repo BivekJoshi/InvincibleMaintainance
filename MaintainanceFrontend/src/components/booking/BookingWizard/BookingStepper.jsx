@@ -6,7 +6,7 @@ import { cn } from '@/helpers/utils';
  *
  * Steps ahead are disabled rather than hidden: the visitor can see the booking
  * is four short steps, which is the number that stops people abandoning at the
- * first one.
+ * first one. On a phone only the numbers show; the step's name is still read out.
  */
 export function BookingStepper({ steps, step, onStep }) {
   return (
@@ -34,7 +34,7 @@ export function BookingStepper({ steps, step, onStep }) {
               )}>
                 {state === 'done' ? <Check className="h-3 w-3" aria-hidden /> : i + 1}
               </span>
-              <span className="hidden sm:block">{label}</span>
+              <span className="sr-only sm:not-sr-only sm:block">{label}</span>
             </button>
             {i < steps.length - 1 ? (
               <span className={cn('h-px flex-1 transition-colors', i < step ? 'bg-primary' : 'bg-border')} aria-hidden />

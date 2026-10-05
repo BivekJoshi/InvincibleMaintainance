@@ -101,15 +101,16 @@ describe('inspection templates — the questions editor (Phase L5)', () => {
     await user.click(await screen.findByRole('option', { name: 'Yes' }));
     await user.keyboard(' {Tab} {Tab}');
 
-    // A choice: its options as comma-separated words, and the one that flags.
+    // A choice: its options as comma-separated words, their Nepali words in the same order (Phase J1), and the one that flags.
     await user.keyboard('Source of water{Tab}{Tab}{Tab}{Enter}');
     await user.click(await screen.findByRole('option', { name: 'Choice' }));
-    await user.keyboard('{Tab}Rain, Pipe leak, Ground{Tab}Pipe leak{Enter}');
+    await user.keyboard('{Tab}Rain, Pipe leak, Ground{Tab}वर्षा, पाइप चुहावट, जमिन{Tab}Pipe leak{Enter}');
 
     expect(questionCell(0, 'labelNe')).toHaveTextContent('ओसको मात्रा');
     expect(questionCell(0, 'flagAbove')).toHaveTextContent('20');
     expect(questionCell(1, 'flagOn')).toHaveTextContent('Yes');
     expect(questionCell(2, 'options')).toHaveTextContent('Rain, Pipe leak, Ground');
+    expect(questionCell(2, 'optionsNe')).toHaveTextContent('वर्षा, पाइप चुहावट, जमिन');
     // A cell the type does not use is read-only.
     expect(questionCell(1, 'unit')).toHaveAttribute('aria-readonly', 'true');
     expect(screen.getByTestId('question-summary')).toHaveTextContent('3 questions · 2 required · 2 need a photo · 3 can raise a flag');
@@ -123,7 +124,10 @@ describe('inspection templates — the questions editor (Phase L5)', () => {
       questions: [
         { key: 'moisture', label: 'Moisture reading', labelNe: 'ओसको मात्रा', type: 'NUMBER', unit: '%', metric: 'moisture', flag: { above: 20 }, required: true, photoRequired: true },
         { key: 'salt_deposits', label: 'Salt deposits', type: 'YES_NO', flag: { equals: 'yes' }, required: true, photoRequired: true },
-        { key: 'source_of_water', label: 'Source of water', type: 'CHOICE', options: ['Rain', 'Pipe leak', 'Ground'], flag: { values: ['Pipe leak'] }, required: false, photoRequired: false },
+        {
+          key: 'source_of_water', label: 'Source of water', type: 'CHOICE', options: ['Rain', 'Pipe leak', 'Ground'],
+          optionsNe: ['वर्षा', 'पाइप चुहावट', 'जमिन'], flag: { values: ['Pipe leak'] }, required: false, photoRequired: false,
+        },
       ],
     });
     await waitFor(() => expect(toastTitles(store)).toContain('Inspection template created'));

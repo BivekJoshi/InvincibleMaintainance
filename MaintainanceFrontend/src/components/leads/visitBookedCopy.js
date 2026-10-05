@@ -1,4 +1,4 @@
-import { toKathmanduParts } from '@/helpers/format';
+import { formatDateBs, toKathmanduParts } from '@/helpers/format';
 
 /**
  * The words of the `visit_booked` SMS (Phase L5), for the booking dialog's preview. Nothing here is sent:
@@ -26,11 +26,13 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 /**
  * `3 Oct 2026` — the visit's day in Kathmandu, written as the API writes it (dayjs `D MMM YYYY`). Built by
- * hand rather than with `Intl`, whose en-GB September is "Sept".
+ * hand rather than with `Intl`, whose en-GB September is "Sept". In Nepali the API writes that day's Bikram Sambat
+ * date in Nepali words (`utils/dates.js#customerDate`, Phase J1): `17 असोज 2083`.
  */
-export function visitDateText(iso) {
+export function visitDateText(iso, locale = 'en') {
   const { date } = toKathmanduParts(iso);
   if (!date) return '';
+  if (locale === 'ne') return formatDateBs(iso, { long: true, locale: 'ne' });
   const [y, m, d] = date.split('-').map(Number);
   return `${d} ${MONTHS[m - 1]} ${y}`;
 }
@@ -65,7 +67,7 @@ export function visitBookedSms({ locale = 'en', name, start, end, surveyor, link
   const text = fillTemplate(body, {
     name,
     number,
-    date: visitDateText(start),
+    date: visitDateText(start, locale),
     window: visitWindowText(start, end),
     surveyor: surveyorText(surveyor, locale),
     link: link ?? visitLinkPlaceholder(),

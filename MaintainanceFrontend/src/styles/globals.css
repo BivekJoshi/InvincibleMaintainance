@@ -239,10 +239,22 @@
   h1, h2 { text-wrap: balance; }
   p { text-wrap: pretty; }
 
-  /* Devanagari copy is mixed into English pages; give it a face that renders it.
-     Declared directly rather than via @apply, which would be self-referential. */
+  /* Devanagari needs a face that renders it: the sans stack reaches Noto Sans Devanagari for every Nepali letter
+     (Phase J1), so an element marked lang="ne" — or the whole page, when Nepali is on — keeps Inter for its Latin
+     letters and digits. Its vowel signs sit above and below the line, so a Nepali page's tight headings get room. */
   :lang(ne) {
-    font-family: theme('fontFamily.deva');
+    font-family: theme('fontFamily.sans');
+  }
+  :lang(ne) :is(h1, h2, h3) {
+    line-height: 1.35;
+  }
+  /* Letter-spacing splits the headstroke that joins a Devanagari word into loose letters, so the tracked small-caps
+     labels (eyebrows, footer headings) set none in Nepali; a form label's `leading-none` gets room for its marks. */
+  :lang(ne) :is(.eyebrow, [class*='tracking-']) {
+    letter-spacing: normal;
+  }
+  :lang(ne) label {
+    line-height: 1.3;
   }
 
   ::selection { background: hsl(var(--gold) / 0.25); }

@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
   Phone, AlertTriangle, Timer, CheckCircle2, ArrowRight, MessageCircle, RefreshCw, UserPlus, UserX, Loader2,
-  Inbox, MessageSquareQuote,
+  Inbox, MessageSquareQuote, CalendarDays,
 } from 'lucide-react';
+import { apiSlice } from '@/api/apiSlice';
 import { useAssignLeadMutation, useGetSlaBoardQuery } from '@/api/leadsApi';
+import { AgendaCalendar } from '@/components/agenda/AgendaCalendar';
 import { ActivityComposer } from '@/components/leads/ActivityComposer';
 import { ResponseRunway } from '@/components/leads/ResponseRunway';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,6 +17,7 @@ import { SlaChip } from '@/components/common/SlaChip';
 import { StateBadge } from '@/components/common/StateBadge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/hooks/useAuth';
 import { useListParams } from '@/hooks/useListParams';
@@ -208,14 +211,22 @@ function QueueGroup({ group, leads, onLog, now, selectedId }) {
   );
 }
 
+/** What the header says under each tab. */
+const TAB_DESCRIPTIONS = {
+  queue: 'We promise a reply within two hours. Call the most urgent first; logging the call stops the clock.',
+  calendar: 'Everything dated that is still waiting: reply deadlines, follow-ups, visits, jobs, quotations, invoices and AMC. Late items stay in the side panel until they are done.',
+};
+
 /**
  * The board that makes the public "2-hour response" promise operational: a runway with every
  * waiting enquiry on its clock, then the queue to clear it, most urgent first. Polls every 30s
- * so a countdown never goes stale on a wall display. The scope (everyone / mine / unassigned)
- * lives in the URL, so a salesperson can bookmark theirs.
+ * so a countdown never goes stale on a wall display. The Calendar tab (`components/agenda/`) lays
+ * out everything else dated that is pending, overdue or still to do. The tab and the scope
+ * (everyone / mine / unassigned) live in the URL, so a salesperson can bookmark theirs.
  */
 export default function SlaBoardPage() {
   const { user } = useAuth();
+  const dispatch = useDispatch();
   const { data, isLoading, isFetching, error, refetch, fulfilledTimeStamp } = useGetSlaBoardQuery(undefined, { pollingInterval: 30000 });
   const [params, setParams] = useListParams({ who: 'all' });
   const [logging, setLogging] = useState(null);
@@ -223,8 +234,10 @@ export default function SlaBoardPage() {
   const now = useNow();
   const scope = SLA_SCOPES.some((s) => s.value === params.who) ? params.who : 'all';
   const setScope = (who) => setParams({ ...params, who: who === 'all' ? undefined : who });
-
-  if (error) return <ErrorState error={error} onRetry={refetch} />;
+  const tab = params.tab === 'calendar' ? 'calendar' : 'queue';
+  const setTab = (next) => setParams({ ...params, tab: next === 'queue' ? undefined : next });
+  // The board and the calendar both carry the LeadBoard tag: one press refreshes whichever is on screen.
+  const refresh = () => dispatch(apiSlice.util.invalidateTags(['LeadBoard']));
 
   const lists = Object.fromEntries(GROUPS.map((g) => [g.key, leadsInScope(data?.[g.key] ?? [], scope, user?.id)]));
   const everyone = GROUPS.flatMap((g) => data?.[g.key] ?? []);
@@ -242,7 +255,7 @@ export default function SlaBoardPage() {
     <PageTransition>
       <PageHeader
         title="Response board"
-        description="We promise a reply within two hours. Call the most urgent first; logging the call stops the clock."
+        description={TAB_DESCRIPTIONS[tab]}
         actions={(
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-sla-ok/30 bg-sla-ok/10 px-2.5 py-1 text-xs font-medium text-sla-ok">
@@ -252,7 +265,7 @@ export default function SlaBoardPage() {
               </span>
               Live
             </span>
-            <Button variant="outline" size="sm" className="rounded-full" onClick={refetch} disabled={isFetching} aria-label="Refresh the board">
+            <Button variant="outline" size="sm" className="rounded-full" onClick={refresh} disabled={isFetching} aria-label="Refresh the board">
               <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin motion-reduce:animate-none')} />
               {fulfilledTimeStamp ? `Updated ${formatTime(new Date(fulfilledTimeStamp).toISOString())}` : 'Refresh'}
             </Button>
@@ -260,49 +273,73 @@ export default function SlaBoardPage() {
         )}
       />
 
-      {isLoading ? (
-        <Skeleton className="mb-5 h-40 rounded-2xl" />
-      ) : (
-        <div className="mb-5">
-          <ResponseRunway
-            leads={inScope} now={now} onSelect={select}
-            met={data?.metToday ?? 0} answered={data?.answeredToday ?? 0} newToday={data?.newToday ?? 0}
-          />
-        </div>
-      )}
-
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <ToggleGroup
-          type="single" variant="outline" size="sm" value={scope} aria-label="Whose leads"
-          onValueChange={(v) => v && setScope(v)} className="justify-start rounded-full bg-muted/50 p-1"
-        >
-          {SLA_SCOPES.map((s) => (
-            <ToggleGroupItem key={s.value} value={s.value} className="rounded-full border-0 px-4 data-[state=on]:bg-background data-[state=on]:shadow-[var(--elevation-1)]">
-              {s.label}
-              {s.value === 'unassigned' && unowned ? (
-                <span aria-hidden className="ml-1.5 rounded-full bg-warning/15 px-1.5 text-[10px] font-bold tabular-nums text-warning">{unowned}</span>
+      <Tabs value={tab} onValueChange={setTab}>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <TabsList className="h-10 rounded-full p-1">
+            <TabsTrigger value="queue" className="gap-1.5 rounded-full px-4">
+              <Inbox className="h-4 w-4" aria-hidden /> Response queue
+              {inScope.length ? (
+                <span aria-hidden className="rounded-full bg-primary/10 px-1.5 text-[10px] font-bold tabular-nums text-primary">{inScope.length}</span>
               ) : null}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <p className="text-xs text-muted-foreground">
-          {inScope.length
-            ? `${inScope.length} waiting for a first reply${unowned ? ` · ${unowned} with nobody on them` : ''} · refreshes every 30 seconds`
-            : 'Nobody waiting here · refreshes every 30 seconds'}
-        </p>
-      </div>
+            </TabsTrigger>
+            <TabsTrigger value="calendar" className="gap-1.5 rounded-full px-4">
+              <CalendarDays className="h-4 w-4" aria-hidden /> Calendar
+            </TabsTrigger>
+          </TabsList>
+          <ToggleGroup
+            type="single" variant="outline" size="sm" value={scope} aria-label="Whose leads"
+            onValueChange={(v) => v && setScope(v)} className="justify-start rounded-full bg-muted/50 p-1"
+          >
+            {SLA_SCOPES.map((s) => (
+              <ToggleGroupItem key={s.value} value={s.value} className="rounded-full border-0 px-4 data-[state=on]:bg-background data-[state=on]:shadow-[var(--elevation-1)]">
+                {s.label}
+                {s.value === 'unassigned' && unowned ? (
+                  <span aria-hidden className="ml-1.5 rounded-full bg-warning/15 px-1.5 text-[10px] font-bold tabular-nums text-warning">{unowned}</span>
+                ) : null}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {GROUPS.map((g) => (
-            <QueueGroup key={g.key} group={g} leads={lists[g.key]} onLog={setLogging} now={now} selectedId={selectedId} />
-          ))}
-        </div>
-      )}
+        <TabsContent value="queue" className="mt-0">
+          {error ? <ErrorState error={error} onRetry={refetch} /> : (
+            <>
+              {isLoading ? (
+                <Skeleton className="mb-5 h-40 rounded-2xl" />
+              ) : (
+                <div className="mb-5">
+                  <ResponseRunway
+                    leads={inScope} now={now} onSelect={select}
+                    met={data?.metToday ?? 0} answered={data?.answeredToday ?? 0} newToday={data?.newToday ?? 0}
+                  />
+                </div>
+              )}
+
+              <p className="mb-4 text-xs text-muted-foreground">
+                {inScope.length
+                  ? `${inScope.length} waiting for a first reply${unowned ? ` · ${unowned} with nobody on them` : ''} · refreshes every 30 seconds`
+                  : 'Nobody waiting here · refreshes every 30 seconds'}
+              </p>
+
+              {isLoading ? (
+                <div className="space-y-2">
+                  {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {GROUPS.map((g) => (
+                    <QueueGroup key={g.key} group={g} leads={lists[g.key]} onLog={setLogging} now={now} selectedId={selectedId} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="calendar" className="mt-0">
+          <AgendaCalendar params={params} setParams={setParams} scope={scope} userId={user?.id} now={now} />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={Boolean(logging)} onOpenChange={(o) => { if (!o) setLogging(null); }}>
         <DialogContent className="sm:max-w-lg">

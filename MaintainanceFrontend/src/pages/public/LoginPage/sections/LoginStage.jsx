@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { CountUp, EASE, Spotlight, motion, useMinWidth, useMotionVariants, useReducedMotion } from '@/three/motion/motionKit';
 import { cn } from '@/helpers/utils';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { LOGIN_RISE, STATS } from '../loginContent';
 import { LoginCredo } from './LoginCredo';
 import { BrandMark } from '@/components/site/BrandMark';
@@ -31,6 +33,7 @@ function Crosshair({ className }) {
  * phone that will never show it.
  */
 export function LoginStage({ company, logoUrl }) {
+  const t = useT(SITE);
   const reduced = useReducedMotion();
   const wideEnough = useMinWidth(1024);
   const rise = useMotionVariants(LOGIN_RISE);
@@ -79,7 +82,7 @@ export function LoginStage({ company, logoUrl }) {
             />
             <span>
               <span className="block text-lg font-semibold tracking-tight">{company}</span>
-              <span className="eyebrow block text-ink-muted">Back office</span>
+              <span className="eyebrow block text-ink-muted">{t('login.backOffice')}</span>
             </span>
           </Link>
         </motion.div>
@@ -89,7 +92,7 @@ export function LoginStage({ company, logoUrl }) {
             initial="hidden" animate="show" variants={rise} transition={{ delay: 0.2 }}
             className="eyebrow text-gold"
           >
-            Kathmandu · Nepal
+            {t('login.place')}
           </motion.p>
 
           <LoginCredo />
@@ -99,13 +102,13 @@ export function LoginStage({ company, logoUrl }) {
             className="mt-10 flex items-end gap-10 border-t border-ink-foreground/10 pt-6"
           >
             {STATS.map((stat) => (
-              <div key={stat.label}>
-                <dt className="sr-only">{stat.label}</dt>
+              <div key={stat.key}>
+                <dt className="sr-only">{t(`login.stats.${stat.key}`)}</dt>
                 <dd className="text-2xl font-semibold tabular-nums text-gold">
                   {stat.plain ? stat.value : <CountUp value={stat.value} />}
-                  {stat.suffix}
+                  {stat.unit ? <span className="ml-0.5">{t(`login.stats.${stat.unit}`)}</span> : null}
                 </dd>
-                <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-ink-muted">{stat.label}</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-ink-muted">{t(`login.stats.${stat.key}`)}</p>
               </div>
             ))}
           </motion.dl>

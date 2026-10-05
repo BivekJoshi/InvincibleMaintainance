@@ -4,18 +4,21 @@ import { Card, CardContent } from '@/components/ui/card';
 import { SectionHeading } from '@/components/site/SectionHeading';
 import { SectionShell } from '@/components/site/SectionShell';
 import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /** Renovation: a numbered checklist the reader scores their own house against. */
 export function ChecklistBlock({ section, tone }) {
+  const t = useT(SITE);
   const items = Array.isArray(section.data) ? section.data : [];
   if (!items.length) return null;
   return (
     <SectionShell tone={tone}>
       <SectionHeading
-        eyebrow="Renovation"
-        title="When it is time to renovate"
-        description="If two or more of these describe your house, book a free assessment."
-        action={<Button asChild><Link to="/book">Book an assessment</Link></Button>}
+        eyebrow={t('home.renovation.eyebrow')}
+        title={t('home.renovation.title')}
+        description={t('home.renovation.description')}
+        action={<Button asChild><Link to="/book">{t('home.renovation.action')}</Link></Button>}
       />
       <StaggerOnView className="grid gap-3 sm:grid-cols-2" stagger={0.04}>
         {items.map((item) => (

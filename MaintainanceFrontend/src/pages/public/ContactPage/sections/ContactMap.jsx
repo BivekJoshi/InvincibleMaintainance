@@ -1,4 +1,6 @@
 import { Card } from '@/components/ui/card';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { Reveal } from '@/three/motion/motionKit';
 
 /**
@@ -8,6 +10,7 @@ import { Reveal } from '@/three/motion/motionKit';
  * slow to become usable.
  */
 export function ContactMap({ src }) {
+  const t = useT(SITE);
   if (!src) return null;
 
   return (
@@ -15,7 +18,7 @@ export function ContactMap({ src }) {
       <Card className="mt-8 overflow-hidden">
         <iframe
           src={src}
-          title="Our location"
+          title={t('contact.map')}
           className="h-72 w-full border-0"
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"

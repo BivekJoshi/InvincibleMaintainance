@@ -1,9 +1,9 @@
 import { useParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { useGetPublicServiceQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
 import { useSeo } from '@/hooks/useSeo';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { useApiErrorText, useT } from '@/hooks/useT';
 import { ErrorState } from '@/components/common/ErrorState';
 import { Eyebrow } from '@/components/site/Eyebrow';
 import { FaqList } from '@/components/site/FaqList';
@@ -26,9 +26,10 @@ import { ServiceMasthead } from './sections/ServiceMasthead';
  */
 export default function ServiceDetailPage() {
   const { slug } = useParams();
-  const locale = useSelector(selectLocale);
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
   const { name: company } = useSiteSettings();
-  const { data, isLoading, error, refetch } = useGetPublicServiceQuery({ slug, locale });
+  const { data, isLoading, error, refetch } = useGetPublicServiceQuery({ slug, locale: t.locale });
   const service = data?.service;
 
   useSeo({
@@ -38,7 +39,14 @@ export default function ServiceDetailPage() {
     jsonLd: serviceJsonLd(service, company),
   });
 
-  if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
+  if (error) {
+    return (
+      <ErrorState
+        error={error} onRetry={refetch} className="min-h-[60dvh]"
+        message={errorText(error)} retryLabel={t('common.tryAgain')}
+      />
+    );
+  }
   if (isLoading || !service) {
     return (
       <div className="container space-y-4 py-14">
@@ -59,8 +67,8 @@ export default function ServiceDetailPage() {
 
             {data.faqs?.length ? (
               <section className="mt-14">
-                <Eyebrow>Before you call</Eyebrow>
-                <h2 className="mt-3 text-2xl font-bold tracking-tight">Common questions</h2>
+                <Eyebrow>{t('service.faqEyebrow')}</Eyebrow>
+                <h2 className="mt-3 text-2xl font-bold tracking-tight">{t('service.faqTitle')}</h2>
                 <FaqList faqs={data.faqs} className="mt-7" />
               </section>
             ) : null}

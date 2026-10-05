@@ -17,6 +17,7 @@ import * as rateLibrary from '../services/rateLibrary.service.js';
 import { applySync } from '../services/techSync.service.js';
 import { overPlanWarnings } from '../services/execution.service.js';
 import * as diary from '../services/diary.service.js';
+import { measureLine } from '../services/billing.service.js';
 import { FIELD_ROLES } from '../shared/enums.js';
 import { can } from '../shared/permissions.js';
 import { fieldSafe } from '../utils/moneyWall.js';
@@ -150,6 +151,10 @@ router.get('/jobs/:id/diary/:day', validate({ params: s.diaryParams }), own,
 
 router.put('/jobs/:id/diary/:day', validate({ params: s.diaryParams, body: s.diarySchema }), own,
   asyncHandler(async (req, res) => ok(res, await diary.saveDiary(req.params.id, req.params.day, req.body, req.user.id))));
+
+// The final measurement from site (Phase L8): quantities in, quantities out — never a rate.
+router.put('/jobs/:id/lines/:lineId/measure', validate({ params: s.jobLineParams, body: s.lineMeasureSchema }), own,
+  asyncHandler(async (req, res) => ok(res, await measureLine(req.params.id, req.params.lineId, req.body))));
 
 // ── site surveys
 

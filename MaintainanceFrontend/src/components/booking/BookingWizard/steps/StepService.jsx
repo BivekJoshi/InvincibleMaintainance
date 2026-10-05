@@ -1,6 +1,8 @@
 import { Search } from 'lucide-react';
 import { DataIcon } from '@/components/site/DataIcon';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
@@ -13,10 +15,17 @@ import { cn } from '@/helpers/utils';
  * their own words at the last step.
  */
 export function StepService({ services, loading, query, onQuery, value, onChange }) {
+  const t = useT(SITE);
+  const priceOf = (s) => {
+    if (!s.priceFrom) return t('price.afterInspection');
+    const price = formatNpr(s.priceFrom, { compact: true, locale: t.locale });
+    return s.priceUnit ? t('price.fromPricePer', { price, unit: s.priceUnit }) : t('price.fromPrice', { price });
+  };
+
   return (
     <div>
-      <h2 className="text-xl font-bold tracking-tight">What do you need done?</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Pick the closest match. The engineer confirms the scope on site.</p>
+      <h2 className="text-xl font-bold tracking-tight">{t('booking.service.title')}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{t('booking.service.description')}</p>
 
       <div className="relative mt-5">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
@@ -24,8 +33,8 @@ export function StepService({ services, loading, query, onQuery, value, onChange
           type="search"
           value={query}
           onChange={(e) => onQuery(e.target.value)}
-          placeholder="Search services"
-          aria-label="Search services"
+          placeholder={t('search.label')}
+          aria-label={t('search.label')}
           className="h-10 w-full rounded-md border bg-card pl-10 pr-3 text-sm outline-none focus:border-primary"
         />
       </div>
@@ -55,18 +64,14 @@ export function StepService({ services, loading, query, onQuery, value, onChange
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[14px] font-semibold tracking-tight">{s.name}</span>
-                <span className="mt-0.5 block text-[12px] text-muted-foreground">
-                  {s.priceFrom
-                    ? `From ${formatNpr(s.priceFrom, { compact: true })}${s.priceUnit ? ` / ${s.priceUnit}` : ''}`
-                    : 'Priced after inspection'}
-                </span>
+                <span className="mt-0.5 block text-[12px] text-muted-foreground">{priceOf(s)}</span>
               </span>
             </button>
           ))}
 
           {services.length ? null : (
             <p className="col-span-full rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Nothing matched. Clear the search, or continue and describe the job in your own words.
+              {t('booking.service.empty')}
             </p>
           )}
         </div>

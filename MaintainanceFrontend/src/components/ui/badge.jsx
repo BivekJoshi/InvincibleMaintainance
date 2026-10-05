@@ -38,11 +38,12 @@ function StatusBadge({ status, label, className }) {
   );
 }
 
-function PriorityBadge({ priority, className }) {
+/** A priority above normal; `label` gives it in the screen's words (the field app's Nepali), else the code. */
+function PriorityBadge({ priority, label, className }) {
   if (!priority || priority === 'NORMAL') return null;
   return (
     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide', PRIORITY_STYLES[priority], className)}>
-      {priority}
+      {label ?? priority}
     </span>
   );
 }

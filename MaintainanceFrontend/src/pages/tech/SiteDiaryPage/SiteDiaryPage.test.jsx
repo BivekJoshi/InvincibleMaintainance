@@ -13,6 +13,7 @@ import { resetSentPhotosForTests } from '@/helpers/sentPhotos';
 import { addDaysTo, ktmDay } from '@/helpers/dispatchBoard';
 import { fieldSyncSettled, loadFieldQueue, syncFieldQueue } from '@/hooks/useOfflineQueue';
 import uiReducer from '@/redux/slices/uiSlice';
+import { watchI18nWarnings } from '@/test/i18nWarnings';
 
 vi.mock('@/hooks/useIdlePreload', () => ({ useIdlePreload: () => {} }));
 // jsdom cannot decode a picture: the photo goes as it was chosen.
@@ -191,7 +192,7 @@ describe('SiteDiaryPage — one day at 360 px', () => {
     });
     renderDiary(`/tech/jobs/j1/diary/${today}`);
     expect(await screen.findByRole('radio', { name: /Cold/ })).toHaveAttribute('data-state', 'on');
-    expect(screen.getByLabelText('How many: Helper')).toHaveValue(5);
+    expect(screen.getByLabelText('How many: Helper')).toHaveValue('5');
     expect(screen.getByTestId('progress-pct-l3')).toHaveTextContent('40%');
     expect(screen.getByLabelText('Note for the office')).toHaveValue('चिसो');
   });
@@ -234,14 +235,44 @@ describe('SiteDiaryPage — one day at 360 px', () => {
     expect(screen.getByRole('button', { name: 'One more: Mason' })).toBeDisabled();
   });
 
-  it('speaks Nepali', async () => {
+  it('speaks Nepali, with no word missing — and takes counts typed on a Nepali keyboard', async () => {
+    online = false;
+    const warned = watchI18nWarnings();
+    const user = userEvent.setup();
     api();
     renderDiary(`/tech/jobs/j1/diary/${today}`, { locale: 'ne' });
     expect(await screen.findByRole('heading', { name: /साइट डायरी/ })).toBeInTheDocument();
     expect(screen.getByText('साइटमा को-को थिए')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /भारी पानी/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /दिन सुरक्षित गर्नुहोस्/ })).toBeInTheDocument();
-  });
+    expect(screen.getByRole('radio', { name: /धेरै पानी परेको/ })).toBeInTheDocument();
+    // The day in Nepali words (Latin digits), with its BS twin.
+    expect(screen.getByTestId('diary-day').textContent).toMatch(/^\d{4} [\u0900-\u097F]+ \d{2}, [\u0900-\u097F]+$/);
+    expect(screen.getByRole('button', { name: /दिन सेभ गर्नुहोस्/ })).toBeInTheDocument();
+    expect(screen.getByText('240 sq.ft मध्ये')).toBeInTheDocument();
+
+    // A crew of 12 masons typed in Devanagari digits; a delivery of १.५; an hour and a half lost, and why.
+    await user.type(screen.getByLabelText('कति जना: Mason'), '१२');
+    expect(screen.getByLabelText('कति जना: Mason')).toHaveValue('12');
+    expect(screen.getByTestId('headcount-total')).toHaveTextContent('आज 12 जना');
+    await user.click(screen.getByRole('button', { name: /सूचीमा नभएको सामान/ }));
+    const delivery = screen.getByRole('group', { name: 'डेलिभरी 1' });
+    await user.type(within(delivery).getByLabelText('के आयो'), 'बालुवा');
+    await user.type(within(delivery).getByLabelText('मात्रा'), '१.५');
+    for (let i = 0; i < 3; i += 1) await user.click(screen.getByRole('button', { name: 'आधा घण्टा थप्नुहोस्' }));
+    expect(screen.getByTestId('lost-hours')).toHaveTextContent('1.5 घण्टा');
+    await user.click(screen.getByRole('button', { name: /दिन सेभ गर्नुहोस्/ }));
+    expect(await screen.findByTestId('lost-reason-error')).toHaveTextContent('समय किन खेर गयो छान्नुहोस्');
+    await user.click(within(screen.getByRole('radiogroup', { name: 'किन?' })).getByRole('radio', { name: 'चाडपर्व' }));
+    await user.click(screen.getByRole('button', { name: /दिन सेभ गर्नुहोस्/ }));
+    await waitFor(async () => expect(await saves()).toHaveLength(1));
+    const [save] = await saves();
+    expect(save.payload).toMatchObject({
+      headcount: [{ tradeId: 'tr1', count: 12 }],
+      received: [{ description: 'बालुवा', qty: 1.5 }],
+      lostHours: 1.5,
+      lostReason: 'FESTIVAL',
+    });
+    expect(warned()).toEqual([]);
+  }, 20_000);
 });
 
 describe('SiteDiaryPage — the days', () => {
@@ -265,6 +296,23 @@ describe('SiteDiaryPage — the days', () => {
     await user.type(screen.getByLabelText('Another day'), addDaysTo(today, 1));
     expect(screen.getByRole('button', { name: /Open this day/ })).toBeDisabled();
     expect(screen.getByText('Pick a day in the last 60 days, not in the future.')).toBeInTheDocument();
+  });
+
+  it('lists the days in Nepali, with no word missing', async () => {
+    online = false;
+    const warned = watchI18nWarnings();
+    api({ days: [{ day: yesterday, weather: 'RAIN', headcountTotal: 6, lostHours: 3, updatedAt: '2026-09-27T12:00:00Z' }] });
+    await enqueue({ kind: 'diary_save', jobId: 'j1', payload: { day: today } });
+    const { store } = renderDiary('/tech/jobs/j1/diary', { locale: 'ne' });
+    await loadFieldQueue(store.dispatch);
+
+    const list = await screen.findByRole('list', { name: 'भरिएका दिन' });
+    expect(within(list).getByTestId(`diary-day-${yesterday}`)).toHaveTextContent('पानी परेको · 6 जना · 3 घण्टा खेर');
+    expect(within(list).getByTestId(`diary-day-${today}`)).toHaveTextContent('यो फोनमा सेभ छ');
+    expect(screen.getByRole('link', { name: /आजको खोल्नुहोस्/ })).toBeInTheDocument();
+    expect(screen.getByText('छुटेको दिन भर्नुहोस् — 60 दिनसम्म पछाडि।')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'काममा फर्कनुहोस्' })).toBeInTheDocument();
+    expect(warned()).toEqual([]);
   });
 });
 

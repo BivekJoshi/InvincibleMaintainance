@@ -72,14 +72,18 @@ function createLeadRow(args) {
   });
 }
 
-/** Public form submission. Spam checks run before anything is written. */
+/**
+ * Public form submission. Spam checks run before anything is written. Each refusal has its own code (Phase J1), so the
+ * site can say it in the visitor's language: SUBMISSION_REJECTED, SUBMITTED_TOO_FAST, BOT_CHECK_FAILED,
+ * BOOKING_DAY_CLOSED — all 400, as before.
+ */
 export async function createPublicLead(input, { ip, userAgent }) {
-  if (input.website) throw badRequest('Submission rejected');
+  if (input.website) throw new AppError(400, 'SUBMISSION_REJECTED', 'Submission rejected');
   if (input.elapsedMs !== undefined && input.elapsedMs < 2000) {
-    throw badRequest('That was submitted too quickly. Please try again.');
+    throw new AppError(400, 'SUBMITTED_TOO_FAST', 'That was submitted too quickly. Please try again.');
   }
   if (!(await verifyTurnstile(input.turnstileToken, ip))) {
-    throw badRequest('Bot verification failed. Please reload the page and try again.');
+    throw new AppError(400, 'BOT_CHECK_FAILED', 'Bot verification failed. Please reload the page and try again.');
   }
 
   const phone = normalizePhone(input.phone);
@@ -88,7 +92,7 @@ export async function createPublicLead(input, { ip, userAgent }) {
     const closed = await getSetting('booking.closedWeekdays', [6]);
     const weekday = Number(local(input.preferredAt, 'd'));
     if (Array.isArray(closed) && closed.includes(weekday)) {
-      throw badRequest('We are closed that day. Please choose another date.');
+      throw new AppError(400, 'BOOKING_DAY_CLOSED', 'We are closed that day. Please choose another date.');
     }
   }
 

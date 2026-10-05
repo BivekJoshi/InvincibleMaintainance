@@ -10,6 +10,7 @@ import { convertQuotationToJob, jobPlan } from '../../services/handoff.service.j
 import { jobProgress, overPlanWarnings, plannedVsActual } from '../../services/execution.service.js';
 import { officeDiary } from '../../services/diary.service.js';
 import * as purchases from '../../services/purchase.service.js';
+import * as billing from '../../services/billing.service.js';
 import * as materials from '../../services/material.service.js';
 import * as technicians from '../../services/technician.service.js';
 import * as s from '../../shared/schemas/ops.js';
@@ -48,6 +49,22 @@ router.get('/jobs/:id', readJobs, validate({ params: idParam }),
 // The Plan tab (Phase L6): the hand-off checklist — quantities only.
 router.get('/jobs/:id/plan', readJobs, validate({ params: idParam }),
   asyncHandler(async (req, res) => ok(res, await jobPlan(req.params.id))));
+
+// ── close-out (Phase L8): running bills, the final measurement, the final bill's preview, the AMC offer
+router.post('/jobs/:id/invoices/stage', requires('invoices:write'), validate({ params: idParam, body: s.stageBillSchema }),
+  asyncHandler(async (req, res) => created(res, await billing.raiseStageBill(req.params.id, req.body.paymentStageId))));
+router.put('/jobs/:id/lines/:lineId/measure', writeJobs, validate({ params: s.jobLineParams, body: s.lineMeasureSchema }),
+  asyncHandler(async (req, res) => ok(res, await billing.measureLine(req.params.id, req.params.lineId, req.body))));
+router.post('/jobs/:id/measurement/close', writeJobs, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await billing.closeMeasurement(req.params.id, req.user.id))));
+router.post('/jobs/:id/measurement/reopen', writeJobs, validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await billing.reopenMeasurement(req.params.id))));
+router.get('/jobs/:id/final-bill', requires('invoices:read'), validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await billing.finalBillPreview(req.params.id))));
+router.post('/jobs/:id/offer-amc', writeJobs, validate({ params: idParam }), asyncHandler(async (req, res) => {
+  const { lead, created: isNew } = await billing.offerAmc(req.params.id);
+  return isNew ? created(res, lead) : ok(res, lead);
+}));
 
 // ── execution (Phase L7): the diary, progress with earned value, planned vs actual, variations
 router.get('/jobs/:id/diary', readJobs, validate({ params: idParam }),

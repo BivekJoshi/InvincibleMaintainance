@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { nepaliPhone, optionalEmail, optionalPhone } from '@/form/schemas/fields';
+import { translateValidationMessage } from '@/form/zodMessages';
 import { adminLeadSchema, leadSchema } from '@/form/schemas/lead.schema';
 import { bookingDetailsSchema } from '@/form/schemas/booking.schema';
 import { customerSchema, customerSiteSchema, parseMapPin } from '@/form/schemas/customer.schema';
@@ -25,7 +26,9 @@ describe('Nepali phone numbers', () => {
   ])('refuses %s', (input) => {
     const r = nepaliPhone.safeParse(input);
     expect(r.success).toBe(false);
-    if (input) expect(r.error.issues[0].message).toMatch(/9808338255 or 01-5407720/);
+    // The schema names its message (`vKey('phone')`); `useZodForm` words it in the form's language.
+    if (input) expect(translateValidationMessage(r.error.issues[0].message, 'en')).toMatch(/9808338255 or 01-5407720/);
+    if (input) expect(translateValidationMessage(r.error.issues[0].message, 'ne')).toMatch(/9808338255 वा 01-5407720/);
   });
 
   it('an optional second number may be left empty, but not wrong', () => {
@@ -96,7 +99,8 @@ describe('customers', () => {
     expect(empty).toMatchObject({ contactName: undefined, contactPhone: undefined, landmark: undefined });
     const bad = customerSiteSchema.safeParse({ ...site, contactPhone: '5407720' });
     expect(bad.success).toBe(false);
-    expect(bad.error.issues[0]).toMatchObject({ path: ['contactPhone'], message: expect.stringMatching(/9808338255 or 01-5407720/) });
+    expect(bad.error.issues[0]).toMatchObject({ path: ['contactPhone'] });
+    expect(translateValidationMessage(bad.error.issues[0].message)).toMatch(/9808338255 or 01-5407720/);
     expect(customerSiteSchema.safeParse({ ...site, landmark: 'x'.repeat(201) }).success).toBe(false);
   });
 

@@ -22,6 +22,8 @@ describe('the visit_booked SMS preview', () => {
     expect(visitWindowText('2026-10-03T04:15:00.000Z', '2026-10-03T06:15:00.000Z')).toBe('10:00–12:00');
     expect(visitWindowText('2026-10-03T04:15:00.000Z')).toBe('10:00');
     expect(visitDateText(null)).toBe('');
+    // In Nepali, the Bikram Sambat day in Nepali words — as the API's customerDate writes it (Phase J1).
+    expect(visitDateText('2026-09-29T18:30:00.000Z', 'ne')).toBe('14 असोज 2083');
   });
 
   it('names the surveyor with their number, or says “our surveyor” in the customer’s language', () => {
@@ -34,7 +36,7 @@ describe('the visit_booked SMS preview', () => {
   it('fills the message, and signs off only with a company name', () => {
     const visit = { name: 'सीता राई', start: '2026-10-03T04:15:00.000Z', end: '2026-10-03T06:15:00.000Z', link: 'https://x.np/visit/…' };
     expect(visitBookedSms({ ...visit, locale: 'ne', appName: 'घर जतन' })).toBe(
-      'नमस्ते सीता राई, तपाईंको साइट निरीक्षण JOB-… 3 Oct 2026, 10:00–12:00 मा तय भएको छ। हाम्रो सर्वेक्षक आउनुहुनेछ। '
+      'नमस्ते सीता राई, तपाईंको साइट निरीक्षण JOB-… 17 असोज 2083, 10:00–12:00 मा तय भएको छ। हाम्रो सर्वेक्षक आउनुहुनेछ। '
       + 'पुष्टि गर्न वा अर्को समय माग्न: https://x.np/visit/… - घर जतन',
     );
     expect(visitBookedSms({ ...visit, name: 'Sita Rai' })).toMatch(/Confirm or ask for another time: https:\/\/x\.np\/visit\/…$/);

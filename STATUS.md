@@ -1,6 +1,6 @@
 # Build status
 
-Updated 2026-09-28 (Phase L7). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
+Updated 2026-09-28 (Phase L8 — Phase L complete). **Current build order: [`docs/ADMIN-PLAN.md`](docs/ADMIN-PLAN.md)** (one prompt per phase in
 `docs/prompts/`). `docs/PLAN.md` is the historical v1 blueprint; the phase numbers 0–11 below are its v1 phases.
 
 ## Done
@@ -40,6 +40,7 @@ Updated 2026-09-28 (Phase L7). **Current build order: [`docs/ADMIN-PLAN.md`](doc
 | **v2 · I Finance & aftercare** | **The accountant's and the aftercare desk's screens:** invoices with status tabs (server counts), AD + BS dates and the server's balance; invoice from a completed job (its quotation, or its actuals — never both), manual invoices, a DRAFT-only edit (`INVOICE_LOCKED` once sent), send with the public link, payments recorded and voided (struck through), print; payments search with totals by method; expenses as a registry resource with the bill photo uploaded by the accountant (`/admin/expenses/bill`); finance reports — aging by Kathmandu days with drill-down, revenue by month / service / technician where taxable + VAT = invoiced to the paisa, collections, customer statements — and the sales, operations and job-margin reports, **every one downloadable as CSV** (`?format=csv`, audited, capped). **Aftercare** on capabilities (same access): warranties with void-with-reason and their certificate link, the claims queue (open first; one accept makes one free job, even pressed twice), AMC contracts with the visit schedule previewed before saving and renewals due, service reminders (pending-only edits; `failed` when the provider refuses). Verified: API 762, unit 238, web 1,052, e2e 7/7 including the finance and aftercare walk-throughs. | ✅ 2026-09-28 |
 | **v2 · L6 Won → hand-off** | **Accept hands over everything the work needs, in one transaction:** the lead WON, the job typed from the service (`Service.jobType`) with planned days from the estimate, the accepted BOQ as **job lines**, the take-off as **requirements** (material packs, labour days by trade — no rates), and — when the schedule has an ON_ACCEPT stage — the **ADVANCE invoice**, its total the stage's to the paisa; a double tap makes one job and one invoice. The customer is asked for the advance (`advance_due`, en/ne, with where to pay) and sees it on the quotation page. **The advance gate:** schedule, assign, start and complete are 422 `ADVANCE_UNPAID` until it is paid; a manager may override with a reason (audited, dispatcher 403); paying it tells the dispatchers. The job page's advance card and **Plan tab** (BOQ by section, materials vs stock, crew calculator, readiness), an "Awaiting advance" chip on the board and queue, schedules defaulting to the planned days, invoice kinds; a staff convert is the same hand-off. A job billed in stages closes with a FINAL invoice less the advance (advance + final = the quotation to the paisa). Verified: API 776, unit 242, web 1,100, e2e 7/7 including the gate walk-through. | ✅ 2026-09-28 |
 | **v2 · L7 Execution** | **The weeks on site:** the foreman's **site diary** from a phone, offline (`diary_save`, one entry per job per Kathmandu day, a full replace — weather, headcount per trade, progress per BOQ line, deliveries with the challan, lost hours and why, photos; no money); the latest day sets each line's progress. The job page's **BOQ & progress** (earned value for quotation and invoice readers; the next milestone bill prompted), **Materials / Labour** planned vs issued vs logged (a rain half-day counts half), the **Site diary** days and **Variations**. **OVER_PLAN** warnings on issuing material (office and field), never a refusal. **Purchase lists** from the shortfall — DRAFT → ORDERED → RECEIVED (stock rises, with the supplier) or CANCELLED. **Variation orders** (VO-…): the same builder, approval and customer link; omissions as negative rows; accepting one adds VARIATION lines and requirements to the job — no new job, no lead change. Verified: API 793, unit 246, web 1,164, e2e 7/7 including a diary filed at 360 px and its progress on the job. | ✅ 2026-09-28 |
+| **v2 · L8 Close-out & final bill** | **The money loop closes:** RUNNING bills per MILESTONE stage from the job (a stage billed once — 409 `STAGE_BILLED`; voiding frees it); the **final measurement** from the office or the field at 360 px (quantities only; closed and reopened until the final); the **FINAL bill by contract type** — LUMP_SUM: the contract ± variations (provisional lines as measured); ITEM_RATE: measured × rate + variations, discounts pro rata — less every stage bill as DEDUCTION lines with the VAT left over, previewed before it is raised, refused below what was billed (`FINAL_BELOW_BILLED`) or before the measurement is complete (`MEASUREMENT_INCOMPLETE`). **Advance + running + final = the contract to the paisa**, and costing's invoiced = the contract's taxable value (net of discount, voids out). Quoted-vs-actual costing; the **handover dialog** (snags as tasks, the warranty link, **Offer AMC** → a lead for sales). Seeded lump-sum and item-rate jobs billed end to end. Verified: API 801, unit 248, web 1,198, e2e 7/7 — boq-flow runs lead → visit → BOQ → approve → accept → advance → schedule → diary → running bill → handover → final bill and asserts the paisa. **Phase L complete.** | ✅ 2026-09-28 |
 
 **The whole backend is built and verified.** The frontend has its foundation, the public site,
 auth, dashboard, SLA board, the whole lead pipeline (list, board, detail, convert) and customers with their sites, the
@@ -125,7 +126,7 @@ settings, served through `GET /public/bootstrap` and enforced again in the API.
 ## Next
 
 The build order is **`docs/ADMIN-PLAN.md` §5**, one prompt per phase in `docs/prompts/`.
-Phases A–I (C1 + C2, D1 + D2, F1 + F2, H1 + H2), G and **L0–L7** are done — the business flow runs end to end
+Phases A–I (C1 + C2, D1 + D2, F1 + F2, H1 + H2), G and **L0–L8** are done — **Phase L is complete** — the business flow runs end to end
 from the UI, an ADMIN can trace any record, a dispatcher runs the day from the board, and every open lead carries a next
 action, every rate can be built from a recipe, and a quotation is a bill of quantities the customer reads as a proper
 document, and a technician can finish a job on a phone, partly offline; the customer confirms the site visit from an
@@ -133,9 +134,13 @@ SMS link and the surveyor's checklist, measurements and photos arrive in the BOQ
 voids payments and reads aging, revenue and collections with CSV, and the aftercare desk runs claims, AMC contracts
 and reminders; an accepted quotation becomes a job with its BOQ, its material and labour needs and an advance it
 waits for; on site the foreman's diary drives progress, the office reads planned against actual, buys from the
-shortfall and prices variations through the same approval. Next is **Phase L8 — close-out & final bill**
-(`docs/prompts/PHASE-L8-closeout-final-bill.md`: running bills per stage, final measurement, the FINAL invoice for lump
-sum and item rate, handover), then J and K.
+shortfall and prices variations through the same approval; and the job closes with running bills, a final
+measurement and a final bill by contract type that reconciles to the paisa. Next is **Phase J1 — the Nepali UI**
+(`docs/prompts/PHASE-J1-i18n.md`), then J2 (reliability and PDFs), J3 (security and deploy) and, after launch, K.
+
+Left from L8 for later phases: the field's final measurement saves online (not yet a `/tech/sync` kind); credit notes
+(a final below what was billed is refused) and retention money stay deferred, as planned; the overdue-invoice reminder
+cadence (J2).
 
 Left from L7 for later phases: the diary's labour is per trade and technicians' timers are shown beside it, not per
 trade (they carry none); a diary delivery is recorded, not stocked; the Nepali diary words await J1's review.

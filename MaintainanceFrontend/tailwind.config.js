@@ -6,9 +6,11 @@ export default {
     container: { center: true, padding: '1.5rem', screens: { '2xl': '1360px' } },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        // Devanagari needs its own stack or Nepali copy renders in a fallback face.
-        deva: ['"Noto Sans Devanagari"', 'Mangal', 'sans-serif'],
+        // Inter has no Devanagari, so a Nepali letter falls through to the next face that has one: Noto Sans Devanagari
+        // once `LocaleProvider` has loaded it (J1.7), else the phone's own (Android ships Noto; iOS Kohinoor; Windows
+        // Nirmala UI). Latin letters in a Nepali sentence stay Inter.
+        sans: ['Inter', '"Noto Sans Devanagari"', '"Kohinoor Devanagari"', '"Nirmala UI"', 'Mangal', 'system-ui', 'sans-serif'],
+        deva: ['"Noto Sans Devanagari"', '"Kohinoor Devanagari"', '"Nirmala UI"', 'Mangal', 'sans-serif'],
       },
       colors: {
         border: 'hsl(var(--border))',

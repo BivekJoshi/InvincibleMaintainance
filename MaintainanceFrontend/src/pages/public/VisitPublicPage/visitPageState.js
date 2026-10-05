@@ -34,24 +34,35 @@ export function visitPageState(visit, { closed = false } = {}) {
   return { kind: 'open', canAnswer };
 }
 
+/** The catalogue's names for `Date#getUTCDay()` and for a month number − 1 (`DOCUMENTS.visit.weekdays` / `.months`). */
+export const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+export const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
 /**
  * The visit's window as the customer reads it, in Kathmandu time, in the page's words: a day
- * ("Friday, 2 October 2026" / "शुक्रबार, 2 अक्टोबर 2026") and the hours ("10:00–12:00"). Digits stay Latin.
- * Null when there is no start.
+ * ("Friday, 2 October 2026" / "शुक्रबार, 2 अक्टोबर 2026") and the hours ("10:00–12:00"). Digits stay Latin — the day
+ * and the year go in as strings, so a year is never grouped ("2,026"). Null when there is no start.
  *
  * @param {{ start?: string|null, end?: string|null }|null|undefined} window
- * @param {object} copy the page's words (`visitCopy(locale)`)
+ * @param {ReturnType<typeof import('@/helpers/i18n').createT>} t a translator over `DOCUMENTS` in the page's language
  * @returns {{ day: string, time: string }|null}
  */
-export function visitWhen(window, copy) {
+export function visitWhen(window, t) {
   const start = toKathmanduParts(window?.start);
   if (!start.date) return null;
   const end = toKathmanduParts(window?.end);
   const [year, month, day] = start.date.split('-').map(Number);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   return {
-    day: copy.day({ weekday: copy.weekdays[weekday], day, month: copy.months[month - 1], year }),
-    time: end.time ? copy.time.range(start.time, end.time) : copy.time.from(start.time),
+    day: t('visit.day', {
+      weekday: t(`visit.weekdays.${WEEKDAY_KEYS[weekday]}`),
+      day: String(day),
+      month: t(`visit.months.${MONTH_KEYS[month - 1]}`),
+      year: String(year),
+    }),
+    time: end.time
+      ? t('visit.time.range', { from: start.time, to: end.time })
+      : t('visit.time.from', { from: start.time }),
   };
 }
 

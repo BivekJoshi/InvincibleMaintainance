@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import {
   useEstimateMutation, useGetAvailabilityQuery, useGetBootstrapQuery,
   useGetPublicServicesQuery, useSubmitLeadMutation,
 } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
 import { useZodForm, bookingDetailsSchema, bookingDetailsDefaults } from '@/form/formKit';
+import { SITE } from '@/config/i18n/site';
+import { useApiErrorText, useLocale, useT } from '@/hooks/useT';
 import { Button } from '@/components/ui/button';
 import { AnimatePresence, EASE, motion } from '@/three/motion/motionKit';
 import { BookingConfirmation } from './BookingConfirmation';
@@ -19,7 +19,8 @@ import { StepService } from './steps/StepService';
 import { StepSize } from './steps/StepSize';
 import { StepWhen } from './steps/StepWhen';
 
-const STEPS = ['Service', 'Size', 'Time', 'Details'];
+/** The four steps, in order — each worded as `booking.steps.<key>`. */
+const STEPS = ['service', 'size', 'time', 'details'];
 
 /** What the API is asked for when `/public/bootstrap` has not answered yet. */
 const DEFAULT_BOOKING = { slots: [], closedWeekdays: [6], maxDaysAhead: 30 };
@@ -35,9 +36,15 @@ const DEFAULT_BOOKING = { slots: [], closedWeekdays: [6], maxDaysAhead: 30 };
  * on screen, and the one submit at the end. Each step is its own file under
  * `./steps/` and receives only what it renders, which is what lets a step be
  * read, or changed, without the other three in view.
+ *
+ * Phase J1: the wizard speaks the visitor's language (`config/i18n/site.js`), its zod errors too (`useZodForm`), and
+ * the lead it sends carries that language as `preferredLocale`, so the call-back SMS and the quotation follow it.
  */
 export function BookingWizard({ slug }) {
-  const locale = useSelector(selectLocale);
+  // The visitor's language: the words on screen, the catalogue's content, and the lead's `preferredLocale`.
+  const locale = useLocale();
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
   const navigate = useNavigate();
   const { data: boot } = useGetBootstrapQuery(locale);
   const { data: catalogue, isLoading } = useGetPublicServicesQuery({ locale });
@@ -90,7 +97,7 @@ export function BookingWizard({ slug }) {
     if (match) setServiceId(match.id);
   }, [slug, services, serviceId]);
 
-  const days = useMemo(() => buildDays(booking), [booking]);
+  const days = useMemo(() => buildDays(booking, { locale }), [booking, locale]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -131,7 +138,7 @@ export function BookingWizard({ slug }) {
       }).unwrap();
       setDone({ date, slot, service });
     } catch (err) {
-      setServerError(err?.data?.error?.message ?? 'We could not save that. Please call us instead.');
+      setServerError(errorText(err));
     }
   };
 
@@ -143,7 +150,7 @@ export function BookingWizard({ slug }) {
     <div ref={topRef} className="grid gap-8 lg:grid-cols-[1fr_340px] lg:items-start">
       {/* min-w-0: the day strip scrolls sideways inside this column; without it, it widened the page on a phone. */}
       <div className="min-w-0">
-        <BookingStepper steps={STEPS} step={step} onStep={setStep} />
+        <BookingStepper steps={STEPS.map((key) => t(`booking.steps.${key}`))} step={step} onStep={setStep} />
 
         <AnimatePresence mode="wait">
           <motion.div
@@ -199,17 +206,17 @@ export function BookingWizard({ slug }) {
             onClick={() => setStep((s) => Math.max(s - 1, 0))}
             disabled={step === 0}
           >
-            <ArrowLeft className="h-4 w-4" /> Back
+            <ArrowLeft className="h-4 w-4" /> {t('booking.back')}
           </Button>
 
           {step < STEPS.length - 1 ? (
-            <Button type="button" onClick={next} disabled={!canNext} loading={estimating}>
-              Continue <ArrowRight className="h-4 w-4" />
+            <Button type="button" onClick={next} disabled={!canNext} loading={estimating} className="h-auto min-h-9 whitespace-normal py-2 text-center">
+              {t('booking.next')} <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
             // Outside the form, so it sits beside "Back" — see StepDetails.
-            <Button type="submit" form="booking-details" loading={submitting}>
-              Confirm booking <Check className="h-4 w-4" />
+            <Button type="submit" form="booking-details" loading={submitting} className="h-auto min-h-9 whitespace-normal py-2 text-center">
+              {t('booking.confirm')} <Check className="h-4 w-4" />
             </Button>
           )}
         </div>

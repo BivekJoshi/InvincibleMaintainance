@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CustomerMatchChoice } from '@/components/leads/CustomerMatchChoice';
+import { DayInput } from '@/components/common/DayInput';
 import { visitBookedSms } from '@/components/leads/visitBookedCopy';
 import { applyServerErrors } from '@/components/common/ResourceForm/serverErrors';
 import { LANDMARK_PLACEHOLDER, SITE_CONTACT_HINT } from '@/config/admin/crmForms';
@@ -18,7 +19,8 @@ import { normalisePhone } from '@/config/locale';
 import { nepaliPhone } from '@/form/schemas/fields';
 import { visitBookingBody, visitBookingSchema, visitWindowIssue } from '@/form/schemas/lead.schema';
 import { useZodForm } from '@/form/useZodForm';
-import { fromKathmanduParts } from '@/helpers/format';
+import { displayCalendar } from '@/helpers/displayCalendar';
+import { formatDate, fromKathmanduParts } from '@/helpers/format';
 import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { cn } from '@/helpers/utils';
 
@@ -187,7 +189,7 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
           {lead.preferredAt ? (
             <p className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
               <CalendarCheck className="h-4 w-4 text-primary" aria-hidden />
-              The customer asked for {new Date(lead.preferredAt).toLocaleDateString('en-GB', { timeZone: 'Asia/Kathmandu', day: '2-digit', month: 'short' })}
+              The customer asked for {formatDate(lead.preferredAt, { year: undefined })}
               {lead.preferredSlot ? `, ${lead.preferredSlot}` : ''}.
             </p>
           ) : null}
@@ -195,10 +197,19 @@ export function ScheduleVisitDialog({ lead, open, onOpenChange, onScheduled }) {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="visit-date">Date</Label>
-              <Input
-                id="visit-date" type="date" min={dayKey(new Date())} {...register('date')}
-                aria-invalid={errors.date ? true : undefined} aria-describedby={errors.date ? 'visit-date-error' : undefined}
-              />
+              {/* The Nepali calendar's picker while the account menu says so; the browser's own date box otherwise. */}
+              {displayCalendar() === 'bs' ? (
+                <DayInput
+                  id="visit-date" value={values.date} min={dayKey(new Date())}
+                  onChange={(day) => setValue('date', day, { shouldDirty: true, shouldValidate: Boolean(errors.date) })}
+                  aria-invalid={errors.date ? true : undefined} aria-describedby={errors.date ? 'visit-date-error' : undefined}
+                />
+              ) : (
+                <Input
+                  id="visit-date" type="date" min={dayKey(new Date())} {...register('date')}
+                  aria-invalid={errors.date ? true : undefined} aria-describedby={errors.date ? 'visit-date-error' : undefined}
+                />
+              )}
               <FieldMessage id="visit-date-error" message={errors.date?.message} />
             </div>
             <div className="space-y-1.5">

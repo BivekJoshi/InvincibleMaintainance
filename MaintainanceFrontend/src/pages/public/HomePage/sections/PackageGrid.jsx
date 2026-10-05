@@ -9,17 +9,21 @@ import { SectionShell } from '@/components/site/SectionShell';
 import { Stagger, StaggerOnView, cardRise } from '@/three/motion/motionKit';
 import { formatNpr } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 export function PackageGrid({ section, tone }) {
+  const t = useT(SITE);
+  const { locale } = t;
   const plans = Array.isArray(section.data) ? section.data : [];
   if (!plans.length) return null;
   return (
     <SectionShell tone={tone}>
       <SectionHeading
-        eyebrow="Packages"
-        title="Fixed-scope packages"
-        description="Everything in the list is included at the published rate. The exact figure is confirmed after the free inspection."
-        action={<Button asChild variant="outline"><Link to="/pricing">Full rate card <ArrowRight className="h-4 w-4" /></Link></Button>}
+        eyebrow={t('home.packages.eyebrow')}
+        title={t('home.packages.title')}
+        description={t('home.packages.description')}
+        action={<Button asChild variant="outline"><Link to="/pricing">{t('home.packages.action')} <ArrowRight className="h-4 w-4" /></Link></Button>}
       />
       <StaggerOnView className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.06}>
         {plans.map((plan) => {
@@ -52,11 +56,11 @@ export function PackageGrid({ section, tone }) {
                   {/* A plan with no published price is priced on inspection. */}
                   <p className="flex items-baseline gap-1.5 pt-4">
                     <span className="text-[1.35rem] font-bold leading-none tabular-nums">
-                      {plan.priceMin == null ? 'On inspection' : formatNpr(plan.priceMin, { compact: true })}
+                      {plan.priceMin == null ? t('price.onInspection') : formatNpr(plan.priceMin, { compact: true, locale })}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {plan.priceMin != null && plan.priceMax && plan.priceMax !== plan.priceMin
-                        ? <>{' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false })} </>
+                        ? <>{' – '}{formatNpr(plan.priceMax, { compact: true, symbol: false, locale })} </>
                         : ' '}
                       {plan.unit}
                     </span>
@@ -77,8 +81,8 @@ export function PackageGrid({ section, tone }) {
                 ) : null}
 
                 <CardFooter className="mt-auto p-5 pt-6">
-                  <Button asChild size="sm" variant={featured ? 'default' : 'outline'} className="w-full">
-                    <Link to="/book">Book this package</Link>
+                  <Button asChild size="sm" variant={featured ? 'default' : 'outline'} className="h-auto min-h-8 w-full whitespace-normal py-1.5 text-center">
+                    <Link to="/book">{t('home.packages.book')}</Link>
                   </Button>
                 </CardFooter>
               </Card>

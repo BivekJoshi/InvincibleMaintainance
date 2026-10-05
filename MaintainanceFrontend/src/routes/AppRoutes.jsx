@@ -13,7 +13,7 @@ import {
   InvoicesPage, InvoiceDetailPage, InvoicePrintPage, PaymentsPage, FinanceReportsPage, ReportsPage,
   WarrantiesPage, WarrantyDetailPage, WarrantyClaimsPage, AmcContractsPage, AmcContractDetailPage, ServiceRemindersPage,
   UsersPage, RolesPage, AuditLogPage, LoginActivityPage, MessageLogsPage, MessageTemplatesPage, MessageTemplateEditPage,
-  TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, TechHistoryPage, SiteDiaryPage, NotFoundPage,
+  TechTodayPage, SurveyListPage, SurveyFormPage, TechJobPage, TechHistoryPage, SiteDiaryPage, JobMeasurePage, NotFoundPage,
 } from './routeModules';
 import { AdminHome, ContentHome } from './AdminLanding';
 import { SiteLayout } from '@/components/layout/SiteLayout';
@@ -208,6 +208,8 @@ export function AppRoutes() {
             {/* The site diary (Phase L7): the days, and one Kathmandu day */}
             <Route path="/tech/jobs/:id/diary" element={<SiteDiaryPage />} />
             <Route path="/tech/jobs/:id/diary/:day" element={<SiteDiaryPage />} />
+            {/* The final measurement (Phase L8): the lines, and one line's sheet (?line=) */}
+            <Route path="/tech/jobs/:id/measure" element={<JobMeasurePage />} />
             <Route path="/tech/history" element={<TechHistoryPage />} />
             <Route path="/tech/history/:id" element={<TechJobPage readOnly />} />
             <Route path="/tech/surveys" element={<SurveyListPage />} />

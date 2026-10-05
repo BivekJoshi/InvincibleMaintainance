@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/helpers/utils';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
 
 /** "3/5", "2" or nothing — a step's own count. */
-function countText(count, words) {
-  if (Array.isArray(count)) return words.progress.count(count[0], count[1]);
+function countText(count, t) {
+  if (Array.isArray(count)) return t('survey.progress.count', { done: count[0], total: count[1] });
   if (typeof count === 'number' && count > 0) return String(count);
   return null;
 }
@@ -15,9 +17,10 @@ function countText(count, words) {
  * Any step can be opened; the order is only a suggestion.
  *
  * @param {{ steps: string[], current: string, progress: Record<string, { done: boolean, count?: any, alert?: boolean }>,
- *   onPick: (step: string) => void, words: object }} props  `words` is `fieldCopy().survey`
+ *   onPick: (step: string) => void }} props
  */
-export function StepBar({ steps, current, progress, onPick, words }) {
+export function StepBar({ steps, current, progress, onPick }) {
+  const t = useT(FIELD);
   const active = useRef(null);
 
   useEffect(() => {
@@ -25,12 +28,12 @@ export function StepBar({ steps, current, progress, onPick, words }) {
   }, [current]);
 
   return (
-    <nav aria-label={words.stepsLabel} className="-mx-4 mb-4 overflow-x-auto px-4 pb-1">
+    <nav aria-label={t('survey.stepsLabel')} className="-mx-4 mb-4 overflow-x-auto px-4 pb-1">
       <ol className="flex w-max gap-2">
         {steps.map((step, i) => {
           const state = progress[step] ?? {};
           const isCurrent = step === current;
-          const count = countText(state.count, words);
+          const count = countText(state.count, t);
           return (
             <li key={step}>
               <button
@@ -55,9 +58,9 @@ export function StepBar({ steps, current, progress, onPick, words }) {
                 >
                   {state.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
                 </span>
-                <span className="whitespace-nowrap">{words.steps[step]}</span>
+                <span className="whitespace-nowrap">{t(`survey.steps.${step}`)}</span>
                 {count ? <span className={cn('text-xs tabular-nums', isCurrent ? '' : 'text-muted-foreground')}>{count}</span> : null}
-                {state.done ? <span className="sr-only">— {words.progress.done}</span> : null}
+                {state.done ? <span className="sr-only">— {t('survey.progress.done')}</span> : null}
               </button>
             </li>
           );

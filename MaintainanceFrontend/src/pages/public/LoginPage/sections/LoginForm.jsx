@@ -4,6 +4,8 @@ import { AnimatePresence, EASE, Magnetic, motion, useReducedMotion } from '@/thr
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { LoginField } from './LoginField';
 
 /**
@@ -15,6 +17,7 @@ import { LoginField } from './LoginField';
  * lit edge rather than as an outline.
  */
 export function LoginForm({ flow, variants }) {
+  const t = useT(SITE);
   const reduced = useReducedMotion();
   const [showPassword, setShowPassword] = useState(false);
 
@@ -39,15 +42,13 @@ export function LoginForm({ flow, variants }) {
         <CardContent className="p-7 sm:p-8">
           <p className="eyebrow flex items-center gap-2 text-gold">
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-            Staff access
+            {t('login.eyebrow')}
           </p>
-          <h1 className="mt-3 text-[2rem] font-semibold tracking-tight">Sign in</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Use the account issued to you. Sessions end automatically after 30 days.
-          </p>
+          <h1 className="mt-3 text-[2rem] font-semibold tracking-tight">{t('login.title')}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t('login.intro', { days: 30 })}</p>
 
           <form onSubmit={onSubmit} className="mt-7 space-y-5" noValidate>
-            <LoginField id="email" label="Email" icon={Mail} error={errors.email?.message} active={focused === 'email'}>
+            <LoginField id="email" label={t('login.email')} icon={Mail} error={errors.email?.message} active={focused === 'email'}>
               <Input
                 id="email"
                 type="email"
@@ -62,13 +63,13 @@ export function LoginForm({ flow, variants }) {
               />
             </LoginField>
 
-            <LoginField id="password" label="Password" icon={Lock} error={errors.password?.message} active={focused === 'password'}>
+            <LoginField id="password" label={t('login.password')} icon={Lock} error={errors.password?.message} active={focused === 'password'}>
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 placeholder="••••••••"
-                className="h-11 bg-background/60 pl-10 pr-16"
+                className="h-11 bg-background/60 pl-10 pr-20"
                 aria-invalid={Boolean(errors.password)}
                 aria-describedby={errors.password ? 'password-error' : undefined}
                 {...register('password', {
@@ -82,10 +83,10 @@ export function LoginForm({ flow, variants }) {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-pressed={showPassword}
+                aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {showPassword ? 'Hide' : 'Show'}
-                <span className="sr-only"> password</span>
+                {showPassword ? t('login.hide') : t('login.show')}
               </button>
             </LoginField>
 
@@ -97,7 +98,7 @@ export function LoginForm({ flow, variants }) {
                   exit={{ opacity: 0, height: 0 }}
                   className="overflow-hidden text-xs text-warning"
                 >
-                  Caps Lock is on.
+                  {t('login.capsLock')}
                 </motion.p>
               ) : null}
             </AnimatePresence>
@@ -137,7 +138,7 @@ export function LoginForm({ flow, variants }) {
                 ))}
               </div>
               <span className="text-[10px] font-medium uppercase tracking-[0.14em] tabular-nums text-muted-foreground">
-                {ready.filter(Boolean).length}/2 ready
+                {t('login.ready', { done: ready.filter(Boolean).length, total: ready.length })}
               </span>
             </div>
 
@@ -156,7 +157,7 @@ export function LoginForm({ flow, variants }) {
                   className="pointer-events-none absolute inset-y-0 -left-full w-1/2 skew-x-[-20deg] bg-gold/25 transition-[left] duration-700 ease-out group-hover:left-[150%]"
                 />
                 <span className="relative flex items-center gap-2">
-                  {isSuccess ? 'Signed in' : 'Sign in'}
+                  {isSuccess ? t('login.signedIn') : t('login.submit')}
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </span>
               </Button>

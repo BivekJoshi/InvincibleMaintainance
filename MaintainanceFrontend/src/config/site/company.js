@@ -5,10 +5,12 @@
  * header renders before it lands and would otherwise flash an empty phone
  * number and a nameless logo. These are the values seeded in the database —
  * change them there, and change them here in the same commit.
+ *
+ * Only data lives here: the tagline's fallback is words, so it is `footer.tagline` in `config/i18n/site.js`
+ * (Phase J1), in the visitor's language — `useSiteSettings` hands back `''` until the setting has one.
  */
 export const COMPANY_FALLBACKS = {
   name: 'Ghar Jatan',
-  tagline: 'Certified engineers. Transparent pricing. Two-hour response.',
   phone: '01-5407720',
   mobile: '9808338255',
   email: '',

@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { notFound } from '../utils/AppError.js';
 import { lineAmount, outstanding, sum } from '../utils/money.js';
+import { invoicedFor } from './job.service.js';
 import { addDays, dayjs, kathmanduDayRange, local, startOfDay } from '../utils/dates.js';
 
 /**
@@ -281,7 +282,7 @@ export async function jobMarginReport(query = {}) {
       materials: { include: { material: { select: { purchaseRate: true } } } },
       timeLogs: { include: { technician: { select: { hourlyRate: true } } } },
       expenses: true,
-      invoiceItems: true,
+      invoiceItems: { include: { invoice: { select: { id: true, status: true, subtotal: true, discount: true, deletedAt: true } } } },
     },
   });
 
@@ -289,7 +290,8 @@ export async function jobMarginReport(query = {}) {
     const materialCost = sum(j.materials.map((m) => lineAmount(m.qty, m.material.purchaseRate || m.rate)));
     const labourCost = sum(j.timeLogs.map((t) => lineAmount((t.minutes ?? 0) / 60, t.technician.hourlyRate ?? 0)));
     const expenseCost = sum(j.expenses.map((e) => e.amount));
-    const invoiced = sum(j.invoiceItems.map((i) => i.amount));
+    // Net of each invoice's discount, void invoices left out, deductions negative (Phase L8).
+    const invoiced = invoicedFor(j.invoiceItems);
     const cost = materialCost + labourCost + expenseCost;
     return {
       jobId: j.id, number: j.number, title: j.title, type: j.type,

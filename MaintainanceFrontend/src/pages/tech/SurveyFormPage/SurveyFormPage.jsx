@@ -3,18 +3,21 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch, useSelector, useStore } from 'react-redux';
 import { ArrowLeft, ArrowRight, CloudUpload, Loader2, Send } from 'lucide-react';
 import { useGetMySurveyQuery, useGetTechMaterialsQuery, useGetTechRateCardQuery } from '@/api/techApi';
-import { ErrorState } from '@/components/common/ErrorState';
+import { FieldErrorState } from '@/components/tech/FieldErrorState';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { PageTransition } from '@/three/motion/motionKit';
 import { useFieldQueue } from '@/hooks/useOfflineQueue';
-import { useFieldCopy } from '@/hooks/useFieldCopy';
+import { useT } from '@/hooks/useT';
+import { FIELD } from '@/config/i18n/field';
+import { COMMON } from '@/config/i18n/common';
 import { missingAnswers, questionLabel } from '@/helpers/inspection';
+import { refusalReason } from '@/helpers/fieldJob';
 import { mediaIdForUpload } from '@/helpers/sentPhotos';
 import { pending } from '@/helpers/offlineQueue';
 import { fieldNoteDismissed, selectFieldSync } from '@/redux/slices/fieldSyncSlice';
-import { selectLocale, toastError, toastSuccess } from '@/redux/slices/uiSlice';
+import { toastError, toastSuccess } from '@/redux/slices/uiSlice';
 import { StepBar } from './sections/StepBar';
 import { IncompletePanel } from './sections/IncompletePanel';
 import { BeforeYouGoStep } from './steps/BeforeYouGoStep';
@@ -53,9 +56,9 @@ export default function SurveyFormPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const store = useStore();
-  const copy = useFieldCopy();
-  const words = copy.survey;
-  const locale = useSelector(selectLocale);
+  const t = useT(FIELD);
+  const { locale } = t;
+  const common = useT(COMMON);
   const [params, setParams] = useSearchParams();
   const step = SURVEY_STEPS.includes(params.get('step')) ? params.get('step') : SURVEY_STEPS[0];
   const lineKey = params.get('line');
@@ -183,7 +186,7 @@ export default function SurveyFormPage() {
     [form, survey, visited, surveyPhotos],
   );
 
-  if (error) return <PageTransition><ErrorState error={error} onRetry={refetch} /></PageTransition>;
+  if (error) return <PageTransition><FieldErrorState error={error} onRetry={refetch} /></PageTransition>;
   if (isLoading || !form) return <PageTransition><CardSkeleton /></PageTransition>;
 
   const submitWaiting = mutations.some((m) => m.kind === 'survey_submit' && m.surveyId === id);
@@ -229,7 +232,7 @@ export default function SurveyFormPage() {
       await saveNow();
       const key = await queueMutation({ kind: 'survey_submit', surveyId: id, payload: {} });
       if (!navigator.onLine) {
-        dispatch(toastSuccess(words.queued, words.queuedBody));
+        dispatch(toastSuccess(t('survey.queued'), t('survey.queuedBody')));
         navigate('/tech/surveys');
         return;
       }
@@ -242,14 +245,14 @@ export default function SurveyFormPage() {
           setIncomplete({ office: true, items: refused.details?.length ? refused.details : missing });
           goTo('checklist');
         } else {
-          dispatch(toastError(refused.message ?? copy.sync.refusedTitle));
+          dispatch(toastError(refusalReason(refused, t, common) ?? t('sync.refusedTitle')));
         }
         return;
       }
       if (state.mutations.some((m) => m.idempotencyKey === key)) {
-        dispatch(toastSuccess(words.queued, words.queuedBody));
+        dispatch(toastSuccess(t('survey.queued'), t('survey.queuedBody')));
       } else {
-        dispatch(toastSuccess(words.submitted, words.submittedBody));
+        dispatch(toastSuccess(t('survey.submitted'), t('survey.submittedBody')));
       }
       navigate('/tech/surveys');
     } finally {
@@ -268,47 +271,47 @@ export default function SurveyFormPage() {
   return (
     <PageTransition>
       <div id="survey-top" className="mb-3 flex scroll-mt-20 items-start gap-3">
-        <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => { saveNow(); navigate('/tech/surveys'); }} aria-label={words.back}>
+        <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => { saveNow(); navigate('/tech/surveys'); }} aria-label={t('survey.back')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs text-muted-foreground">{survey.number}</span>
-            <StatusBadge status={survey.status} />
+            <StatusBadge status={survey.status} label={t.has(`surveyStatus.${survey.status}`) ? t(`surveyStatus.${survey.status}`) : undefined} />
             {draftWaiting ? (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <CloudUpload className="h-3.5 w-3.5" aria-hidden /> {words.saved}
+                <CloudUpload className="h-3.5 w-3.5" aria-hidden /> {t('survey.saved')}
               </span>
             ) : null}
           </div>
           <p className="truncate font-semibold">{survey.customer?.name}</p>
-          <p className="truncate text-xs text-muted-foreground">{survey.service?.name ?? words.list.general}</p>
+          <p className="truncate text-xs text-muted-foreground">{survey.service?.name ?? t('survey.list.general')}</p>
         </div>
       </div>
 
       {survey.returnedReason && editable ? (
         <p className="mb-3 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {words.returned(survey.returnedReason)}
+          {t('survey.returned', { reason: survey.returnedReason })}
         </p>
       ) : null}
       {submitWaiting ? (
-        <p className="surface-warning mb-3 rounded-md border px-3 py-2 text-sm">{words.submitWaiting}</p>
+        <p className="surface-warning mb-3 rounded-md border px-3 py-2 text-sm">{t('survey.submitWaiting')}</p>
       ) : !EDITABLE_STATUSES.includes(survey.status) ? (
-        <p className="mb-3 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{words.locked}</p>
+        <p className="mb-3 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{t('survey.locked')}</p>
       ) : null}
 
-      <StepBar steps={SURVEY_STEPS} current={step} progress={steps} onPick={(s) => goTo(s)} words={words} />
+      <StepBar steps={SURVEY_STEPS} current={step} progress={steps} onPick={(s) => goTo(s)} />
 
-      <p className="text-xs text-muted-foreground">{words.stepOf(index + 1, SURVEY_STEPS.length)}</p>
-      <h1 className="mb-3 text-lg font-semibold">{words.steps[step]}</h1>
+      <p className="text-xs text-muted-foreground">{t('survey.stepOf', { n: index + 1, total: SURVEY_STEPS.length })}</p>
+      <h1 className="mb-3 text-lg font-semibold">{t(`survey.steps.${step}`)}</h1>
 
       {step === 'checklist' ? (
-        <IncompletePanel items={panelItems} office={Boolean(incomplete?.office)} labelOf={labelOf} words={words} />
+        <IncompletePanel items={panelItems} office={Boolean(incomplete?.office)} labelOf={labelOf} />
       ) : null}
 
-      {step === 'before' ? <BeforeYouGoStep survey={survey} words={words} /> : null}
+      {step === 'before' ? <BeforeYouGoStep survey={survey} /> : null}
       {step === 'arrived' ? (
-        <ArrivedStep site={survey.site} pin={form.sitePin} onPin={(pin) => change({ sitePin: pin })} readOnly={readOnly} words={words} />
+        <ArrivedStep site={survey.site} pin={form.sitePin} onPin={(pin) => change({ sitePin: pin })} readOnly={readOnly} />
       ) : null}
       {step === 'checklist' ? (
         <ChecklistStep
@@ -318,8 +321,6 @@ export default function SurveyFormPage() {
           onReadings={(readings) => change({ readings })}
           missing={missingMap}
           readOnly={readOnly}
-          locale={locale}
-          words={words}
         />
       ) : null}
       {step === 'measure' ? (
@@ -330,11 +331,10 @@ export default function SurveyFormPage() {
           onItems={(items) => change({ items })}
           serverQty={serverQty}
           readOnly={readOnly}
-          words={words}
         />
       ) : null}
-      {step === 'photos' ? <PhotosStep survey={survey} areas={areasOf(form)} readOnly={readOnly} copy={copy} /> : null}
-      {step === 'findings' ? <FindingsStep form={form} onChange={change} readOnly={readOnly} words={words} /> : null}
+      {step === 'photos' ? <PhotosStep survey={survey} areas={areasOf(form)} readOnly={readOnly} /> : null}
+      {step === 'findings' ? <FindingsStep form={form} onChange={change} readOnly={readOnly} /> : null}
       {step === 'lines' ? (
         <LinesStep
           items={form.items}
@@ -344,7 +344,6 @@ export default function SurveyFormPage() {
           materials={materials ?? []}
           rateCard={rateCard ?? []}
           readOnly={readOnly}
-          words={words}
         />
       ) : null}
 
@@ -356,17 +355,17 @@ export default function SurveyFormPage() {
           type="button" variant="outline" className="h-12 flex-1"
           onClick={() => goTo(SURVEY_STEPS[index - 1])} disabled={index === 0}
         >
-          <ArrowLeft className="h-4 w-4" /> {words.previous}
+          <ArrowLeft className="h-4 w-4" /> {t('survey.previous')}
         </Button>
         {last ? (
           editable ? (
             <Button type="button" className="h-12 flex-1" onClick={onSubmit} disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {words.submit}
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {t('survey.submit')}
             </Button>
           ) : null
         ) : (
           <Button type="button" className="h-12 flex-1" onClick={() => goTo(SURVEY_STEPS[index + 1])}>
-            {words.next} <ArrowRight className="h-4 w-4" />
+            {t('survey.next')} <ArrowRight className="h-4 w-4" />
           </Button>
         )}
       </div>

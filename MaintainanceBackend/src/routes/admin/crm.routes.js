@@ -8,6 +8,7 @@ import * as leads from '../../services/lead.service.js';
 import * as customers from '../../services/customer.service.js';
 import * as quotations from '../../services/quotation.service.js';
 import { convertLead, customerMatches } from '../../services/convert.service.js';
+import { agenda } from '../../services/agenda.service.js';
 import { historyRoute } from './historyRoute.js';
 import { mountResource } from './mountResource.js';
 import { costWall } from '../../middleware/costWall.js';
@@ -40,6 +41,10 @@ router.get('/leads', readLeads, validate({ query: s.leadListQuery }), asyncHandl
 }));
 
 router.get('/leads/sla-board', readLeads, asyncHandler(async (_req, res) => ok(res, await leads.slaBoard())));
+
+// The SLA board's calendar: each kind past the leads only for a role that reads its records (agenda.service).
+router.get('/agenda', readLeads, validate({ query: s.agendaQuery }),
+  asyncHandler(async (req, res) => ok(res, await agenda(req.validatedQuery, req.user))));
 
 router.get('/leads/export.csv', readLeads, validate({ query: s.leadListQuery }), asyncHandler(async (req, res) => {
   const query = leadQuery(req);

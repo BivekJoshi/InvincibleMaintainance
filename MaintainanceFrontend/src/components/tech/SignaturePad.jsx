@@ -3,6 +3,8 @@ import { Eraser, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { drawStrokes, hasSignature, isSignatureLongEnough } from '@/helpers/signature';
 import { cn } from '@/helpers/utils';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
 
 /**
  * A box the customer signs in with a finger — or a stylus, or a mouse: pointer events cover all three, and
@@ -13,11 +15,13 @@ import { cn } from '@/helpers/utils';
  * next value when a stroke ends, on Undo and on Clear. A stroke in progress is drawn straight onto the
  * canvas, so a signature does not re-render the page for every point.
  *
- * @param {{ value: import('@/helpers/signature').Signature, onChange: (next: object) => void,
- *   words: { label: string, clear: string, undo: string, tooShort: string }, disabled?: boolean, height?: number,
- *   className?: string }} props
+ * Its words are `FIELD.signature`, in the technician's language.
+ *
+ * @param {{ value: import('@/helpers/signature').Signature, onChange: (next: object) => void, disabled?: boolean,
+ *   height?: number, className?: string }} props
  */
-export function SignaturePad({ value, onChange, words, disabled = false, height = 180, className }) {
+export function SignaturePad({ value, onChange, disabled = false, height = 180, className }) {
+  const t = useT(FIELD);
   const canvasRef = useRef(null);
   const stroke = useRef(null);
   const [width, setWidth] = useState(0);
@@ -95,7 +99,7 @@ export function SignaturePad({ value, onChange, words, disabled = false, height 
         <canvas
           ref={canvasRef}
           role="img"
-          aria-label={words.label}
+          aria-label={t('signature.label')}
           className={cn(
             'block w-full touch-none select-none rounded-lg border-2 border-dashed bg-card text-foreground',
             disabled ? 'cursor-not-allowed opacity-60' : 'cursor-crosshair',
@@ -110,25 +114,25 @@ export function SignaturePad({ value, onChange, words, disabled = false, height 
         />
         {empty ? (
           <p className="pointer-events-none absolute inset-x-0 bottom-3 text-center text-sm text-muted-foreground" aria-hidden>
-            {words.label}
+            {t('signature.label')}
           </p>
         ) : null}
       </div>
-      {tooShort ? <p className="text-sm text-destructive" role="alert">{words.tooShort}</p> : null}
+      {tooShort ? <p className="text-sm text-destructive" role="alert">{t('signature.tooShort')}</p> : null}
       <div className="grid grid-cols-2 gap-2">
         <Button
           type="button" variant="outline" size="lg" className="px-3"
           disabled={disabled || empty}
           onClick={() => onChange({ ...value, strokes: value.strokes.slice(0, -1) })}
         >
-          <Undo2 /> {words.undo}
+          <Undo2 /> {t('signature.undo')}
         </Button>
         <Button
           type="button" variant="outline" size="lg" className="px-3"
           disabled={disabled || empty}
           onClick={() => { setLifted(false); onChange({ strokes: [], width: 0, height: 0 }); }}
         >
-          <Eraser /> {words.clear}
+          <Eraser /> {t('signature.clear')}
         </Button>
       </div>
     </div>

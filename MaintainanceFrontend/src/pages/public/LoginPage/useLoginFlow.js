@@ -5,6 +5,8 @@ import { useLoginMutation } from '@/api/authApi';
 import { useAuth } from '@/hooks/useAuth';
 import { useZodForm, loginSchema, loginDefaults } from '@/form/formKit';
 import { FIELD_ROLES } from '@/config/constants';
+import { SITE } from '@/config/i18n/site';
+import { useApiErrorText, useT } from '@/hooks/useT';
 import { DEMO_PASSWORD } from './loginContent';
 
 /** How long the "Access granted" wipe is allowed to hold the redirect. */
@@ -17,8 +19,15 @@ const CONFIRM_MS = 700;
  * The page below it is then only a layout — which is what made it possible to
  * split the stage and the card into files of their own without threading a
  * dozen props through both.
+ *
+ * Phase J1: the error is in the screen's language — a technician may sign in in Nepali. The API refuses a sign-in with
+ * a generic code today (UNAUTHORIZED for a wrong email or password, FORBIDDEN for a locked or switched-off account),
+ * worded here for this screen; `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED` and `ACCOUNT_DISABLED` are worded in
+ * `site.js#errors` for when it names them.
  */
 export function useLoginFlow() {
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
   const [login, { isLoading, isSuccess, error }] = useLoginMutation();
   const { isAuthenticated, isReady, role } = useAuth();
   const navigate = useNavigate();
@@ -42,8 +51,11 @@ export function useLoginFlow() {
 
   // The API answers every failure with one message, so this never reveals
   // whether the address exists.
-  const serverError = error?.data?.error?.message
-    ?? (error ? 'Could not reach the server. Check your connection and try again.' : null);
+  const code = error?.data?.error?.code;
+  const serverError = !error ? null
+    : code === 'UNAUTHORIZED' ? t('errors.INVALID_CREDENTIALS')
+      : code === 'FORBIDDEN' ? t('login.blocked')
+        : errorText(error);
 
   // A new error must restart the shake even when the message is identical, so
   // the animation is keyed on a counter rather than on the text.

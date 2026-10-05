@@ -36,10 +36,11 @@ export function documentTotals(items, { discount = 0, vatApplied = true, vatRate
   return { lines, subtotal, discount: safeDiscount, vatApplied, vatRate, vatAmount, total: taxable + vatAmount };
 }
 
-export function formatNpr(paisa, { withSymbol = true } = {}) {
+export function formatNpr(paisa, { withSymbol = true, locale = 'en' } = {}) {
   const value = toRupees(paisa);
   const s = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
-  return withSymbol ? `Rs. ${s}` : s;
+  // Phase J1: a message in Nepali writes रु. (the digits stay Latin, as every amount the customer reads back is).
+  return withSymbol ? `${locale === 'ne' ? 'रु.' : 'Rs.'} ${s}` : s;
 }
 
 /** Sums a list of paisa amounts safely. */
@@ -235,7 +236,7 @@ export function finalBillTotals(lines, earlierBills, opts = {}) {
 export function finalBillDocument(lines, earlierBills, opts = {}) {
   const { contract, billed, due } = finalBillTotals(lines, earlierBills, opts);
   const deductions = earlierBills.map((b, i) => ({
-    description: b.description, unit: 'lump', qty: 1, rate: -b.taxable, amount: -b.taxable, sortOrder: contract.lines.length + i,
+    kind: 'DEDUCTION', description: b.description, unit: 'lump', qty: 1, rate: -b.taxable, amount: -b.taxable, sortOrder: contract.lines.length + i,
   }));
   return {
     lines: [...contract.lines.map((l, i) => ({ ...l, sortOrder: l.sortOrder ?? i })), ...deductions],

@@ -8,9 +8,10 @@ import { Label } from '@/components/ui/label';
 import { StatusBadge } from '@/components/ui/badge';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
-import { ErrorState } from '@/components/common/ErrorState';
+import { FieldErrorState } from '@/components/tech/FieldErrorState';
 import { PageTransition } from '@/three/motion/motionKit';
-import { useFieldCopy } from '@/hooks/useFieldCopy';
+import { useT } from '@/hooks/useT';
+import { FIELD } from '@/config/i18n/field';
 import { historyQuery, jobsInRange, recentRange } from '@/helpers/fieldJob';
 import { ktmDay } from '@/helpers/dispatchBoard';
 import { formatDate, formatTime } from '@/helpers/format';
@@ -25,8 +26,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
  * job lands on the same list.
  */
 export default function TechHistoryPage() {
-  const copy = useFieldCopy();
-  const words = copy.history;
+  const t = useT(FIELD);
   const [params, setParams] = useSearchParams();
   const today = ktmDay();
   const fallback = recentRange(30, today);
@@ -45,10 +45,10 @@ export default function TechHistoryPage() {
 
   return (
     <PageTransition>
-      <h1 className="text-xl font-bold">{words.title}</h1>
-      <p className="mt-0.5 text-sm text-muted-foreground">{words.subtitle}</p>
+      <h1 className="text-xl font-bold">{t('history.title')}</h1>
+      <p className="mt-0.5 text-sm text-muted-foreground">{t('history.subtitle')}</p>
 
-      <div className="mt-4 grid grid-cols-3 gap-2" role="group" aria-label={words.title}>
+      <div className="mt-4 grid grid-cols-3 gap-2" role="group" aria-label={t('history.title')}>
         {PRESETS.map((days) => (
           <Button
             key={days}
@@ -59,38 +59,38 @@ export default function TechHistoryPage() {
             className="px-2"
             onClick={() => setRange(recentRange(days, today))}
           >
-            {words.presets[days]}
+            {t('history.preset', { count: days })}
           </Button>
         ))}
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <Label htmlFor="history-from">{words.from}</Label>
+          <Label htmlFor="history-from">{t('history.from')}</Label>
           <Input
             id="history-from" type="date" value={from} max={today} className="h-11 text-base"
             onChange={(e) => e.target.value && setRange({ from: e.target.value, to })}
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="history-to">{words.to}</Label>
+          <Label htmlFor="history-to">{t('history.to')}</Label>
           <Input
             id="history-to" type="date" value={to} className="h-11 text-base"
             onChange={(e) => e.target.value && setRange({ from, to: e.target.value })}
           />
         </div>
       </div>
-      {badRange ? <p className="mt-2 text-sm text-destructive" role="alert">{words.badRange}</p> : null}
+      {badRange ? <p className="mt-2 text-sm text-destructive" role="alert">{t('history.badRange')}</p> : null}
 
       {badRange ? null : error && !data ? (
-        <ErrorState error={error} onRetry={refetch} className="mt-4" />
+        <FieldErrorState error={error} onRetry={refetch} className="mt-4" />
       ) : isLoading ? (
         <div className="mt-5"><CardSkeleton /></div>
       ) : !jobs.length ? (
-        <EmptyState icon={History} title={words.emptyTitle} description={words.emptyBody} />
+        <EmptyState icon={History} title={t('history.emptyTitle')} description={t('history.emptyBody')} />
       ) : (
         <>
-          <p className={cn('mt-4 text-xs text-muted-foreground', isFetching ? 'opacity-60' : '')}>{words.count(jobs.length)}</p>
+          <p className={cn('mt-4 text-xs text-muted-foreground', isFetching ? 'opacity-60' : '')}>{t('history.count', { count: jobs.length })}</p>
           {/* No stagger: a quarter's history is a hundred rows, and the last would fade in seconds later. */}
           <ul className="mt-2 space-y-2">
             {jobs.map((job) => (
@@ -103,13 +103,13 @@ export default function TechHistoryPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs text-muted-foreground">{job.number}</span>
-                      <StatusBadge status={job.status} label={copy.status[job.status]} />
+                      <StatusBadge status={job.status} label={t(`status.${job.status}`)} />
                     </div>
                     <p className="mt-1 truncate font-medium">{job.title}</p>
                     {job.customer?.name ? <p className="truncate text-sm text-muted-foreground">{job.customer.name}</p> : null}
                     <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                       <CalendarDays className="h-3.5 w-3.5" aria-hidden />
-                      {formatDate(job.scheduledStart)} · {formatTime(job.scheduledStart)}
+                      {formatDate(job.scheduledStart, { locale: t.locale })} · {formatTime(job.scheduledStart, { locale: t.locale })}
                     </p>
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />

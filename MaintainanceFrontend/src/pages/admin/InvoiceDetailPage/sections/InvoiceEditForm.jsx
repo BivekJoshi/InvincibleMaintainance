@@ -3,11 +3,12 @@ import { useDispatch } from 'react-redux';
 import { Lock } from 'lucide-react';
 import { useUpdateInvoiceMutation } from '@/api/financeApi';
 import { ResourceForm } from '@/components/common/ResourceForm/ResourceForm';
+import { DeductionsTable } from '@/components/documents/DeductionsTable';
 import { LineItemsTable } from '@/components/documents/LineItemsTable';
 import { TotalsList } from '@/components/documents/TotalsList';
 import { INVOICE_HEADER_FIELDS, INVOICE_LINE_FIELDS } from '@/components/finance/invoiceFields';
 import { invoiceEditSchema, invoiceHeaderEditSchema } from '@/form/schemas/finance.schema';
-import { invoiceLinesLocked } from '@/helpers/finance';
+import { invoiceLinesLocked, splitInvoiceItems } from '@/helpers/finance';
 import { formatNpr } from '@/helpers/format';
 import { toastSuccess } from '@/redux/slices/uiSlice';
 
@@ -28,10 +29,12 @@ const WHY_LOCKED = {
 const PLAIN = { INVOICE_LOCKED: INVOICE_LOCKED_MESSAGE, INVOICE_LINES_LOCKED: INVOICE_LINES_LOCKED_MESSAGE };
 
 /**
- * A stage or closing bill's money, read-only above its header form: the lines as the document shows them (a final
- * bill's "Less: advance …" as "− Rs. …"), then subtotal, discount, VAT and total — every figure the server's.
+ * A stage or closing bill's money, read-only above its header form: the lines as the document shows them — a final
+ * bill's deductions in their own block (Phase L8, "Advance INV-…  − Rs. …") — then subtotal, discount, VAT and total,
+ * every figure the server's.
  */
 function LockedLines({ invoice }) {
+  const { items, deductions } = splitInvoiceItems(invoice.items);
   return (
     <section aria-label="Lines, discount and VAT (fixed)" data-testid="locked-lines" className="space-y-3">
       <p className="flex gap-2 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
@@ -41,7 +44,8 @@ function LockedLines({ invoice }) {
           and VAT are fixed. Change the due date, note or terms here; to change the money, void it and invoice the job again.
         </span>
       </p>
-      <LineItemsTable items={invoice.items ?? []} />
+      <LineItemsTable items={items} />
+      <DeductionsTable items={deductions} />
       <TotalsList
         rows={[
           { label: 'Subtotal', value: formatNpr(invoice.subtotal) },

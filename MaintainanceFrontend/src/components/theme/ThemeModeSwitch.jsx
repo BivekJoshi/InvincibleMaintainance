@@ -1,7 +1,8 @@
 import { useId } from 'react';
 import { motion, useReducedMotion } from '@/three/motion/motionKit';
-import { THEME_MODE_LABELS } from '@/config/theme';
+import { COMMON } from '@/config/i18n/common';
 import { useTheme } from '@/hooks/useTheme';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 import { THEME_MODE_ICONS } from './ThemeToggle';
 
@@ -15,8 +16,11 @@ import { THEME_MODE_ICONS } from './ThemeToggle';
  *
  * `aria-pressed` is on each segment rather than `role="radiogroup"`: these are
  * three buttons that act immediately, not a form field awaiting a submit.
+ *
+ * The names are `common.js`'s `theme.*`, in the screen's language (the sign-in and the site's drawer can be Nepali).
  */
 export function ThemeModeSwitch({ className, showLabels = false, size = 'md' }) {
+  const common = useT(COMMON);
   const { mode, modes, setMode } = useTheme();
   const reduced = useReducedMotion();
   const layoutId = `theme-mode-pill-${useId()}`;
@@ -26,7 +30,7 @@ export function ThemeModeSwitch({ className, showLabels = false, size = 'md' }) 
   return (
     <div
       role="group"
-      aria-label="Colour theme"
+      aria-label={common('theme.label')}
       className={cn(
         'relative inline-flex items-center gap-0.5 rounded-full border bg-muted/40 p-0.5',
         className,
@@ -34,7 +38,8 @@ export function ThemeModeSwitch({ className, showLabels = false, size = 'md' }) 
     >
       {modes.map((value) => {
         const Icon = THEME_MODE_ICONS[value];
-        const { label, hint } = THEME_MODE_LABELS[value];
+        const label = common(`theme.${value}.label`);
+        const hint = common(`theme.${value}.hint`);
         const on = mode === value;
 
         return (

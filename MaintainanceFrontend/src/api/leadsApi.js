@@ -12,6 +12,14 @@ export const leadsApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: ['LeadBoard'],
     }),
+    // The SLA board's Calendar tab: `{ from, to }` Kathmandu days → every dated to-do in them plus every late one,
+    // across leads, visits, jobs, quotations, invoices and AMC (each kind only for a role that reads it). Lead,
+    // job, quotation, invoice and aftercare writes all invalidate one of these two tags.
+    getAgenda: build.query({
+      query: (span) => ({ url: '/admin/agenda', params: span }),
+      transformResponse: (r) => r.data,
+      providesTags: ['LeadBoard', 'Dashboard'],
+    }),
     // The lead page's record: `quotations[]` and `jobs[]` ride along (the board reads `quotations` before a drop on Quoted).
     getLead: build.query({
       query: (id) => `/admin/leads/${id}`,
@@ -122,7 +130,7 @@ export const leadsApi = apiSlice.injectEndpoints({
 });
 
 export const {
-  useGetLeadsQuery, useGetSlaBoardQuery, useGetLeadQuery, useGetLeadDuplicatesQuery,
+  useGetLeadsQuery, useGetSlaBoardQuery, useGetAgendaQuery, useGetLeadQuery, useGetLeadDuplicatesQuery,
   useCreateLeadMutation, useUpdateLeadMutation, useSetLeadStatusMutation, useAssignLeadMutation,
   useAddLeadNoteMutation, useAddLeadActivityMutation, useConvertLeadMutation, useGetTechniciansQuery,
   useMergeLeadsMutation, useDeleteLeadMutation, useLazyExportLeadsCsvQuery,

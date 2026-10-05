@@ -14,8 +14,9 @@ import {
   SURVEY_PHOTO_KINDS, INSPECTION_QUESTION_TYPES, INSPECTION_QUESTION_TYPE_LABELS,
   QUOTATION_KINDS, QUOTATION_KIND_LABELS, WEATHER, WEATHER_LABELS, LOST_TIME_REASONS, LOST_TIME_REASON_LABELS,
   PURCHASE_LIST_STATUSES, PURCHASE_LIST_STATUS_LABELS, PURCHASE_LIST_TRANSITIONS, INVOICE_KINDS, INVOICE_KIND_LABELS,
+  INVOICE_ITEM_KINDS, INVOICE_ITEM_KIND_LABELS,
 } from '@/config/constants';
-import { FIELD_COPY } from '@/config/tech/fieldCopy';
+import { FIELD } from '@/config/i18n/field';
 import { MUTATION_KINDS } from '@/helpers/offlineQueue';
 import { AUDIT_EVENT_LABELS } from '@/config/auditEvents';
 import { PERMISSIONS, can } from '@/helpers/permissions';
@@ -172,8 +173,8 @@ describe('the CRM rules mirror the API', () => {
     }
     // The field app words each one in both languages.
     for (const locale of ['en', 'ne']) {
-      for (const w of WEATHER) expect(FIELD_COPY[locale].diary.weather[w], `${locale} ${w}`).toBeTruthy();
-      for (const r of LOST_TIME_REASONS) expect(FIELD_COPY[locale].diary.lost.reasons[r], `${locale} ${r}`).toBeTruthy();
+      for (const w of WEATHER) expect(FIELD[locale].diary.weather[w], `${locale} ${w}`).toBeTruthy();
+      for (const r of LOST_TIME_REASONS) expect(FIELD[locale].diary.lost.reasons[r], `${locale} ${r}`).toBeTruthy();
     }
   });
 
@@ -181,6 +182,17 @@ describe('the CRM rules mirror the API', () => {
     const apiKinds = techSyncSchema.shape.mutations.element.innerType().shape.kind.options;
     expect([...MUTATION_KINDS].sort()).toEqual([...apiKinds].sort());
     expect(MUTATION_KINDS).toContain('diary_save');
+  });
+
+  it('the handover’s AMC offer is a lead source with words, and invoice lines are billed or deducted (Phase L8)', () => {
+    expect(API_ENUMS.LEAD_SOURCES).toContain('amc_offer');
+    expect(LEAD_SOURCES).toEqual(API_ENUMS.LEAD_SOURCES);
+    expect(LEAD_SOURCE_LABELS.amc_offer).toBe('AMC offer');
+    expect(INVOICE_ITEM_KINDS).toEqual(API_ENUMS.INVOICE_ITEM_KINDS);
+    expect(Object.keys(INVOICE_ITEM_KIND_LABELS)).toEqual(INVOICE_ITEM_KINDS);
+    // The final measurement's two moments read in words on a job's History.
+    expect(AUDIT_EVENT_LABELS[API_ENUMS.AUDIT_EVENTS.JOB_MEASUREMENT_CLOSED]).toBe('Final measurement closed');
+    expect(AUDIT_EVENT_LABELS[API_ENUMS.AUDIT_EVENTS.JOB_MEASUREMENT_REOPENED]).toBe('Final measurement reopened');
   });
 
   it('the Excel export is audited in words (Phase L4)', () => {

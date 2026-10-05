@@ -10,6 +10,8 @@ import { pendingUploads } from '@/helpers/uploadQueue';
 import { resetSentPhotosForTests } from '@/helpers/sentPhotos';
 import { fieldSyncSettled } from '@/hooks/useOfflineQueue';
 import uiReducer from '@/redux/slices/uiSlice';
+import { watchI18nWarnings } from '@/test/i18nWarnings';
+import { SURVEY_STEPS } from './surveyForm';
 
 vi.mock('@/hooks/useIdlePreload', () => ({ useIdlePreload: () => {} }));
 // jsdom cannot decode a picture: the photo goes as it was chosen.
@@ -37,7 +39,7 @@ const TEMPLATE = {
   name: 'Seepage & damp — site checklist',
   questions: [
     {
-      key: 'moisture_low', label: 'Moisture at 300 mm', labelNe: '300 मिमिमा चिस्यान', type: 'NUMBER', unit: '%', metric: 'moisture',
+      key: 'moisture_low', label: 'Moisture at 300 mm', labelNe: 'भुइँबाट 300 mm माथिको चिस्यान', type: 'NUMBER', unit: '%', metric: 'moisture',
       flag: { above: 20 }, required: true, photoRequired: true,
     },
     { key: 'salt', label: 'Salt deposits', labelNe: 'नुनको दाग', type: 'CHOICE', options: ['None', 'Light', 'Heavy'], flag: { values: ['Heavy'] }, required: true, photoRequired: false },
@@ -252,9 +254,77 @@ describe('SurveyFormPage — the stepper', () => {
     api();
     renderSurvey('checklist', { locale: 'ne' });
     expect(await screen.findByRole('heading', { name: 'चेकलिस्ट' })).toBeInTheDocument();
-    expect(screen.getByText('300 मिमिमा चिस्यान')).toBeInTheDocument();
+    expect(screen.getByText('भुइँबाट 300 mm माथिको चिस्यान')).toBeInTheDocument();
     expect(screen.getAllByRole('radio', { name: 'छैन' }).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /अर्को/ })).toBeInTheDocument();
+  });
+
+  it('walks every step in Nepali with no word missing', async () => {
+    const warned = watchI18nWarnings();
+    // Each step, with a word of its own that must be Nepali.
+    const expected = {
+      before: 'ग्राहकले भनेको कुरा',
+      arrived: 'यहीँ पिन राख्नुहोस्',
+      checklist: 'अरू रिडिङ',
+      measure: 'कुन लाइन नाप्दै हुनुहुन्छ?',
+      photos: 'यो केको फोटो हो?',
+      findings: 'कत्तिको जरुरी',
+      lines: 'मात्रा मात्र — मूल्य अफिसले राख्छ।',
+    };
+    const headings = { before: 'जानुअघि', arrived: 'पुगेँ', checklist: 'चेकलिस्ट', measure: 'नाप', photos: 'फोटो', findings: 'के भेटियो', lines: 'के चाहिन्छ' };
+    expect(Object.keys(expected)).toEqual(SURVEY_STEPS);
+    for (const [i, step] of SURVEY_STEPS.entries()) {
+      api({ ...SURVEY, items: [LINE] });
+      renderSurvey(step, { locale: 'ne' });
+      expect(await screen.findByRole('heading', { name: headings[step] })).toBeInTheDocument();
+      expect(screen.getByText(`चरण ${i + 1} / ${SURVEY_STEPS.length}`)).toBeInTheDocument();
+      expect(screen.getByText(expected[step])).toBeInTheDocument();
+      expect(screen.getByText('भर्दै')).toBeInTheDocument(); // the survey's status
+      expect(screen.getByRole('navigation', { name: 'सर्भेका चरण' })).toBeInTheDocument();
+      if (step === 'measure') {
+        expect(screen.getByRole('group', { name: 'नाप 1 — Living room' })).toBeInTheDocument();
+        expect(screen.getByTestId('line-total')).toHaveTextContent('यो लाइन: 102.333 sq.ft');
+      }
+      if (step === 'lines') expect(screen.getByRole('group', { name: 'लाइन 1' })).toBeInTheDocument();
+      if (step === 'photos') expect(screen.getByRole('radio', { name: 'कागजको स्केच' })).toBeInTheDocument();
+      cleanup();
+    }
+    expect(warned()).toEqual([]);
+  }, 20_000);
+
+  it('shows a choice’s Nepali words (`optionsNe`) and still records the English option', async () => {
+    const user = userEvent.setup();
+    online = false;
+    const warned = watchI18nWarnings();
+    const salt = { ...TEMPLATE.questions[1], optionsNe: ['छैन', 'थोरै', 'धेरै'] };
+    api({ ...SURVEY, template: { ...TEMPLATE, questions: [TEMPLATE.questions[0], salt, ...TEMPLATE.questions.slice(2)] } });
+    renderSurvey('checklist', { locale: 'ne' });
+
+    const card = await screen.findByRole('group', { name: 'नुनको दाग' });
+    const chips = within(card).getByRole('radiogroup', { name: 'नुनको दाग' });
+    expect(within(chips).getAllByRole('radio').map((r) => r.textContent)).toEqual(['छैन', 'थोरै', 'धेरै']);
+    expect(within(card).getByText('धेरै भए चिन्ह')).toBeInTheDocument();
+    await user.click(within(chips).getByRole('radio', { name: 'धेरै' }));
+    expect(within(card).getByTestId('flag-salt')).toHaveTextContent('ध्यान दिनुपर्ने');
+
+    await user.click(screen.getByRole('button', { name: /अर्को/ }));
+    await waitFor(async () => expect(await drafts()).toHaveLength(1));
+    const reading = (await drafts())[0].payload.readings.find((r) => r.questionKey === 'salt');
+    expect(reading).toMatchObject({ questionKey: 'salt', textValue: 'Heavy' });
+    expect(warned()).toEqual([]);
+  });
+
+  it('reads a checklist number typed on a Nepali keyboard', async () => {
+    const user = userEvent.setup();
+    online = false;
+    api();
+    renderSurvey('checklist', { locale: 'ne' });
+    const box = await screen.findByRole('textbox', { name: 'भुइँबाट 300 mm माथिको चिस्यान' });
+    await user.type(box, '२४.५');
+    expect(screen.getByTestId('flag-moisture_low')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /अर्को/ }));
+    await waitFor(async () => expect(await drafts()).toHaveLength(1));
+    expect((await drafts())[0].payload.readings.find((r) => r.questionKey === 'moisture_low')).toMatchObject({ value: 24.5 });
   });
 });
 

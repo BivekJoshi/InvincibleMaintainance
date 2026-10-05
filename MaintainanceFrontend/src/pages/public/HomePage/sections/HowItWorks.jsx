@@ -5,6 +5,8 @@ import { SectionHeading } from '@/components/site/SectionHeading';
 import { SectionShell } from '@/components/site/SectionShell';
 import { AnimatePresence, DrawLine, ScrollStage, motion, useStageStep } from '@/three/motion/motionKit';
 import { cn } from '@/helpers/utils';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The five steps, pinned.
@@ -33,6 +35,7 @@ export function HowItWorks({ section, tone }) {
 const pad = (n) => String(n).padStart(2, '0');
 
 function PinnedSteps({ steps, progress }) {
+  const t = useT(SITE);
   const active = useStageStep(progress, steps.length);
   const step = steps[active];
 
@@ -42,13 +45,13 @@ function PinnedSteps({ steps, progress }) {
       <div>
         <span className="flex items-center gap-2.5">
           <span className="h-px w-6 shrink-0 bg-gold/70" aria-hidden />
-          <Eyebrow>How it works</Eyebrow>
+          <Eyebrow>{t('home.process.eyebrow')}</Eyebrow>
         </span>
         <h2 className="mt-3 text-[1.6rem] font-bold leading-[1.15] tracking-tight md:text-[2rem]">
-          Booking to warranty, in five steps
+          {t('home.process.title')}
         </h2>
         <p className="mt-3 max-w-md text-[15px] leading-relaxed text-muted-foreground">
-          Every job runs the same way, whether it is one damp wall or a whole floor.
+          {t('home.process.description')}
         </p>
 
         {/* One step at a time, swapped rather than cross-faded — two paragraphs
@@ -133,9 +136,10 @@ function PinnedSteps({ steps, progress }) {
 
 /** The same five steps with no pin — reduced motion, phones, and the print view. */
 function PlainSteps({ steps, tone }) {
+  const t = useT(SITE);
   return (
     <SectionShell tone={tone}>
-      <SectionHeading eyebrow="How it works" title="Booking to warranty, in five steps" />
+      <SectionHeading eyebrow={t('home.process.eyebrow')} title={t('home.process.title')} />
       <div className="relative">
         <div className="absolute inset-x-0 top-[1.375rem] hidden md:block" aria-hidden>
           <div className="mx-[10%] h-px bg-border"><DrawLine className="h-px" /></div>

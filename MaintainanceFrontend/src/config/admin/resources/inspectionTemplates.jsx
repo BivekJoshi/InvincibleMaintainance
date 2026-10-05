@@ -1,6 +1,6 @@
 import { INSPECTION_QUESTION_TYPES, INSPECTION_QUESTION_TYPE_LABELS, SURVEY_METRICS } from '@/config/constants';
 import {
-  blankQuestion, cleanFlag, inspectionTemplateSchema, isBlankQuestion, splitOptions, suggestQuestionKey,
+  blankQuestion, cleanFlag, inspectionTemplateSchema, isBlankQuestion, splitNepaliOptions, splitOptions, suggestQuestionKey,
 } from '@/form/schemas/inspectionTemplate.schema';
 import { formatDate } from '@/helpers/format';
 import { inUseCopy } from './inUseCopy';
@@ -35,6 +35,7 @@ function asType(row, type) {
     unit: type === 'NUMBER' ? row.unit ?? '' : '',
     metric: type === 'NUMBER' ? row.metric ?? '' : '',
     options: type === 'CHOICE' ? listOf(row.options) : [],
+    optionsNe: type === 'CHOICE' ? listOf(row.optionsNe) : [],
     flag: cleanFlag(kept),
   };
 }
@@ -48,8 +49,9 @@ function withLabel(row, label) {
 /**
  * The questions grid (a `grid` field — EditableGrid behind ResourceForm). Each row is one question in the API's own
  * shape; the columns reach into it with `get` / `set`, so a saved template loads as it is and saves as it is. A cell a
- * type does not use is read-only and shaded: Unit, Metric, Flag above / below for a number, Options for a choice, and
- * Flag when for a yes/no (Yes · No) or a choice (the options that flag, comma separated).
+ * type does not use is read-only and shaded: Unit, Metric, Flag above / below for a number, Options (and, since Phase
+ * J1, their Nepali words — one per option, in order, for the surveyor's phone) for a choice, and Flag when for a
+ * yes/no (Yes · No) or a choice (the options that flag, comma separated).
  */
 const QUESTION_COLUMNS = [
   {
@@ -86,6 +88,16 @@ const QUESTION_COLUMNS = [
     parse: splitOptions,
     set: (row, v) => ({ ...row, options: splitOptions(v) }),
     format: (v) => listOf(v).join(', '),
+    cellClassName: shadeUnless(['CHOICE']),
+  },
+  {
+    key: 'optionsNe', header: 'Options in Nepali', width: 180, editor: only(['CHOICE'], 'text'),
+    placeholder: (row) => (row?.type === 'CHOICE' ? 'वर्षा, पाइप चुहावट, जमिन' : undefined),
+    get: (row) => (listOf(row.optionsNe).length ? row.optionsNe : ''),
+    toText: (v) => listOf(v).join(', '),
+    parse: splitNepaliOptions,
+    set: (row, v) => ({ ...row, optionsNe: splitNepaliOptions(v) }),
+    format: (v) => (listOf(v).length ? <span lang="ne">{listOf(v).join(', ')}</span> : ''),
     cellClassName: shadeUnless(['CHOICE']),
   },
   {

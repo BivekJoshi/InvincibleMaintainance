@@ -7,7 +7,8 @@ import { dropPending, enqueue, failureKind, flush, pending } from '@/helpers/off
 import { addUpload, describeUpload, drainUploads, getUpload, pendingUploads } from '@/helpers/uploadQueue';
 import { applyPending } from '@/helpers/fieldJob';
 import { mediaIdForUpload, rememberSent } from '@/helpers/sentPhotos';
-import { fieldCopy } from '@/config/tech/fieldCopy';
+import { FIELD } from '@/config/i18n/field';
+import { createT } from '@/helpers/i18n';
 import {
   fieldNoteDismissed, fieldNotesAdded, fieldOnlineChanged, fieldQueueLoaded, fieldSyncFinished, fieldSyncStarted,
   selectFieldSync,
@@ -138,12 +139,15 @@ export async function resolveQueuedPhotos(wire, entry) {
 function sayWarnings(dispatch, applied, getLocale) {
   const warnings = applied.flatMap((entry) => (entry.warnings ?? []).map((w) => ({ w, entry })));
   if (!warnings.length) return;
-  const words = fieldCopy(getLocale()).materials;
+  const t = createT(FIELD, getLocale());
   for (const { w, entry } of warnings) {
     if (w.code !== 'OVER_PLAN') continue;
     const name = w.name ?? entry.meta?.material?.name ?? '';
     const unit = w.unit ?? entry.meta?.material?.unit ?? '';
-    dispatch(toastWarning(words.overPlanTitle, words.overPlan(name, formatQty(w.issued), w.planned ? formatQty(w.planned) : null, unit)));
+    const said = w.planned
+      ? t('materials.overPlan', { name, issued: formatQty(w.issued), planned: formatQty(w.planned), unit })
+      : t('materials.overPlanUnplanned', { name });
+    dispatch(toastWarning(t('materials.overPlanTitle'), said));
   }
 }
 

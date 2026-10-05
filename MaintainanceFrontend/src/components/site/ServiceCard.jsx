@@ -4,6 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { Media } from './Media';
 import { PriceTag } from './PriceTag';
 
@@ -12,8 +14,12 @@ import { PriceTag } from './PriceTag';
  * home page grid, the catalogue and the search results all render this, so a
  * price or a booking link can never be shown one way in one place and another
  * way somewhere else.
+ *
+ * The price and the button share a row; with a Nepali price label and button that row can be wider than a phone's
+ * card, so it wraps rather than squeezing either.
  */
 export function ServiceCard({ service, media, compact = false }) {
+  const t = useT(SITE);
   return (
     <Card className="sheen group flex h-full flex-col overflow-hidden card-hover">
       <Link to={`/services/${service.slug}`} className="relative block" aria-label={service.name}>
@@ -40,18 +46,18 @@ export function ServiceCard({ service, media, compact = false }) {
         <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{service.excerpt}</p>
 
         <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <ShieldCheck className="h-3.5 w-3.5 text-gold" aria-hidden />
-          Free inspection · 1-month warranty
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-gold" aria-hidden />
+          {t('promises.inspection.label')} · {t('promises.warranty.label')}
         </p>
       </CardContent>
 
       <CardFooter className="mt-auto flex-col items-stretch p-4 pt-0">
         <Separator className="mb-3.5" />
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <PriceTag service={service} />
           <Button asChild size="sm" className="shrink-0">
             <Link to={`/book/${service.slug}`}>
-              {service.priceFrom ? 'Book' : 'Get a quote'}
+              {service.priceFrom ? t('cards.book') : t('cards.quote')}
               <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
             </Link>
           </Button>

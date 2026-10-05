@@ -93,6 +93,7 @@ export const SurveyFormPage = route(() => import('@/pages/tech/SurveyFormPage/Su
 export const TechJobPage = route(() => import('@/pages/tech/TechJobPage/TechJobPage'));
 export const TechHistoryPage = route(() => import('@/pages/tech/TechHistoryPage'));
 export const SiteDiaryPage = route(() => import('@/pages/tech/SiteDiaryPage/SiteDiaryPage'));
+export const JobMeasurePage = route(() => import('@/pages/tech/JobMeasurePage/JobMeasurePage'));
 
 export const NotFoundPage = route(() => import('@/pages/NotFoundPage'));
 
@@ -110,7 +111,7 @@ const GROUPS = {
     InvoicesPage, InvoiceDetailPage, PaymentsPage, ReportsPage,
     WarrantiesPage, WarrantyClaimsPage, AmcContractsPage,
   ],
-  tech: [TechJobPage, TechHistoryPage, SurveyListPage, SurveyFormPage, SiteDiaryPage],
+  tech: [TechJobPage, TechHistoryPage, SurveyListPage, SurveyFormPage, SiteDiaryPage, JobMeasurePage],
 };
 
 /** Where the site nav's paths live, for preloading a link under the pointer. */

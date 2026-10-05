@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { motion } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { DataIcon } from './DataIcon';
 import { Media } from './Media';
 
@@ -15,6 +17,7 @@ import { Media } from './Media';
  * reading as an empty box.
  */
 export function CategoryTile({ category, count, media, index = 0 }) {
+  const t = useT(SITE);
   const picture = media?.[category.imageId];
   return (
     <motion.div
@@ -44,12 +47,12 @@ export function CategoryTile({ category, count, media, index = 0 }) {
             )}
 
             <span className="mt-auto flex items-end justify-between gap-3">
-              <span>
+              <span className="min-w-0 break-words">
                 <span className="block text-[15px] font-semibold leading-snug tracking-tight transition-colors duration-300 group-hover:text-primary">
                   {category.name}
                 </span>
                 <span className="mt-1 block text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
-                  {count != null ? `${count} service${count === 1 ? '' : 's'}` : 'Book online'}
+                  {count != null ? t('cards.services', { count }) : t('cards.bookOnline')}
                 </span>
               </span>
               <ArrowRight

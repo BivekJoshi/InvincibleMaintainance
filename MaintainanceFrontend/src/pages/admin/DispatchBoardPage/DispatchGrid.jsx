@@ -4,12 +4,11 @@ import { StateBadge } from '@/components/common/StateBadge';
 import {
   hourLabel, isDayOff, jobsInCell, ktmDay, ktmHour, personToneStyle,
 } from '@/helpers/dispatchBoard';
-import { initials, titleCase } from '@/helpers/format';
+import { formatDay, initials, titleCase } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 import { DispatchJobCard } from './DispatchJobCard';
 
-const dayHeading = (day) => new Date(`${day}T00:00:00Z`)
-  .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+const dayHeading = (day) => formatDay(day, { weekday: 'short', day: 'numeric', month: 'short', year: undefined });
 
 /** Stripes over a lane whose technician is off: still droppable, but it reads as "not today". */
 const OFF_STRIPES = 'bg-[repeating-linear-gradient(135deg,hsl(var(--muted-foreground)/0.07)_0_8px,transparent_8px_16px)]';

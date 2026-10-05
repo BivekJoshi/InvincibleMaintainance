@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useSelector } from 'react-redux';
 import { useGetPublicPricingQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
 import { useSeo } from '@/hooks/useSeo';
+import { useApiErrorText, useT } from '@/hooks/useT';
 import { ErrorState } from '@/components/common/ErrorState';
 import { PageHero } from '@/components/site/PageHero';
 import { SectionShell } from '@/components/site/SectionShell';
@@ -20,25 +20,26 @@ import { RateCard } from './sections/RateCard';
  * the lead form that consumes it is a sibling, not a child.
  */
 export default function PricingPage() {
-  const locale = useSelector(selectLocale);
-  const { data, isLoading, error, refetch } = useGetPublicPricingQuery(locale);
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
+  const { data, isLoading, error, refetch } = useGetPublicPricingQuery(t.locale);
   const [estimate, setEstimate] = useState(null);
 
-  useSeo({
-    title: 'Our rates, published before you call',
-    description: 'Published rates for every service, an instant estimator, and a free inspection before the exact figure is confirmed.',
-  });
+  useSeo({ title: t('pricing.title'), description: t('pricing.seoDescription') });
 
-  if (error) return <ErrorState error={error} onRetry={refetch} className="min-h-[60dvh]" />;
+  if (error) {
+    return (
+      <ErrorState
+        error={error} onRetry={refetch} className="min-h-[60dvh]"
+        message={errorText(error)} retryLabel={t('common.tryAgain')}
+      />
+    );
+  }
   if (isLoading) return <div className="container py-14"><Skeleton className="h-96 w-full rounded-lg" /></div>;
 
   return (
     <PageTransition>
-      <PageHero
-        eyebrow="Transparent pricing"
-        title="Our rates, published before you call"
-        description="The estimator gives you a range instantly. The exact figure is confirmed after a free inspection — never after the work."
-      />
+      <PageHero eyebrow={t('pricing.eyebrow')} title={t('pricing.title')} description={t('pricing.description')} />
 
       <SectionShell>
         <div className="grid gap-10 lg:grid-cols-[380px_1fr] lg:items-start">

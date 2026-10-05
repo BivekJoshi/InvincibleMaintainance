@@ -24,6 +24,7 @@ backend README).
 
 ```
 npm run dev      npm run build      npm run preview      npm run lint      npm test      npm run test:e2e
+npm run -s i18n:review > nepali-review.csv     # every Nepali text beside its English, for a native speaker (Phase J1)
 ```
 
 ### Lint and CI
@@ -237,12 +238,29 @@ detail + dispatch board, materials, invoices, warranty and AMC screens (the cust
 ## Theming and i18n
 
 - Theme is `light | dark | system`, stored per browser, applied as a class on `<html>`
-  (`useTheme`). All colors are CSS variables in `index.css` — no hardcoded hex in components.
-- Nepali (`ne`) is a locale toggle that re-queries the public API; the server overlays its
-  translations. Devanagari gets its own font stack via `:lang(ne)`, because the Latin stack
-  renders it in a fallback face.
-- Money arrives as integer paisa and is formatted only in `lib/format.js`.
-  Dates arrive as UTC and render in Asia/Kathmandu.
+  (`useTheme`). All colors are CSS variables in `src/styles/globals.css` — no hardcoded hex in components.
+- **Nepali (Phase J1).** The field app, the public site + booking, the login and the customer's quotation, invoice,
+  warranty and visit pages are English and Nepali; **the admin panel stays English**. The `EN ⇄ नेपाली` switch
+  (`LocaleSwitch` — in the site header, the field app's header and on the login page) sets `uiSlice.locale`, kept in
+  localStorage per browser. UI words come from `src/config/i18n/*.js` through `useT()`; content (services, pages,
+  FAQs, gallery captions…) is re-queried with `?locale=ne` and the API overlays its translations. How it fits
+  together — catalogues, `t()`, validation messages, formatting — is `src/STRUCTURE.md` → "Words".
+- **The Nepali font.** Noto Sans Devanagari (Google Fonts, the Devanagari subset by `unicode-range`) is fetched only
+  while Nepali is on: `index.html`'s head script adds it before the first paint when the page opens in Nepali, and
+  `providers/LocaleProvider.jsx` when someone switches. It loads with `display=optional`, so a slow font is skipped for
+  that page instead of swapped in — no layout shift — and the phone's own Devanagari face (Android ships Noto) stands
+  in. An English visitor never downloads it. The CSP in Phase J3 must allow `fonts.googleapis.com` /
+  `fonts.gstatic.com` (Inter already needs them).
+- **Testing Nepali.** In a browser: open the site, press **नेपाली** in the header (or on `/login` before signing in
+  as a technician), and use a 360 px viewport (DevTools device toolbar) — every label, button, validation message and
+  date on those screens should be Nepali, digits Latin, amounts `रु.`. To start in Nepali:
+  `localStorage.setItem('locale', 'ne')` and reload. `/admin` stays English whatever is stored. A missing Nepali text
+  shows its English and logs `[i18n] missing ne text for "…"` in the dev console. In tests: render with
+  `preloadedState: { ui: { locale: 'ne', toasts: [] } }`, spy on `console.warn`, call `resetI18nWarnings()` first,
+  and expect no `[i18n]` warning. `npm run -s i18n:review > nepali-review.csv` exports every Nepali text (UI, the
+  API's customer messages, the seeded checklist words) beside its English for a native speaker's review.
+- Money arrives as integer paisa and is formatted only in `src/helpers/format.js` (`{ locale }` for Nepali).
+  Dates arrive as UTC and render in Asia/Kathmandu; Nepali screens show Nepali month names and Bikram Sambat dates.
 
 ## Verified in a real browser
 

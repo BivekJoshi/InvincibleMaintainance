@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSelector } from 'react-redux';
 import { useZodForm, leadSchema, leadDefaults } from '@/form/formKit';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSubmitLeadMutation } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
+import { useApiErrorText, useLocale, useT } from '@/hooks/useT';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,11 +15,16 @@ import { SitePhotoUpload } from '@/components/public/SitePhotoUpload';
 /**
  * The public enquiry form. Three spam defences run before the API is touched:
  * a hidden honeypot, a minimum time-on-form, and (in production) Turnstile.
+ *
+ * Phase J1: its words and its zod errors are the visitor's language, and an API refusal is worded from its code
+ * (`useApiErrorText(SITE)`); the server's English message is the fallback for a code the site has no words for.
  */
 export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage, compact = false }) {
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
   const [submitLead, { isLoading }] = useSubmitLeadMutation();
   // The site's language when they enquire is the language we write back in.
-  const locale = useSelector(selectLocale);
+  const locale = useLocale();
   const [done, setDone] = useState(false);
   const [serverError, setServerError] = useState(null);
   // Photos upload as they are chosen; the enquiry carries only their ids.
@@ -52,7 +57,7 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
       setPhotoIds([]);
       reset();
     } catch (err) {
-      setServerError(err?.data?.error?.message ?? 'We could not send that. Please call us instead.');
+      setServerError(errorText(err));
     }
   };
 
@@ -64,12 +69,10 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
         role="status"
       >
         <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
-        <h3 className="mt-3 font-semibold">Request received</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Our engineer will call you within two hours. There is no charge for the visit.
-        </p>
+        <h3 className="mt-3 font-semibold">{t('lead.done.title')}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{t('lead.done.body')}</p>
         <Button variant="outline" size="sm" className="mt-4" onClick={() => setDone(false)}>
-          Send another request
+          {t('lead.done.again')}
         </Button>
       </motion.div>
     );
@@ -86,39 +89,42 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
 
       <div className={compact ? 'grid gap-4 sm:grid-cols-2' : 'space-y-4'}>
         <div className="space-y-1.5">
-          <Label htmlFor="lead-name" required>Your name</Label>
+          <Label htmlFor="lead-name" required>{t('lead.name')}</Label>
           <Input id="lead-name" aria-invalid={Boolean(errors.name)} {...register('name')} />
           {errors.name ? <p className="text-xs text-destructive">{errors.name.message}</p> : null}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="lead-phone" required>Phone number</Label>
+          <Label htmlFor="lead-phone" required>{t('lead.phone')}</Label>
           <Input id="lead-phone" type="tel" inputMode="tel" placeholder="9808338255" aria-invalid={Boolean(errors.phone)} {...register('phone')} />
           {errors.phone ? <p className="text-xs text-destructive">{errors.phone.message}</p> : null}
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="lead-email">Email <span className="font-normal text-muted-foreground">(optional)</span></Label>
+        <Label htmlFor="lead-email">
+          {t('lead.email')} <span className="font-normal text-muted-foreground">{t('common.optional')}</span>
+        </Label>
         <Input
           id="lead-email" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com"
           aria-invalid={Boolean(errors.email)} aria-describedby="lead-email-help" {...register('email')}
         />
         {errors.email
           ? <p className="text-xs text-destructive">{errors.email.message}</p>
-          : <p id="lead-email-help" className="text-xs text-muted-foreground">For your quotation and warranty. We never share it.</p>}
+          : <p id="lead-email-help" className="text-xs text-muted-foreground">{t('lead.emailHelp')}</p>}
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="lead-address">Address</Label>
-        <Input id="lead-address" placeholder="Area, city" {...register('address')} />
+        <Label htmlFor="lead-address">{t('lead.address')}</Label>
+        <Input id="lead-address" placeholder={t('lead.addressPlaceholder')} aria-invalid={Boolean(errors.address)} {...register('address')} />
+        {errors.address ? <p className="text-xs text-destructive">{errors.address.message}</p> : null}
       </div>
 
       {services.length ? (
         <div className="space-y-1.5">
-          <Label htmlFor="lead-service">What do you need?</Label>
+          <Label htmlFor="lead-service">{t('lead.service')}</Label>
           <Select value={watch('serviceId') || undefined} onValueChange={(v) => setValue('serviceId', v)}>
-            <SelectTrigger id="lead-service"><SelectValue placeholder="Choose a service (optional)" /></SelectTrigger>
+            <SelectTrigger id="lead-service"><SelectValue placeholder={t('lead.servicePlaceholder')} /></SelectTrigger>
             <SelectContent>
               {services.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
             </SelectContent>
@@ -127,8 +133,12 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
       ) : null}
 
       <div className="space-y-1.5">
-        <Label htmlFor="lead-message">Describe the problem</Label>
-        <Textarea id="lead-message" rows={3} placeholder="Where is the problem, and when did it start?" {...register('message')} />
+        <Label htmlFor="lead-message">{t('lead.message')}</Label>
+        <Textarea
+          id="lead-message" rows={3} placeholder={t('lead.messagePlaceholder')}
+          aria-invalid={Boolean(errors.message)} {...register('message')}
+        />
+        {errors.message ? <p className="text-xs text-destructive">{errors.message.message}</p> : null}
       </div>
 
       <SitePhotoUpload onChange={setPhotoIds} compact={compact} />
@@ -145,12 +155,11 @@ export function LeadForm({ services = [], defaultServiceId, estimate, sourcePage
         ) : null}
       </AnimatePresence>
 
-      <Button type="submit" size="lg" className="w-full" loading={isLoading}>
-        Request a free inspection
+      {/* Wraps rather than overflows: the Nepali label is wider than a phone's card. */}
+      <Button type="submit" size="lg" className="h-auto min-h-11 w-full whitespace-normal py-2.5 text-center" loading={isLoading}>
+        {t('lead.submit')}
       </Button>
-      <p className="text-center text-xs text-muted-foreground">
-        Free consultation · No visiting charge · We call back within two hours
-      </p>
+      <p className="text-center text-xs text-muted-foreground">{t('lead.promise')}</p>
     </form>
   );
 }

@@ -2,7 +2,11 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { motion, useMotionVariants, useReducedMotion } from '@/three/motion/motionKit';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { useT } from '@/hooks/useT';
+import { COMMON } from '@/config/i18n/common';
+import { SITE } from '@/config/i18n/site';
 import { BrandMark } from '@/components/site/BrandMark';
+import { LocaleSwitch } from '@/components/common/LocaleSwitch';
 import { ThemeModeSwitch } from '@/components/theme/ThemeModeSwitch';
 import { LOGIN_RISE } from './loginContent';
 import { useLoginFlow } from './useLoginFlow';
@@ -20,8 +24,13 @@ import { LoginStage } from './sections/LoginStage';
  *
  * This file is the frame and the order; `useLoginFlow` holds what signing in
  * involves, and each half is its own file under `./sections/`.
+ *
+ * Phase J1: a technician picks Nepali here, before signing in — the language switch sits beside the theme switch,
+ * and the field app opens in the language chosen. Office staff land in the back office, which stays English.
  */
 export default function LoginPage() {
+  const t = useT(SITE);
+  const common = useT(COMMON);
   const flow = useLoginFlow();
   const reduced = useReducedMotion();
   const { name: company, logoUrl } = useSiteSettings();
@@ -35,7 +44,7 @@ export default function LoginPage() {
   if (!flow.isReady) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Loading" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label={common('loading')} />
       </div>
     );
   }
@@ -47,18 +56,23 @@ export default function LoginPage() {
       <main className="glow-paper relative flex min-h-dvh flex-col">
         <div className="blueprint-fine pointer-events-none absolute inset-0 mask-b opacity-70" aria-hidden />
 
-        <header className="relative z-10 flex items-center justify-between gap-4 p-6">
+        {/* Wraps on a phone: the link and the two switches do not fit one 360 px line in Nepali. */}
+        <header className="relative z-10 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 p-6">
           <Link
             to="/"
             className="group inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" aria-hidden />
-            Back to website
+            <ArrowLeft className="h-4 w-4 shrink-0 transition-transform group-hover:-translate-x-0.5" aria-hidden />
+            {t('login.back')}
           </Link>
 
           {/* All three modes, spelled out: this is the one screen every member
-              of staff passes through, and the place they will look for it. */}
-          <ThemeModeSwitch className="bg-card/70 shadow-hairline backdrop-blur" />
+              of staff passes through, and the place they will look for it. The
+              language is chosen here too — before the field app opens. */}
+          <div className="flex items-center gap-2">
+            <LocaleSwitch className="bg-card/70 shadow-hairline backdrop-blur" />
+            <ThemeModeSwitch className="bg-card/70 shadow-hairline backdrop-blur" />
+          </div>
         </header>
 
         <div className="relative z-10 flex flex-1 items-center justify-center px-6 pb-12">
@@ -77,7 +91,7 @@ export default function LoginPage() {
               />
               <span>
                 <span className="block font-semibold tracking-tight">{company}</span>
-                <span className="eyebrow block text-muted-foreground">Back office</span>
+                <span className="eyebrow block text-muted-foreground">{t('login.backOffice')}</span>
               </span>
             </motion.div>
 
@@ -86,8 +100,7 @@ export default function LoginPage() {
             <DemoAccounts variants={rise} onPick={flow.fillDemo} />
 
             <motion.p variants={rise} className="mt-8 text-xs leading-relaxed text-muted-foreground">
-              Forgot your password, or locked out? Ask an administrator to email you a reset link —
-              for security this screen does not send one.
+              {t('login.forgot')}
             </motion.p>
           </motion.div>
         </div>

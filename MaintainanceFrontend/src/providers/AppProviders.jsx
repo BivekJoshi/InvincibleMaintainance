@@ -9,18 +9,24 @@ import { store } from '@/redux/store';
 import { SessionEffect } from './SessionEffect';
 import { ThemeProvider } from './ThemeProvider';
 import { ScrollToTop } from './ScrollToTop';
+import { LocaleProvider } from './LocaleProvider';
 
-/** Everything that needs the router, in the order it needs it: theme → tooltips → scroll and session effects. */
+/**
+ * Everything that needs the router, in the order it needs it: theme → the route's language → tooltips → scroll and
+ * session effects. `LocaleProvider` reads the path (the back office is English), so it sits inside the router.
+ */
 function RouterShell({ children }) {
   return (
     <ThemeProvider>
-      <TooltipProvider delayDuration={200}>
-        <ScrollToTop />
-        <SessionEffect />
-        {/* Clears on navigation. A page inside a shell has its own, in `PageOutlet`. */}
-        <RouteErrorBoundary variant="app">{children}</RouteErrorBoundary>
-        <Toaster />
-      </TooltipProvider>
+      <LocaleProvider>
+        <TooltipProvider delayDuration={200}>
+          <ScrollToTop />
+          <SessionEffect />
+          {/* Clears on navigation. A page inside a shell has its own, in `PageOutlet`. */}
+          <RouteErrorBoundary variant="app">{children}</RouteErrorBoundary>
+          <Toaster />
+        </TooltipProvider>
+      </LocaleProvider>
     </ThemeProvider>
   );
 }
@@ -64,4 +70,4 @@ export function AppProviders({ children }) {
   );
 }
 
-export { SessionEffect, ThemeProvider, ScrollToTop };
+export { SessionEffect, ThemeProvider, ScrollToTop, LocaleProvider };

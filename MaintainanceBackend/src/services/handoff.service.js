@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { AppError, badRequest } from '../utils/AppError.js';
-import { addDays, local } from '../utils/dates.js';
+import { addDays, customerDate, local } from '../utils/dates.js';
 import { formatNpr, outstanding, paymentSchedule } from '../utils/money.js';
 import { shortfall, sumQty } from '../utils/quantity.js';
 import { webUrl } from '../utils/links.js';
@@ -187,8 +187,8 @@ export async function announceAdvance(invoice, q) {
   const words = locale === 'ne' ? { bank: 'बैंक', fonepay: 'फोनपे' } : { bank: 'Bank', fonepay: 'Fonepay' };
   const payTo = [bank && `${words.bank}: ${bank}`, fonepay && `${words.fonepay}: ${fonepay}`].filter(Boolean).join(' · ');
   const vars = {
-    customerName: customer.name, number: invoice.number, quotation: q.number, amount: formatNpr(invoice.total),
-    dueDate: local(invoice.dueDate, 'D MMM YYYY'), link: webUrl(`/invoice/${invoice.publicToken}`), payTo, appName: env.appName,
+    customerName: customer.name, number: invoice.number, quotation: q.number, amount: formatNpr(invoice.total, { locale }),
+    dueDate: customerDate(invoice.dueDate, locale), link: webUrl(`/invoice/${invoice.publicToken}`), payTo, appName: env.appName,
   };
   await notify({
     templateKey: 'advance_due', channel: 'sms', to: customer.phone, locale, vars,

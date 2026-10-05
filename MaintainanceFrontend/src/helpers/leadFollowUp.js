@@ -1,7 +1,7 @@
 import {
   BUDGET_BAND_LABELS, DECISION_MAKER_LABELS, NEXT_ACTION_LABELS, PROPERTY_TYPE_LABELS,
 } from '@/config/constants';
-import { toKathmanduParts } from '@/helpers/format';
+import { formatDay, toKathmanduParts } from '@/helpers/format';
 
 /**
  * A lead's follow-through, without a DOM (Phase L1): what is next and whether it is late, how long
@@ -42,7 +42,7 @@ export function lateBy(minutes) {
 
 /**
  * When, in Kathmandu words: "Today, 14:30", "Tomorrow, 10:00", "Yesterday, 09:00", or "Mon 28 Sep, 10:00"
- * (with the year when it is not this year's).
+ * (with the year when it is not this year's) — "सोम १२ असोज, 10:00" while the back office's Calendar switch says Nepali.
  *
  * @param {string} iso
  * @param {number} [now]
@@ -58,9 +58,8 @@ export function formatWhen(iso, now = Date.now()) {
     [ktmDate(now - DAY_MS)]: 'Yesterday',
   }[date];
   if (named) return `${named}, ${time}`;
-  const day = new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', {
-    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
-    ...(date.slice(0, 4) === today.slice(0, 4) ? {} : { year: 'numeric' }),
+  const day = formatDay(date, {
+    weekday: 'short', day: 'numeric', month: 'short', year: date.slice(0, 4) === today.slice(0, 4) ? undefined : 'numeric',
   });
   return `${day}, ${time}`;
 }

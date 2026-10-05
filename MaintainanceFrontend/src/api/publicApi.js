@@ -1,6 +1,12 @@
 import { apiSlice } from '@/api/apiSlice';
 
-/** Endpoints for the marketing site. No auth, cached by the server for 60s. */
+/**
+ * Endpoints for the marketing site. No auth, cached by the server for 60s.
+ *
+ * Every content query carries the visitor's `locale` (`en` | `ne`, Phase J1): the API overlays a row's Nepali
+ * translation where an editor wrote one and falls back to English where not. Availability takes none: its slots are
+ * named by key, and the site words them.
+ */
 export const publicApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({
     getBootstrap: build.query({
@@ -13,8 +19,9 @@ export const publicApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: ['Public'],
     }),
+    /** The catalogue: `{ locale, category? }`. */
     getPublicServices: build.query({
-      query: (params = {}) => ({ url: '/public/services', params }),
+      query: ({ locale = 'en', ...params } = {}) => ({ url: '/public/services', params: { locale, ...params } }),
       transformResponse: (r) => r.data,
       providesTags: ['Public'],
     }),
@@ -23,8 +30,9 @@ export const publicApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: ['Public'],
     }),
+    /** Case studies: `{ locale, service? }`. */
     getPublicProjects: build.query({
-      query: (params = {}) => ({ url: '/public/projects', params }),
+      query: ({ locale = 'en', ...params } = {}) => ({ url: '/public/projects', params: { locale, ...params } }),
       transformResponse: (r) => r.data,
       providesTags: ['Public'],
     }),
@@ -37,17 +45,21 @@ export const publicApi = apiSlice.injectEndpoints({
       transformResponse: (r) => r.data,
       providesTags: ['Public'],
     }),
+    /** The "From the field" pictures, their captions in `locale` (a caption is translatable since Phase J1). */
     getPublicGallery: build.query({
-      query: () => '/public/gallery',
+      query: (locale = 'en') => ({ url: '/public/gallery', params: { locale } }),
       transformResponse: (r) => r.data,
+      providesTags: ['Public'],
     }),
+    /** `{ group?, locale }` — the FAQs of one group (a service's, say), or all of them. */
     getPublicFaqs: build.query({
-      query: (group) => ({ url: '/public/faqs', params: group ? { group } : {} }),
+      query: ({ group, locale = 'en' } = {}) => ({ url: '/public/faqs', params: { locale, ...(group ? { group } : {}) } }),
       transformResponse: (r) => r.data,
+      providesTags: ['Public'],
     }),
     /** Published posts, newest first, and the categories that have any. `{ locale, category?, limit? }`. */
     getPublicPosts: build.query({
-      query: (params = {}) => ({ url: '/public/posts', params }),
+      query: ({ locale = 'en', ...params } = {}) => ({ url: '/public/posts', params: { locale, ...params } }),
       transformResponse: (r) => r.data,
       providesTags: ['Public'],
     }),

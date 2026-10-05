@@ -5,10 +5,10 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
+import { DateCalendar } from '@/components/common/DateCalendar';
 import { Button } from '@/components/ui/button';
 import { RecordCombobox } from '@/components/common/RecordCombobox';
-import { formatDate, parseDateString, toDateString } from '@/helpers/format';
+import { formatDate } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
 /** Radix Select cannot hold an empty value, so "no filter" needs a sentinel. */
@@ -101,11 +101,11 @@ export function DateRangeFilter({ filter, params, onChange }) {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
+        {/* AD or BS, as the account menu says; the URL keeps AD days either way. */}
+        <DateCalendar
           mode="range"
-          selected={{ from: parseDateString(from), to: parseDateString(to) }}
-          defaultMonth={parseDateString(from)}
-          onSelect={(range) => onChange({ [fromKey]: toDateString(range?.from), [toKey]: toDateString(range?.to) })}
+          selected={{ from, to }}
+          onSelect={(range) => onChange({ [fromKey]: range?.from, [toKey]: range?.to })}
         />
         <div className="flex justify-end gap-2 border-t p-2">
           <Button type="button" variant="ghost" size="sm" onClick={() => { onChange({ [fromKey]: undefined, [toKey]: undefined }); setOpen(false); }}>

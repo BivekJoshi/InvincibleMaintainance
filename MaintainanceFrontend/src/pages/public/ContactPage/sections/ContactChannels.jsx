@@ -1,5 +1,7 @@
 import { ArrowUpRight, Clock, Mail, MapPin, Phone } from 'lucide-react';
 import { Eyebrow } from '@/components/site/Eyebrow';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { Stagger, StaggerOnView } from '@/three/motion/motionKit';
 
 const ROW = {
@@ -11,9 +13,9 @@ const ROW = {
 function ContactRow({ icon: Icon, label, value, href }) {
   const body = (
     <>
-      <span className="flex items-center gap-4">
+      <span className="flex min-w-0 items-center gap-4">
         <Icon className="h-4 w-4 shrink-0 text-gold" aria-hidden />
-        <span>
+        <span className="min-w-0 break-words">
           <span className="block text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{label}</span>
           <span className="mt-0.5 block text-lg tracking-tight">{value}</span>
         </span>
@@ -41,21 +43,22 @@ function ContactRow({ icon: Icon, label, value, href }) {
  * because most of this traffic is already holding a phone.
  */
 export function ContactChannels({ phone, mobile, email, address }) {
+  const t = useT(SITE);
   const rows = [
-    { icon: Phone, label: 'Phone', value: phone, href: `tel:${phone}` },
-    { icon: Phone, label: 'Mobile', value: mobile, href: `tel:${mobile}` },
-    { icon: Mail, label: 'Email', value: email, href: `mailto:${email}` },
-    { icon: MapPin, label: 'Address', value: address },
-    { icon: Clock, label: 'Response time', value: 'We call back within two hours' },
-  ].filter((row) => row.value);
+    { key: 'phone', icon: Phone, value: phone, href: `tel:${phone}` },
+    { key: 'mobile', icon: Phone, value: mobile, href: `tel:${mobile}` },
+    { key: 'email', icon: Mail, value: email, href: `mailto:${email}` },
+    { key: 'address', icon: MapPin, value: address },
+    { key: 'response', icon: Clock, value: t('contact.channels.responseValue') },
+  ].filter((row) => row.value).map((row) => ({ ...row, label: t(`contact.channels.${row.key}`) }));
 
   return (
     <div>
-      <Eyebrow>Direct lines</Eyebrow>
-      <h2 className="mt-3 text-2xl font-bold tracking-tight">Reach us without a form</h2>
+      <Eyebrow>{t('contact.channels.eyebrow')}</Eyebrow>
+      <h2 className="mt-3 text-2xl font-bold tracking-tight">{t('contact.channels.title')}</h2>
       <StaggerOnView className="mt-8 divide-y border-y" stagger={0.06}>
-        {rows.map((row) => (
-          <Stagger.Item key={row.label} variants={ROW}>
+        {rows.map(({ key, ...row }) => (
+          <Stagger.Item key={key} variants={ROW}>
             <ContactRow {...row} />
           </Stagger.Item>
         ))}

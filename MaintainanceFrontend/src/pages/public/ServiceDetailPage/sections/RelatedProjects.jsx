@@ -3,6 +3,8 @@ import { Eyebrow } from '@/components/site/Eyebrow';
 import { CostBand } from '@/components/site/ProjectCard';
 import { Reveal } from '@/three/motion/motionKit';
 import { imageUrl } from '@/helpers/format';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * Proof, in the narrow column beside a service's own copy.
@@ -12,20 +14,19 @@ import { imageUrl } from '@/helpers/format';
  * out-shout the service being sold. This is the same content at reading scale.
  */
 export function RelatedProjects({ projects, media, slug }) {
+  const t = useT(SITE);
   if (!projects?.length) return null;
 
   return (
     <section className="mt-14">
-      <Eyebrow>Proof</Eyebrow>
+      <Eyebrow>{t('service.related.eyebrow')}</Eyebrow>
       <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
-        <h2 className="text-2xl font-bold tracking-tight">Work we have done like this</h2>
+        <h2 className="text-2xl font-bold tracking-tight">{t('service.related.title')}</h2>
         <Link to={`/projects?service=${slug}`} className="text-sm font-medium text-primary hover:underline">
-          See all
+          {t('service.related.seeAll')}
         </Link>
       </div>
-      <p className="mt-2 text-sm text-muted-foreground">
-        The problem, what we did and what it cost. Read one before you book.
-      </p>
+      <p className="mt-2 text-sm text-muted-foreground">{t('service.related.description')}</p>
 
       <div className="mt-7 grid gap-4 sm:grid-cols-3">
         {projects.map((project) => {
@@ -47,7 +48,7 @@ export function RelatedProjects({ projects, media, slug }) {
                 <div className="p-4">
                   <p className="text-[14px] font-semibold leading-snug tracking-tight">{project.title}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {[project.location, project.durationDays ? `${project.durationDays} days` : null]
+                    {[project.location, project.durationDays ? t('cards.days', { count: project.durationDays }) : null]
                       .filter(Boolean).join(' · ')}
                   </p>
                   {project.costBandMin ? (

@@ -40,7 +40,8 @@ export const publicLeadSchema = z.object({
   photoIds: z.array(z.string().min(1)).max(5).optional(),
   turnstileToken: z.string().max(4000).optional(),
   // Honeypot — must stay empty. Bots fill every field they find.
-  website: z.string().max(0, 'Rejected').optional(),
+  // The honeypot: any value is refused by the service as SUBMISSION_REJECTED (Phase J1), not here as a validation error.
+  website: z.string().max(2000).optional(),
   // Milliseconds the form was on screen; humans take longer than 2s.
   elapsedMs: z.coerce.number().int().min(0).optional(),
 });
@@ -216,6 +217,20 @@ export const leadListQuery = z.object({
 export const assigneeQuery = z.object({
   q: z.string().trim().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+  .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), 'Not a date');
+const dayNumber = (v) => Math.floor(Date.parse(`${v}T00:00:00Z`) / 86_400_000);
+
+/** GET /admin/agenda — the SLA board's calendar: Kathmandu days, inclusive, at most 62 of them (a month grid fits). */
+export const agendaQuery = z.object({
+  from: ymd.optional(),
+  to: ymd.optional(),
+}).refine((v) => !v.from || !v.to || dayNumber(v.to) >= dayNumber(v.from), {
+  message: 'The end comes before the start', path: ['to'],
+}).refine((v) => !v.from || !v.to || dayNumber(v.to) - dayNumber(v.from) < 62, {
+  message: 'Ask for at most 62 days at a time', path: ['to'],
 });
 
 export const customerSchema = z.object({

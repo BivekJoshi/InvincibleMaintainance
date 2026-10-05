@@ -6,6 +6,8 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from '@/three/motion/motionKit';
 import { useAuth } from '@/hooks/useAuth';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { useT } from '@/hooks/useT';
+import { SITE } from '@/config/i18n/site';
 import { BrandMark } from '@/components/site/BrandMark';
 import { FIELD_ROLES } from '@/config/constants';
 import { preloadPath } from '@/routes/routeModules';
@@ -36,8 +38,12 @@ const SLIDE = { type: 'spring', stiffness: 420, damping: 34, mass: 0.7 };
  *
  * Everything that moves here moves on transform or opacity only, and every
  * animation collapses to a cut under `prefers-reduced-motion`.
+ *
+ * Every word is in the visitor's language (`config/i18n/site.js`, Phase J1). Nepali runs longer than English; the
+ * brand name is the one thing in the bar that truncates to make room.
  */
 export function SiteHeader() {
+  const t = useT(SITE);
   const navigate = useNavigate();
   const reduced = useReducedMotion();
   const { pathname, search: qs } = useLocation();
@@ -137,7 +143,7 @@ export function SiteHeader() {
         />
 
         <div className="container flex h-16 items-center gap-2">
-          <Link to="/" className="group flex shrink-0 items-center gap-2.5" aria-label={`${company} — home`}>
+          <Link to="/" className="group flex shrink-0 items-center gap-2.5" aria-label={t('header.homeLink', { company })}>
             <BrandMark
               logoUrl={logoUrl}
               initial={initial}
@@ -156,7 +162,7 @@ export function SiteHeader() {
           <nav
             className="ml-6 hidden items-center lg:flex"
             onMouseLeave={() => setHovered(null)}
-            aria-label="Main"
+            aria-label={t('nav.main')}
           >
             {nav.map((item) => {
               const isActive = activeTo === item.to;
@@ -193,7 +199,7 @@ export function SiteHeader() {
                     )}
                     aria-expanded={hasMega ? mega : undefined}
                   >
-                    {item.label}
+                    {t(`nav.${item.key}`)}
                     {hasMega ? (
                       <ChevronDown
                         aria-hidden
@@ -220,7 +226,7 @@ export function SiteHeader() {
 
             <Button
               variant="ghost" size="icon" className="lg:hidden"
-              onClick={() => setDrawer('search')} aria-label="Search services"
+              onClick={() => setDrawer('search')} aria-label={t('search.label')}
             >
               <Search className="h-[18px] w-[18px]" />
             </Button>
@@ -232,14 +238,14 @@ export function SiteHeader() {
             <Button asChild variant="ghost" size="sm" className="hidden px-2 lg:inline-flex xl:px-3">
               <Link to={isAuthenticated ? appHome : '/login'}>
                 {isAuthenticated ? <LayoutDashboard className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
-                <span className="hidden xl:inline">{isAuthenticated ? 'Dashboard' : 'Log in'}</span>
+                <span className="hidden xl:inline">{isAuthenticated ? t('nav.dashboard') : t('nav.logIn')}</span>
               </Link>
             </Button>
 
             <Button asChild size="sm" className="group hidden shadow-hairline sm:inline-flex">
               <Link to="/book">
                 <CalendarCheck className="h-4 w-4" />
-                Book a visit
+                {t('nav.bookVisit')}
                 <ArrowRight className="h-3.5 w-3.5 -translate-x-1 opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100" />
               </Link>
             </Button>
@@ -247,7 +253,7 @@ export function SiteHeader() {
             <Button
               variant="ghost" size="icon" className="lg:hidden"
               onClick={() => setDrawer((d) => (d ? null : 'menu'))}
-              aria-label="Menu" aria-expanded={drawer === 'menu'} aria-controls="site-drawer"
+              aria-label={t('header.menu')} aria-expanded={drawer === 'menu'} aria-controls="site-drawer"
             >
               <Menu className="h-5 w-5" />
             </Button>

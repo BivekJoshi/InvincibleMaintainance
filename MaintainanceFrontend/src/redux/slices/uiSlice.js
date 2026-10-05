@@ -1,6 +1,6 @@
 import { createSlice } from '@reduxjs/toolkit';
 import { DEFAULT_THEME_MODE, THEME_STORAGE_KEY, isThemeMode } from '@/config/theme';
-import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/config/locale';
+import { CALENDARS, DEFAULT_CALENDAR, DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/config/locale';
 
 const stored = (key, fallback) => {
   try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -21,6 +21,11 @@ const storedLocale = () => {
   return SUPPORTED_LOCALES.includes(value) ? value : DEFAULT_LOCALE;
 };
 
+const storedCalendar = () => {
+  const value = stored('calendar', DEFAULT_CALENDAR);
+  return CALENDARS.includes(value) ? value : DEFAULT_CALENDAR;
+};
+
 const uiSlice = createSlice({
   name: 'ui',
   initialState: {
@@ -28,6 +33,8 @@ const uiSlice = createSlice({
     // that and is the only thing that writes it to the document.
     theme: storedTheme(),
     locale: storedLocale(),
+    // AD or BS on the back office's calendar and clock (config/locale.js#CALENDARS). Remembered per browser.
+    calendar: storedCalendar(),
     // The desktop sidebar: full, or folded to an icon rail. Remembered per browser.
     sidebarOpen: stored('sidebarOpen', 'true') !== 'false',
     mobileNavOpen: false,
@@ -44,6 +51,11 @@ const uiSlice = createSlice({
     setLocale(state, action) {
       state.locale = action.payload;
       persist('locale', action.payload);
+    },
+    setCalendar(state, action) {
+      const calendar = CALENDARS.includes(action.payload) ? action.payload : DEFAULT_CALENDAR;
+      state.calendar = calendar;
+      persist('calendar', calendar);
     },
     toggleSidebar(state) {
       state.sidebarOpen = !state.sidebarOpen;
@@ -65,12 +77,13 @@ const uiSlice = createSlice({
 });
 
 export const {
-  setTheme, setLocale, toggleSidebar, setMobileNav, setCommandOpen, setNotesOpen, pushToast, dismissToast,
+  setTheme, setLocale, setCalendar, toggleSidebar, setMobileNav, setCommandOpen, setNotesOpen, pushToast, dismissToast,
 } = uiSlice.actions;
 export default uiSlice.reducer;
 
 export const selectTheme = (s) => s.ui.theme;
 export const selectLocale = (s) => s.ui.locale;
+export const selectCalendar = (s) => s.ui.calendar ?? DEFAULT_CALENDAR;
 export const selectToasts = (s) => s.ui.toasts;
 export const selectSidebarOpen = (s) => s.ui.sidebarOpen;
 export const selectMobileNavOpen = (s) => s.ui.mobileNavOpen;

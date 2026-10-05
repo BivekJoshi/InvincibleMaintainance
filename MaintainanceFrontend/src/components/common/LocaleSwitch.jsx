@@ -2,6 +2,8 @@ import { useId } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, useReducedMotion } from '@/three/motion/motionKit';
 import { selectLocale, setLocale } from '@/redux/slices/uiSlice';
+import { COMMON } from '@/config/i18n/common';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -12,23 +14,25 @@ import { cn } from '@/helpers/utils';
  * three separate owners threading `locale` and `onChange` down to it.
  *
  * The Nepali label is set in its own language, so the browser reaches for the
- * Devanagari face rather than rendering it in whatever the page is using.
+ * Devanagari face rather than rendering it in whatever the page is using. The
+ * group's name and the hidden names are in the language on screen (Phase J1).
  */
 const LOCALES = [
-  { code: 'en', label: 'EN', name: 'English' },
-  { code: 'ne', label: 'नेपाली', name: 'Nepali' },
+  { code: 'en', label: 'EN' },
+  { code: 'ne', label: 'नेपाली' },
 ];
 
 export function LocaleSwitch({ className }) {
   const dispatch = useDispatch();
   const locale = useSelector(selectLocale);
+  const t = useT(COMMON);
   const reduced = useReducedMotion();
   const layoutId = `locale-pill-${useId()}`;
 
   return (
     <div
       role="group"
-      aria-label="Language"
+      aria-label={t('language.label')}
       className={cn('relative flex items-center rounded-full border bg-muted/40 p-0.5', className)}
     >
       {LOCALES.map((l) => {
@@ -53,7 +57,7 @@ export function LocaleSwitch({ className }) {
               />
             ) : null}
             <span className="relative" lang={l.code}>{l.label}</span>
-            <span className="sr-only">{l.name}</span>
+            <span className="sr-only">{t(`language.${l.code}`)}</span>
           </button>
         );
       })}

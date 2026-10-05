@@ -1,10 +1,16 @@
 import { newKey } from '@/helpers/fieldDb';
+import { toLatinDigits } from '@/helpers/format';
 import {
   answerToReading, hasPhoto, isAnswered, missingAnswers, readingToAnswer,
 } from '@/helpers/inspection';
 import {
-  isBlankMeasurement, measurementRowValue, measurementTotal, measurementsBody, parseLength,
+  groupMeasurementsByArea, isReadableMeasurement, measurementTotal, measurementsBody,
+  readableRowValue, readableTotal, savedMeasurements,
 } from '@/helpers/measurements';
+
+// The measurement cards' reading of a sheet moved to `helpers/measurements` in Phase L8 (the final measurement's cards
+// use it too); the stepper keeps its names.
+export { isReadableMeasurement, savedMeasurements };
 
 /**
  * The survey stepper's state, and the one payload it queues (Phase L5). Pure: the page holds the state,
@@ -32,6 +38,8 @@ export const EDITABLE_STATUSES = ['DRAFT', 'RETURNED'];
 export const AUTOSAVE_MS = 1200;
 
 const text = (v) => (v === undefined || v === null ? '' : String(v));
+/** A number as typed — Latin digits or a Nepali keyboard's (`१२.५`); `''` reads as 0, as `Number('')` does. */
+const num = (v) => Number(toLatinDigits(text(v)).trim());
 
 export const blankReading = () => ({ _key: newKey(), label: '', metric: 'moisture', value: '', unit: '', textValue: '' });
 
@@ -113,16 +121,6 @@ export function surveyToForm(survey) {
   };
 }
 
-const DIMENSIONS = ['nos', 'l', 'b', 'h'];
-
-/** A row every size of which reads (blank sizes are fine — a wall has no breadth). */
-export const isReadableMeasurement = (row) => DIMENSIONS.every((k) => {
-  const v = parseLength(row?.[k]);
-  return v === undefined || Number.isFinite(v);
-});
-
-/** The rows that go to the server: not blank, every size readable. A row that does not read waits on the phone. */
-export const savedMeasurements = (rows = []) => (rows ?? []).filter((row) => !isBlankMeasurement(row) && isReadableMeasurement(row));
 
 /** A line measured by its sheet (at least one row that goes to the server). */
 export const isMeasured = (item) => savedMeasurements(item?.measurements).length > 0;
@@ -130,7 +128,7 @@ export const isMeasured = (item) => savedMeasurements(item?.measurements).length
 /** A line's quantity on this phone: the sheet's total (a preview — the server derives the saved one) or the typed one. */
 export function lineQty(item) {
   if (isMeasured(item)) return measurementTotal(savedMeasurements(item.measurements));
-  const n = Number(item?.qty);
+  const n = num(item?.qty);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -148,7 +146,7 @@ function itemBody(item, sortOrder) {
     unit: item.unit,
     // Measured: the server derives the quantity from the rows and ignores this one — sent as a fallback.
     qty,
-    wastagePct: Number(item.wastagePct || 0),
+    wastagePct: num(item.wastagePct || 0),
     isOptional: Boolean(item.isOptional),
     ...(text(item.note).trim() ? { note: text(item.note).trim() } : {}),
     ...(measured ? { measurements: measurementsBody(savedMeasurements(item.measurements)) } : {}),
@@ -171,20 +169,20 @@ export function payloadIndexes(items = []) {
 
 const freeReadingBody = (r) => {
   const label = text(r.label).trim();
-  const hasValue = text(r.value).trim() !== '' && Number.isFinite(Number(r.value));
+  const hasValue = text(r.value).trim() !== '' && Number.isFinite(num(r.value));
   const observation = text(r.textValue).trim();
   if (!label || (!hasValue && !observation)) return null;
   return {
     label,
     metric: r.metric || 'observation',
-    ...(hasValue ? { value: Number(r.value) } : {}),
+    ...(hasValue ? { value: num(r.value) } : {}),
     ...(text(r.unit).trim() ? { unit: text(r.unit).trim() } : {}),
     ...(observation ? { textValue: observation } : {}),
   };
 };
 
 const optional = (v) => (text(v).trim() ? text(v).trim() : undefined);
-const optionalNumber = (v) => (text(v).trim() === '' || !Number.isFinite(Number(v)) ? undefined : Number(v));
+const optionalNumber = (v) => (text(v).trim() === '' || !Number.isFinite(num(v)) ? undefined : num(v));
 
 /**
  * The `survey_draft` payload: every field, the readings (the template's answers first, then the others) and the
@@ -272,15 +270,7 @@ export function serverFlagFor(question, answer, survey) {
 }
 
 /** Rooms in the order they were first measured; a row with no room sits under `''`. */
-export function groupByArea(rows = []) {
-  const groups = new Map();
-  for (const row of rows) {
-    const area = text(row.area).trim();
-    if (!groups.has(area)) groups.set(area, []);
-    groups.get(area).push(row);
-  }
-  return [...groups.entries()].map(([area, list]) => ({ area, rows: list }));
-}
+export const groupByArea = groupMeasurementsByArea;
 
 /** Every room named on the survey — the photo step suggests them. */
 export function areasOf(form) {
@@ -295,10 +285,10 @@ export function areasOf(form) {
 }
 
 /** A room's total on this phone (a preview), over its rows that read. */
-export const roomTotal = (rows) => measurementTotal(rows.filter(isReadableMeasurement));
+export const roomTotal = readableTotal;
 
 /** A row's value, or null while it cannot be read. */
-export const rowValue = (row) => (isReadableMeasurement(row) ? measurementRowValue(row) : null);
+export const rowValue = readableRowValue;
 
 /**
  * Where each step stands, for the step bar: `done` (a tick) and a short `count`.

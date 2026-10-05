@@ -5,9 +5,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIdlePreload } from '@/hooks/useIdlePreload';
 import { PageOutlet } from '@/routes/PageOutlet';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
-import { useFieldCopy } from '@/hooks/useFieldCopy';
+import { useT } from '@/hooks/useT';
+import { FIELD } from '@/config/i18n/field';
 import { useLogoutMutation } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
+import { LocaleSwitch } from '@/components/common/LocaleSwitch';
 import { SyncBanner, SyncButton } from '@/components/tech/FieldSyncStatus';
 import { cn } from '@/helpers/utils';
 
@@ -25,6 +27,10 @@ const TABS = [
  * It also runs the sync engine (`useOfflineQueue`), once for the whole field app: the header says what
  * is still on the phone and sends it on "Sync now"; the strip under it says when there is no signal and
  * what the office refused.
+ *
+ * Phase J1: every word is `FIELD`'s, and the header carries the language switch (English / नेपाली, kept in the
+ * store's persisted `locale`). At 360 px the name and role truncate; the switch, the sync button and Sign out keep
+ * their size — each a 44 px target.
  */
 export function TechLayout() {
   useIdlePreload('tech');
@@ -40,8 +46,8 @@ export function TechLayout() {
   }, []);
 
   const { user, role } = useAuth();
-  const copy = useFieldCopy();
-  const tabs = TABS.filter((t) => !t.roles || t.roles.includes(role));
+  const t = useT(FIELD);
+  const tabs = TABS.filter((tab) => !tab.roles || tab.roles.includes(role));
   const sync = useOfflineQueue();
   const [logout] = useLogoutMutation();
   const navigate = useNavigate();
@@ -49,21 +55,22 @@ export function TechLayout() {
   return (
     <div className="flex min-h-dvh flex-col bg-muted/20">
       <header className="sticky top-0 z-30 border-b bg-background">
-        <div className="flex h-14 items-center gap-2 px-4">
+        <div className="flex h-14 items-center gap-1.5 px-3 min-[400px]:gap-2 min-[400px]:px-4">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{user?.name}</p>
-            <p className="text-[11px] text-muted-foreground">{copy.roles[role] ?? copy.roles.other}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{t.has(`roles.${role}`) ? t(`roles.${role}`) : t('roles.other')}</p>
           </div>
-          <SyncButton sync={sync} copy={copy} />
+          <LocaleSwitch className="shrink-0 [&>button]:min-h-11 [&>button]:min-w-11 [&>button]:px-2" />
+          <SyncButton sync={sync} />
           <Button
             variant="ghost" size="icon" className="h-11 w-11 shrink-0"
             onClick={async () => { await logout().unwrap().catch(() => {}); navigate('/login', { replace: true }); }}
-            aria-label={copy.signOut}
+            aria-label={t('signOut')}
           >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
-        <SyncBanner sync={sync} copy={copy} />
+        <SyncBanner sync={sync} />
       </header>
 
       <main className="flex-1 p-4 pb-24"><PageOutlet /></main>
@@ -83,7 +90,7 @@ export function TechLayout() {
             )}
           >
             <tab.icon className="h-5 w-5" aria-hidden />
-            {copy.tabs[tab.key]}
+            {t(`tabs.${tab.key}`)}
           </NavLink>
         ))}
       </nav>

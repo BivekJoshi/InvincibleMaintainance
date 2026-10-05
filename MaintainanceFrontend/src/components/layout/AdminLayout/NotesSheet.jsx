@@ -16,7 +16,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { NOTE_STYLES, noteStyle } from '@/config/admin/shortcuts';
 import { NOTE_COLORS, noteSchema } from '@/form/schemas/me.schema';
 import { selectNotesOpen, setNotesOpen, toastError } from '@/redux/slices/uiSlice';
-import { relativeTime } from '@/helpers/format';
+import { formatDateTime, relativeTime } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 
 const EASE = [0.16, 1, 0.3, 1];
@@ -98,7 +98,7 @@ function NoteCard({ note, onDelete }) {
         </button>
       )}
       <div className="mt-2 flex items-center gap-1">
-        <span className="text-[11px] text-muted-foreground" title={new Date(note.updatedAt).toLocaleString('en-GB', { timeZone: 'Asia/Kathmandu' })}>
+        <span className="text-[11px] text-muted-foreground" title={formatDateTime(note.updatedAt)}>
           {relativeTime(note.updatedAt)}
         </span>
         <div className="ml-auto flex items-center gap-1 opacity-100 transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">

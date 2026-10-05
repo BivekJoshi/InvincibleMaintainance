@@ -213,9 +213,13 @@ test('dispatch: schedule, double-book warning, materials, time, costing, complet
     await expect(tick).toBeChecked();
     await expect(page.getByRole('button', { name: 'Complete…' })).toBeEnabled();
     await page.getByRole('button', { name: 'Complete…' }).click();
-    const done = page.getByRole('dialog', { name: `Complete ${job.number}` });
+    // Since Phase L8 "Complete…" is the handover: no snags, the sign-off, then the warranty it issued.
+    const done = page.getByRole('dialog', { name: `Hand over ${job.number}` });
     await done.getByLabel(/What was done/).fill('Membrane laid; flood test dry.');
-    await done.getByRole('button', { name: 'Complete job' }).click();
+    await done.getByRole('button', { name: 'Complete and hand over' }).click();
+    const handed = page.getByRole('dialog', { name: `${job.number} is handed over` });
+    await expect(handed.getByTestId('warranty-link')).toContainText('/warranty/');
+    await handed.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText(/Completed — waiting for verification/)).toBeVisible();
 
     await page.getByRole('button', { name: 'Verify' }).click();

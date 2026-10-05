@@ -12,11 +12,14 @@ import { EMPTY_SIGNATURE, isSignatureLongEnough, signatureToPng } from '@/helper
 import { formatDateTime } from '@/helpers/format';
 import { cn } from '@/helpers/utils';
 import { toastError } from '@/redux/slices/uiSlice';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
 
 /** 1–5, optional: tap a star to rate, tap it again to take the rating back. */
-function RatingStars({ value, onChange, words }) {
+function RatingStars({ value, onChange }) {
+  const t = useT(FIELD);
   return (
-    <div role="group" aria-label={words.rating} className="flex gap-1">
+    <div role="group" aria-label={t('job.finish.rating')} className="flex gap-1">
       {[1, 2, 3, 4, 5].map((n) => (
         <Button
           key={n}
@@ -25,7 +28,7 @@ function RatingStars({ value, onChange, words }) {
           size="icon"
           className="h-11 w-11"
           aria-pressed={value === n}
-          aria-label={words.star(n)}
+          aria-label={t('job.finish.star', { stars: n })}
           onClick={() => onChange(value === n ? 0 : n)}
         >
           <Star className={cn('!size-6', n <= value ? 'fill-gold text-gold' : 'text-muted-foreground')} />
@@ -43,9 +46,9 @@ function RatingStars({ value, onChange, words }) {
  * `onComplete({ payload, signature? })` is the page's: with a signature it queues the PNG as a SIGNATURE
  * upload whose `complete` follows it once uploaded (it needs the media id); without one it queues `complete`.
  */
-export function FinishSection({ job, copy, onComplete }) {
+export function FinishSection({ job, onComplete }) {
+  const t = useT(FIELD);
   const dispatch = useDispatch();
-  const words = copy.job.finish;
   const [note, setNote] = useState('');
   const [rating, setRating] = useState(0);
   const [signature, setSignature] = useState(EMPTY_SIGNATURE);
@@ -55,7 +58,9 @@ export function FinishSection({ job, copy, onComplete }) {
   const open = openTasks(job).length;
   const started = job.status === 'IN_PROGRESS';
   const signed = isSignatureLongEnough(signature);
-  const blocker = open ? words.openTasks(open) : !started ? words.startFirst : !absent && !signed ? words.signFirst : null;
+  const blocker = open
+    ? t('job.finish.openTasks', { count: open })
+    : !started ? t('job.finish.startFirst') : !absent && !signed ? t('job.finish.signFirst') : null;
 
   const submit = async () => {
     setSaving(true);
@@ -66,7 +71,7 @@ export function FinishSection({ job, copy, onComplete }) {
       };
       await onComplete(absent ? { payload } : { payload, signature: await signatureToPng(signature) });
     } catch (err) {
-      dispatch(toastError(words.failed, err?.message));
+      dispatch(toastError(t('job.finish.failed'), err?.message));
     } finally {
       setSaving(false);
     }
@@ -74,34 +79,34 @@ export function FinishSection({ job, copy, onComplete }) {
 
   return (
     <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-base">{words.title}</CardTitle></CardHeader>
+      <CardHeader className="pb-2"><CardTitle className="text-base">{t('job.finish.title')}</CardTitle></CardHeader>
       <CardContent className="space-y-4 pb-4">
         <div className="space-y-1.5">
-          <Label htmlFor="completion-note">{words.note}</Label>
+          <Label htmlFor="completion-note">{t('job.finish.note')}</Label>
           <Textarea
             id="completion-note"
             value={note}
             maxLength={4000}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
-            placeholder={words.notePlaceholder}
+            placeholder={t('job.finish.notePlaceholder')}
             className="text-base"
           />
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-sm font-medium">{words.rating}</p>
-          <RatingStars value={rating} onChange={setRating} words={words} />
+          <p className="text-sm font-medium">{t('job.finish.rating')}</p>
+          <RatingStars value={rating} onChange={setRating} />
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-sm font-medium">{words.signature}</p>
+          <p className="text-sm font-medium">{t('job.finish.signature')}</p>
           {!absent ? (
-            <SignaturePad value={signature} onChange={setSignature} words={copy.signature} />
+            <SignaturePad value={signature} onChange={setSignature} />
           ) : null}
           <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-1">
             <Checkbox checked={absent} onCheckedChange={(v) => setAbsent(Boolean(v))} className="h-6 w-6 rounded" />
-            <span className="text-sm">{words.noSignature}</span>
+            <span className="text-sm">{t('job.finish.noSignature')}</span>
           </label>
         </div>
 
@@ -116,7 +121,7 @@ export function FinishSection({ job, copy, onComplete }) {
           aria-describedby={blocker ? 'complete-blocker' : undefined}
           onClick={submit}
         >
-          <CheckCircle2 /> {words.complete}
+          <CheckCircle2 /> {t('job.finish.complete')}
         </Button>
       </CardContent>
     </Card>
@@ -124,12 +129,12 @@ export function FinishSection({ job, copy, onComplete }) {
 }
 
 /** A closed job's ending, read only: when, the note, the rating — or that it is still on its way to the office. */
-export function CompletedSummary({ job, copy, signing }) {
-  const words = copy.job.finish;
+export function CompletedSummary({ job, signing }) {
+  const t = useT(FIELD);
   if (signing) {
     return (
       <p className="surface-warning flex items-center gap-2 rounded-lg border px-3 py-3 text-sm">
-        <CloudUpload className="h-4 w-4 shrink-0" aria-hidden /> {words.completing}
+        <CloudUpload className="h-4 w-4 shrink-0" aria-hidden /> {t('job.finish.completing')}
       </p>
     );
   }
@@ -138,14 +143,14 @@ export function CompletedSummary({ job, copy, signing }) {
     <Card>
       <CardContent className="space-y-1.5 p-4 text-sm">
         <p className="flex items-center gap-2 font-semibold">
-          <CheckCircle2 className="h-4 w-4 text-success" aria-hidden /> {words.completed}
-          {job.actualEnd ? <span className="font-normal text-muted-foreground">· {formatDateTime(job.actualEnd)}</span> : null}
+          <CheckCircle2 className="h-4 w-4 text-success" aria-hidden /> {t('job.finish.completed')}
+          {job.actualEnd ? <span className="font-normal text-muted-foreground">· {formatDateTime(job.actualEnd, { locale: t.locale })}</span> : null}
         </p>
         {job.completionNote ? <p className="whitespace-pre-wrap text-muted-foreground">{job.completionNote}</p> : null}
-        {job.customerRating ? <p className="text-muted-foreground">{words.rated(job.customerRating)}</p> : null}
+        {job.customerRating ? <p className="text-muted-foreground">{t('job.finish.rated', { stars: job.customerRating })}</p> : null}
         {job.pendingCount ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <CloudUpload className="h-3.5 w-3.5" aria-hidden /> {copy.job.pending}
+            <CloudUpload className="h-3.5 w-3.5" aria-hidden /> {t('job.pending')}
           </p>
         ) : null}
       </CardContent>

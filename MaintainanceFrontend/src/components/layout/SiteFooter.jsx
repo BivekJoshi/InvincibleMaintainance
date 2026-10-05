@@ -2,7 +2,9 @@ import { Link } from 'react-router-dom';
 import { Mail, MapPin, MessageCircle, Phone } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { useT } from '@/hooks/useT';
 import { FIELD_ROLES } from '@/config/constants';
+import { SITE } from '@/config/i18n/site';
 import { PromiseList } from '@/components/site/PromiseList';
 import { BrandMark } from '@/components/site/BrandMark';
 
@@ -30,8 +32,11 @@ function ContactLine({ icon: Icon, children, href, align = 'center' }) {
  * The dark foot of every public page: who we are, how to reach us, and the two
  * lists a visitor might still be looking for. Everything it shows comes from
  * `useSiteSettings`, so the phone number here is the phone number in the header.
+ * The words around it are the visitor's language (`config/i18n/site.js`); the tagline is the company's setting, and
+ * the catalogue's only until an editor writes one.
  */
 export function SiteFooter() {
+  const t = useT(SITE);
   const {
     name: company, initial, logoUrl, tagline, phone, mobile, email, address, city, whatsapp, viber, social, categories, nav,
   } = useSiteSettings();
@@ -46,10 +51,10 @@ export function SiteFooter() {
             <BrandMark logoUrl={logoUrl} initial={initial} className="h-9 w-9 rounded-md bg-gold text-sm font-bold text-gold-foreground" />
             <span className="text-[15px] font-bold tracking-tight">{company}</span>
           </div>
-          <p className="mt-4 max-w-xs leading-relaxed text-ink-muted">{tagline}</p>
+          <p className="mt-4 max-w-xs leading-relaxed text-ink-muted">{tagline || t('footer.tagline')}</p>
           <PromiseList variant="chips" tone="ink" className="mt-5" />
           {social.length ? (
-            <ul className="mt-5 flex flex-wrap gap-2" aria-label="Follow us">
+            <ul className="mt-5 flex flex-wrap gap-2" aria-label={t('footer.follow')}>
               {social.map((s) => (
                 <li key={s.key}>
                   <a
@@ -67,7 +72,7 @@ export function SiteFooter() {
         </div>
 
         <div className="lg:col-span-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-gold">Contact</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-gold">{t('footer.contact')}</p>
           <ul className="mt-4 space-y-3 text-ink-muted">
             <li><ContactLine icon={Phone} href={`tel:${phone}`}>{phone}</ContactLine></li>
             <li><ContactLine icon={Phone} href={`tel:${mobile}`}>{mobile}</ContactLine></li>
@@ -83,7 +88,7 @@ export function SiteFooter() {
         </div>
 
         <div className="lg:col-span-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-gold">Browse</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-gold">{t('footer.browse')}</p>
           <ul className="mt-4 space-y-2.5 text-ink-muted">
             {categories.map((c) => (
               <li key={c.id}>
@@ -94,15 +99,15 @@ export function SiteFooter() {
         </div>
 
         <div className="lg:col-span-2">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-gold">Company</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-gold">{t('footer.company')}</p>
           <ul className="mt-4 space-y-2.5 text-ink-muted">
-            <li><Link to="/book" className="transition-colors hover:text-ink-foreground">Book a visit</Link></li>
+            <li><Link to="/book" className="transition-colors hover:text-ink-foreground">{t('nav.bookVisit')}</Link></li>
             {nav.map((n) => (
-              <li key={n.to}><Link to={n.to} className="transition-colors hover:text-ink-foreground">{n.label}</Link></li>
+              <li key={n.to}><Link to={n.to} className="transition-colors hover:text-ink-foreground">{t(`nav.${n.key}`)}</Link></li>
             ))}
             <li>
               <Link to={isAuthenticated ? appHome : '/login'} className="transition-colors hover:text-ink-foreground">
-                {isAuthenticated ? 'Dashboard' : 'Staff login'}
+                {isAuthenticated ? t('nav.dashboard') : t('nav.staffLogin')}
               </Link>
             </li>
           </ul>
@@ -111,8 +116,9 @@ export function SiteFooter() {
 
       <div className="border-t border-ink-foreground/10">
         <div className="container flex flex-col gap-2 py-5 text-xs text-ink-muted sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} {company}. All rights reserved.</p>
-          <p>{city}, Nepal · Serving Kathmandu Valley</p>
+          {/* The year as a string: a number would be grouped like an amount. */}
+          <p>{t('footer.rights', { year: String(new Date().getFullYear()), company })}</p>
+          <p>{t('footer.serving', { city })}</p>
         </div>
       </div>
     </footer>

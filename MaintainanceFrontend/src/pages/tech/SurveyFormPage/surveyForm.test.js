@@ -102,3 +102,20 @@ describe('the survey stepper’s form', () => {
     expect(progress.lines).toMatchObject({ done: true, count: 1 });
   });
 });
+
+describe('the survey stepper’s form — typed on a Nepali keyboard (Phase J1)', () => {
+  it('reads quantities, waste, readings, area and days in Devanagari digits, and sends Latin numbers', () => {
+    const form = {
+      ...surveyToForm({ ...SURVEY, items: [], readings: [] }),
+      areaValue: '२४०',
+      estimatedDays: '३',
+      readings: [{ label: 'West wall', metric: 'moisture', value: '१२.५', unit: '%', textValue: '' }],
+      items: [blankItem({ kind: 'MATERIAL', description: 'Cement', unit: 'bag', qty: '१०', wastagePct: '५' })],
+    };
+    const body = surveyPayload(form, null);
+    expect(body).toMatchObject({ areaValue: 240, estimatedDays: 3 });
+    expect(body.readings).toEqual([expect.objectContaining({ label: 'West wall', value: 12.5 })]);
+    expect(body.items).toEqual([expect.objectContaining({ description: 'Cement', qty: 10, wastagePct: 5 })]);
+    expect(lineQty({ qty: '१२.५' })).toBe(12.5);
+  });
+});

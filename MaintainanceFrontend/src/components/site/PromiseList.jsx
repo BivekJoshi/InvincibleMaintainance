@@ -1,4 +1,6 @@
 import { SITE_PROMISES } from '@/config/site/promises';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 import { DataIcon } from './DataIcon';
 
@@ -13,20 +15,22 @@ import { DataIcon } from './DataIcon';
  * @param {{ variant?: 'inline'|'chips'|'stack', tone?: 'paper'|'ink', className?: string }} props
  */
 export function PromiseList({ variant = 'inline', tone = 'paper', className }) {
+  const t = useT(SITE);
   const ink = tone === 'ink';
+  const label = (p) => t(`promises.${p.key}.label`);
 
   if (variant === 'chips') {
     return (
       <ul className={cn('flex flex-wrap gap-2', className)}>
         {SITE_PROMISES.map((p) => (
           <li
-            key={p.label}
+            key={p.key}
             className={cn(
               'rounded-full border px-3 py-1 text-[11px]',
               ink ? 'border-ink-foreground/15 text-ink-muted' : 'border-border text-muted-foreground',
             )}
           >
-            {p.label}
+            {label(p)}
           </li>
         ))}
       </ul>
@@ -37,11 +41,11 @@ export function PromiseList({ variant = 'inline', tone = 'paper', className }) {
     return (
       <ul className={cn('space-y-2 text-sm', className)}>
         {SITE_PROMISES.map((p) => (
-          <li key={p.label} className={cn('flex gap-2.5', ink ? 'text-ink-muted' : 'text-muted-foreground')}>
+          <li key={p.key} className={cn('flex gap-2.5', ink ? 'text-ink-muted' : 'text-muted-foreground')}>
             <DataIcon name={p.icon} className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
             <span>
-              <span className={cn('font-medium', ink ? 'text-ink-foreground' : 'text-foreground')}>{p.label}</span>
-              {' — '}{p.detail}
+              <span className={cn('font-medium', ink ? 'text-ink-foreground' : 'text-foreground')}>{label(p)}</span>
+              {' — '}{t(`promises.${p.key}.detail`)}
             </span>
           </li>
         ))}
@@ -52,9 +56,9 @@ export function PromiseList({ variant = 'inline', tone = 'paper', className }) {
   return (
     <ul className={cn('flex flex-wrap gap-x-5 gap-y-2 text-[13px]', ink ? 'text-ink-muted' : 'text-muted-foreground', className)}>
       {SITE_PROMISES.map((p) => (
-        <li key={p.label} className="flex items-center gap-1.5">
+        <li key={p.key} className="flex items-center gap-1.5">
           <DataIcon name={p.icon} className="h-3.5 w-3.5 text-gold" />
-          {p.label}
+          {label(p)}
         </li>
       ))}
     </ul>

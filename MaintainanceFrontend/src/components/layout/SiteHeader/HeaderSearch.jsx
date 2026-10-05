@@ -1,6 +1,8 @@
 import { forwardRef, useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 
 /**
@@ -12,6 +14,7 @@ export const HeaderSearch = forwardRef(function HeaderSearch(
   { className, onSearch, defaultValue = '', autoFocus = false, compact = true },
   ref,
 ) {
+  const t = useT(SITE);
   const inner = useRef(null);
   const node = ref ?? inner;
 
@@ -38,14 +41,15 @@ export const HeaderSearch = forwardRef(function HeaderSearch(
         name="q"
         defaultValue={defaultValue}
         autoFocus={autoFocus}
-        placeholder={compact ? 'Search services…' : 'Search a service…'}
-        aria-label="Search services"
+        placeholder={compact ? t('search.placeholder') : t('search.placeholderLong')}
+        aria-label={t('search.label')}
         className={cn(
           'peer w-full rounded-full border bg-muted/40 text-sm outline-none transition-all duration-300',
           'placeholder:text-muted-foreground/80 focus:border-primary/40 focus:bg-background focus:ring-4 focus:ring-primary/10',
           compact
             ? 'h-9 w-44 pl-9 pr-9 text-[13px] focus:w-60 xl:w-52 xl:focus:w-72'
-            : 'h-11 pl-10 pr-24',
+            // Room for the button, whose word is longer in Nepali.
+            : 'h-11 pl-10 pr-28',
         )}
       />
       {compact ? (
@@ -53,7 +57,7 @@ export const HeaderSearch = forwardRef(function HeaderSearch(
           /
         </kbd>
       ) : (
-        <Button type="submit" size="sm" className="absolute right-1.5 top-1.5 h-8 rounded-full px-4">Search</Button>
+        <Button type="submit" size="sm" className="absolute right-1.5 top-1.5 h-8 rounded-full px-4">{t('search.submit')}</Button>
       )}
     </form>
   );

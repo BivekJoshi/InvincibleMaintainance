@@ -1,8 +1,8 @@
-import { useSelector } from 'react-redux';
 import { useGetPublicServicesQuery } from '@/api/publicApi';
-import { selectLocale } from '@/redux/slices/uiSlice';
+import { SITE } from '@/config/i18n/site';
 import { useSeo } from '@/hooks/useSeo';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { useT } from '@/hooks/useT';
 import { LeadCaptureCard } from '@/components/public/LeadCaptureCard';
 import { LeadForm } from '@/components/public/LeadForm';
 import { PageHero } from '@/components/site/PageHero';
@@ -16,30 +16,23 @@ import { ContactMap } from './sections/ContactMap';
  * someone who will answer it. Neither is the secondary one.
  */
 export default function ContactPage() {
-  const locale = useSelector(selectLocale);
-  const { data: services } = useGetPublicServicesQuery({ locale });
+  const t = useT(SITE);
+  const { data: services } = useGetPublicServicesQuery({ locale: t.locale });
   const { phone, mobile, email, address, mapEmbed } = useSiteSettings();
 
-  useSeo({
-    title: 'Tell us what is wrong. We will tell you why.',
-    description: 'A certified engineer inspects it, explains the cause, and gives you a written estimate — at no charge.',
-  });
+  useSeo({ title: t('contact.title'), description: t('contact.seoDescription') });
 
   return (
     <PageTransition>
-      <PageHero
-        eyebrow="Free consultation"
-        title="Tell us what is wrong. We will tell you why."
-        description="A certified engineer inspects it, explains the cause, and gives you a written estimate — at no charge, whether or not you go ahead."
-      />
+      <PageHero eyebrow={t('contact.eyebrow')} title={t('contact.title')} description={t('contact.description')} />
 
       <SectionShell>
         <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-start lg:gap-16">
           <Reveal>
             <LeadCaptureCard
-              title="Request an inspection"
-              description="Two-hour response, every working day."
-              footnote="We use your number to arrange the visit and nothing else."
+              title={t('contact.card.title')}
+              description={t('contact.card.description')}
+              footnote={t('contact.card.footnote')}
             >
               <LeadForm services={services?.items ?? []} sourcePage="/contact" />
             </LeadCaptureCard>

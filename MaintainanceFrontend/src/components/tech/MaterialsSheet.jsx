@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { FIELD } from '@/config/i18n/field';
+import { useT } from '@/hooks/useT';
+import { toLatinDigits } from '@/helpers/format';
 
 /** How many matches the list shows before asking for a narrower search. */
 const SHOWN = 40;
@@ -20,11 +23,16 @@ const tidy = (n) => String(Math.round(n * 1000) / 1000);
  * mutation, so it works the same with or without signal. The list is cached for the shift
  * (`keepUnusedDataFor`), so it opens offline once it has loaded once.
  *
+ * Its words are `FIELD.materialsSheet`, with the title, the hint and the button from `section` — `materials` (the
+ * job's "Log material") or `diary.received` (a delivery). The quantity is a text box so a Nepali keyboard's digits
+ * are taken: `१२.५` is read, and shown, as `12.5`.
+ *
  * @param {{ open: boolean, onOpenChange: (open: boolean) => void,
  *   onLog: (line: { material: { id: string, code: string, name: string, unit: string }, qty: number }) => Promise<void>|void,
- *   words: object }} props  `words` is `fieldCopy.materials`
+ *   section?: 'materials'|'diary.received' }} props
  */
-export function MaterialsSheet({ open, onOpenChange, onLog, words }) {
+export function MaterialsSheet({ open, onOpenChange, onLog, section = 'materials' }) {
+  const t = useT(FIELD);
   const { data: materials, isLoading } = useGetTechMaterialsQuery(undefined, { skip: !open });
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState(null);
@@ -62,7 +70,7 @@ export function MaterialsSheet({ open, onOpenChange, onLog, words }) {
     event.preventDefault();
     const value = Number(qty);
     if (!Number.isFinite(value) || value <= 0 || value > MAX_QTY) {
-      setError(words.invalid);
+      setError(t('materialsSheet.invalid'));
       return;
     }
     setSaving(true);
@@ -76,10 +84,14 @@ export function MaterialsSheet({ open, onOpenChange, onLog, words }) {
 
   return (
     <Sheet open={open} onOpenChange={change}>
-      <SheetContent side="bottom" className="flex max-h-[88dvh] flex-col gap-3 rounded-t-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <SheetContent
+        side="bottom"
+        className="flex max-h-[88dvh] flex-col gap-3 rounded-t-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        closeLabel={t('close')}
+      >
         <SheetHeader className="pr-8 text-left">
-          <SheetTitle>{words.sheetTitle}</SheetTitle>
-          <SheetDescription>{words.sheetBody}</SheetDescription>
+          <SheetTitle>{t(`${section}.sheetTitle`)}</SheetTitle>
+          <SheetDescription>{t(`${section}.sheetBody`)}</SheetDescription>
         </SheetHeader>
 
         {picked ? (
@@ -89,20 +101,18 @@ export function MaterialsSheet({ open, onOpenChange, onLog, words }) {
               <p className="mt-0.5 font-mono text-xs text-muted-foreground">{picked.code} · {picked.unit}</p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="material-qty">{words.quantity} ({picked.unit})</Label>
+              <Label htmlFor="material-qty">{t('materialsSheet.quantityIn', { unit: picked.unit })}</Label>
               <div className="flex items-stretch gap-2">
-                <Button type="button" variant="outline" className="h-14 w-14 shrink-0" onClick={() => step(-1)} aria-label={words.less}>
+                <Button type="button" variant="outline" className="h-14 w-14 shrink-0" onClick={() => step(-1)} aria-label={t('materialsSheet.less')}>
                   <Minus />
                 </Button>
                 <div className="relative flex-1">
                   <Input
                     id="material-qty"
-                    type="number"
                     inputMode="decimal"
-                    min="0"
-                    step="any"
+                    autoComplete="off"
                     value={qty}
-                    onChange={(e) => { setQty(e.target.value); setError(null); }}
+                    onChange={(e) => { setQty(toLatinDigits(e.target.value)); setError(null); }}
                     aria-invalid={error ? 'true' : undefined}
                     aria-describedby={error ? 'material-qty-error' : undefined}
                     className="h-14 pr-14 text-center text-xl font-semibold"
@@ -111,17 +121,17 @@ export function MaterialsSheet({ open, onOpenChange, onLog, words }) {
                     {picked.unit}
                   </span>
                 </div>
-                <Button type="button" variant="outline" className="h-14 w-14 shrink-0" onClick={() => step(1)} aria-label={words.more_}>
+                <Button type="button" variant="outline" className="h-14 w-14 shrink-0" onClick={() => step(1)} aria-label={t('materialsSheet.more')}>
                   <Plus />
                 </Button>
               </div>
               {error ? <p id="material-qty-error" className="text-sm text-destructive">{error}</p> : null}
             </div>
             <Button type="submit" size="xl" className="w-full" loading={saving}>
-              {words.submit(qty || 0, picked.unit)}
+              {t(`${section}.submit`, { qty: qty || '0', unit: picked.unit })}
             </Button>
             <Button type="button" variant="ghost" size="lg" className="w-full" onClick={() => { setPicked(null); setError(null); }}>
-              <ArrowLeft /> {words.pickAnother}
+              <ArrowLeft /> {t('materialsSheet.pickAnother')}
             </Button>
           </form>
         ) : (
@@ -132,16 +142,16 @@ export function MaterialsSheet({ open, onOpenChange, onLog, words }) {
                 type="search"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder={words.search}
-                aria-label={words.search}
+                placeholder={t('materialsSheet.search')}
+                aria-label={t('materialsSheet.search')}
                 className="h-12 pl-9 text-base"
               />
             </div>
             <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
               {isLoading ? null : !materials ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">{words.notLoaded}</p>
+                <p className="py-6 text-center text-sm text-muted-foreground">{t('materialsSheet.notLoaded')}</p>
               ) : !matches.length ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">{words.noMatch}</p>
+                <p className="py-6 text-center text-sm text-muted-foreground">{t('materialsSheet.noMatch')}</p>
               ) : (
                 <ul className="space-y-1.5">
                   {matches.slice(0, SHOWN).map((m) => (
@@ -160,7 +170,7 @@ export function MaterialsSheet({ open, onOpenChange, onLog, words }) {
                     </li>
                   ))}
                   {matches.length > SHOWN ? (
-                    <li className="py-2 text-center text-xs text-muted-foreground">{words.more(matches.length - SHOWN)}</li>
+                    <li className="py-2 text-center text-xs text-muted-foreground">{t('materialsSheet.moreMatches', { count: matches.length - SHOWN })}</li>
                   ) : null}
                 </ul>
               )}

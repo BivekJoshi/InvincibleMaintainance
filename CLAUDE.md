@@ -88,6 +88,12 @@ split by route group: `(site)` public, `(admin)` staff, `(tech)` technician PWA.
 - Motion = **Framer Motion**. Page transitions, list stagger, and layout animations only.
   Respect `prefers-reduced-motion`; never animate anything that blocks input.
 - Forms: react-hook-form + `zodResolver`, using the schemas mirrored from the backend.
+- **Words (Phase J1): every user-visible string on the field app, the public site + booking, the login and the
+  customer's document pages goes through `t()`** — `const t = useT(CATALOGUE)` over `src/config/i18n/<audience>.js`
+  (`{ en, ne }`, plain data: strings with `{name}` placeholders or `{ one, other }` plurals). Add a key to both languages;
+  the catalogue test fails otherwise. API refusals are worded by error `code` (`useApiErrorText`), never by the server's
+  message. Formatting takes `{ locale: t.locale }`; digits stay Latin. **The admin panel stays English** (decision D7) —
+  write its strings inline as before. Details in `MaintainanceFrontend/src/STRUCTURE.md` → "Words".
 
 **Backend** (`MaintainanceBackend`) — see its README for the full picture. Three rules matter
 most: money is integer paisa and only `utils/money.js` does arithmetic on it; every registry

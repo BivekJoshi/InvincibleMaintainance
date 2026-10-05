@@ -9,6 +9,11 @@ import { apiSlice, tagList } from '@/api/apiSlice';
  * `{ type: 'Payment', id: 'LIST' }`; every report `Report`. A write that moves money invalidates the invoice, both
  * lists, the reports, the customer (their statement and balance), History and the dashboard.
  *
+ * Phase L8 — close-out: `raiseStageInvoice` (a RUNNING bill for a MILESTONE stage of the job's payment schedule) and
+ * `getFinalBill` (the FINAL bill's preview — the server's lines, deductions, totals and what blocks it). The preview is
+ * tagged `{ type: 'Job', id: 'final-bill:<jobId>' }`: money moving (every write here invalidates `Job`) and the final
+ * measurement (`jobsApi`) refresh it.
+ *
  * Expenses are a registry entry (`cmsApi` with `resource: 'expenses'`); their category suggestions come through
  * `lookupApi#getSuggestions`.
  */
@@ -58,6 +63,27 @@ export const financeApi = apiSlice.injectEndpoints({
       query: ({ jobId, ...body }) => ({ url: `/admin/invoices/from-job/${jobId}`, method: 'POST', body }),
       transformResponse: dataOf,
       invalidatesTags: (r, e, { jobId }) => [...MONEY_MOVED, { type: 'Job', id: 'LIST' }, { type: 'Job', id: jobId }, 'Dispatch'],
+    }),
+    /**
+     * `POST /admin/jobs/:id/invoices/stage { paymentStageId }` (Phase L8, `invoices:write`) → 201 a RUNNING invoice, a
+     * DRAFT with locked lines, for the stage's amount of the payment schedule. 404 STAGE_NOT_FOUND, 422
+     * STAGE_NOT_MILESTONE, 409 STAGE_BILLED, 422 FINAL_ALREADY_BILLED.
+     */
+    raiseStageInvoice: build.mutation({
+      query: ({ jobId, paymentStageId }) => ({ url: `/admin/jobs/${jobId}/invoices/stage`, method: 'POST', body: { paymentStageId } }),
+      transformResponse: dataOf,
+      invalidatesTags: (r, e, { jobId }) => [...MONEY_MOVED, { type: 'Job', id: jobId }],
+    }),
+    /**
+     * `GET /admin/jobs/:id/final-bill` (Phase L8, `invoices:read`) — the FINAL bill as `POST …/from-job/:jobId` would
+     * raise it: `{ boq: true, contractType, measurementRequired, measurementClosed, lines, deductions, totals: { contract,
+     * billed, due }, blocking }`, or `{ boq: false }` for a job without BOQ lines (Phase I's rules bill it).
+     */
+    getFinalBill: build.query({
+      query: (jobId) => `/admin/jobs/${jobId}/final-bill`,
+      transformResponse: dataOf,
+      providesTags: (r, e, jobId) => [{ type: 'Job', id: `final-bill:${jobId}` }, { type: 'Job', id: jobId }],
+      keepUnusedDataFor: 0,
     }),
     /** A DRAFT only; anything else is 422 INVOICE_LOCKED. */
     updateInvoice: build.mutation({
@@ -133,6 +159,7 @@ export const financeApi = apiSlice.injectEndpoints({
 
 export const {
   useGetInvoicesQuery, useGetInvoiceQuery, useCreateInvoiceMutation, useCreateInvoiceFromJobMutation,
+  useRaiseStageInvoiceMutation, useGetFinalBillQuery,
   useUpdateInvoiceMutation, useSendInvoiceMutation, useVoidInvoiceMutation, useRecordPaymentMutation,
   useVoidPaymentMutation, useGetPaymentsQuery,
   useGetAgingReportQuery, useGetRevenueReportQuery, useGetCollectionsReportQuery,

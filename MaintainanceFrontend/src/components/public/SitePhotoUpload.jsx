@@ -3,16 +3,19 @@ import { AlertCircle, Camera, ImagePlus, Loader2, X } from 'lucide-react';
 import { useUploadLeadPhotosMutation } from '@/api/publicApi';
 import { Button } from '@/components/ui/button';
 import { AnimatePresence, motion, useReducedMotion } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useApiErrorText, useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 
 /** The API's limits, said here so the customer hears them before the upload fails. */
 export const MAX_PHOTOS = 5;
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_MB = 10;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 
 const isImage = (file) => file.type?.startsWith('image/');
 
 /** One chosen photo while it uploads, and after. */
-function Thumb({ item, onRemove, reduced }) {
+function Thumb({ item, onRemove, reduced, t }) {
   const failed = item.status === 'error';
   return (
     <motion.li
@@ -33,7 +36,7 @@ function Thumb({ item, onRemove, reduced }) {
         {item.status === 'uploading' ? (
           <span className="absolute inset-0 grid place-items-center bg-ink/55 text-ink-foreground">
             <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden />
-            <span className="sr-only">Uploading {item.file.name}</span>
+            <span className="sr-only">{t('photos.uploading', { name: item.file.name })}</span>
           </span>
         ) : null}
         {failed ? (
@@ -45,7 +48,7 @@ function Thumb({ item, onRemove, reduced }) {
       <button
         type="button"
         onClick={() => onRemove(item.key)}
-        aria-label={`Remove ${item.file.name}`}
+        aria-label={t('photos.remove', { name: item.file.name })}
         className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border bg-card text-muted-foreground shadow-[var(--elevation-1)] transition-colors hover:border-destructive hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <X className="h-3.5 w-3.5" aria-hidden />
@@ -60,9 +63,14 @@ function Thumb({ item, onRemove, reduced }) {
  * that fails to upload stays on screen, marked, and is left out of `onChange`; the enquiry is
  * never blocked by it, because a booking matters more than a picture.
  *
+ * Phase J1: every word is the visitor's language. A refused upload is worded from the API's code — `TOO_MANY_PHOTOS`,
+ * `PHOTO_TOO_LARGE`… in `common.js` — with the server's English message as the fallback.
+ *
  * @param {{ onChange: (ids: string[]) => void, className?: string, compact?: boolean }} props
  */
 export function SitePhotoUpload({ onChange, className, compact = false }) {
+  const t = useT(SITE);
+  const errorText = useApiErrorText(SITE);
   const [upload] = useUploadLeadPhotosMutation();
   const [items, setItems] = useState([]);
   const [error, setError] = useState(null);
@@ -89,13 +97,13 @@ export function SitePhotoUpload({ onChange, className, compact = false }) {
     const problems = [];
     const usable = [];
     for (const file of chosen) {
-      if (!isImage(file)) problems.push(`${file.name} is not a photo`);
-      else if (file.size > MAX_BYTES) problems.push(`${file.name} is over 10 MB`);
+      if (!isImage(file)) problems.push(t('photos.notPhoto', { name: file.name }));
+      else if (file.size > MAX_BYTES) problems.push(t('photos.tooBig', { name: file.name, maxMb: MAX_MB }));
       else usable.push(file);
     }
     const taking = usable.slice(0, Math.max(0, room));
-    if (usable.length > taking.length) problems.push(`Only ${MAX_PHOTOS} photos, so the rest were left out`);
-    if (problems.length) setError(problems.join('. '));
+    if (usable.length > taking.length) problems.push(t('photos.tooMany', { max: MAX_PHOTOS }));
+    if (problems.length) setError(problems.join(' '));
     if (!taking.length) return;
 
     const batch = taking.map((file, i) => {
@@ -113,10 +121,10 @@ export function SitePhotoUpload({ onChange, className, compact = false }) {
         return at === -1 ? item : { ...item, status: 'done', id: saved[at]?.id };
       }));
     } catch (err) {
-      setError(err?.data?.error?.message ?? 'Those photos did not upload. You can still send the enquiry.');
+      setError(`${errorText(err)} ${t('photos.stillSend')}`);
       publish(withBatch.map((item) => (batch.includes(item) ? { ...item, status: 'error' } : item)));
     }
-  }, [items, publish, upload]);
+  }, [items, publish, upload, t, errorText]);
 
   const remove = (key) => {
     const gone = items.find((i) => i.key === key);
@@ -149,19 +157,18 @@ export function SitePhotoUpload({ onChange, className, compact = false }) {
             <ImagePlus className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">Photos of the problem <span className="font-normal text-muted-foreground">(optional)</span></p>
-            <p className="text-xs text-muted-foreground">
-              A picture of the damp patch, crack or leak helps us price the work before we arrive.
-              Up to {MAX_PHOTOS}, 10 MB each.
+            <p className="text-sm font-semibold">
+              {t('photos.title')} <span className="font-normal text-muted-foreground">{t('common.optional')}</span>
             </p>
+            <p className="text-xs text-muted-foreground">{t('photos.help', { max: MAX_PHOTOS, maxMb: MAX_MB })}</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => inputRef.current?.click()} disabled={full}>
-              <ImagePlus className="h-4 w-4" /> Choose photos
+              <ImagePlus className="h-4 w-4" /> {t('photos.choose')}
             </Button>
             {/* A phone opens the camera; a desktop browser quietly shows the file picker again. */}
             <Button type="button" variant="outline" size="sm" className="rounded-full sm:hidden" onClick={() => cameraRef.current?.click()} disabled={full}>
-              <Camera className="h-4 w-4" /> Take one
+              <Camera className="h-4 w-4" /> {t('photos.take')}
             </Button>
           </div>
         </div>
@@ -169,19 +176,19 @@ export function SitePhotoUpload({ onChange, className, compact = false }) {
         {items.length ? (
           <ul className="mt-4 flex flex-wrap gap-3">
             <AnimatePresence initial={false}>
-              {items.map((item) => <Thumb key={item.key} item={item} onRemove={remove} reduced={reduced} />)}
+              {items.map((item) => <Thumb key={item.key} item={item} onRemove={remove} reduced={reduced} t={t} />)}
             </AnimatePresence>
           </ul>
         ) : null}
 
         <input
           ref={inputRef} type="file" accept="image/*" multiple className="sr-only"
-          aria-label="Photos of the problem"
+          aria-label={t('photos.title')}
           onChange={(e) => { add(e.target.files); e.target.value = ''; }}
         />
         <input
           ref={cameraRef} type="file" accept="image/*" capture="environment" className="sr-only"
-          aria-label="Take a photo of the problem"
+          aria-label={t('photos.takeLabel')}
           onChange={(e) => { add(e.target.files); e.target.value = ''; }}
         />
       </div>
@@ -191,7 +198,7 @@ export function SitePhotoUpload({ onChange, className, compact = false }) {
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden /> {error}
         </p>
       ) : null}
-      {full ? <p className="mt-2 text-xs text-muted-foreground">That is all {MAX_PHOTOS} photos. Remove one to swap it.</p> : null}
+      {full ? <p className="mt-2 text-xs text-muted-foreground">{t('photos.full', { max: MAX_PHOTOS })}</p> : null}
     </div>
   );
 }

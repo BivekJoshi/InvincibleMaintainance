@@ -554,8 +554,11 @@ export function Marquee({ children, className, duration = 38, reverse = false, p
   );
 }
 
-/** Appears once the reader is a screen down; returns them to the top. */
-export function BackToTop({ className }) {
+/**
+ * Appears once the reader is a screen down; returns them to the top. `label` is the button's name for a screen
+ * reader — the site passes it in the visitor's language.
+ */
+export function BackToTop({ className, label = 'Back to top' }) {
   const { scrollY } = useScroll();
   const [show, setShow] = useState(false);
   useMotionValueEvent(scrollY, 'change', (v) => setShow(v > 900));
@@ -574,7 +577,7 @@ export function BackToTop({ className }) {
             'fixed bottom-20 right-5 z-40 grid h-11 w-11 place-items-center rounded-full border border-gold/40 bg-ink text-gold shadow-lift md:bottom-8 md:right-8',
             className,
           )}
-          aria-label="Back to top"
+          aria-label={label}
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />

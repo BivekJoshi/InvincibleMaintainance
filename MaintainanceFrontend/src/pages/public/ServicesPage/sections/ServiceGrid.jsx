@@ -4,6 +4,8 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { ServiceCard } from '@/components/site/ServiceCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stagger, StaggerOnView, cardRise } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
@@ -15,6 +17,7 @@ const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
  * page reflowing the moment the query lands.
  */
 export function ServiceGrid({ services, media, isLoading }) {
+  const t = useT(SITE);
   if (isLoading) {
     return (
       <div className={GRID} aria-hidden>
@@ -27,9 +30,9 @@ export function ServiceGrid({ services, media, isLoading }) {
     return (
       <EmptyState
         icon={Search}
-        title="Nothing matched that"
-        description="Try a different word or browse another category — or tell us what you need and we will quote it."
-        action={{ asChild: <Link to="/book">Describe the job</Link> }}
+        title={t('services.empty.title')}
+        description={t('services.empty.description')}
+        action={{ asChild: <Link to="/book">{t('services.empty.action')}</Link> }}
       />
     );
   }

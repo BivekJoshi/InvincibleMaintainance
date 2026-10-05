@@ -1,3 +1,5 @@
+import { toLatinDigits } from '@/helpers/format';
+
 /**
  * An inspection template's questions on the phone (Phase L5): what an answer looks like, which reading it
  * becomes, whether it is flagged and what is still missing before the survey can be submitted.
@@ -7,7 +9,8 @@
  * the moment a number is typed, and a missing answer before the phone even tries — with no signal at all.
  *
  * A question: `{ key, label, labelNe?, type: 'YES_NO'|'NUMBER'|'CHOICE'|'TEXT', unit?, metric?, options?,
- * flag?, required, photoRequired }`. An answer (the stepper's own state, one per question key):
+ * optionsNe?, flag?, required, photoRequired }` — `optionsNe` (Phase J1) is display only: the Nepali words for
+ * `options`, same length and order; the answer is always the English `options[i]`. An answer (the stepper's own state, one per question key):
  * `{ value?: string, textValue?: string, mediaId?: string, photoUploadId?: string }` — `value` is a
  * NUMBER's figure as typed, `textValue` a YES_NO's `'yes'`/`'no'`, a CHOICE's option or a TEXT's words;
  * `photoUploadId` names a picture still in the upload queue (`helpers/uploadQueue.js`), which the sync engine
@@ -16,10 +19,13 @@
 
 const blank = (v) => v === undefined || v === null || String(v).trim() === '';
 
-/** A NUMBER answer as a number: `12.5`, `12,5` is not read; blank → undefined; unreadable → NaN. */
+/**
+ * A NUMBER answer as a number: `12.5` (or `१२.५`, typed on a Nepali keyboard), `12,5` is not read; blank → undefined;
+ * unreadable → NaN.
+ */
 export function answerNumber(value) {
   if (blank(value)) return undefined;
-  const n = Number(String(value).trim().replace(/,/g, ''));
+  const n = Number(toLatinDigits(value).trim().replace(/,/g, ''));
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
@@ -27,6 +33,17 @@ export function answerNumber(value) {
 export const questionLabel = (question, locale = 'en') => (locale === 'ne' && question?.labelNe?.trim()
   ? question.labelNe
   : question?.label ?? '');
+
+/**
+ * A CHOICE option's words in the viewer's language — the template's `optionsNe[i]` in Nepali where the office wrote
+ * one, else the option itself. Display only: the answer stays `option`.
+ */
+export function optionLabel(question, option, locale = 'en') {
+  if (locale !== 'ne') return option;
+  const i = (question?.options ?? []).indexOf(option);
+  const ne = i < 0 ? null : question?.optionsNe?.[i];
+  return typeof ne === 'string' && ne.trim() ? ne : option;
+}
 
 /** True once the question has an answer the API can store (a number that reads, a pick, some words). */
 export function isAnswered(question, answer) {

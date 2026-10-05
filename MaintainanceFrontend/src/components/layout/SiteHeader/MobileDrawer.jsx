@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { DataIcon } from '@/components/site/DataIcon';
 import { LocaleSwitch } from '@/components/common/LocaleSwitch';
 import { ThemeModeSwitch } from '@/components/theme/ThemeModeSwitch';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 import { cn } from '@/helpers/utils';
 import { HeaderSearch } from './HeaderSearch';
 
@@ -19,6 +21,7 @@ export function MobileDrawer({
   reduced, focusSearch, query, categories, nav, company, phone, mobile,
   isAuthenticated, appHome, activeTo, onSearch, onClose,
 }) {
+  const t = useT(SITE);
   const list = {
     hidden: {},
     show: { transition: { staggerChildren: reduced ? 0 : 0.045, delayChildren: reduced ? 0 : 0.1 } },
@@ -29,10 +32,10 @@ export function MobileDrawer({
   };
 
   const links = [
-    ...nav,
+    ...nav.map((item) => ({ ...item, label: t(`nav.${item.key}`) })),
     {
       to: isAuthenticated ? appHome : '/login',
-      label: isAuthenticated ? 'Dashboard' : 'Staff login',
+      label: isAuthenticated ? t('nav.dashboard') : t('nav.staffLogin'),
       icon: isAuthenticated ? LayoutDashboard : LogIn,
     },
   ];
@@ -53,7 +56,7 @@ export function MobileDrawer({
         id="site-drawer"
         role="dialog"
         aria-modal="true"
-        aria-label={`${company} menu`}
+        aria-label={t('header.menuOf', { company })}
         initial={reduced ? { opacity: 0 } : { x: '100%' }}
         animate={reduced ? { opacity: 1 } : { x: 0 }}
         exit={reduced ? { opacity: 0 } : { x: '100%' }}
@@ -65,8 +68,8 @@ export function MobileDrawer({
         className="fixed inset-y-0 right-0 z-50 flex w-[min(22rem,88vw)] flex-col bg-background shadow-float lg:hidden"
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b px-5">
-          <span className="text-sm font-semibold tracking-tight">{company}</span>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close menu">
+          <span className="min-w-0 truncate text-sm font-semibold tracking-tight">{company}</span>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('header.closeMenu')}>
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -76,7 +79,7 @@ export function MobileDrawer({
             <HeaderSearch defaultValue={query} onSearch={onSearch} autoFocus={focusSearch} compact={false} />
           </motion.div>
 
-          <nav className="mt-5" aria-label="Main">
+          <nav className="mt-5" aria-label={t('nav.main')}>
             {links.map((item) => {
               const Icon = item.icon;
               return (
@@ -88,8 +91,8 @@ export function MobileDrawer({
                       activeTo === item.to ? 'text-primary' : 'hover:text-primary',
                     )}
                   >
-                    <span className="flex items-center gap-2.5">
-                      {Icon ? <Icon className="h-4 w-4 text-muted-foreground" aria-hidden /> : null}
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      {Icon ? <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden /> : null}
                       {item.label}
                     </span>
                     <ChevronRight
@@ -104,7 +107,7 @@ export function MobileDrawer({
 
           {categories.length ? (
             <motion.div variants={row} className="mt-6">
-              <p className="eyebrow text-muted-foreground">Browse by trade</p>
+              <p className="eyebrow text-muted-foreground">{t('mega.browse')}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {categories.map((c) => (
                   <Link
@@ -121,7 +124,7 @@ export function MobileDrawer({
           ) : null}
 
           <motion.div variants={row} className="mt-6">
-            <p className="eyebrow text-muted-foreground">Talk to us</p>
+            <p className="eyebrow text-muted-foreground">{t('drawer.talk')}</p>
             <div className="mt-3 space-y-1.5">
               {[phone, mobile].map((n) => (
                 <a
@@ -137,9 +140,14 @@ export function MobileDrawer({
         </motion.div>
 
         <div className="shrink-0 space-y-3 border-t p-5">
+          {/* The two share the drawer's width; a Nepali label wraps onto a second line rather than overflowing. */}
           <div className="flex gap-3">
-            <Button asChild className="flex-1"><Link to="/book"><CalendarCheck className="h-4 w-4" /> Book a visit</Link></Button>
-            <Button asChild variant="outline" className="flex-1"><a href={`tel:${mobile}`}><Phone className="h-4 w-4" /> Call us</a></Button>
+            <Button asChild className="h-auto min-h-9 min-w-0 flex-1 whitespace-normal py-2 text-center">
+              <Link to="/book"><CalendarCheck className="h-4 w-4" /> {t('nav.bookVisit')}</Link>
+            </Button>
+            <Button asChild variant="outline" className="h-auto min-h-9 min-w-0 flex-1 whitespace-normal py-2 text-center">
+              <a href={`tel:${mobile}`}><Phone className="h-4 w-4" /> {t('drawer.call')}</a>
+            </Button>
           </div>
           <div className="flex items-center justify-between gap-3">
             <LocaleSwitch />

@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { AppError, notFound } from '../utils/AppError.js';
-import { addDays, dayjs, local } from '../utils/dates.js';
+import { addDays, customerDate, dayjs, local } from '../utils/dates.js';
 import { normalizePhone } from '../utils/phone.js';
 import { publicToken } from '../utils/tokens.js';
 import { adminJobPath, webUrl } from '../utils/links.js';
@@ -98,7 +98,7 @@ async function sendVisitSms(job, templateKey) {
       templateKey, channel: 'sms', to: r.to, locale,
       vars: {
         name: r.name, customerName: job.customer?.name, number: job.number, surveyor,
-        date: local(job.scheduledStart, 'D MMM YYYY'), window: visitWindowText(job.scheduledStart, job.scheduledEnd),
+        date: customerDate(job.scheduledStart, locale), window: visitWindowText(job.scheduledStart, job.scheduledEnd),
         link: visitLink(token), appName: env.appName,
       },
       related: { model: 'Job', id: job.id },

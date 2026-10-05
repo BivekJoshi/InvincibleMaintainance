@@ -3,6 +3,8 @@ import { Media } from '@/components/site/Media';
 import { SectionHeading } from '@/components/site/SectionHeading';
 import { SectionShell } from '@/components/site/SectionShell';
 import { cn } from '@/helpers/utils';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The field gallery, as a mosaic rather than a uniform strip: the first tile is
@@ -10,11 +12,12 @@ import { cn } from '@/helpers/utils';
  * thumbnails. Each picture wipes open as it arrives.
  */
 export function Gallery({ section, media, tone }) {
+  const t = useT(SITE);
   const images = (Array.isArray(section.data) ? section.data : []).slice(0, 7);
   if (!images.length) return null;
   return (
     <SectionShell tone={tone}>
-      <SectionHeading eyebrow="On site" title="From the field" />
+      <SectionHeading eyebrow={t('home.gallery.eyebrow')} title={t('home.gallery.title')} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {images.map((g, i) => (
           <figure key={g.id ?? i} className={cn('group relative', i === 0 && 'col-span-2 row-span-2')}>

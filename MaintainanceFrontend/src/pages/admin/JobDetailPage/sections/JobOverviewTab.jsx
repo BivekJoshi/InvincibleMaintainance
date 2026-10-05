@@ -15,6 +15,7 @@ import { JOB_STATUS_LABELS, JOB_TYPES, JOB_TYPE_LABELS, PRIORITIES, QUOTATION_ST
 import { formatDate, formatDateTime, formatNpr, formatTime, titleCase } from '@/helpers/format';
 import { toastSuccess } from '@/redux/slices/uiSlice';
 import { siteMapHref } from '@/helpers/jobActions';
+import { OfferAmcButton } from '@/components/jobs/OfferAmcButton';
 
 const CLOSED = ['COMPLETED', 'VERIFIED', 'CANCELLED'];
 const row = 'flex items-center justify-between gap-3 rounded-md border px-3 py-2';
@@ -201,6 +202,8 @@ export function JobOverviewTab({ job, can }) {
               <p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" aria-hidden /> Warranty until {formatDate(job.warranty.endsAt)}</p>
             )
           ) : null}
+          {/* Phase L8: the handover's AMC offer, still to hand once the dialog has closed. */}
+          {['COMPLETED', 'VERIFIED'].includes(job.status) && job.type !== 'INSPECTION' ? <OfferAmcButton job={job} /> : null}
         </CardContent>
       </Card>
 

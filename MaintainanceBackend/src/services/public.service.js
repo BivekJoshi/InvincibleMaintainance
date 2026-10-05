@@ -126,7 +126,7 @@ export async function home(locale = 'en') {
 
   const LOCALE_MODEL = {
     hero: 'heroSlide', services: 'service', other_civil: 'service', projects: 'project',
-    offers: 'offer', why_choose: 'feature', construction: 'feature', pre_engineered: 'feature',
+    offers: 'offer', gallery: 'galleryImage', why_choose: 'feature', construction: 'feature', pre_engineered: 'feature',
     renovation: 'listItem', pricing: 'pricingPlan', process: 'processStep', testimonials: 'testimonial',
   };
 
@@ -251,8 +251,9 @@ export async function pricing(locale = 'en') {
   });
 }
 
-export const listGallery = async () =>
-  withMedia({ items: await prisma.galleryImage.findMany({ where: ACTIVE, orderBy: BY_SORT }) });
+/** The gallery, each caption in `locale` where an editor gave it one (Phase J1: `caption` is translatable). */
+export const listGallery = async (locale = 'en') =>
+  withMedia({ items: await withLocale('galleryImage', await prisma.galleryImage.findMany({ where: ACTIVE, orderBy: BY_SORT }), locale) });
 
 export const listTestimonials = async (locale = 'en') =>
   withMedia({

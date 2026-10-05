@@ -153,3 +153,38 @@ export function jobsInRange(jobs = [], { from, to }) {
     })
     .sort((a, b) => Date.parse(b.scheduledStart) - Date.parse(a.scheduledStart));
 }
+
+/**
+ * Why the office refused a queued change (a sync note, a refused submit), in the technician's language (Phase J1). In
+ * English the server's own message says it most precisely ("The job was cancelled"); a technician reading Nepali gets
+ * the code's words (`FIELD.errors`, then `COMMON.errors`), the server's English only for a code neither knows. Null
+ * when there is nothing to say.
+ *
+ * @param {{ code?: string|null, message?: string|null, details?: unknown }} note
+ * @param {ReturnType<typeof import('@/helpers/i18n').createT>} t a translator over `FIELD`
+ * @param {ReturnType<typeof import('@/helpers/i18n').createT>} common a translator over `COMMON`, same language
+ * @returns {string|null}
+ */
+export function refusalReason(note, t, common) {
+  const code = note?.code;
+  const message = note?.message ?? null;
+  // A code's details (`{ maxMb: 10 }`) fill its placeholders; a list of missing answers does not.
+  const vars = note?.details && typeof note.details === 'object' && !Array.isArray(note.details) ? note.details : {};
+  let words = null;
+  if (code && t.has(`errors.${code}`)) words = t(`errors.${code}`, vars);
+  else if (code && common.has(`errors.${code}`)) words = common(`errors.${code}`, vars);
+  return t.locale === 'en' ? (message ?? words) : (words ?? message);
+}
+
+/**
+ * What the queue holds, in words: "3 changes and 1 photo", "1 photo", or '' for nothing.
+ *
+ * @param {ReturnType<typeof import('@/helpers/i18n').createT>} t a translator over `FIELD`
+ * @param {number} changes
+ * @param {number} photos
+ */
+export function queueSummary(t, changes, photos) {
+  const c = changes ? t('sync.changes', { count: changes }) : '';
+  const p = photos ? t('sync.photos', { count: photos }) : '';
+  return c && p ? t('sync.both', { changes: c, photos: p }) : c || p;
+}

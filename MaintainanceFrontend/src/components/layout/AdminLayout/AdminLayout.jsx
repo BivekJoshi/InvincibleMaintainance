@@ -11,6 +11,7 @@ import { useLogoutMutation } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { ThemeModeSwitch } from '@/components/theme/ThemeModeSwitch';
+import { CalendarModeSwitch } from '@/components/common/CalendarModeSwitch';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -22,7 +23,11 @@ import { MOD_KEY } from '@/helpers/keys';
 import {
   selectMobileNavOpen, selectSidebarOpen, setCommandOpen, setMobileNav, toggleSidebar,
 } from '@/redux/slices/uiSlice';
+import { dayHeading, ktmToday } from '@/helpers/calendarDays';
+import { loadDevanagariFont } from '@/helpers/devanagariFont';
+import { setDisplayCalendar } from '@/helpers/displayCalendar';
 import { initials } from '@/helpers/format';
+import { useCalendarMode } from '@/hooks/useCalendarMode';
 import { cn } from '@/helpers/utils';
 import { AdminBreadcrumb } from './AdminBreadcrumb';
 import { AdminSidebar } from './AdminSidebar';
@@ -33,19 +38,24 @@ import { ShortcutBar } from './ShortcutBar';
 
 const EASE = [0.16, 1, 0.3, 1];
 
-/** Kathmandu's time, whatever the browser's clock says — the office runs on it. */
+/** Kathmandu's time, whatever the browser's clock says — the office runs on it; the day in the calendar chosen in the account menu. */
 function KathmanduClock() {
+  const { calendar } = useCalendarMode();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
+  // In BS the day is written in Nepali script.
+  useEffect(() => { if (calendar === 'bs') loadDevanagariFont(); }, [calendar]);
   const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kathmandu' }).format(now);
-  const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kathmandu' }).format(now);
+  const day = dayHeading(ktmToday(now.getTime()), { calendar });
   return (
-    <span className="hidden flex-col items-end leading-tight xl:flex" title="Time in Kathmandu">
+    <span className="hidden flex-col items-end leading-tight xl:flex" title={calendar === 'bs' ? 'Time in Kathmandu · Bikram Sambat date' : 'Time in Kathmandu'}>
       <span className="text-sm font-semibold tabular-nums">{time}</span>
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{day} · KTM</span>
+      {calendar === 'bs'
+        ? <span className="text-xs font-semibold text-foreground/80"><span lang="ne">{day}</span> · KTM</span>
+        : <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{day} · KTM</span>}
     </span>
   );
 }
@@ -72,6 +82,15 @@ export function AdminLayout() {
   usePaletteHotkey();
   const dispatch = useDispatch();
   const { user, role } = useAuth();
+  // The account menu's Calendar switch, for every date the back office writes or picks (`helpers/displayCalendar`):
+  // set as this renders — before the page under it formats a date — and again once mounted (StrictMode runs the
+  // cleanup between two mounts), and AD again once the shell is gone.
+  const { calendar } = useCalendarMode();
+  setDisplayCalendar(calendar);
+  useEffect(() => {
+    setDisplayCalendar(calendar);
+    return () => setDisplayCalendar('ad');
+  }, [calendar]);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [logout] = useLogoutMutation();
@@ -182,6 +201,11 @@ export function AdminLayout() {
                     <span className="text-sm">Theme</span>
                     <ThemeModeSwitch size="sm" />
                   </div>
+                  {/* AD or BS for the SLA board's calendar and the clock up here; kept per browser, like the theme. */}
+                  <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+                    <span className="text-sm">Calendar</span>
+                    <CalendarModeSwitch />
+                  </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild><Link to="/"><ExternalLink className="h-4 w-4" /> View website</Link></DropdownMenuItem>
                   {role === 'TECHNICIAN' || role === 'ADMIN' ? (
@@ -198,7 +222,8 @@ export function AdminLayout() {
           <ShortcutBar />
         </div>
 
-        <main className="flex-1 p-4 sm:p-6"><PageOutlet /></main>
+        {/* Keyed on the calendar: a switch remounts the page, so every date on it is written again in the new one. */}
+        <main className="flex-1 p-4 sm:p-6"><PageOutlet key={calendar} /></main>
       </div>
 
       <CommandPalette role={role} onLogout={onLogout} />

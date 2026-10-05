@@ -8,7 +8,8 @@ import { INSPECTION_QUESTION_TYPES } from '@/config/constants';
  * the same cases through both).
  *
  * The questions are a `grid` field whose rows are already in the API's shape (`{ key, label, labelNe?, type, unit?,
- * metric?, options?, flag?, required, photoRequired }`), so a saved template loads as it is. A row left completely
+ * metric?, options?, optionsNe?, flag?, required, photoRequired }`), so a saved template loads as it is. `optionsNe`
+ * (Phase J1) words a choice's options in Nepali for the surveyor's phone — one per option, in order; display only. A row left completely
  * empty is allowed here — the grid's spare line — and dropped, so an error's index is the row the grid shows. Every
  * rule is `questionIssues` (the API's paths); the form puts each message on the grid column that edits it
  * (`FORM_COLUMN`: `flag.above` → the **Flag above** cell).
@@ -49,6 +50,15 @@ export function splitOptions(value) {
   return [...new Set(parts.map((s) => String(s ?? '').trim()).filter(Boolean))];
 }
 
+/**
+ * `छैन, थोरै, धेरै` → `['छैन', 'थोरै', 'धेरै']`: a choice's Nepali words, one per option in the same order — trimmed and
+ * blanks dropped, but never de-duplicated, since two options may read the same in Nepali and the order is the match.
+ */
+export function splitNepaliOptions(value) {
+  const parts = Array.isArray(value) ? value : String(value ?? '').split(',');
+  return parts.map((s) => String(s ?? '').trim()).filter(Boolean);
+}
+
 /** A flag with its empty parts removed, or null when nothing is left. */
 export function cleanFlag(flag) {
   const out = Object.fromEntries(Object.entries(flag ?? {}).filter(([, v]) => !blank(v) && !(Array.isArray(v) && !v.length)));
@@ -59,7 +69,7 @@ export function cleanFlag(flag) {
 export function isBlankQuestion(row) {
   if (!row) return true;
   return blank(row.label) && blank(row.labelNe) && blank(row.key) && blank(row.unit) && blank(row.metric)
-    && !listOf(row.options).length && !cleanFlag(row.flag) && !row.required && !row.photoRequired;
+    && !listOf(row.options).length && !listOf(row.optionsNe).length && !cleanFlag(row.flag) && !row.required && !row.photoRequired;
 }
 
 /** A new question: a yes/no, the commonest line on a checklist. */
@@ -95,6 +105,16 @@ export function questionIssues(q) {
   else if (options.length > 20) add(['options'], 'At most 20 options');
   const offered = listOf(options).map((o) => text(o));
   if (type === 'CHOICE' && offered.length < 2) add(['options'], 'A choice needs at least two options');
+
+  const optionsNe = q?.optionsNe ?? [];
+  if (!Array.isArray(optionsNe)) add(['optionsNe'], 'The Nepali options are a list');
+  else if (optionsNe.length) {
+    if (optionsNe.some((o) => blank(o))) add(['optionsNe'], 'A Nepali option cannot be empty');
+    else if (optionsNe.some((o) => String(o).trim().length > 80)) add(['optionsNe'], 'An option is at most 80 characters');
+    else if (optionsNe.length > 20) add(['optionsNe'], 'At most 20 options');
+    else if (type !== 'CHOICE') add(['optionsNe'], 'Only a choice has options to word in Nepali');
+    else if (optionsNe.length !== offered.length) add(['optionsNe'], 'Give one Nepali word for each option, in the same order');
+  }
 
   const flag = q?.flag ?? {};
   if (typeof flag !== 'object' || Array.isArray(flag)) {
@@ -149,6 +169,7 @@ export function questionBody(row) {
   if (type === 'YES_NO') kept = cleanFlag({ equals: flag.equals });
   if (type === 'CHOICE') kept = cleanFlag({ values: splitOptions(flag.values ?? []) });
   const labelNe = text(row.labelNe);
+  const optionsNe = type === 'CHOICE' ? splitNepaliOptions(row.optionsNe ?? []) : [];
   const unit = text(row.unit);
   const metric = text(row.metric);
   return {
@@ -159,6 +180,7 @@ export function questionBody(row) {
     ...(type === 'NUMBER' && unit ? { unit } : {}),
     ...(type === 'NUMBER' && metric ? { metric } : {}),
     ...(type === 'CHOICE' ? { options: splitOptions(row.options ?? []) } : {}),
+    ...(optionsNe.length ? { optionsNe } : {}),
     ...(kept ? { flag: kept } : {}),
     required: Boolean(row.required),
     photoRequired: Boolean(row.photoRequired),

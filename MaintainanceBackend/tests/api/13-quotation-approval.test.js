@@ -379,7 +379,9 @@ describe('the full loop: changes requested, revised, re-approved, accepted', () 
     const sms = await prisma.messageLog.findMany({ where: { relatedId: ctx.v1.id, templateKey: 'quotation_changes_received' } });
     expect(sms).toHaveLength(1);
     expect(sms[0]).toMatchObject({ channel: 'sms', toAddress: ctx.customer.phone });
-    expect(sms[0].body).toContain(ne.body.slice(0, 10));
+    // The Nepali template's words up to its first placeholder (Phase J1: it greets the customer by name).
+    expect(sms[0].body).toContain(ne.body.split('{{')[0].trim());
+    expect(sms[0].body).toMatch(/[ऀ-ॿ]/);
     expect(sms[0].body).toContain(ctx.v1.number);
   });
 
@@ -489,7 +491,7 @@ describe('the full loop: changes requested, revised, re-approved, accepted', () 
     expect(customerMsgs.map((m) => m.channel).sort()).toEqual(['email', 'sms']);
     const sms = customerMsgs.find((m) => m.channel === 'sms');
     expect(sms.toAddress).toBe(ctx.customer.phone);
-    expect(sms.body).toContain(ne.body.slice(0, 10));
+    expect(sms.body).toContain(ne.body.split('{{')[0].trim());
     expect(sms.body).toMatch(/[ऀ-ॿ]/);
   });
 

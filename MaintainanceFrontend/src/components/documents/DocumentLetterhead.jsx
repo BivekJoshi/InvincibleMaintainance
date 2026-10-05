@@ -1,15 +1,18 @@
+import { DOCUMENTS } from '@/config/i18n/documents';
+import { useT } from '@/hooks/useT';
 import { imageUrl } from '@/helpers/format';
 
 /**
  * The company as a document states it (Phase L4): logo, name, tagline, address, phones, email and the PAN/VAT
  * number — the API's `letterhead` (from the `contact.*`, `branding.*` and `finance.panVatNo` settings), so the
- * customer's page, the print and J2's PDFs all read one source. Phones are call links on a phone.
+ * customer's page, the print and J2's PDFs all read one source. Phones are call links on a phone. Its few words
+ * ("PAN / VAT No.") are the screen's language; the company's own are as the settings hold them.
  *
  * @param {{ letterhead?: { companyName: string, address?: string|null, city?: string|null, phones?: string[],
- *   email?: string|null, panVatNo?: string|null, logo?: object|null, tagline?: string|null }|null,
- *   copy: { panVat: string, phone: string, email: string } }} props
+ *   email?: string|null, panVatNo?: string|null, logo?: object|null, tagline?: string|null }|null }} props
  */
-export function DocumentLetterhead({ letterhead, copy }) {
+export function DocumentLetterhead({ letterhead }) {
+  const t = useT(DOCUMENTS);
   if (!letterhead?.companyName) return null;
   const { companyName, address, city, phones = [], email, panVatNo, logo, tagline } = letterhead;
   const logoSrc = imageUrl(logo, 400);
@@ -28,7 +31,7 @@ export function DocumentLetterhead({ letterhead, copy }) {
         <p className="text-xs text-muted-foreground">
           {phones.length ? (
             <>
-              <span className="sr-only">{copy.phone}: </span>
+              <span className="sr-only">{t('document.letterhead.phone')}: </span>
               {phones.map((p, i) => (
                 <span key={p}>
                   {i ? ' · ' : ''}
@@ -40,7 +43,7 @@ export function DocumentLetterhead({ letterhead, copy }) {
           {email ? (
             <span className="block sm:inline print:inline">
               {phones.length ? <span className="hidden sm:inline print:inline"> · </span> : null}
-              <span className="sr-only">{copy.email}: </span>
+              <span className="sr-only">{t('document.letterhead.email')}: </span>
               <a href={`mailto:${email}`} className="hover:text-primary hover:underline [overflow-wrap:anywhere]">{email}</a>
             </span>
           ) : null}
@@ -48,7 +51,7 @@ export function DocumentLetterhead({ letterhead, copy }) {
       </div>
       {panVatNo ? (
         <p className="text-xs">
-          <span className="text-muted-foreground">{copy.panVat}</span> <span className="font-semibold tabular-nums">{panVatNo}</span>
+          <span className="text-muted-foreground">{t('document.letterhead.panVat')}</span> <span className="font-semibold tabular-nums">{panVatNo}</span>
         </p>
       ) : null}
     </div>

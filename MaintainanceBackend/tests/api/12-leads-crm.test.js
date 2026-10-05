@@ -511,10 +511,18 @@ describe('preferred language', () => {
     expectStatus(await sales.post('/admin/customers').send({ name: 'French', phone: phone(), preferredLocale: 'fr' }), 400);
   });
 
+  /** Switches the seeded Nepali `quotation_sent` SMS off for `fn` — the state of a template not yet translated. */
+  const withoutNepaliQuotationSms = async (fn) => {
+    const where = { key: 'quotation_sent', channel: 'sms', locale: 'ne' };
+    await prisma.messageTemplate.updateMany({ where, data: { isActive: false } });
+    try { return await fn(); } finally { await prisma.messageTemplate.updateMany({ where, data: { isActive: true } }); }
+  };
+
   it('a missing Nepali template falls back to the English one', async () => {
     const en = await loadTemplate('quotation_sent', 'sms', 'en');
-    expect(await prisma.messageTemplate.findFirst({ where: { key: 'quotation_sent', channel: 'sms', locale: 'ne' } })).toBeNull();
-    expect((await loadTemplate('quotation_sent', 'sms', 'ne')).id).toBe(en.id);
+    await withoutNepaliQuotationSms(async () => {
+      expect((await loadTemplate('quotation_sent', 'sms', 'ne')).id).toBe(en.id);
+    });
     expect(await loadTemplate('no_such_template', 'sms', 'ne')).toBeNull();
   });
 
@@ -524,27 +532,21 @@ describe('preferred language', () => {
     const q = expectStatus(await sales.post('/admin/quotations').send({
       customerId: customer.id, items: [{ description: 'Fallback check', qty: 1, rate: 100 }],
     }), 201).data;
-    await approveAndSend(q.id);
+    await withoutNepaliQuotationSms(() => approveAndSend(q.id));
     const sms = await prisma.messageLog.findFirst({ where: { relatedId: q.id, templateKey: 'quotation_sent', channel: 'sms' } });
     expect(sms.body).toMatch(/^Quotation /);
     expect(sms.body).toContain('http://localhost:5400/quotation/');
   });
 
-  it('a customer-facing message uses the Nepali template once one exists', async () => {
-    const tpl = await prisma.messageTemplate.create({
-      data: { key: 'quotation_sent', channel: 'sms', locale: 'ne', body: 'कोटेसन {{number}} तयार छ: {{link}}' },
-    });
-    try {
-      const customer = expectStatus(await sales.post('/admin/customers').send({ name: 'Nepali Reader', phone: phone(), preferredLocale: 'ne' }), 201).data;
-      const q = expectStatus(await sales.post('/admin/quotations').send({
-        customerId: customer.id, items: [{ description: 'Nepali check', qty: 1, rate: 100 }],
-      }), 201).data;
-      await approveAndSend(q.id);
-      const sms = await prisma.messageLog.findFirst({ where: { relatedId: q.id, templateKey: 'quotation_sent', channel: 'sms' } });
-      expect(sms.body).toContain('कोटेसन');
-    } finally {
-      await prisma.messageTemplate.delete({ where: { id: tpl.id } });
-    }
+  it('a customer-facing message uses the Nepali template (seeded since Phase J1)', async () => {
+    const customer = expectStatus(await sales.post('/admin/customers').send({ name: 'Nepali Reader', phone: phone(), preferredLocale: 'ne' }), 201).data;
+    const q = expectStatus(await sales.post('/admin/quotations').send({
+      customerId: customer.id, items: [{ description: 'Nepali check', qty: 1, rate: 100 }],
+    }), 201).data;
+    await approveAndSend(q.id);
+    const sms = await prisma.messageLog.findFirst({ where: { relatedId: q.id, templateKey: 'quotation_sent', channel: 'sms' } });
+    expect(sms.body).toContain('कोटेसन');
+    expect(sms.body).toContain('रु. 113.00');
   });
 
   it('a lead\'s language can be edited, and an edit that leaves it out keeps it', async () => {

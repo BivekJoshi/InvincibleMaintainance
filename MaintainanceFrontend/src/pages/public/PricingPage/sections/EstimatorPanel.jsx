@@ -2,6 +2,8 @@ import { Estimator } from '@/components/public/Estimator';
 import { LeadCaptureCard } from '@/components/public/LeadCaptureCard';
 import { LeadForm } from '@/components/public/LeadForm';
 import { Reveal } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * The estimator, and the form that appears once it has produced a number.
@@ -12,6 +14,7 @@ import { Reveal } from '@/three/motion/motionKit';
  * and the estimate travels with the enquiry to the free inspection.
  */
 export function EstimatorPanel({ services, estimate, onEstimate }) {
+  const t = useT(SITE);
   return (
     <div className="space-y-6 lg:sticky lg:top-24">
       <Estimator services={services} onEstimate={onEstimate} />
@@ -19,8 +22,8 @@ export function EstimatorPanel({ services, estimate, onEstimate }) {
       {estimate ? (
         <Reveal>
           <LeadCaptureCard
-            title="Get this quoted exactly"
-            description="We will bring your estimate to the free inspection."
+            title={t('pricing.quote.title')}
+            description={t('pricing.quote.description')}
             className="border-gold/40"
           >
             <LeadForm

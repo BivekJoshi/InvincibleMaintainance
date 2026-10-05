@@ -2,11 +2,14 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { ProjectCard } from '@/components/site/ProjectCard';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { StaggerOnView } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 const GRID = 'grid gap-5 sm:grid-cols-2 lg:grid-cols-3';
 
 /** The three states of the case-study list, on one grid. */
 export function ProjectGrid({ projects, media, isLoading }) {
+  const t = useT(SITE);
   if (isLoading) {
     return (
       <div className={GRID} aria-hidden>
@@ -18,8 +21,8 @@ export function ProjectGrid({ projects, media, isLoading }) {
   if (!projects.length) {
     return (
       <EmptyState
-        title="Nothing published for this service yet"
-        description="Try another service, or book a free consultation and we will talk you through similar work."
+        title={t('projects.empty.title')}
+        description={t('projects.empty.description')}
       />
     );
   }

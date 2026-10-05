@@ -8,6 +8,15 @@ money in requests is **rupees**, in responses **integer paisa**.
 send its own `X-Request-Id`; it is kept only if it matches `^[A-Za-z0-9._-]{8,64}$`, otherwise a UUID
 replaces it. The same id is on every log line of the request and on every `AuditLog` row it wrote.
 
+**Error codes are the contract, messages are English.** A client words a refusal by its `code` (the SPA's catalogues
+do, in English or Nepali — Phase J1) and shows `message` only for a code it does not know. The refusals a visitor or
+customer can meet each have their own code (listed with their routes below).
+
+**Uploads (every multipart route).** A file of a type the route does not take is `400 UNSUPPORTED_FILE_TYPE`
+(`details.type`); one over the route's size limit is `413 FILE_TOO_LARGE`; more files than the route takes is
+`400 TOO_MANY_FILES`; any other malformed upload `400 UPLOAD_REJECTED` (`details.field` when multer names one). Until
+Phase J1 multer's own refusals answered 500.
+
 **Origins.** A browser request from an origin outside `PUBLIC_WEB_ORIGIN` / `ADMIN_ORIGIN` answers
 `403 FORBIDDEN_ORIGIN`. A 5xx always answers `INTERNAL_ERROR` / "Something went wrong" (the detail is
 logged, and reported to Sentry when `SENTRY_DSN` is set); only `NODE_ENV=development` shows the real message.
@@ -34,7 +43,9 @@ GET  /public/projects               ⚡ ?service=<slug>&category=<slug>   case s
 GET  /public/projects/:slug         ⚡
 GET  /public/offers                   active window only, cached 30s
 GET  /public/pricing                ⚡ pricing plans + rate card + priced services
-GET  /public/gallery                ⚡
+GET  /public/gallery                ⚡ ?locale — with ne each caption overlays its Nepali version (Phase J1: `caption` is
+                                      translatable through PUT /admin/translations, model `galleryImage`); the home
+                                      page's gallery section does the same
 GET  /public/testimonials           ⚡ approved only
 GET  /public/faqs                   ⚡ ?group&locale   -> { items }   Nepali overlaid like the service page
 GET  /public/posts                  ⚡ ?category=<slug>&limit (default 24, max 100)&locale
@@ -54,6 +65,10 @@ GET  /public/availability             ?from&days  free survey capacity per day a
 POST /public/leads                    honeypot + timing + turnstile + rate limit -> creates Lead
                                       online booking adds { preferredAt, preferredSlot },
                                       which sets source=booking; a closed weekday is rejected
+                                      400 SUBMISSION_REJECTED (the `website` honeypot has a value) ·
+                                      400 SUBMITTED_TOO_FAST (elapsedMs < 2000) · 400 BOT_CHECK_FAILED (Turnstile) ·
+                                      400 BOOKING_DAY_CLOSED (preferredAt on a closed weekday) · 429 RATE_LIMITED ·
+                                      400 BAD_REQUEST (validation, details[{ path, message }])
                                       { name, phone, email? (optional; stored trimmed, lower-case),
                                         preferredLocale? en|ne (the site's language — the acknowledgement
                                         SMS and every later message use it), address?, serviceId?, message?,
@@ -64,6 +79,9 @@ POST /public/lead-photos              photos of the site, sent while the form is
                                       201 [{ id, url, thumb, width, height }]. They live in the
                                       "Customer uploads" media folder and belong to nothing until a
                                       lead is submitted with their ids.
+                                      400 PHOTOS_REQUIRED · 400 TOO_MANY_FILES (more than 5) · 400 PHOTOS_ONLY ·
+                                      400 PHOTO_TOO_LARGE { details: { maxMb: 10 } } · 413 FILE_TOO_LARGE (over the
+                                      uploader's 15 MB) · 400 UNSUPPORTED_FILE_TYPE · 429 RATE_LIMITED
 GET  /public/quotations/:token        customer views a quotation — an allowlist, never the row:
                                       { number, version, status, validUntil, subtotal, discount,
                                         vatApplied, vatRate, vatAmount, total, terms, sentAt, decidedAt,
@@ -174,7 +192,10 @@ GET  /public/invoices/:token          customer views an invoice (read-only; paid
                                       payments[] include voided ones with voidedAt set (shown struck
                                       through); paidAmount already excludes them
 GET  /public/warranties/:token
-POST /public/warranties/:token/claim  { description }   one open claim at a time — a second is 422
+POST /public/warranties/:token/claim  { description }   one open claim at a time
+                                      422 CLAIM_OPEN (a claim is open or accepted) · 422 WARRANTY_VOID ·
+                                      422 WARRANTY_EXPIRED { details: { endsAt: 'YYYY-MM-DD', the Kathmandu day } } ·
+                                      404 NOT_FOUND
 GET  /sitemap.xml   /robots.txt   /json-ld              ?origin=https://…
                                       the sitemap lists /blog (while it has a published post), every
                                       published post at /blog/:slug and every live page at /:slug
@@ -311,8 +332,12 @@ Capabilities: leads — `leads:read` (SALES, DISPATCHER), `leads:write` (SALES);
 assigned leads. ADMIN holds all of them.
 
 A lead and a customer carry `preferredLocale` (`en` | `ne`, default `en`): the language every SMS and email to
-that person uses (a missing `ne` template falls back to the `en` one). `email` is stored trimmed and lower-case
-wherever it is accepted.
+that person uses (a missing `ne` template falls back to the `en` one). Since Phase J1 every customer message has a
+seeded `ne` template, and the values put into a Nepali one are written the Nepali way: a date is the Kathmandu day's
+Bikram Sambat date in Nepali words (`29 भदौ 2083` — `utils/dates.js#customerDate`; the AD date past BS 2100) and an
+amount is `रु. 1,41,250.00` (Latin digits). An English message is unchanged but for `quotation_sent`'s
+`{{validUntil}}` and `amc_visit_due`'s `{{date}}`, now `14 Sep 2026` like every other date (they were `2026-09-14`).
+Staff messages stay English. `email` is stored trimmed and lower-case wherever it is accepted.
 
 ```
 GET    /admin/leads                 leads:read · ?status&priority&source&assignedToId&serviceId&slaRisk
@@ -336,6 +361,27 @@ GET    /admin/leads/sla-board       leads:read · { breached[], atRisk[], waitin
                                     waiting[] is unanswered and still outside the warning window (a fresh
                                     enquiry lands here); the counts use Kathmandu's day; metToday ≤ answeredToday (first contact
                                     today, inside the deadline)
+GET    /admin/agenda                leads:read · ?from&to (YYYY-MM-DD Kathmandu days, inclusive, ≤ 62; default today + 6) —
+                                    the SLA board's Calendar tab. -> { from, to, kinds[], items[], overdue { total, byKind },
+                                    truncated[] }. items: every dated thing still waiting that falls in the span, AND every
+                                    late one wherever it falls, oldest first:
+                                      response   lead unanswered — slaDueAt                       (leads:read)
+                                      followUp   open lead's next action — nextActionAt           (leads:read)
+                                      visit      open INSPECTION job — scheduledStart             (jobs:read)
+                                      job        any other open job — scheduledStart              (jobs:read)
+                                      quotation  OFFICE_APPROVED|SENT|CHANGES_REQUESTED — validUntil (quotations:read)
+                                      invoice    SENT|PARTIAL|OVERDUE — dueDate, amount = balance (invoices:read)
+                                      amcVisit   pending visit of an active contract — dueDate    (amc:read)
+                                      renewal    active AMC contract — endDate                    (amc:read)
+                                    A kind the role cannot read is left out of kinds[] and items[], not refused.
+                                    Item: { key (kind:id), kind, id, at, endAt, allDay, state overdue|today|upcoming, title,
+                                    detail, number?, href, ownable, ownerId, ownerName, priority?, status?, type?, note?,
+                                    amount? (paisa), people? (technicians), phone? }. A timed item is late once `at` has passed
+                                    (a job or visit once its end has); an allDay one (quotation, invoice, AMC) the Kathmandu
+                                    day after. `ownable` kinds belong to a salesperson (the lead's owner; a quotation without
+                                    a lead, its author) — the board's Mine / Unassigned switch narrows those. Each kind reads
+                                    at most 300 rows for the span and 300 late ones (named in truncated[]); overdue.byKind
+                                    counts every late row
 GET    /admin/leads/export.csv      leads:read · the list filters (every page, up to 10,000 rows), or
                                     ?ids=a,b,c (≤100) for the rows picked in the table
 POST   /admin/leads/merge           leads:write · { primaryId, duplicateIds }   duplicates move to LOST and are
@@ -749,7 +795,9 @@ GET    /admin/surveys/:id            readings + quantity items + job photos     
                                      questions, isActive, sortOrder } · ?serviceId filters
                                      questions (1–60, keys unique) = [{ key (a-z0-9_, ≤40), label, labelNe?,
                                        type: YES_NO | NUMBER | CHOICE | TEXT, unit?, metric?, options?
-                                       (CHOICE: ≥2), flag?: { above?, below? } (NUMBER; '' = none) |
+                                       (CHOICE: ≥2), optionsNe? (Phase J1 — CHOICE only, one Nepali word per
+                                       option in the same order, display only: an answer is still the option),
+                                       flag?: { above?, below? } (NUMBER; '' = none) |
                                        { equals: 'yes'|'no' } (YES_NO) | { values: [options] } (CHOICE),
                                        required, photoRequired }]
                                      A survey's checklist is its service's active template (lowest sortOrder),
@@ -818,8 +866,9 @@ GET    /admin/jobs/:id/diary        jobs:read · the site diary (Phase L7), newe
                                     createdBy { id, name }, updatedAt }], media { [mediaId]: media } }
 GET    /admin/jobs/:id/progress     jobs:read · BOQ & progress (Phase L7): { sections [{ title, lines [{ id,
                                     number, source, description, unit, quotedQty, progressPct, isProvisional,
-                                    rate?, value?, earned? }] }], totals { earnedPct, value?, earned? }, stages
-                                    [{ id, label, basisPoints, trigger, cumulativeBp, billed, due }], nextBill
+                                    rate?, value?, earned?, measuredQty }] }], totals { earnedPct, value?, earned? },
+                                    stages [{ id, label, basisPoints, trigger, cumulativeBp, billed, invoice { id,
+                                    number, status } | null, due }], nextBill
                                     { stageId, label, basisPoints } | null }. rate, value (qty × rate) and earned
                                     (value × progress, money.js) only for quotations:read or invoices:read (SALES,
                                     MANAGER, ACCOUNTANT, ADMIN) — not DISPATCHER. A MILESTONE stage is due once
@@ -834,6 +883,38 @@ GET    /admin/jobs/:id/planned-vs-actual   jobs:read · quantities only (Phase L
 GET    /admin/jobs/:id/variations   jobs:read · the job's variation orders, newest first: [{ id, number,
                                     version, status, kind, total?, createdAt, sentAt, decidedAt }] (total for
                                     quotations:read only)
+POST   /admin/jobs/:id/invoices/stage   invoices:write · { paymentStageId } → 201 the RUNNING bill for a
+                                    MILESTONE stage of the job's quotation (Phase L8): the stage's amount from
+                                    the payment schedule (its own VAT split), a DRAFT with locked lines, sent as
+                                    usual. 404 STAGE_NOT_FOUND (not this job's quotation), 409 STAGE_BILLED (a
+                                    live invoice has it — also the advance's stage), 422 STAGE_NOT_MILESTONE (the
+                                    advance comes at acceptance, the rest with the final), 422
+                                    FINAL_ALREADY_BILLED
+PUT    /admin/jobs/:id/lines/:lineId/measure   jobs:write · { measurements [{ area?, description?, nos?, l?,
+                                    b?, h?, deduct? }] (1–200) } → the line, quantities only { id, number,
+                                    section, source, description, unit, quotedQty, isProvisional, measurements,
+                                    measuredQty (the server's measurementQty) }. 422 MEASUREMENT_CLOSED, 422
+                                    LINE_NOT_MEASURED (an omission keeps its quoted qty), 422 NEGATIVE_LINE
+POST   /admin/jobs/:id/measurement/close    jobs:write → the job (measurementClosedAt, measurementClosedBy). The
+                                    lines a contract measures — ITEM_RATE every line but omissions, LUMP_SUM its
+                                    provisional lines — must all have a measured qty: else 422
+                                    MEASUREMENT_INCOMPLETE { details: [{ lineId, number, description }] }.
+                                    Audited job.measurement_closed
+POST   /admin/jobs/:id/measurement/reopen   jobs:write → the job; until the final bill is raised (422
+                                    FINAL_ALREADY_BILLED — void it first); 422 MEASUREMENT_OPEN when it is not
+                                    closed. Audited job.measurement_reopened
+GET    /admin/jobs/:id/final-bill   invoices:read · the FINAL bill's preview (Phase L8): { boq: false } for a job
+                                    with no lines; else { boq, contractType, measurementRequired,
+                                    measurementClosed, lines [{ lineId, number, source, description, unit, qty,
+                                    rate, amount }], deductions [{ invoiceId, number, kind, description, taxable,
+                                    vat, total }], totals { contract { subtotal, discount, taxable, vatAmount,
+                                    total }, billed { taxable, vat, total }, due { taxable, vat, total } },
+                                    blocking [{ code MEASUREMENT_INCOMPLETE | FINAL_ALREADY_BILLED |
+                                    FINAL_BELOW_BILLED, message, details? }] }
+POST   /admin/jobs/:id/offer-amc    jobs:write · at handover (Phase L8): a lead for sales to offer a maintenance
+                                    contract — source amc_offer, the customer, the site's address, owned by the
+                                    job's seller (else the round-robin) → 201 the lead; an open AMC-offer lead
+                                    for the customer → 200 that one — both with assignedTo { id, name }
 POST   /admin/jobs/:id/purchase-lists/from-shortfall   materials:write · 201 a DRAFT purchase list for the
                                     job: each planned material's shortfall (planned − issued − on hand), bought in
                                     whole packs where the material has a pack size; the materials' supplier when
@@ -879,7 +960,12 @@ POST   /admin/jobs/:id/complete     { note, signatureMediaId, customerRating, cu
                                     -> creates Warranty, enables invoicing
 POST   /admin/jobs/:id/verify       COMPLETED -> VERIFIED
 GET    /admin/jobs/:id/costing      costs:read (MANAGER, ADMIN — Phase L2; 403 for SALES, DISPATCHER, ACCOUNTANT)
-                                    labour + materials + expenses vs invoiced (all paisa):
+                                    labour + materials + expenses vs invoiced (all paisa). Phase L8: invoiced is
+                                    net of each invoice's discount, void and deleted invoices left out,
+                                    deductions negative — a fully billed BOQ job's equals its contract's taxable
+                                    value; + quoted { materials, labour, other, total, complete } — the cost frozen
+                                    in the accepted quotation's and variations' recipes (null without a
+                                    quotation). The job-margin report counts invoiced the same way:
                                     { cost: { materials, labour, expenses, total }, labourMinutes,
                                       billable: { materials, invoiced }, margin, marginPct,
                                       breakdown: { materials[] { name, code, unit, qty, rate, amount (billed),
@@ -1076,6 +1162,9 @@ GET   /tech/jobs/:id/diary          the site diary's days (Phase L7), newest fir
 GET   /tech/jobs/:id/diary/:day     { day, entry | null, lines [{ id, number, section, source, description, unit,
                                     quotedQty, progressPct }] (no rate), trades [{ id, code, name }], materials
                                     [{ id, code, name, unit }], media { [mediaId]: media } (the entry's photos) }
+PUT   /tech/jobs/:id/lines/:lineId/measure   the final measurement from site (Phase L8), people on the job
+                                    only — as the admin route, quantities only (a rate never reaches the field).
+                                    Online only for now: not a /tech/sync kind
 PUT   /tech/jobs/:id/diary/:day     the day's entry, a FULL replace — { weather? SUNNY|CLOUDY|RAIN|HEAVY_RAIN|COLD,
                                     headcount [{ tradeId, count 0–200 }], progress [{ jobLineId, progressPct
                                     0–100 }], received [{ materialId?, description, qty > 0, unit?, challanNo? }],
@@ -1164,6 +1253,9 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
                                     job { id, number } | null and paymentStage { id, label, basisPoints,
                                     trigger } | null. An ADVANCE invoice is the hand-off's; paying it in full
                                     frees its job (the advance gate).
+                                    Phase L8: items[].kind ITEM | DEDUCTION — a DEDUCTION is a negative line (an
+                                    earlier stage bill taken off the final), so every report that sums lines
+                                    stays right.
                                     PUT /:id: a DRAFT only — 422 INVOICE_LOCKED once sent (void it and issue
                                     another). An ADVANCE, RUNNING or FINAL draft takes dueDate, note and terms
                                     only: items, discount or vatApplied is 422 INVOICE_LINES_LOCKED (Phase L6 —
@@ -1171,7 +1263,9 @@ refused with 422 `INVALID_TRANSITION`, which the client treats as terminal and d
                                     stored lines through documentTotals.
 GET    /admin/invoices/:id/history  invoices:history (ACCOUNTANT, ADMIN) · see "Record history"
 POST   /admin/invoices/:id/send
-POST   /admin/invoices/:id/void     { reason }
+POST   /admin/invoices/:id/void     { reason } · a voided stage bill frees its stage (paymentStageId cleared, kept in
+                                    the event), and a voided closing bill (FINAL, or a job's STANDARD) lets the job
+                                    be invoiced again (Phase L8)
 POST   /admin/invoices/from-job/:jobId          once per job — a second is 422. { dueDate?, discount? (rupees),
                                                 vatApplied?, includeMaterials?, includeLabour? }
                                                 One billing rule, never both:
@@ -1179,11 +1273,29 @@ POST   /admin/invoices/from-job/:jobId          once per job — a second is 422
                                                   choice (the invoice total equals the quotation's);
                                                   includeMaterials / includeLabour → 422
                                                   QUOTED_JOB_BILLS_SCOPE
-                                                · quoted job billed in stages (Phase L6: an ADVANCE, later
-                                                  RUNNING bills) → kind FINAL: the quotation's lines, less
-                                                  one "Less: advance INV-…" line per stage bill not DRAFT or
-                                                  VOID, with the VAT left over (money.js#finalBillDocument),
-                                                  so the stage bills + this one = the quotation to the paisa
+                                                · a BOQ job (it has job lines — Phase L8) → the FINAL bill
+                                                  by its contract type (L-D2), a DRAFT, exactly as
+                                                  GET /admin/jobs/:id/final-bill previews it:
+                                                  LUMP_SUM — every line at its quoted qty (a provisional
+                                                  line at its measured qty; omissions as quoted), less each
+                                                  source document's discount (the quotation's and each
+                                                  variation's);
+                                                  ITEM_RATE — every line at its measured qty (omissions as
+                                                  quoted) × rate, each document's discount scaled to what
+                                                  was measured of its own lines (proRata); the measurement
+                                                  must be closed;
+                                                  then one DEDUCTION line (kind DEDUCTION, negative: "Less:
+                                                  advance INV-…", "Less: running bill INV-…") per stage bill
+                                                  not void, with the VAT left over (money.js#finalBillDocument
+                                                  on finalBillTotals) — the stage bills + the final = the
+                                                  contract to the paisa, VAT included. Only dueDate is
+                                                  taken: includeMaterials / includeLabour / discount /
+                                                  vatApplied → 422 QUOTED_JOB_BILLS_SCOPE. 422
+                                                  MEASUREMENT_INCOMPLETE (details: the lines), 422
+                                                  FINAL_BELOW_BILLED (the stage bills exceed the contract —
+                                                  credit notes are deferred)
+                                                · a quoted job without BOQ lines (before Phase L6) billed in
+                                                  stages → FINAL: the quotation's lines less each stage bill
                                                 · unquoted job → billable materials at their issued rate
                                                   + logged time at the rate-card item named by
                                                   finance.labourRateCode (per hour; default LABOUR-SKILL,
@@ -1562,6 +1674,7 @@ Rows written before Phase B have `changes` holding the sanitized write data, no 
 | `job.scheduled` | `POST /admin/jobs/:id/schedule` (the dispatch board) | status, scheduledStart, scheduledEnd, technicianIds → the same |
 | `job.completed` | a job is completed (admin, field app, survey submit) | status → COMPLETED · customerRating |
 | `job.verified` | `POST /admin/jobs/:id/verify` | COMPLETED → VERIFIED |
+| `job.measurement_closed` · `job.measurement_reopened` | the final measurement closed / reopened (Phase L8) | · lines, contractType |
 | `job.variation_added` | a VARIATION accepted (the customer's link or a staff convert, Phase L7) | · quotationId, number, version, lines, total |
 | `site_diary.saved` | PUT /tech/jobs/:id/diary/:day or `diary_save` (model `SiteDiary`) | · jobId, day, lines |
 | `purchase_list.ordered` · `.received` · `.cancelled` | the purchase list's moves (model `PurchaseList`) | status → status · items / reason |

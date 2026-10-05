@@ -6,6 +6,8 @@ import { SectionShell } from '@/components/site/SectionShell';
 import { HeadlineReveal, Reveal, Stagger, StaggerOnView } from '@/three/motion/motionKit';
 import { cn } from '@/helpers/utils';
 import { Cta } from '@/components/site/Cta';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /**
  * Interiors: the argument on one side, the picture on the other.
@@ -14,13 +16,14 @@ import { Cta } from '@/components/site/Cta';
  * as six things to click, and none of them are.
  */
 export function ContentBlock({ section, media, tone }) {
+  const t = useT(SITE);
   const block = section.data;
   if (!block) return null;
   return (
     <SectionShell tone={tone}>
       <div className="grid gap-10 lg:grid-cols-2 lg:items-center lg:gap-16">
         <Reveal>
-          <Eyebrow>Interiors</Eyebrow>
+          <Eyebrow>{t('home.interior.eyebrow')}</Eyebrow>
           <HeadlineReveal
             as="h2"
             text={block.heading}

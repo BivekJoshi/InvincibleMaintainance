@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  inspectionTemplateSchema, isBlankQuestion, questionBody, splitOptions, suggestQuestionKey,
+  inspectionTemplateSchema, isBlankQuestion, questionBody, splitNepaliOptions, splitOptions, suggestQuestionKey,
 } from '@/form/schemas/inspectionTemplate.schema';
 // The API's own schema: the one test import that is a relative path, because it is outside `src/`.
 import { inspectionTemplateSchema as apiSchema } from '../../../../MaintainanceBackend/src/shared/schemas/survey.js';
@@ -12,7 +12,7 @@ const MOISTURE = {
 const SALT = { key: 'salt_deposits', label: 'Salt deposits on the wall', type: 'YES_NO', flag: { equals: 'yes' }, required: true, photoRequired: false };
 const SOURCE = {
   key: 'water_source', label: 'Source of water', type: 'CHOICE', options: ['Rain', 'Pipe leak', 'Ground'],
-  flag: { values: ['Pipe leak'] }, required: false, photoRequired: false,
+  optionsNe: ['वर्षा', 'पाइप चुहावट', 'जमिन'], flag: { values: ['Pipe leak'] }, required: false, photoRequired: false,
 };
 const NOTES = { key: 'notes', label: 'Anything else', type: 'TEXT', required: false, photoRequired: false };
 const DAMP = { name: 'Damp and seepage — site checklist', serviceId: 'svc-damp', questions: [MOISTURE, SALT, SOURCE, NOTES], isActive: true };
@@ -36,6 +36,8 @@ const REFUSED = [
   ['a number flagged on options', withQuestion({ flag: { values: ['Rain'] } }), [0, 'flagOn']],
   ['a flag the API does not know', withQuestion({ flag: { over: 5 } }), [0, 'type']],
   ['an unknown type', withQuestion({ type: 'PHOTO' }), [0, 'type']],
+  ['fewer Nepali words than options', withQuestion({ optionsNe: ['वर्षा', 'पाइप चुहावट'] }, 2), [2, 'optionsNe']],
+  ['Nepali options on a number', withQuestion({ optionsNe: ['एक', 'दुई'] }), [0, 'optionsNe']],
   ['no questions', { ...DAMP, questions: [] }, null],
   ['no name', { ...DAMP, name: ' ' }, null],
 ];
@@ -94,6 +96,8 @@ describe('the inspection template schema mirrors the API (Phase L5)', () => {
     expect(suggestQuestionKey('a'.repeat(39) + ' b')).toBe('a'.repeat(39));
     expect(splitOptions('Rain, Pipe leak ,, Ground, Rain')).toEqual(['Rain', 'Pipe leak', 'Ground']);
     expect(splitOptions('')).toEqual([]);
+    // Nepali words keep their order and repeats: the n-th word is the n-th option's.
+    expect(splitNepaliOptions('छैन, थोरै ,, थोरै')).toEqual(['छैन', 'थोरै', 'थोरै']);
     expect(isBlankQuestion({ label: '', key: '', type: 'CHOICE', options: [], flag: null, required: false })).toBe(true);
     expect(isBlankQuestion({ label: '', type: 'YES_NO', required: true })).toBe(false);
   });

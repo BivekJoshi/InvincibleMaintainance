@@ -6,9 +6,12 @@ import { Media } from '@/components/site/Media';
 import { SectionHeading } from '@/components/site/SectionHeading';
 import { SectionShell } from '@/components/site/SectionShell';
 import { Reveal } from '@/three/motion/motionKit';
+import { SITE } from '@/config/i18n/site';
+import { useT } from '@/hooks/useT';
 
 /** Kitchens: the selling points in one column, the running order in the other. */
 export function KitchenBlock({ section, media, tone }) {
+  const t = useT(SITE);
   const { cards = [], steps = [] } = section.data ?? {};
   if (!cards.length && !steps.length) return null;
   const lead = cards.find((c) => c.imageId);
@@ -16,9 +19,9 @@ export function KitchenBlock({ section, media, tone }) {
   return (
     <SectionShell tone={tone}>
       <SectionHeading
-        eyebrow="Kitchens"
-        title="Modernised around how you actually cook"
-        action={<Button asChild variant="outline"><Link to="/book">Book a kitchen survey</Link></Button>}
+        eyebrow={t('home.kitchen.eyebrow')}
+        title={t('home.kitchen.title')}
+        action={<Button asChild variant="outline"><Link to="/book">{t('home.kitchen.action')}</Link></Button>}
       />
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <div className="grid content-start gap-3">
@@ -55,7 +58,7 @@ export function KitchenBlock({ section, media, tone }) {
           <Reveal delay={0.08}>
             <Card className="overflow-hidden">
               <CardHeader className="border-b bg-muted/50 px-5 py-3">
-                <CardTitle className="text-sm font-semibold">How a kitchen runs</CardTitle>
+                <CardTitle className="text-sm font-semibold">{t('home.kitchen.steps')}</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <ol className="divide-y">

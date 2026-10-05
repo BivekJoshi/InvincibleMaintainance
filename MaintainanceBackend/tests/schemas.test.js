@@ -23,8 +23,9 @@ describe('public lead form validation', () => {
     expect(r.error.issues[0].message).toMatch(/valid Nepali phone/);
   });
 
-  it('rejects a filled honeypot', () => {
-    expect(publicLeadSchema.safeParse({ ...valid, website: 'http://spam' }).success).toBe(false);
+  it('lets a filled honeypot through to the service, which refuses it as SUBMISSION_REJECTED (Phase J1)', () => {
+    expect(publicLeadSchema.safeParse({ ...valid, website: 'http://spam' }).success).toBe(true);
+    expect(publicLeadSchema.safeParse({ ...valid, website: 'x'.repeat(2001) }).success).toBe(false);
   });
 
   it('requires a name of at least two characters', () => {

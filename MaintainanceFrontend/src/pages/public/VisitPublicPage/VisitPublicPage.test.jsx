@@ -5,6 +5,7 @@ import VisitPublicPage from './VisitPublicPage';
 import { renderWithProviders } from '@/test/renderWithProviders';
 import { json, mockApi, notFound } from '@/test/mockApi';
 import uiReducer from '@/redux/slices/uiSlice';
+import { resetI18nWarnings } from '@/helpers/i18n';
 
 /** What GET /public/visits/:token answers (Phase L5) — no money in it. Friday 2 Oct 2026, 10:00–12:00 in Kathmandu. */
 const VISIT = {
@@ -286,5 +287,102 @@ describe('the customer visit page in Nepali (Phase L5)', () => {
     open({ visit: null, locale: 'ne' });
     expect(await screen.findByRole('heading', { name: 'यो लिङ्क मान्य छैन' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /मा फोन गर्नुहोस्$/ })).toHaveAttribute('href', expect.stringMatching(/^tel:/));
+  });
+});
+
+describe('the customer visit page — every word in Nepali (Phase J1)', () => {
+  const NE = { ...VISIT, customer: { name: 'अञ्जली कार्की', preferredLocale: 'ne' }, surveyor: null };
+  let warn;
+  beforeEach(() => {
+    resetI18nWarnings();
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => warn.mockRestore());
+
+  /** No text was missing: `t()` warns `[i18n] …` for a key with no Nepali (or no words at all). */
+  const expectNoMissingWords = () => {
+    expect(warn.mock.calls.filter(([first]) => String(first).startsWith('[i18n]'))).toEqual([]);
+  };
+
+  it('reads in Nepali with no text missing: the heading, the details, the office to call, the reschedule form', async () => {
+    const user = userEvent.setup();
+    open({ visit: NE, locale: 'ne' });
+    expect(await screen.findByText('सन्दर्भ नं. JOB-2083-0004')).toBeInTheDocument();
+    expect(screen.getByText(/हामी तपाईंको साइट निरीक्षण गर्न आउँदैछौं/)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'भ्रमणको विवरण' })).toBeInTheDocument();
+    const who = screen.getByTestId('visit-who');
+    expect(who).toHaveTextContent('भ्रमणअघि को आउँदै हुनुहुन्छ भनेर हामी तपाईंलाई जानकारी दिनेछौं।');
+    expect(within(who).getByRole('link', { name: 'कार्यालयमा फोन गर्नुहोस् · 01-5407720' })).toHaveAttribute('href', 'tel:015407720');
+    await user.click(screen.getByRole('button', { name: 'अर्को समय चाहियो' }));
+    const form = screen.getByRole('form', { name: 'अर्को समय चाहियो?' });
+    expect(within(form).getByText('0 / 500')).toBeInTheDocument();
+    expect(within(form).getByRole('textbox')).toHaveAttribute('placeholder', 'जस्तै: दिउँसो 3 बजेपछि, वा शनिबार जुनसुकै बेला');
+    await user.click(within(form).getByRole('button', { name: 'पछाडि जानुहोस्' }));
+    expectPhoneSafe();
+    expectNoMissingWords();
+  });
+
+  it.each([
+    ['cancelled', { status: 'CANCELLED' }, 'यो भ्रमण रद्द गरियो'],
+    ['underway', { status: 'EN_ROUTE' }, 'भ्रमण सुरु भइसकेको छ'],
+    ['done', { status: 'COMPLETED' }, 'यो भ्रमण सम्पन्न भयो'],
+    ['closed', { status: 'ASSIGNED' }, 'यो भ्रमण अब यहाँबाट बदल्न मिल्दैन'],
+  ])('says a %s visit in Nepali', async (_kind, change, title) => {
+    open({ visit: { ...NE, ...change, canAnswer: false }, locale: 'ne' });
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '01-5407720 मा फोन गर्नुहोस्' })).toBeInTheDocument();
+    expectNoMissingWords();
+  });
+
+  it('tells an answer that arrived too late (VISIT_CLOSED) in Nepali', async () => {
+    const user = userEvent.setup();
+    open({
+      visit: (sofar) => (posts(sofar).length ? { ...NE, canAnswer: false } : NE),
+      respond: () => json({ error: { code: 'VISIT_CLOSED', message: 'This visit can no longer be changed here. Please call us.' } }, 422),
+      locale: 'ne',
+    });
+    await user.click(await screen.findByRole('button', { name: 'पक्का गर्नुहोस्' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('तपाईंको जवाफ समयमै आइपुगेन — यो भ्रमण अब यहाँबाट बदल्न मिल्दैन।');
+    expect(screen.getByText('यो भ्रमण अब यहाँबाट बदल्न मिल्दैन')).toBeInTheDocument();
+    expectNoMissingWords();
+  });
+
+  it('tells too many tries (RATE_LIMITED) in Nepali, from the shared words, and its own failure otherwise', async () => {
+    const user = userEvent.setup();
+    let status = 429;
+    open({
+      visit: NE,
+      respond: () => (status === 429
+        ? json({ error: { code: 'RATE_LIMITED', message: 'Too many requests' } }, 429)
+        : json({ error: { code: 'INTERNAL_ERRORS', message: 'boom' } }, 500)),
+      locale: 'ne',
+    });
+    await user.click(await screen.findByRole('button', { name: 'पक्का गर्नुहोस्' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('धेरै पटक प्रयास भयो।');
+    status = 500;
+    await user.click(screen.getByRole('button', { name: 'पक्का गर्नुहोस्' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('तपाईंको जवाफ रेकर्ड गर्न सकिएन। कृपया फेरि प्रयास गर्नुहोस्।'));
+    expect(document.body.textContent).not.toMatch(/boom|Too many requests/);
+    expectNoMissingWords();
+  });
+
+  it('says it could not open the visit, in Nepali, with Try again', async () => {
+    mockApi((call) => (call.path === '/public/visits/tok-1' ? json({ error: { code: 'INTERNAL_ERROR', message: 'boom' } }, 500) : undefined));
+    renderWithProviders(<VisitPublicPage />, {
+      path: '/visit/:token', initialPath: '/visit/tok-1',
+      preloadedState: { ui: { ...uiReducer(undefined, { type: '@@init' }), locale: 'ne', toasts: [] } },
+    });
+    expect(await screen.findByRole('heading', { name: 'तपाईंको भ्रमण खोल्न सकिएन' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'फेरि प्रयास गर्नुहोस्' })).toBeInTheDocument();
+    expectNoMissingWords();
+  });
+
+  it('offers English, written in English, to an English-speaking customer on the Nepali page', async () => {
+    const user = userEvent.setup();
+    const { store } = open({ visit: { ...NE, customer: { name: 'Anjali Karki', preferredLocale: 'en' } }, locale: 'ne' });
+    await user.click(await screen.findByRole('button', { name: 'Read in English' }));
+    expect(store.getState().ui.locale).toBe('en');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Your site visit' })).toBeInTheDocument();
+    expectNoMissingWords();
   });
 });

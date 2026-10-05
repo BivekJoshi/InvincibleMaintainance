@@ -32,8 +32,8 @@ describe('linkIssue', () => {
 
 describe('siteNavFor', () => {
   it('adds Blog before Contact only when the blog has a post', () => {
-    expect(siteNavFor({ blog: false }).map((n) => n.label)).toEqual(['Services', 'Our work', 'Pricing', 'Contact']);
+    expect(siteNavFor({ blog: false }).map((n) => n.key)).toEqual(['services', 'projects', 'pricing', 'contact']);
     expect(siteNavFor(undefined).map((n) => n.to)).not.toContain('/blog');
-    expect(siteNavFor({ blog: true }).map((n) => n.label)).toEqual(['Services', 'Our work', 'Pricing', 'Blog', 'Contact']);
+    expect(siteNavFor({ blog: true }).map((n) => n.key)).toEqual(['services', 'projects', 'pricing', 'blog', 'contact']);
   });
 });
