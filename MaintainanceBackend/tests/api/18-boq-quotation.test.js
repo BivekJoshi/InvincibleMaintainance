@@ -243,10 +243,15 @@ describe('revisions, copies and old quotations', () => {
   });
 
   it('a line saved before BOQs reads as an ITEM with an unknown cost', async () => {
-    // A row whose quotation is older than the BOQ migration — saved as a flat line and backfilled.
-    const [{ finished_at: migratedAt }] = await prisma.$queryRaw`SELECT finished_at FROM _prisma_migrations WHERE migration_name = '20260927120100_quotation_boq_backfill'`;
-    const legacy = await prisma.quotationItem.findFirst({ where: { quotation: { createdAt: { lt: migratedAt }, deletedAt: null } }, orderBy: { id: 'asc' } });
-    const q = expectStatus(await manager.get(`/admin/quotations/${legacy.quotationId}`), 200).data;
+    // A flat line as the pre-L3 code wrote it (only the old columns), plus what 20260927120100_quotation_boq_backfill
+    // gave it: netQty = qty and, with no rate-card item, kind OTHER. Built here rather than found — a freshly
+    // migrated and seeded database (CI) holds no quotation older than the migration.
+    const { id: quotationId } = await createBoq([{ description: 'Placeholder', unit: 'job', qty: 1, rate: 100 }]);
+    await prisma.quotationItem.deleteMany({ where: { quotationId } });
+    const legacy = await prisma.quotationItem.create({
+      data: { quotationId, description: 'Wall crack repair', unit: 'job', qty: 2, rate: 150000, amount: 300000, sortOrder: 0, netQty: 2, kind: 'OTHER' },
+    });
+    const q = expectStatus(await manager.get(`/admin/quotations/${quotationId}`), 200).data;
     const row = q.items.find((r) => r.id === legacy.id);
     expect(row).toMatchObject({ rowType: 'ITEM', unitCost: null, costAmount: null });
     expect(row.number).toBeTruthy();
